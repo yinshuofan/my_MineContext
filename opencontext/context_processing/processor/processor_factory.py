@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional, Protocol, Type
 
 from opencontext.config import GlobalConfig
 from opencontext.context_processing.processor.document_processor import DocumentProcessor
-from opencontext.context_processing.processor.chatlog_processor import ChatLogProcessor
 from opencontext.context_processing.processor.screenshot_processor import ScreenshotProcessor
 from opencontext.interfaces import IContextProcessor
 from opencontext.utils.logging_utils import get_logger
@@ -52,7 +51,6 @@ class ProcessorFactory:
         """Register all built-in processor types."""
         built_in_processors = {
             "document_processor": DocumentProcessor,  # 文档处理器
-            "chatlog_processor": ChatLogProcessor,  # 聊天日志处理器
             "screenshot_processor": ScreenshotProcessor,
         }
 

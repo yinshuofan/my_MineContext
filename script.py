@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import asyncio
+from datetime import datetime
 from typing import List, Dict, Any
 
 from opencontext.storage.global_storage import get_storage
@@ -126,7 +127,8 @@ async def chat_loop():
     chat_capture = init_memory_module()
     
     messages = [
-        {"role": "system", "content": "你是一个拥有长期记忆的智能助手。你可以使用工具检索过去的对话和活动。"}
+        {"role": "system", "content": "你是一个拥有长期记忆的智能助手。你可以使用工具检索过去的对话和活动。"},
+        {"role": "system", "content": f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"}
     ]
 
     print("=== MineContext 聊天机器人 (输入 'quit' 退出) ===")

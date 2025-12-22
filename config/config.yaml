@@ -24,15 +24,15 @@ document_processing:
   text_threshold_per_page: 50 # Scanned document threshold: pages with fewer characters than this value are considered scanned documents (requires VLM)
 
 vlm_model:
-  base_url: "${LLM_BASE_URL}"
-  api_key: "${LLM_API_KEY}"
-  model: "${LLM_MODEL}"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
+  model: "doubao-seed-1-6-251015"
   provider: ""
 
 embedding_model:
-  base_url: "${EMBEDDING_BASE_URL}"
-  api_key: "${EMBEDDING_API_KEY}"
-  model: "${EMBEDDING_MODEL}"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
+  api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
+  model: "doubao-embedding-vision-250615"
   provider: ""
   output_dim: 2048
 
