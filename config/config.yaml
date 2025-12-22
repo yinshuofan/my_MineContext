@@ -31,9 +31,7 @@ llm:
   config:
     # ⚠️ MUST FILL IN YOUR KEY HERE
     api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe" 
-    # ⚠️ MUST MATCH THE BASE URL IN YOUR SCRIPT
     base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    # ⚠️ MUST BE A MODEL NAME, NOT EMPTY
     model: "doubao-seed-1-6-251015" 
     temperature: 0.1
     max_tokens: 4096
@@ -42,13 +40,13 @@ vlm_model:
   base_url: "https://ark.cn-beijing.volces.com/api/v3"
   api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
   model: "doubao-seed-1-6-251015"
-  provider: ""
+  provider: "openai"
 
 embedding_model:
   base_url: "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
   api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
   model: "doubao-embedding-vision-250615"
-  provider: ""
+  provider: "openai"
   output_dim: 2048
 
 # Context capture module
