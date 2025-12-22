@@ -138,8 +138,16 @@ async def chat_loop():
     print("=== MineContext 聊天机器人 (输入 'quit' 退出) ===")
 
     while True:
-        user_input = input("\nUser: ")
+        try:
+            user_input = input("\nUser: ")
+        except EOFError:
+            break
+
         if user_input.lower() in ["quit", "exit"]:
+            print("\n🛑 正在停止并保存剩余记忆 (强制刷新)...")
+            # --- 【必须添加这一行】 ---
+            chat_capture.stop(graceful=True) 
+            # ------------------------
             break
 
         # 1. 记录用户消息到短期上下文
