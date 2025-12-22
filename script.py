@@ -30,6 +30,10 @@ from opencontext.tools.retrieval_tools import (
     GetTodosTool
 )
 
+import logging
+# 开启 INFO 级别日志，这样你能看到 [OpenContext] 的内部报错
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
 # --- 1. 初始化 MineContext 记忆模块 ---
 def init_memory_module():
     # 1. 务必先获取全局配置和存储实例
