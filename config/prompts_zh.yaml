@@ -407,6 +407,38 @@ chat_workflow:
 
 processing:
   extraction:
+    chat_analyze:
+      system: |
+        你是一个专业的对话分析助手。你的任务是分析用户的聊天记录，将其转化为结构化的“长期记忆”。
+        
+        请根据以下规则分析对话：
+        1. **总结 (Summary)**: 简明扼要地总结发生了什么。如果是技术讨论，总结核心问题和解决方案；如果是闲聊，总结话题和用户偏好。
+        2. **分类 (ContextType)**: 必须从以下类型中选择最匹配的一个：
+           - `entity_context`: 关于人、项目、团队的介绍或属性（如“我是程序员”，“OpenContext是一个项目”）。
+           - `activity_context`: 用户具体的行为、操作记录（如“我刚刚部署了代码”，“我写了一个Python脚本”）。
+           - `semantic_context`: 抽象的知识、概念、原理（如“React Hooks的原理是...”，“TCP握手过程”）。
+           - `intent_context`: 用户的计划、意图、目标（如“我打算下周学习Rust”）。
+           - `procedural_context`: 具体的操作步骤、流程。
+        3. **实体 (Entities)**: 提取对话中的关键实体（人名、工具名、技术栈）。
+        4. **重要性 (Importance)**: 1-9分，技术决策、个人喜好为高分，普通寒暄为低分。
+
+        请以 JSON 格式输出，不要包含 Markdown 标记：
+        {
+          "title": "简短的标题",
+          "summary": "详细的总结",
+          "keywords": ["关键词1", "关键词2"],
+          "context_type": "activity_context",
+          "entities": [{"name": "实体名", "type": "类型", "description": "描述"}],
+          "importance": 8,
+          "confidence": 9,
+          "event_time": "ISO时间字符串(如果对话中包含明确时间)"
+        }
+
+      user: |
+        当前时间: {current_time}
+        
+        请分析以下聊天记录片段：
+        {chat_history}
     screenshot_analyze:
       system: |
           你是current_user屏幕截图的分析专家，负责深度理解current_user的桌面截图内容，生成全面详尽的自然语言描述，并与历史上下文融合。current_user是截图的拍摄者和界面操作者。

@@ -44,6 +44,9 @@ capture:
     enabled: false
     capture_interval: 5 # Screenshot interval (seconds)
     storage_path: "${CONTEXT_PATH:.}/screenshots" # Screenshot save directory
+  text_chat:
+    enabled: true
+    buffer_size: 4
 
   # Folder monitoring
   folder_monitor:
@@ -77,6 +80,8 @@ capture:
 processing:
   enabled: true
   # Document processor configuration
+  text_chat_processor:
+    enabled: true
   document_processor:
     enabled: true
     batch_size: 5

@@ -19,6 +19,7 @@ class ContextSource(str, Enum):
     LOCAL_FILE = "local_file"
     WEB_LINK = "web_link"
     INPUT = "input"
+    CHAT_LOG = "chat_log"
 
 
 class FileType(str, Enum):
