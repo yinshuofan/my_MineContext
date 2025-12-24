@@ -21,6 +21,7 @@ from opencontext.context_capture.screenshot import ScreenshotCapture
 from opencontext.context_capture.vault_document_monitor import VaultDocumentMonitor
 from opencontext.context_capture.web_link_capture import WebLinkCapture
 from opencontext.context_consumption.completion import CompletionService
+from opencontext.context_capture.text_chat import TextChatCapture
 
 # Import consumption components
 from opencontext.context_consumption.generation import *
@@ -39,6 +40,7 @@ CAPTURE_COMPONENTS = {
     "screenshot": ScreenshotCapture,
     "vault_document_monitor": VaultDocumentMonitor,
     "web_link_capture": WebLinkCapture,
+    "text_chat": TextChatCapture,
 }
 
 CONSUMPTION_COMPONENTS = {
@@ -133,7 +135,7 @@ class ComponentInitializer:
 
         # Now config.yaml structure is flattened, directly under processing
         # Create various processors
-        processor_types = ["document_processor", "screenshot_processor"]
+        processor_types = ["document_processor", "screenshot_processor", "text_chat_processor"]
 
         for processor_type in processor_types:
             processor_config = processing_config.get(processor_type, {})

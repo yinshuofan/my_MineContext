@@ -94,6 +94,8 @@ class ContextProcessorManager:
             ContextSource.LOCAL_FILE: "document_processor",
             ContextSource.VAULT: "document_processor",
             ContextSource.WEB_LINK: "document_processor",
+            ContextSource.CHAT_LOG: "text_chat_processor",
+            ContextSource.INPUT: "text_chat_processor"
         }
 
     def register_processor(self, processor: IContextProcessor) -> bool:

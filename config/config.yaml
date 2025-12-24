@@ -43,9 +43,9 @@ vlm_model:
   provider: "openai"
 
 embedding_model:
-  base_url: "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
   api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
-  model: "doubao-embedding-vision-250615"
+  model: "doubao-embedding-large-text-240915"
   provider: "openai"
   output_dim: 2048
 
@@ -59,7 +59,7 @@ capture:
     storage_path: "${CONTEXT_PATH:.}/screenshots" # Screenshot save directory
   text_chat:
     enabled: true
-    buffer_size: 4
+    buffer_size: 10
 
   # Folder monitoring
   folder_monitor:

@@ -55,6 +55,8 @@ class OpenContext:
         self.web_server: Optional[threading.Thread] = None
         self.web_server_running: bool = False
 
+        self.storage = None
+
         logger.info("OpenContext initialization completed")
 
     def initialize(self) -> None:
@@ -66,6 +68,10 @@ class OpenContext:
             GlobalEmbeddingClient.get_instance()
             GlobalStorage.get_instance()
             GlobalVLMClient.get_instance()
+
+            self.storage = GlobalStorage.get_instance().get_storage()
+            
+
             self.context_operations = ContextOperations()
             self.capture_manager.set_callback(self._handle_captured_context)
             self.component_initializer.initialize_capture_components(

@@ -14,6 +14,7 @@ from .base_processor import BaseContextProcessor
 from .document_processor import DocumentProcessor
 from .processor_factory import ProcessorFactory, processor_factory
 from .screenshot_processor import ScreenshotProcessor
+from .text_chat_processor import TextChatProcessor
 
 __all__ = [
     "BaseContextProcessor",
@@ -21,4 +22,5 @@ __all__ = [
     "ScreenshotProcessor",
     "ProcessorFactory",
     "processor_factory",
+    "TextChatProcessor",
 ]

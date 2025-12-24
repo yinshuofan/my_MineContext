@@ -20,10 +20,10 @@ class TextChatCapture(BaseCaptureComponent):
         super().__init__(
             name="TextChatCapture",
             description="Captures text chat history",
-            source_type=ContextSource.INPUT, # 使用 INPUT 或自定义枚举
+            source_type=ContextSource.CHAT_LOG, # 使用 INPUT 或自定义枚举
         )
         self._buffer: List[Dict[str, Any]] = []
-        self._buffer_size = 4  # 默认4条总结一次
+        self._buffer_size = 2  # 默认2条总结一次
         self._lock = threading.RLock()
 
     def _initialize_impl(self, config: Dict[str, Any]) -> bool:
@@ -59,6 +59,7 @@ class TextChatCapture(BaseCaptureComponent):
         with self._lock:
             self._buffer.append(message)
             if len(self._buffer) >= self._buffer_size:
+                logger.info(f"Buffer size reached {self._buffer_size}, flushing messages.")
                 self._flush_buffer()
 
     def _flush_buffer(self):
@@ -72,7 +73,7 @@ class TextChatCapture(BaseCaptureComponent):
         chat_content_str = json.dumps(self._buffer, ensure_ascii=False)
         
         raw_context = RawContextProperties(
-            source=ContextSource.INPUT,
+            source=ContextSource.CHAT_LOG,
             content_format=ContentFormat.TEXT, # 标记为纯文本
             create_time=now,
             content_text=chat_content_str, # 核心内容在这里

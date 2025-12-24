@@ -25,7 +25,7 @@ class TextChatProcessor(BaseContextProcessor):
 
     def can_process(self, context: RawContextProperties) -> bool:
         return (isinstance(context, RawContextProperties) and 
-                context.source == ContextSource.INPUT and 
+                context.source == ContextSource.CHAT_LOG and 
                 context.content_format == ContentFormat.TEXT)
 
     def process(self, context: RawContextProperties) -> bool:
@@ -33,6 +33,7 @@ class TextChatProcessor(BaseContextProcessor):
         同步入口方法。
         智能检测当前运行环境，兼容同步和异步调用。
         """
+        logger.debug(f"Processing chat context: {context}")
         try:
             try:
                 # 尝试获取当前正在运行的事件循环
@@ -81,23 +82,36 @@ class TextChatProcessor(BaseContextProcessor):
                 current_time=datetime.datetime.now().isoformat()
             )}
         ]
-
+        logger.debug(f"LLM messages: {messages}")
+        
+        # 3. 调用 LLM
+        # response = await generate_with_messages_async(messages)
+        # logger.debug(f"LLM response: {response}")
         # 3. 调用 LLM
         response = await generate_with_messages_async(messages)
+        logger.debug(f"LLM response: {response}")
         
         # 4. 解析结果
         analysis = parse_json_from_response(response)
         if not analysis:
             return []
-
+        raw_entities = analysis.get("entities", [])
+        entity_names = []
+        if isinstance(raw_entities, list):
+            for e in raw_entities:
+                if isinstance(e, str):
+                    entity_names.append(e)
+                elif isinstance(e, dict):
+                    entity_names.append(e.get('name', str(e)))
         # 5. 构建 ProcessedContext
         context_type = get_context_type_for_analysis(analysis.get("context_type", "activity_context"))
-        
+        logger.debug(f"Extracted entities: {entity_names}")
         extracted_data = ExtractedData(
             title=analysis.get("title", "Chat Summary"),
             summary=analysis.get("summary", ""),
             keywords=analysis.get("keywords", []),
-            entities=analysis.get("entities", []),
+            # entities=analysis.get("entities", []),
+            entities=entity_names,
             context_type=context_type,
             importance=analysis.get("importance", 0),
             confidence=analysis.get("confidence", 0)
@@ -115,8 +129,11 @@ class TextChatProcessor(BaseContextProcessor):
             extracted_data=extracted_data,
             vectorize=Vectorize(
                 content_format=ContentFormat.TEXT,
-                text=f"{extracted_data.title}\n{extracted_data.summary}\n{' '.join(extracted_data.keywords)}"
+                text=f"{extracted_data.title}\n{extracted_data.summary}\n{' '.join(extracted_data.keywords)}",
+                metadata={
+                    "structured_entities": raw_entities
+                }
             )
         )
-
+        logger.debug(f"Processed chat context: {processed_context}")
         return [processed_context]
