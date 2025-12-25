@@ -198,7 +198,7 @@ storage:
       default: true
       config:
         host: "${MYSQL_HOST:localhost}"
-        port: ${MYSQL_PORT:3306}
+        port: 3306
         user: "${MYSQL_USER:root}"
         password: "${MYSQL_PASSWORD:mysql}"
         database: "${MYSQL_DATABASE:opencontext}"
