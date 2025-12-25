@@ -97,7 +97,7 @@ async def chat_loop():
 
         messages.append({"role": "user", "content": user_input})
         
-        chat_capture.push_message("user", user_input, user_id="user_123", device_id="device_123", agent_id="agent_123")
+        chat_capture.push_message("user", user_input, user_id="user_321", device_id="device_321", agent_id="agent_321")
 
         response = await client.chat.completions.create(
             model=model_name,
@@ -172,7 +172,7 @@ async def chat_loop():
 
         messages.append({"role": "assistant", "content": collected_content})
         
-        chat_capture.push_message("assistant", collected_content, user_id="user_123", device_id="device_123", agent_id="agent_123")
+        chat_capture.push_message("assistant", collected_content, user_id="user_321", device_id="device_321", agent_id="agent_321")
 
 if __name__ == "__main__":
     asyncio.run(chat_loop())
