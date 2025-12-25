@@ -37,6 +37,7 @@ class StorageBackendFactory:
                 "qdrant": self._create_qdrant_backend,
             },
             StorageType.DOCUMENT_DB: {
+                "mysql": self._create_mysql_backend,
                 "sqlite": self._create_sqlite_backend,
             },
         }
@@ -85,6 +86,11 @@ class StorageBackendFactory:
         from opencontext.storage.backends.sqlite_backend import SQLiteBackend
 
         return SQLiteBackend()
+
+    def _create_mysql_backend(self, config: Dict[str, Any]):
+        from opencontext.storage.backends.mysql_backend import MySQLBackend
+
+        return MySQLBackend()
 
 
 class UnifiedStorage:

@@ -11,7 +11,9 @@ Storage backend package initialization file
 from .chromadb_backend import ChromaDBBackend
 from .sqlite_backend import SQLiteBackend
 
+# MySQL backend is optional, import only if pymysql is available
 try:
-    __all__ = ["SQLiteBackend", "ChromaDBBackend"]
+    from .mysql_backend import MySQLBackend
+    __all__ = ["SQLiteBackend", "ChromaDBBackend", "MySQLBackend"]
 except ImportError:
     __all__ = ["SQLiteBackend", "ChromaDBBackend"]
