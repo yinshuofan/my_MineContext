@@ -35,6 +35,7 @@ class StorageBackendFactory:
             StorageType.VECTOR_DB: {
                 "chromadb": self._create_chromadb_backend,
                 "qdrant": self._create_qdrant_backend,
+                "dashvector": self._create_dashvector_backend,
             },
             StorageType.DOCUMENT_DB: {
                 "mysql": self._create_mysql_backend,
@@ -91,6 +92,11 @@ class StorageBackendFactory:
         from opencontext.storage.backends.mysql_backend import MySQLBackend
 
         return MySQLBackend()
+
+    def _create_dashvector_backend(self, config: Dict[str, Any]):
+        from opencontext.storage.backends.dashvector_backend import DashVectorBackend
+
+        return DashVectorBackend()
 
 
 class UnifiedStorage:
