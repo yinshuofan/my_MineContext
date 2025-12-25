@@ -50,6 +50,20 @@ embedding_model:
   provider: "openai"
   output_dim: 1536
 
+# Redis cache configuration (for multi-instance deployment)
+redis:
+  enabled: true
+  host: "${REDIS_HOST:localhost}"
+  port: ${REDIS_PORT:6379}
+  password: "${REDIS_PASSWORD:}"
+  db: ${REDIS_DB:0}
+  key_prefix: "opencontext:"
+  # Connection pool settings
+  max_connections: 10
+  socket_timeout: 5.0
+  socket_connect_timeout: 5.0
+  retry_on_timeout: true
+
 # Context capture module - Push mode (external services push data to backend)
 capture:
   enabled: true
@@ -61,6 +75,9 @@ capture:
   text_chat:
     enabled: true
     buffer_size: 10
+    buffer_ttl: 86400  # Buffer TTL in seconds (24 hours)
+    redis:
+      enabled: true  # Use Redis for multi-instance support
 
   # Folder monitoring - disabled for push mode
   folder_monitor:
@@ -255,3 +272,9 @@ tools:
 # Intelligent completion service configuration
 completion:
   enabled: true
+  cache:
+    max_size: 1000
+    ttl_seconds: 300
+    strategy: "hybrid"  # Options: lru, ttl, hybrid
+    redis:
+      enabled: true  # Use Redis for multi-instance cache sharing
