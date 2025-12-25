@@ -44,6 +44,8 @@ FIELD_ORIGINAL_ID = "original_id"
 FIELD_TODO_ID = "todo_id"
 FIELD_CONTENT = "content"
 FIELD_CREATED_AT = "created_at"
+FIELD_CREATED_AT_TS = "created_at_ts"  # Unix timestamp for time range filtering
+FIELD_CREATE_TIME_TS = "create_time_ts"  # Unix timestamp for properties.create_time
 FIELD_USER_ID = "user_id"
 FIELD_DEVICE_ID = "device_id"
 FIELD_AGENT_ID = "agent_id"
@@ -163,6 +165,8 @@ class DashVectorBackend(IVectorStorageBackend):
                         'context_type': str,
                         FIELD_DOCUMENT: str,
                         FIELD_CREATED_AT: str,
+                        FIELD_CREATED_AT_TS: float,  # Unix timestamp for time filtering
+                        FIELD_CREATE_TIME_TS: float,  # Unix timestamp for create_time filtering
                         FIELD_USER_ID: str,
                         FIELD_DEVICE_ID: str,
                         FIELD_AGENT_ID: str,
@@ -309,8 +313,25 @@ class DashVectorBackend(IVectorStorageBackend):
             if context.vectorize.content_format == ContentFormat.TEXT:
                 fields[FIELD_DOCUMENT] = context.vectorize.text or ""
 
-        # Add timestamp
-        fields[FIELD_CREATED_AT] = datetime.datetime.now().isoformat()
+        # Add timestamp (both ISO format and Unix timestamp)
+        now = datetime.datetime.now()
+        fields[FIELD_CREATED_AT] = now.isoformat()
+        fields[FIELD_CREATED_AT_TS] = now.timestamp()
+        
+        # Add create_time timestamp if available from properties
+        if context.properties and context.properties.create_time:
+            try:
+                if isinstance(context.properties.create_time, datetime.datetime):
+                    fields[FIELD_CREATE_TIME_TS] = context.properties.create_time.timestamp()
+                elif isinstance(context.properties.create_time, str):
+                    # Parse ISO format string
+                    dt = datetime.datetime.fromisoformat(context.properties.create_time.replace('Z', '+00:00'))
+                    fields[FIELD_CREATE_TIME_TS] = dt.timestamp()
+            except (ValueError, AttributeError) as e:
+                logger.debug(f"Failed to parse create_time: {e}")
+                fields[FIELD_CREATE_TIME_TS] = now.timestamp()
+        else:
+            fields[FIELD_CREATE_TIME_TS] = now.timestamp()
 
         return fields
 
@@ -798,6 +819,53 @@ class DashVectorBackend(IVectorStorageBackend):
             )
             return None
 
+    def _parse_time_to_timestamp(self, time_value: Any) -> Optional[float]:
+        """
+        Parse various time formats to Unix timestamp.
+        
+        Args:
+            time_value: Time value in various formats (timestamp, ISO string, datetime)
+            
+        Returns:
+            Unix timestamp as float, or None if parsing failed
+        """
+        if time_value is None:
+            return None
+            
+        try:
+            # Already a numeric timestamp
+            if isinstance(time_value, (int, float)):
+                # Check if it's a reasonable timestamp (after year 2000, before year 2100)
+                if 946684800 < time_value < 4102444800:
+                    return float(time_value)
+                # Might be milliseconds
+                elif 946684800000 < time_value < 4102444800000:
+                    return float(time_value) / 1000.0
+                return float(time_value)
+            
+            # ISO format string
+            if isinstance(time_value, str):
+                # Handle various ISO formats
+                time_str = time_value.replace('Z', '+00:00')
+                # Remove microseconds if present for simpler parsing
+                if '.' in time_str and '+' in time_str:
+                    parts = time_str.split('+')
+                    time_str = parts[0].split('.')[0] + '+' + parts[1]
+                elif '.' in time_str:
+                    time_str = time_str.split('.')[0]
+                
+                dt = datetime.datetime.fromisoformat(time_str)
+                return dt.timestamp()
+            
+            # datetime object
+            if isinstance(time_value, datetime.datetime):
+                return time_value.timestamp()
+                
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.debug(f"Failed to parse time value '{time_value}': {e}")
+            
+        return None
+
     def _build_filter_string(
         self,
         filters: Optional[Dict[str, Any]] = None,
@@ -809,6 +877,15 @@ class DashVectorBackend(IVectorStorageBackend):
         Build DashVector filter string.
         DashVector uses SQL WHERE clause style filter syntax.
         
+        Supports time range filtering on these fields:
+        - created_at / created_at_ts: When the record was stored
+        - create_time / create_time_ts: Original creation time from context
+        
+        Time values can be:
+        - Unix timestamp (int/float)
+        - ISO format string (e.g., "2025-12-25T10:00:00")
+        - datetime object
+        
         Args:
             filters: Additional filter conditions
             user_id: User ID filter
@@ -819,6 +896,13 @@ class DashVectorBackend(IVectorStorageBackend):
             Filter string or None if no filters
         """
         conditions = []
+        
+        # Time-related field mappings (string field -> timestamp field)
+        TIME_FIELD_MAPPING = {
+            'created_at': FIELD_CREATED_AT_TS,
+            'create_time': FIELD_CREATE_TIME_TS,
+            FIELD_CREATED_AT: FIELD_CREATED_AT_TS,
+        }
 
         # Add user identity filters
         if user_id:
@@ -836,37 +920,60 @@ class DashVectorBackend(IVectorStorageBackend):
                     continue
                 if value is None:
                     continue
+                
+                # Check if this is a time-related field
+                is_time_field = key in TIME_FIELD_MAPPING or key.endswith('_ts')
+                # Use timestamp field for time filtering
+                filter_key = TIME_FIELD_MAPPING.get(key, key)
 
                 if isinstance(value, dict):
                     # Range queries
-                    if '$gte' in value:
-                        conditions.append(f"{key} >= {value['$gte']}")
-                    if '$lte' in value:
-                        conditions.append(f"{key} <= {value['$lte']}")
-                    if '$gt' in value:
-                        conditions.append(f"{key} > {value['$gt']}")
-                    if '$lt' in value:
-                        conditions.append(f"{key} < {value['$lt']}")
+                    for op, op_symbol in [('$gte', '>='), ('$lte', '<='), ('$gt', '>'), ('$lt', '<')]:
+                        if op in value:
+                            op_value = value[op]
+                            if is_time_field:
+                                # Convert time value to timestamp
+                                ts = self._parse_time_to_timestamp(op_value)
+                                if ts is not None:
+                                    conditions.append(f"{filter_key} {op_symbol} {ts}")
+                                else:
+                                    logger.warning(f"Failed to parse time filter: {key} {op} {op_value}")
+                            else:
+                                conditions.append(f"{filter_key} {op_symbol} {op_value}")
                 elif isinstance(value, list):
                     # IN query
                     values_str = ', '.join([
                         f"'{v}'" if isinstance(v, str) else str(v) 
                         for v in value
                     ])
-                    conditions.append(f"{key} IN ({values_str})")
+                    conditions.append(f"{filter_key} IN ({values_str})")
                 elif isinstance(value, str):
-                    # Escape single quotes in string values
-                    escaped_value = value.replace("'", "''")
-                    conditions.append(f"{key} = '{escaped_value}'")
+                    if is_time_field:
+                        # Try to convert string time to timestamp for equality check
+                        ts = self._parse_time_to_timestamp(value)
+                        if ts is not None:
+                            # For equality on time, use a small range (1 second)
+                            conditions.append(f"{filter_key} >= {ts - 0.5}")
+                            conditions.append(f"{filter_key} <= {ts + 0.5}")
+                        else:
+                            # Fallback to string comparison
+                            escaped_value = value.replace("'", "''")
+                            conditions.append(f"{key} = '{escaped_value}'")
+                    else:
+                        # Escape single quotes in string values
+                        escaped_value = value.replace("'", "''")
+                        conditions.append(f"{filter_key} = '{escaped_value}'")
                 elif isinstance(value, bool):
-                    conditions.append(f"{key} = {str(value).lower()}")
+                    conditions.append(f"{filter_key} = {str(value).lower()}")
                 else:
-                    conditions.append(f"{key} = {value}")
+                    conditions.append(f"{filter_key} = {value}")
 
         if not conditions:
             return None
 
-        return ' AND '.join(conditions)
+        filter_str = ' AND '.join(conditions)
+        logger.debug(f"Built DashVector filter: {filter_str}")
+        return filter_str
 
     def get_processed_context_count(self, context_type: str) -> int:
         """
