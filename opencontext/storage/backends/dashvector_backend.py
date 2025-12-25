@@ -470,9 +470,16 @@ class DashVectorBackend(IVectorStorageBackend):
             ret = collection.fetch(ids=[id])
             
             if ret and ret.output:
-                for doc in ret.output:
-                    if doc:
-                        return self._dashvector_result_to_context(doc, need_vector)
+                # ret.output is a dict: {doc_id: Doc}
+                if isinstance(ret.output, dict):
+                    for doc_id, doc in ret.output.items():
+                        if doc:
+                            return self._dashvector_result_to_context(doc, need_vector)
+                else:
+                    # Fallback for list format
+                    for doc in ret.output:
+                        if doc:
+                            return self._dashvector_result_to_context(doc, need_vector)
             
             return None
 
