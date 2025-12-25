@@ -489,8 +489,22 @@ class ChromaDBBackend(IVectorStorageBackend):
         offset: int = 0,
         filter: Optional[Dict[str, Any]] = None,
         need_vector: bool = False,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> Dict[str, List[ProcessedContext]]:
-        """Get all ProcessedContexts, grouped by context_type"""
+        """Get all ProcessedContexts, grouped by context_type
+
+        Args:
+            context_types: List of context types to get
+            limit: Maximum number of results per context type
+            offset: Offset for pagination
+            filter: Additional filter conditions
+            need_vector: Whether to include vectors in results
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
+        """
         if not self._initialized:
             return {}
 
@@ -503,7 +517,12 @@ class ChromaDBBackend(IVectorStorageBackend):
                 continue
             collection = self._collections[context_type]
             try:
-                where_clause = self._build_where_clause(filter)
+                where_clause = self._build_where_clause(
+                    filter,
+                    user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
+                )
 
                 # ChromaDB's get method does not directly support offset, so pagination needs to be implemented in other ways
                 with self._write_lock:
@@ -555,8 +574,22 @@ class ChromaDBBackend(IVectorStorageBackend):
         context_types: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
         need_vector: bool = False,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
-        """Vector search for ProcessedContext"""
+        """Vector search for ProcessedContext
+
+        Args:
+            query: Query vectorize object
+            top_k: Maximum number of results to return
+            context_types: List of context types to search
+            filters: Additional filter conditions
+            need_vector: Whether to include vectors in results
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
+        """
         if not self._initialized:
             return []
 
@@ -600,7 +633,12 @@ class ChromaDBBackend(IVectorStorageBackend):
                     # If count fails, collection has issues, skip
                     continue
 
-                where_clause = self._build_where_clause(filters)
+                where_clause = self._build_where_clause(
+                    filters,
+                    user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
+                )
 
                 with self._write_lock:
                     results = collection.query(
@@ -737,32 +775,55 @@ class ChromaDBBackend(IVectorStorageBackend):
             logger.exception(f"Failed to convert ChromaDB result to ProcessedContext: {e}")
             return None
 
-    def _build_where_clause(self, filters: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """Build ChromaDB where query conditions"""
-        if not filters:
-            return None
+    def _build_where_clause(
+        self,
+        filters: Optional[Dict[str, Any]],
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Build ChromaDB where query conditions
 
+        Args:
+            filters: Additional filter conditions
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
+        """
         where_conditions = []
 
-        for key, value in filters.items():
-            if key == "context_type":
-                # context_type is selected through collection, skip here
-                continue
-            elif key == "entities":
-                continue
-            elif not value:
-                continue
-            elif key.endswith("_ts") and isinstance(value, dict):
-                # Time range query
-                if "$gte" in value:
-                    where_conditions.append({key: {"$gte": value["$gte"]}})
-                if "$lte" in value:
-                    where_conditions.append({key: {"$lte": value["$lte"]}})
-            else:
-                if isinstance(value, list):
-                    where_conditions.append({key: {"$in": value}})
+        # Add multi-user filtering conditions
+        if user_id:
+            where_conditions.append({"user_id": user_id})
+        if device_id:
+            where_conditions.append({"device_id": device_id})
+        if agent_id:
+            where_conditions.append({"agent_id": agent_id})
+
+        if filters:
+            for key, value in filters.items():
+                if key == "context_type":
+                    # context_type is selected through collection, skip here
+                    continue
+                elif key == "entities":
+                    continue
+                elif key in ("user_id", "device_id", "agent_id"):
+                    # Already handled above
+                    continue
+                elif not value:
+                    continue
+                elif key.endswith("_ts") and isinstance(value, dict):
+                    # Time range query
+                    if "$gte" in value:
+                        where_conditions.append({key: {"$gte": value["$gte"]}})
+                    if "$lte" in value:
+                        where_conditions.append({key: {"$lte": value["$lte"]}})
                 else:
-                    where_conditions.append({key: value})
+                    if isinstance(value, list):
+                        where_conditions.append({key: {"$in": value}})
+                    else:
+                        where_conditions.append({key: value})
+
         if not where_conditions:
             return None
         elif len(where_conditions) == 1:

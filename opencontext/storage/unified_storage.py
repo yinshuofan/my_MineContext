@@ -217,8 +217,22 @@ class UnifiedStorage:
         offset: int = 0,
         filter: Optional[Dict[str, Any]] = None,
         need_vector: bool = False,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> Dict[str, List[ProcessedContext]]:
-        """Get processed contexts, query only from vector database"""
+        """Get processed contexts, query only from vector database
+
+        Args:
+            context_types: List of context types to get
+            limit: Maximum number of results per context type
+            offset: Offset for pagination
+            filter: Additional filter conditions
+            need_vector: Whether to include vectors in results
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
+        """
         if not self._initialized:
             logger.error("Unified storage system not initialized")
             return {}
@@ -236,6 +250,9 @@ class UnifiedStorage:
                 offset=offset,
                 filter=filter,
                 need_vector=need_vector,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
             )
         except Exception as e:
             logger.exception(f"Failed to query ProcessedContext: {e}")
@@ -286,8 +303,21 @@ class UnifiedStorage:
         top_k: int = 10,
         context_types: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
-        """Vector search, supports context_type filtering"""
+        """Vector search, supports context_type filtering
+
+        Args:
+            query: Query vectorize object
+            top_k: Maximum number of results to return
+            context_types: List of context types to search
+            filters: Additional filter conditions
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
+        """
         if not self._initialized:
             logger.error("Unified storage system not initialized")
             return []
@@ -299,7 +329,13 @@ class UnifiedStorage:
         try:
             # Execute vector search
             search_results = self._vector_backend.search(
-                query=query, top_k=top_k, context_types=context_types, filters=filters
+                query=query,
+                top_k=top_k,
+                context_types=context_types,
+                filters=filters,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
             )
 
             return search_results

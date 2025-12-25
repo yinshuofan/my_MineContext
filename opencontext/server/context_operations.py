@@ -155,6 +155,9 @@ class ContextOperations:
         top_k: int = 10,
         context_types: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Perform vector search without LLM processing.
@@ -164,6 +167,9 @@ class ContextOperations:
             top_k: Number of results to return
             context_types: Context type filter list
             filters: Additional filter conditions
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
 
         Returns:
             List of search results with context and scores
@@ -175,9 +181,15 @@ class ContextOperations:
             # Create query vector
             query_vectorize = Vectorize(text=query)
 
-            # Execute vector search
+            # Execute vector search with multi-user filtering
             search_results = self.storage.search(
-                query=query_vectorize, top_k=top_k, context_types=context_types, filters=filters
+                query=query_vectorize,
+                top_k=top_k,
+                context_types=context_types,
+                filters=filters,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
             )
 
             # Format results
@@ -193,7 +205,12 @@ class ContextOperations:
                                 "context_type": context.extracted_data.context_type.value,
                                 "keywords": context.extracted_data.keywords,
                             },
-                            "properties": {"create_time": context.properties.create_time},
+                            "properties": {
+                                "create_time": context.properties.create_time,
+                                "user_id": context.properties.user_id,
+                                "device_id": context.properties.device_id,
+                                "agent_id": context.properties.agent_id,
+                            },
                         },
                         "score": score,
                     }

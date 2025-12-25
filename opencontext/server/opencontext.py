@@ -251,11 +251,27 @@ class OpenContext:
         top_k: int = 10,
         context_types: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Perform vector search without LLM processing."""
+        """Perform vector search without LLM processing.
+
+        Args:
+            query: Search query string
+            top_k: Maximum number of results
+            context_types: List of context types to search
+            filters: Additional filter conditions
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
+        """
         if not self.context_operations:
             raise RuntimeError("Context operations not initialized")
-        return self.context_operations.search(query, top_k, context_types, filters)
+        return self.context_operations.search(
+            query, top_k, context_types, filters,
+            user_id=user_id, device_id=device_id, agent_id=agent_id
+        )
 
     def get_context_types(self) -> List[str]:
         """Get all available context types."""
