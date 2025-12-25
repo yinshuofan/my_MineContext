@@ -46,9 +46,10 @@ async def execute_tool(tool_call: ChatCompletionMessageToolCall) -> Dict[str, An
     executor = ToolsExecutor()
 
     try:
+        print(f"\n[Tool] 即将执行工具: {name} 参数: {arguments}")
         results = await executor.batch_run_tools_async([tool_call])
         result = results[0]
-        logging.info(f"[Tool] 工具 {name} 执行结果: {result}")
+        print(f"\n[Tool] 工具 {name} 执行结果: {result}")
         return {
                 "tool_call_id": tool_call.id,
                 "role": "tool",
@@ -96,7 +97,7 @@ async def chat_loop():
 
         messages.append({"role": "user", "content": user_input})
         
-        chat_capture.push_message("user", user_input)
+        chat_capture.push_message("user", user_input, user_id="user_123", device_id="device_123", agent_id="agent_123")
 
         response = await client.chat.completions.create(
             model=model_name,
@@ -161,16 +162,17 @@ async def chat_loop():
             
             collected_content = ""
             async for chunk in response_2:
-                content = chunk.choices[0].delta.content
-                if content:
-                    print(content, end="", flush=True)
-                    collected_content += content
+                delta = chunk.choices[0].delta
+            
+                if delta.content:
+                    print(delta.content, end="", flush=True)
+                    collected_content += delta.content
 
         print()
 
         messages.append({"role": "assistant", "content": collected_content})
         
-        chat_capture.push_message("assistant", collected_content)
+        chat_capture.push_message("assistant", collected_content, user_id="user_123", device_id="device_123", agent_id="agent_123")
 
 if __name__ == "__main__":
     asyncio.run(chat_loop())
