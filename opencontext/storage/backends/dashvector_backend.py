@@ -1,28 +1,35 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
 """
-DashVector vector storage backend - Aliyun DashVector Service
+DashVector vector storage backend - Aliyun DashVector Service (HTTP API)
 https://help.aliyun.com/product/2510217.html
+
+This implementation uses HTTP API instead of SDK for better concurrency support.
 """
 
+import asyncio
 import datetime
 import json
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlencode
 
 try:
-    import dashvector
-    from dashvector import Doc
-    DASHVECTOR_AVAILABLE = True
+    import aiohttp
+    AIOHTTP_AVAILABLE = True
 except ImportError:
-    DASHVECTOR_AVAILABLE = False
-    dashvector = None
-    Doc = None
+    AIOHTTP_AVAILABLE = False
+    aiohttp = None
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import (
@@ -44,28 +51,275 @@ FIELD_ORIGINAL_ID = "original_id"
 FIELD_TODO_ID = "todo_id"
 FIELD_CONTENT = "content"
 FIELD_CREATED_AT = "created_at"
-FIELD_CREATED_AT_TS = "created_at_ts"  # Unix timestamp for time range filtering
-FIELD_CREATE_TIME_TS = "create_time_ts"  # Unix timestamp for properties.create_time
+FIELD_CREATED_AT_TS = "created_at_ts"
+FIELD_CREATE_TIME_TS = "create_time_ts"
 FIELD_USER_ID = "user_id"
 FIELD_DEVICE_ID = "device_id"
 FIELD_AGENT_ID = "agent_id"
 
+# HTTP API constants
+API_VERSION = "v1"
+DEFAULT_TIMEOUT = 30.0
+DEFAULT_MAX_CONNECTIONS = 100
+DEFAULT_MAX_CONNECTIONS_PER_HOST = 20
+
+
+class DashVectorHTTPClient:
+    """
+    Async HTTP client for DashVector API with connection pooling and retry support.
+    Designed for high concurrency scenarios.
+    """
+    
+    def __init__(
+        self,
+        api_key: str,
+        endpoint: str,
+        timeout: float = DEFAULT_TIMEOUT,
+        max_connections: int = DEFAULT_MAX_CONNECTIONS,
+        max_connections_per_host: int = DEFAULT_MAX_CONNECTIONS_PER_HOST,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ):
+        self._api_key = api_key
+        self._endpoint = endpoint.rstrip('/')
+        self._timeout = timeout
+        self._max_connections = max_connections
+        self._max_connections_per_host = max_connections_per_host
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
+        
+        # Async session (lazy initialization)
+        self._async_session: Optional[aiohttp.ClientSession] = None
+        self._async_lock = asyncio.Lock() if AIOHTTP_AVAILABLE else None
+        
+        # Sync session with connection pooling
+        self._sync_session = self._create_sync_session()
+        
+        # Thread pool for running async code in sync context
+        self._executor = ThreadPoolExecutor(max_workers=10)
+        
+        # Event loop for async operations
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop_lock = threading.Lock()
+    
+    def _create_sync_session(self) -> requests.Session:
+        """Create a sync session with connection pooling and retry."""
+        session = requests.Session()
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=self._max_retries,
+            backoff_factor=self._retry_delay,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS", "TRACE"],
+        )
+        
+        # Configure adapter with connection pooling
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=self._max_connections_per_host,
+            pool_maxsize=self._max_connections,
+        )
+        
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        return session
+    
+    async def _get_async_session(self) -> aiohttp.ClientSession:
+        """Get or create async session with connection pooling."""
+        if not AIOHTTP_AVAILABLE:
+            raise RuntimeError("aiohttp not available")
+        
+        async with self._async_lock:
+            if self._async_session is None or self._async_session.closed:
+                connector = aiohttp.TCPConnector(
+                    limit=self._max_connections,
+                    limit_per_host=self._max_connections_per_host,
+                    ttl_dns_cache=300,
+                    enable_cleanup_closed=True,
+                )
+                timeout = aiohttp.ClientTimeout(total=self._timeout)
+                self._async_session = aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=timeout,
+                )
+            return self._async_session
+    
+    def _get_headers(self) -> Dict[str, str]:
+        """Get common headers for API requests."""
+        return {
+            "dashvector-auth-token": self._api_key,
+            "Content-Type": "application/json",
+        }
+    
+    def _build_url(self, path: str) -> str:
+        """Build full URL for API endpoint."""
+        return f"https://{self._endpoint}/{API_VERSION}/{path.lstrip('/')}"
+    
+    async def _async_request(
+        self,
+        method: str,
+        path: str,
+        data: Optional[Dict] = None,
+        params: Optional[Dict] = None,
+    ) -> Dict[str, Any]:
+        """
+        Make async HTTP request with retry.
+        
+        Args:
+            method: HTTP method (GET, POST, DELETE, etc.)
+            path: API path
+            data: Request body (for POST/PUT)
+            params: Query parameters (for GET)
+            
+        Returns:
+            Response JSON as dict
+        """
+        session = await self._get_async_session()
+        url = self._build_url(path)
+        headers = self._get_headers()
+        
+        last_error = None
+        for attempt in range(self._max_retries):
+            try:
+                async with session.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    json=data,
+                    params=params,
+                ) as response:
+                    result = await response.json()
+                    
+                    # Check for rate limiting
+                    if response.status == 429:
+                        wait_time = self._retry_delay * (2 ** attempt)
+                        logger.warning(f"Rate limited, waiting {wait_time}s before retry")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    
+                    return result
+                    
+            except aiohttp.ClientError as e:
+                last_error = e
+                if attempt < self._max_retries - 1:
+                    wait_time = self._retry_delay * (2 ** attempt)
+                    logger.warning(f"Request failed: {e}, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                    
+        raise last_error or RuntimeError("Request failed after retries")
+    
+    def _sync_request(
+        self,
+        method: str,
+        path: str,
+        data: Optional[Dict] = None,
+        params: Optional[Dict] = None,
+    ) -> Dict[str, Any]:
+        """
+        Make sync HTTP request with retry (handled by session adapter).
+        
+        Args:
+            method: HTTP method
+            path: API path
+            data: Request body
+            params: Query parameters
+            
+        Returns:
+            Response JSON as dict
+        """
+        url = self._build_url(path)
+        headers = self._get_headers()
+        
+        response = self._sync_session.request(
+            method=method,
+            url=url,
+            headers=headers,
+            json=data,
+            params=params,
+            timeout=self._timeout,
+        )
+        
+        return response.json()
+    
+    def request(
+        self,
+        method: str,
+        path: str,
+        data: Optional[Dict] = None,
+        params: Optional[Dict] = None,
+        use_async: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Make HTTP request (sync or async based on context).
+        
+        Args:
+            method: HTTP method
+            path: API path
+            data: Request body
+            params: Query parameters
+            use_async: Force async mode
+            
+        Returns:
+            Response JSON as dict
+        """
+        if use_async and AIOHTTP_AVAILABLE:
+            # Try to use async if in async context
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context, use async request
+                return asyncio.ensure_future(
+                    self._async_request(method, path, data, params)
+                )
+            except RuntimeError:
+                # No running loop, use sync
+                pass
+        
+        # Use sync request
+        return self._sync_request(method, path, data, params)
+    
+    async def async_request(
+        self,
+        method: str,
+        path: str,
+        data: Optional[Dict] = None,
+        params: Optional[Dict] = None,
+    ) -> Dict[str, Any]:
+        """Async request wrapper."""
+        return await self._async_request(method, path, data, params)
+    
+    def close(self):
+        """Close all sessions."""
+        self._sync_session.close()
+        if self._async_session and not self._async_session.closed:
+            # Schedule async session close
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(self._async_session.close())
+                else:
+                    loop.run_until_complete(self._async_session.close())
+            except Exception:
+                pass
+        self._executor.shutdown(wait=False)
+
 
 class DashVectorBackend(IVectorStorageBackend):
     """
-    DashVector vector storage backend.
-    Aliyun DashVector is a fully managed vector search service.
+    DashVector vector storage backend using HTTP API.
+    Designed for high concurrency multi-user scenarios.
     
     Features:
-    - Cloud-native, no infrastructure management
-    - High availability with SLA guarantee
-    - Partition support for multi-tenant scenarios
+    - HTTP API based (no SDK dependency)
+    - Connection pooling for high concurrency
+    - Automatic retry with exponential backoff
     - SQL-style filter syntax
     """
 
     def __init__(self):
-        self._client: Optional[Any] = None
-        self._collections: Dict[str, Any] = {}  # context_type -> collection object
+        self._client: Optional[DashVectorHTTPClient] = None
+        self._collections: Dict[str, str] = {}  # context_type -> collection_name
         self._initialized = False
         self._config = None
         self._vector_size = None
@@ -82,14 +336,12 @@ class DashVectorBackend(IVectorStorageBackend):
                 - config.endpoint: DashVector cluster endpoint
                 - config.vector_size: Vector dimension (default: 1536)
                 - config.timeout: Request timeout in seconds (default: 30.0)
+                - config.max_connections: Max total connections (default: 100)
+                - config.max_connections_per_host: Max connections per host (default: 20)
         
         Returns:
             True if initialization successful, False otherwise
         """
-        if not DASHVECTOR_AVAILABLE:
-            logger.error("DashVector SDK not installed. Please install with: pip install dashvector")
-            return False
-
         try:
             self._config = config
             dashvector_config = config.get("config", {})
@@ -98,49 +350,69 @@ class DashVectorBackend(IVectorStorageBackend):
             api_key = dashvector_config.get("api_key")
             endpoint = dashvector_config.get("endpoint")
             self._vector_size = dashvector_config.get("vector_size", 1536)
-            timeout = dashvector_config.get("timeout", 30.0)
+            timeout = dashvector_config.get("timeout", DEFAULT_TIMEOUT)
+            max_connections = dashvector_config.get("max_connections", DEFAULT_MAX_CONNECTIONS)
+            max_connections_per_host = dashvector_config.get(
+                "max_connections_per_host", DEFAULT_MAX_CONNECTIONS_PER_HOST
+            )
 
             if not api_key or not endpoint:
-                raise ValueError("DashVector requires api_key and endpoint configuration")
+                logger.error("DashVector API key and endpoint are required")
+                return False
 
-            # Create client
-            self._client = dashvector.Client(
+            # Create HTTP client
+            self._client = DashVectorHTTPClient(
                 api_key=api_key,
                 endpoint=endpoint,
-                timeout=timeout
+                timeout=timeout,
+                max_connections=max_connections,
+                max_connections_per_host=max_connections_per_host,
+                max_retries=self._max_retry_count,
+                retry_delay=self._retry_delay,
             )
 
-            # Verify connection
-            if not self._client:
-                raise RuntimeError("Failed to create DashVector client")
+            # Test connection and get existing collections
+            if not self._check_connection():
+                logger.error("Failed to connect to DashVector service")
+                return False
 
-            # Create collections for each context_type
-            context_types = [ct.value for ct in ContextType]
-            for context_type in context_types:
-                collection_name = f"{context_type}"
+            # Initialize collections for each context type
+            for context_type in ContextType:
+                collection_name = context_type.value
                 self._ensure_collection(collection_name)
-                collection = self._client.get(collection_name)
-                if collection:
-                    self._collections[context_type] = collection
-                else:
-                    logger.warning(f"Failed to get collection: {collection_name}")
+                self._collections[collection_name] = collection_name
 
-            # Create dedicated todo collection
+            # Initialize todo collection
             self._ensure_collection(TODO_COLLECTION)
-            todo_collection = self._client.get(TODO_COLLECTION)
-            if todo_collection:
-                self._collections[TODO_COLLECTION] = todo_collection
+            self._collections[TODO_COLLECTION] = TODO_COLLECTION
 
             self._initialized = True
-            logger.info(
-                f"DashVector backend initialized successfully, "
-                f"created {len(self._collections)} collections"
-            )
+            logger.info(f"DashVector HTTP backend initialized with {len(self._collections)} collections")
             return True
 
         except Exception as e:
-            logger.exception(f"DashVector backend initialization failed: {e}")
+            logger.exception(f"Failed to initialize DashVector backend: {e}")
             return False
+
+    def _check_connection(self) -> bool:
+        """Check if connection to DashVector is working."""
+        try:
+            result = self._client.request("GET", "collections")
+            return result.get("code") == 0
+        except Exception as e:
+            logger.error(f"Connection check failed: {e}")
+            return False
+
+    def _get_existing_collections(self) -> List[str]:
+        """Get list of existing collection names."""
+        try:
+            result = self._client.request("GET", "collections")
+            if result.get("code") == 0:
+                return result.get("output", [])
+            return []
+        except Exception as e:
+            logger.error(f"Failed to get collections: {e}")
+            return []
 
     def _ensure_collection(self, collection_name: str) -> None:
         """
@@ -150,42 +422,41 @@ class DashVectorBackend(IVectorStorageBackend):
             collection_name: Name of the collection to ensure
         """
         try:
-            # Check if collection exists
-            existing_collections = self._client.list()
+            existing = self._get_existing_collections()
             
-            if collection_name not in existing_collections:
-                # Create new collection with predefined schema
-                ret = self._client.create(
-                    name=collection_name,
-                    dimension=self._vector_size,
-                    metric='cosine',
-                    dtype=float,
-                    fields_schema={
-                        FIELD_ORIGINAL_ID: str,
-                        'context_type': str,
-                        FIELD_DOCUMENT: str,
-                        FIELD_CREATED_AT: str,
-                        FIELD_CREATED_AT_TS: float,  # Unix timestamp for time filtering
-                        FIELD_CREATE_TIME_TS: float,  # Unix timestamp for create_time filtering
-                        FIELD_USER_ID: str,
-                        FIELD_DEVICE_ID: str,
-                        FIELD_AGENT_ID: str,
-                        # Additional fields for flexibility
-                        'title': str,
-                        'summary': str,
-                        'source': str,
-                        'confidence': float,
+            if collection_name not in existing:
+                # Create new collection
+                data = {
+                    "name": collection_name,
+                    "dimension": self._vector_size,
+                    "metric": "cosine",
+                    "dtype": "FLOAT",
+                    "fields_schema": {
+                        FIELD_ORIGINAL_ID: "STRING",
+                        "context_type": "STRING",
+                        FIELD_DOCUMENT: "STRING",
+                        FIELD_CREATED_AT: "STRING",
+                        FIELD_CREATED_AT_TS: "FLOAT",
+                        FIELD_CREATE_TIME_TS: "FLOAT",
+                        FIELD_USER_ID: "STRING",
+                        FIELD_DEVICE_ID: "STRING",
+                        FIELD_AGENT_ID: "STRING",
+                        "title": "STRING",
+                        "summary": "STRING",
+                        "source": "STRING",
+                        "confidence": "FLOAT",
                     },
-                    timeout=-1  # Async creation
-                )
+                }
                 
-                if ret:
+                result = self._client.request("POST", "collections", data=data)
+                
+                if result.get("code") == 0:
                     logger.info(f"Created DashVector collection: {collection_name}")
                     # Wait for collection to be ready
                     self._wait_for_collection_ready(collection_name)
                 else:
                     logger.warning(
-                        f"Failed to create collection {collection_name}: {ret.message}"
+                        f"Failed to create collection {collection_name}: {result.get('message')}"
                     )
             else:
                 logger.debug(f"DashVector collection already exists: {collection_name}")
@@ -200,10 +471,10 @@ class DashVectorBackend(IVectorStorageBackend):
         max_wait: int = 60
     ) -> bool:
         """
-        Wait for collection to be ready after async creation.
+        Wait for collection to be ready after creation.
         
         Args:
-            collection_name: Name of the collection
+            collection_name: Name of collection
             max_wait: Maximum wait time in seconds
             
         Returns:
@@ -212,12 +483,12 @@ class DashVectorBackend(IVectorStorageBackend):
         start_time = time.time()
         while time.time() - start_time < max_wait:
             try:
-                collection = self._client.get(collection_name)
-                if collection:
-                    # Try to describe to verify it's ready
-                    desc = collection.describe()
-                    if desc and desc.output:
-                        return True
+                result = self._client.request(
+                    "GET", 
+                    f"collections/{collection_name}/stats"
+                )
+                if result.get("code") == 0:
+                    return True
             except Exception:
                 pass
             time.sleep(1)
@@ -225,69 +496,46 @@ class DashVectorBackend(IVectorStorageBackend):
         logger.warning(f"Timeout waiting for collection {collection_name} to be ready")
         return False
 
-    def _check_connection(self) -> bool:
-        """Check if connection to DashVector is healthy."""
-        if not self._client:
-            return False
-
-        try:
-            # Try to list collections as health check
-            self._client.list()
-            return True
-        except Exception as e:
-            logger.warning(f"DashVector health check failed: {e}")
-            return False
-
     def get_name(self) -> str:
-        """Get storage backend name."""
         return "dashvector"
 
-    def get_collection_names(self) -> Optional[List[str]]:
-        """Get all collection names."""
-        return list(self._collections.keys())
-
     def get_storage_type(self) -> StorageType:
-        """Get storage type."""
         return StorageType.VECTOR_DB
+
+    def get_collection_names(self) -> List[str]:
+        """Get all collection names managed by this backend."""
+        return list(self._collections.keys())
 
     def _ensure_vectorized(self, context: ProcessedContext) -> List[float]:
         """
-        Ensure context has a vector, generate if missing.
+        Ensure context has vector, generate if missing.
         
         Args:
-            context: ProcessedContext to vectorize
+            context: ProcessedContext to check
             
         Returns:
             Vector as list of floats
         """
-        if not context.vectorize:
-            raise ValueError("Vectorize not set on context")
-            
-        if context.vectorize.vector:
-            if not self._vector_size:
-                self._vector_size = len(context.vectorize.vector)
-            return context.vectorize.vector
-
-        # Generate vector
-        do_vectorize(context.vectorize)
+        if context.vectorize and context.vectorize.vector:
+            return list(context.vectorize.vector)
         
-        if not self._vector_size and context.vectorize.vector:
-            self._vector_size = len(context.vectorize.vector)
-            
-        return context.vectorize.vector
+        # Generate vector
+        if context.vectorize:
+            do_vectorize(context.vectorize)
+            if context.vectorize.vector:
+                return list(context.vectorize.vector)
+        
+        raise ValueError(f"Unable to get or generate vector for context {context.id}")
 
-    def _context_to_dashvector_format(
-        self, 
-        context: ProcessedContext
-    ) -> Dict[str, Any]:
+    def _context_to_doc_format(self, context: ProcessedContext) -> Dict[str, Any]:
         """
-        Convert ProcessedContext to DashVector fields format.
+        Convert ProcessedContext to DashVector Doc format.
         
         Args:
             context: ProcessedContext to convert
             
         Returns:
-            Dictionary of fields for DashVector Doc
+            Dictionary in DashVector Doc format
         """
         fields = {}
 
@@ -324,8 +572,9 @@ class DashVectorBackend(IVectorStorageBackend):
                 if isinstance(context.properties.create_time, datetime.datetime):
                     fields[FIELD_CREATE_TIME_TS] = context.properties.create_time.timestamp()
                 elif isinstance(context.properties.create_time, str):
-                    # Parse ISO format string
-                    dt = datetime.datetime.fromisoformat(context.properties.create_time.replace('Z', '+00:00'))
+                    dt = datetime.datetime.fromisoformat(
+                        context.properties.create_time.replace('Z', '+00:00')
+                    )
                     fields[FIELD_CREATE_TIME_TS] = dt.timestamp()
             except (ValueError, AttributeError) as e:
                 logger.debug(f"Failed to parse create_time: {e}")
@@ -333,12 +582,13 @@ class DashVectorBackend(IVectorStorageBackend):
         else:
             fields[FIELD_CREATE_TIME_TS] = now.timestamp()
 
+        fields[FIELD_ORIGINAL_ID] = context.id
+
         return fields
 
     def _serialize_value(self, value: Any) -> Any:
         """
         Serialize value for DashVector storage.
-        DashVector fields support: str, int, float, bool, long, List types
         
         Args:
             value: Value to serialize
@@ -391,9 +641,6 @@ class DashVectorBackend(IVectorStorageBackend):
         if not self._initialized:
             raise RuntimeError("DashVector backend not initialized")
 
-        if not self._check_connection():
-            raise RuntimeError("DashVector connection not available")
-
         # Group contexts by type
         contexts_by_type: Dict[str, List[ProcessedContext]] = {}
         for context in contexts:
@@ -405,8 +652,7 @@ class DashVectorBackend(IVectorStorageBackend):
         stored_ids = []
 
         for context_type, type_contexts in contexts_by_type.items():
-            collection = self._collections.get(context_type)
-            if not collection:
+            if context_type not in self._collections:
                 logger.warning(
                     f"No collection found for context_type '{context_type}', "
                     f"skipping storage"
@@ -414,21 +660,17 @@ class DashVectorBackend(IVectorStorageBackend):
                 continue
 
             docs = []
-            doc_ids = []
-
             for context in type_contexts:
                 try:
                     vector = self._ensure_vectorized(context)
-                    fields = self._context_to_dashvector_format(context)
-                    fields[FIELD_ORIGINAL_ID] = context.id
+                    fields = self._context_to_doc_format(context)
 
-                    doc = Doc(
-                        id=context.id,
-                        vector=vector,
-                        fields=fields
-                    )
+                    doc = {
+                        "id": context.id,
+                        "vector": vector,
+                        "fields": fields,
+                    }
                     docs.append(doc)
-                    doc_ids.append(context.id)
 
                 except Exception as e:
                     logger.exception(f"Failed to process context {context.id}: {e}")
@@ -437,28 +679,28 @@ class DashVectorBackend(IVectorStorageBackend):
             if not docs:
                 continue
 
-            # Upsert with retry
-            for attempt in range(self._max_retry_count):
-                try:
-                    ret = collection.upsert(docs)
-                    if ret:
-                        stored_ids.extend(doc_ids)
-                        logger.debug(
-                            f"Stored {len(docs)} contexts to {context_type} collection"
-                        )
-                        break
-                    else:
-                        logger.error(
-                            f"Batch upsert failed (attempt {attempt + 1}): {ret.message}"
-                        )
-                except Exception as e:
+            # Batch upsert via HTTP API
+            try:
+                result = self._client.request(
+                    "POST",
+                    f"collections/{context_type}/docs/upsert",
+                    data={"docs": docs}
+                )
+
+                if result.get("code") == 0:
+                    output = result.get("output", [])
+                    for item in output:
+                        if item.get("code") == 0:
+                            stored_ids.append(item.get("id"))
+                    logger.debug(f"Upserted {len(output)} docs to {context_type}")
+                else:
                     logger.error(
-                        f"Batch storing to {context_type} failed "
-                        f"(attempt {attempt + 1}): {e}"
+                        f"Failed to upsert to {context_type}: {result.get('message')}"
                     )
-                    if attempt < self._max_retry_count - 1:
-                        time.sleep(self._retry_delay * (attempt + 1))
-                    continue
+
+            except Exception as e:
+                logger.exception(f"Failed to upsert contexts to {context_type}: {e}")
+                continue
 
         return stored_ids
 
@@ -485,50 +727,45 @@ class DashVectorBackend(IVectorStorageBackend):
         if context_type not in self._collections:
             return None
 
-        collection = self._collections[context_type]
-        
         try:
-            ret = collection.fetch(ids=[id])
-            
-            if ret and ret.output:
-                # ret.output is a dict: {doc_id: Doc}
-                if isinstance(ret.output, dict):
-                    for doc_id, doc in ret.output.items():
-                        if doc:
-                            return self._dashvector_result_to_context(doc, need_vector)
-                else:
-                    # Fallback for list format
-                    for doc in ret.output:
-                        if doc:
-                            return self._dashvector_result_to_context(doc, need_vector)
-            
-            return None
+            # Fetch doc by ID via HTTP API
+            result = self._client.request(
+                "GET",
+                f"collections/{context_type}/docs",
+                params={"ids": id}
+            )
+
+            if result.get("code") == 0:
+                output = result.get("output", {})
+                if isinstance(output, dict) and id in output:
+                    doc = output[id]
+                    if doc:
+                        return self._doc_to_context(doc, need_vector)
 
         except Exception as e:
-            logger.debug(
-                f"Failed to retrieve context {id} from {context_type}: {e}"
-            )
-            return None
+            logger.exception(f"Failed to get context {id}: {e}")
+
+        return None
 
     def get_all_processed_contexts(
         self,
-        context_types: Optional[List[str]] = None,
+        context_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-        filter: Optional[Dict[str, Any]] = None,
+        filters: Optional[Dict[str, Any]] = None,
         need_vector: bool = False,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
     ) -> Dict[str, List[ProcessedContext]]:
         """
-        Get all ProcessedContexts with optional filtering.
+        Get all ProcessedContexts, optionally filtered.
         
         Args:
-            context_types: List of context types to retrieve
+            context_type: Filter by context type
             limit: Maximum number of results per type
             offset: Offset for pagination
-            filter: Additional filter conditions
+            filters: Additional filter conditions
             need_vector: Whether to include vectors
             user_id: Filter by user ID
             device_id: Filter by device ID
@@ -541,54 +778,51 @@ class DashVectorBackend(IVectorStorageBackend):
             return {}
 
         result = {}
-        
-        if not context_types:
-            context_types = [
-                k for k in self._collections.keys() if k != TODO_COLLECTION
-            ]
+        target_types = [context_type] if context_type else [
+            ct for ct in self._collections.keys() if ct != TODO_COLLECTION
+        ]
 
-        for context_type in context_types:
-            if context_type not in self._collections:
+        for ctx_type in target_types:
+            if ctx_type not in self._collections:
                 continue
 
-            collection = self._collections[context_type]
-            
             try:
                 # Build filter string
-                filter_str = self._build_filter_string(
-                    filter, user_id, device_id, agent_id
+                filter_str = self._build_filter_string(filters, user_id, device_id, agent_id)
+                
+                # Use query API to get all docs (with empty vector for filter-only)
+                data = {
+                    "topk": limit + offset,
+                    "include_vector": need_vector,
+                }
+                if filter_str:
+                    data["filter"] = filter_str
+
+                query_result = self._client.request(
+                    "POST",
+                    f"collections/{ctx_type}/query",
+                    data=data
                 )
 
-                # DashVector doesn't have a direct scroll/list API like Qdrant
-                # We use query with a dummy vector or filter-only query
-                # For listing all, we can use query without vector (filter only)
-                ret = collection.query(
-                    topk=limit + offset,
-                    filter=filter_str,
-                    include_vector=need_vector,
-                )
-
-                if ret and ret.output:
-                    contexts = []
+                if query_result.get("code") == 0:
+                    output = query_result.get("output", [])
                     # Apply offset
-                    docs = list(ret.output)
                     if offset > 0:
-                        docs = docs[offset:]
-                    if len(docs) > limit:
-                        docs = docs[:limit]
+                        output = output[offset:]
+                    if len(output) > limit:
+                        output = output[:limit]
 
-                    for doc in docs:
-                        context = self._dashvector_result_to_context(doc, need_vector)
+                    contexts = []
+                    for doc in output:
+                        context = self._doc_to_context(doc, need_vector)
                         if context:
                             contexts.append(context)
 
                     if contexts:
-                        result[context_type] = contexts
+                        result[ctx_type] = contexts
 
             except Exception as e:
-                logger.exception(
-                    f"Failed to get contexts from {context_type}: {e}"
-                )
+                logger.exception(f"Failed to get contexts from {ctx_type}: {e}")
                 continue
 
         return result
@@ -623,16 +857,20 @@ class DashVectorBackend(IVectorStorageBackend):
         if context_type not in self._collections:
             return False
 
-        collection = self._collections[context_type]
-        
         try:
-            ret = collection.delete(ids)
-            if ret:
+            result = self._client.request(
+                "DELETE",
+                f"collections/{context_type}/docs",
+                data={"ids": ids}
+            )
+            
+            if result.get("code") == 0:
                 logger.debug(f"Deleted {len(ids)} contexts from {context_type}")
                 return True
             else:
-                logger.error(f"Failed to delete contexts: {ret.message}")
+                logger.error(f"Failed to delete contexts: {result.get('message')}")
                 return False
+                
         except Exception as e:
             logger.exception(f"Failed to delete contexts: {e}")
             return False
@@ -668,25 +906,18 @@ class DashVectorBackend(IVectorStorageBackend):
             return []
 
         # Determine target collections
-        target_collections = {}
         if context_types:
-            for context_type in context_types:
-                if context_type in self._collections:
-                    target_collections[context_type] = self._collections[context_type]
-                else:
-                    logger.warning(f"Collection not found: {context_type}")
+            target_types = [ct for ct in context_types if ct in self._collections]
         else:
-            target_collections = {
-                k: v for k, v in self._collections.items() if k != TODO_COLLECTION
-            }
+            target_types = [ct for ct in self._collections.keys() if ct != TODO_COLLECTION]
 
         # Get query vector
         query_vector = None
         if query.vector and len(query.vector) > 0:
-            query_vector = query.vector
+            query_vector = list(query.vector)
         else:
             do_vectorize(query)
-            query_vector = query.vector
+            query_vector = list(query.vector) if query.vector else None
 
         if not query_vector:
             logger.warning("Unable to get query vector, search failed")
@@ -697,59 +928,60 @@ class DashVectorBackend(IVectorStorageBackend):
 
         all_results = []
 
-        for context_type, collection in target_collections.items():
+        for ctx_type in target_types:
             try:
-                # Check if collection has data
-                stats = collection.stats()
-                if stats and stats.output and stats.output.total_doc_count == 0:
-                    continue
+                # Build query request
+                data = {
+                    "vector": query_vector,
+                    "topk": top_k,
+                    "include_vector": need_vector,
+                }
+                if filter_str:
+                    data["filter"] = filter_str
 
-                # Execute query
-                ret = collection.query(
-                    vector=query_vector,
-                    topk=top_k,
-                    filter=filter_str,
-                    include_vector=need_vector,
+                result = self._client.request(
+                    "POST",
+                    f"collections/{ctx_type}/query",
+                    data=data
                 )
 
-                if ret and ret.output:
-                    for doc in ret.output:
-                        context = self._dashvector_result_to_context(doc, need_vector)
+                if result.get("code") == 0:
+                    output = result.get("output", [])
+                    for doc in output:
+                        context = self._doc_to_context(doc, need_vector)
                         if context:
-                            score = doc.score if hasattr(doc, 'score') else 0.0
+                            score = doc.get("score", 0.0)
                             all_results.append((context, score))
 
             except Exception as e:
-                logger.exception(
-                    f"Vector search failed in {context_type}: {e}"
-                )
+                logger.exception(f"Vector search failed in {ctx_type}: {e}")
                 continue
 
         # Sort by score descending
         all_results.sort(key=lambda x: x[1], reverse=True)
         return all_results[:top_k]
 
-    def _dashvector_result_to_context(
+    def _doc_to_context(
         self, 
-        doc: Any,
+        doc: Dict[str, Any],
         need_vector: bool = False
     ) -> Optional[ProcessedContext]:
         """
         Convert DashVector Doc to ProcessedContext.
         
         Args:
-            doc: DashVector Doc object
+            doc: DashVector Doc dict
             need_vector: Whether to include vector
             
         Returns:
             ProcessedContext if conversion successful, None otherwise
         """
         try:
-            if not doc or not doc.id:
+            if not doc or not doc.get("id"):
                 return None
 
             # Get fields from doc
-            fields = doc.fields if hasattr(doc, 'fields') and doc.fields else {}
+            fields = doc.get("fields", {})
             
             # Separate fields into different categories
             extracted_data_field_names = set(ExtractedData.model_fields.keys())
@@ -767,11 +999,11 @@ class DashVectorBackend(IVectorStorageBackend):
                 vectorize_dict["text"] = document
 
             # Get vector if needed
-            if need_vector and hasattr(doc, 'vector') and doc.vector:
-                vectorize_dict["vector"] = doc.vector
+            if need_vector and doc.get("vector"):
+                vectorize_dict["vector"] = doc["vector"]
 
             # Get original ID
-            original_id = fields.pop(FIELD_ORIGINAL_ID, doc.id)
+            original_id = fields.pop(FIELD_ORIGINAL_ID, doc["id"])
 
             # Categorize fields
             for key, value in fields.items():
@@ -800,23 +1032,14 @@ class DashVectorBackend(IVectorStorageBackend):
                 "id": original_id,
                 "extracted_data": ExtractedData.model_validate(extracted_data_dict),
                 "properties": ContextProperties.model_validate(properties_dict),
-                "vectorize": Vectorize.model_validate(vectorize_dict),
+                "vectorize": Vectorize.model_validate(vectorize_dict) if vectorize_dict else None,
+                "metadata": metadata_dict if metadata_dict else None,
             }
 
-            if metadata_dict:
-                context_dict["metadata"] = metadata_dict
-
-            context = ProcessedContext.model_validate(context_dict)
-            
-            if not need_vector:
-                context.vectorize.vector = None
-                
-            return context
+            return ProcessedContext.model_validate(context_dict)
 
         except Exception as e:
-            logger.exception(
-                f"Failed to convert DashVector result to ProcessedContext: {e}"
-            )
+            logger.exception(f"Failed to convert doc to ProcessedContext: {e}")
             return None
 
     def _parse_time_to_timestamp(self, time_value: Any) -> Optional[float]:
@@ -824,7 +1047,7 @@ class DashVectorBackend(IVectorStorageBackend):
         Parse various time formats to Unix timestamp.
         
         Args:
-            time_value: Time value in various formats (timestamp, ISO string, datetime)
+            time_value: Time value in various formats
             
         Returns:
             Unix timestamp as float, or None if parsing failed
@@ -833,21 +1056,15 @@ class DashVectorBackend(IVectorStorageBackend):
             return None
             
         try:
-            # Already a numeric timestamp
             if isinstance(time_value, (int, float)):
-                # Check if it's a reasonable timestamp (after year 2000, before year 2100)
                 if 946684800 < time_value < 4102444800:
                     return float(time_value)
-                # Might be milliseconds
                 elif 946684800000 < time_value < 4102444800000:
                     return float(time_value) / 1000.0
                 return float(time_value)
             
-            # ISO format string
             if isinstance(time_value, str):
-                # Handle various ISO formats
                 time_str = time_value.replace('Z', '+00:00')
-                # Remove microseconds if present for simpler parsing
                 if '.' in time_str and '+' in time_str:
                     parts = time_str.split('+')
                     time_str = parts[0].split('.')[0] + '+' + parts[1]
@@ -857,7 +1074,6 @@ class DashVectorBackend(IVectorStorageBackend):
                 dt = datetime.datetime.fromisoformat(time_str)
                 return dt.timestamp()
             
-            # datetime object
             if isinstance(time_value, datetime.datetime):
                 return time_value.timestamp()
                 
@@ -874,17 +1090,7 @@ class DashVectorBackend(IVectorStorageBackend):
         agent_id: Optional[str] = None,
     ) -> Optional[str]:
         """
-        Build DashVector filter string.
-        DashVector uses SQL WHERE clause style filter syntax.
-        
-        Supports time range filtering on these fields:
-        - created_at / created_at_ts: When the record was stored
-        - create_time / create_time_ts: Original creation time from context
-        
-        Time values can be:
-        - Unix timestamp (int/float)
-        - ISO format string (e.g., "2025-12-25T10:00:00")
-        - datetime object
+        Build DashVector filter string (SQL WHERE clause style).
         
         Args:
             filters: Additional filter conditions
@@ -897,7 +1103,7 @@ class DashVectorBackend(IVectorStorageBackend):
         """
         conditions = []
         
-        # Time-related field mappings (string field -> timestamp field)
+        # Time-related field mappings
         TIME_FIELD_MAPPING = {
             'created_at': FIELD_CREATED_AT_TS,
             'create_time': FIELD_CREATE_TIME_TS,
@@ -915,33 +1121,25 @@ class DashVectorBackend(IVectorStorageBackend):
         # Add custom filters
         if filters:
             for key, value in filters.items():
-                # Skip special keys
                 if key in ('context_type', 'entities'):
                     continue
                 if value is None:
                     continue
                 
-                # Check if this is a time-related field
                 is_time_field = key in TIME_FIELD_MAPPING or key.endswith('_ts')
-                # Use timestamp field for time filtering
                 filter_key = TIME_FIELD_MAPPING.get(key, key)
 
                 if isinstance(value, dict):
-                    # Range queries
                     for op, op_symbol in [('$gte', '>='), ('$lte', '<='), ('$gt', '>'), ('$lt', '<')]:
                         if op in value:
                             op_value = value[op]
                             if is_time_field:
-                                # Convert time value to timestamp
                                 ts = self._parse_time_to_timestamp(op_value)
                                 if ts is not None:
                                     conditions.append(f"{filter_key} {op_symbol} {ts}")
-                                else:
-                                    logger.warning(f"Failed to parse time filter: {key} {op} {op_value}")
                             else:
                                 conditions.append(f"{filter_key} {op_symbol} {op_value}")
                 elif isinstance(value, list):
-                    # IN query
                     values_str = ', '.join([
                         f"'{v}'" if isinstance(v, str) else str(v) 
                         for v in value
@@ -949,18 +1147,14 @@ class DashVectorBackend(IVectorStorageBackend):
                     conditions.append(f"{filter_key} IN ({values_str})")
                 elif isinstance(value, str):
                     if is_time_field:
-                        # Try to convert string time to timestamp for equality check
                         ts = self._parse_time_to_timestamp(value)
                         if ts is not None:
-                            # For equality on time, use a small range (1 second)
                             conditions.append(f"{filter_key} >= {ts - 0.5}")
                             conditions.append(f"{filter_key} <= {ts + 0.5}")
                         else:
-                            # Fallback to string comparison
                             escaped_value = value.replace("'", "''")
                             conditions.append(f"{key} = '{escaped_value}'")
                     else:
-                        # Escape single quotes in string values
                         escaped_value = value.replace("'", "''")
                         conditions.append(f"{filter_key} = '{escaped_value}'")
                 elif isinstance(value, bool):
@@ -991,12 +1185,14 @@ class DashVectorBackend(IVectorStorageBackend):
         if context_type not in self._collections:
             return 0
 
-        collection = self._collections[context_type]
-        
         try:
-            stats = collection.stats()
-            if stats and stats.output:
-                return stats.output.total_doc_count
+            result = self._client.request(
+                "GET",
+                f"collections/{context_type}/stats"
+            )
+            if result.get("code") == 0:
+                output = result.get("output", {})
+                return int(output.get("total_doc_count", 0))
             return 0
         except Exception as e:
             logger.error(f"Failed to get count for {context_type}: {e}")
@@ -1009,133 +1205,126 @@ class DashVectorBackend(IVectorStorageBackend):
         Returns:
             Dictionary mapping context_type to count
         """
-        if not self._initialized:
-            return {}
-
-        result = {}
+        counts = {}
         for context_type in self._collections.keys():
             if context_type != TODO_COLLECTION:
-                result[context_type] = self.get_processed_context_count(context_type)
+                counts[context_type] = self.get_processed_context_count(context_type)
+        return counts
 
-        return result
-
-    # ==================== Todo Embedding Methods ====================
-
+    # Todo-related methods
     def upsert_todo_embedding(
         self,
-        todo_id: int,
+        todo_id: str,
         content: str,
         embedding: List[float],
-        metadata: Optional[Dict] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> bool:
         """
-        Store todo embedding for deduplication.
+        Store a todo embedding.
         
         Args:
             todo_id: Todo ID
             content: Todo content text
-            embedding: Text embedding vector
-            metadata: Optional metadata
+            embedding: Vector embedding
+            user_id: User ID
+            device_id: Device ID
+            agent_id: Agent ID
             
         Returns:
             True if successful, False otherwise
         """
         if not self._initialized:
-            logger.warning("DashVector not initialized, cannot store todo embedding")
             return False
 
         try:
-            collection = self._collections.get(TODO_COLLECTION)
-            if not collection:
-                logger.error("Todo collection not found")
-                return False
-
-            fields = {
-                FIELD_TODO_ID: todo_id,
-                FIELD_CONTENT: content,
-                FIELD_CREATED_AT: datetime.datetime.now().isoformat(),
+            doc = {
+                "id": todo_id,
+                "vector": list(embedding),
+                "fields": {
+                    FIELD_TODO_ID: todo_id,
+                    FIELD_CONTENT: content,
+                    FIELD_CREATED_AT: datetime.datetime.now().isoformat(),
+                    FIELD_CREATED_AT_TS: datetime.datetime.now().timestamp(),
+                    FIELD_USER_ID: user_id or "",
+                    FIELD_DEVICE_ID: device_id or "",
+                    FIELD_AGENT_ID: agent_id or "",
+                },
             }
-            if metadata:
-                for key, value in metadata.items():
-                    fields[key] = self._serialize_value(value)
 
-            doc = Doc(
-                id=str(todo_id),
-                vector=embedding,
-                fields=fields
+            result = self._client.request(
+                "POST",
+                f"collections/{TODO_COLLECTION}/docs/upsert",
+                data={"docs": [doc]}
             )
 
-            ret = collection.upsert([doc])
-            if ret:
-                logger.debug(f"Stored todo embedding: id={todo_id}")
-                return True
-            else:
-                logger.error(f"Failed to store todo embedding: {ret.message}")
-                return False
+            return result.get("code") == 0
 
         except Exception as e:
-            logger.error(f"Failed to store todo embedding (id={todo_id}): {e}")
+            logger.exception(f"Failed to upsert todo embedding: {e}")
             return False
 
     def search_similar_todos(
         self,
-        query_embedding: List[float],
-        top_k: int = 10,
-        similarity_threshold: float = 0.85,
-    ) -> List[Tuple[int, str, float]]:
+        embedding: List[float],
+        top_k: int = 5,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> List[Tuple[str, str, float]]:
         """
-        Search for similar todos using vector similarity.
+        Search for similar todos.
         
         Args:
-            query_embedding: Query embedding vector
-            top_k: Maximum number of results
-            similarity_threshold: Minimum similarity threshold (0-1)
+            embedding: Query embedding
+            top_k: Number of results
+            user_id: Filter by user ID
+            device_id: Filter by device ID
+            agent_id: Filter by agent ID
             
         Returns:
-            List of (todo_id, content, similarity_score) tuples
+            List of (todo_id, content, score) tuples
         """
         if not self._initialized:
-            logger.warning("DashVector not initialized, cannot search todos")
             return []
 
         try:
-            collection = self._collections.get(TODO_COLLECTION)
-            if not collection:
-                logger.error("Todo collection not found")
-                return []
+            filter_str = self._build_filter_string(None, user_id, device_id, agent_id)
+            
+            data = {
+                "vector": list(embedding),
+                "topk": top_k,
+                "include_vector": False,
+            }
+            if filter_str:
+                data["filter"] = filter_str
 
-            # Check if collection has data
-            stats = collection.stats()
-            if stats and stats.output and stats.output.total_doc_count == 0:
-                return []
-
-            ret = collection.query(
-                vector=query_embedding,
-                topk=top_k,
-                include_vector=False
+            result = self._client.request(
+                "POST",
+                f"collections/{TODO_COLLECTION}/query",
+                data=data
             )
 
-            similar_todos = []
-            if ret and ret.output:
-                for doc in ret.output:
-                    score = doc.score if hasattr(doc, 'score') else 0.0
-                    
-                    if score >= similarity_threshold:
-                        fields = doc.fields if hasattr(doc, 'fields') else {}
-                        todo_id = fields.get(FIELD_TODO_ID, 0)
-                        content = fields.get(FIELD_CONTENT, "")
-                        
-                        similar_todos.append((todo_id, content, score))
-
-            return similar_todos
+            if result.get("code") == 0:
+                output = result.get("output", [])
+                results = []
+                for doc in output:
+                    fields = doc.get("fields", {})
+                    todo_id = fields.get(FIELD_TODO_ID, doc.get("id"))
+                    content = fields.get(FIELD_CONTENT, "")
+                    score = doc.get("score", 0.0)
+                    results.append((todo_id, content, score))
+                return results
 
         except Exception as e:
-            logger.error(f"Failed to search similar todos: {e}")
-            return []
+            logger.exception(f"Failed to search similar todos: {e}")
 
-    def delete_todo_embedding(self, todo_id: int) -> bool:
+        return []
+
+    def delete_todo_embedding(self, todo_id: str) -> bool:
         """
-        Delete todo embedding.
+        Delete a todo embedding.
         
         Args:
             todo_id: Todo ID to delete
@@ -1144,23 +1333,23 @@ class DashVectorBackend(IVectorStorageBackend):
             True if successful, False otherwise
         """
         if not self._initialized:
-            logger.warning("DashVector not initialized, cannot delete todo embedding")
             return False
 
         try:
-            collection = self._collections.get(TODO_COLLECTION)
-            if not collection:
-                logger.error("Todo collection not found")
-                return False
-
-            ret = collection.delete([str(todo_id)])
-            if ret:
-                logger.debug(f"Deleted todo embedding: id={todo_id}")
-                return True
-            else:
-                logger.error(f"Failed to delete todo embedding: {ret.message}")
-                return False
+            result = self._client.request(
+                "DELETE",
+                f"collections/{TODO_COLLECTION}/docs",
+                data={"ids": [todo_id]}
+            )
+            return result.get("code") == 0
 
         except Exception as e:
-            logger.error(f"Failed to delete todo embedding (id={todo_id}): {e}")
+            logger.exception(f"Failed to delete todo embedding: {e}")
             return False
+
+    def close(self):
+        """Close the backend and release resources."""
+        if self._client:
+            self._client.close()
+        self._initialized = False
+        logger.info("DashVector HTTP backend closed")

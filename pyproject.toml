@@ -46,6 +46,7 @@ dependencies = [
     "pymysql",
     "redis>=4.0.0",
     "dashvector",
+    "aiohttp>=3.8.0",
 ]
 
 [project.optional-dependencies]
