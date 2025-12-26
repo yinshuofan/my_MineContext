@@ -749,10 +749,10 @@ class DashVectorBackend(IVectorStorageBackend):
 
     def get_all_processed_contexts(
         self,
-        context_type: Optional[str] = None,
+        context_types: Optional[List[str]] = None,
         limit: int = 100,
         offset: int = 0,
-        filters: Optional[Dict[str, Any]] = None,
+        filter: Optional[Dict[str, Any]] = None,
         need_vector: bool = False,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
@@ -762,23 +762,23 @@ class DashVectorBackend(IVectorStorageBackend):
         Get all ProcessedContexts, optionally filtered.
         
         Args:
-            context_type: Filter by context type
+            context_types: List of context types to filter by
             limit: Maximum number of results per type
             offset: Offset for pagination
-            filters: Additional filter conditions
+            filter: Additional filter conditions
             need_vector: Whether to include vectors
             user_id: Filter by user ID
             device_id: Filter by device ID
             agent_id: Filter by agent ID
             
         Returns:
-            Dictionary mapping context_type to list of ProcessedContext
+            Dictionary mapping context_types to list of ProcessedContext
         """
         if not self._initialized:
             return {}
 
         result = {}
-        target_types = [context_type] if context_type else [
+        target_types = context_types if context_types else [
             ct for ct in self._collections.keys() if ct != TODO_COLLECTION
         ]
 
@@ -788,7 +788,7 @@ class DashVectorBackend(IVectorStorageBackend):
 
             try:
                 # Build filter string
-                filter_str = self._build_filter_string(filters, user_id, device_id, agent_id)
+                filter_str = self._build_filter_string(filter, user_id, device_id, agent_id)
                 
                 # Use query API to get all docs (with empty vector for filter-only)
                 data = {
