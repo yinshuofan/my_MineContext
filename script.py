@@ -286,12 +286,14 @@ async def execute_tool(tool_call: ChatCompletionMessageToolCall) -> Dict[str, An
     arguments = json.loads(tool_call.function.arguments)
     print(f"\n[Tool] 正在调用工具: {name} 参数: {arguments}")
     executor = ToolsExecutor()
-
+    import time
     try:
         print(f"\n[Tool] 即将执行工具: {name} 参数: {arguments}")
+        start_time = time.time()
         results = await executor.batch_run_tools_async([tool_call])
         result = results[0]
-        print(f"\n[Tool] 工具 {name} 执行结果: {result}")
+        end_time = time.time()
+        print(f"\n[Tool] 工具 {name} 执行结果: {result} 耗时: {end_time - start_time:.4f}秒")
         return {
             "tool_call_id": tool_call.id,
             "role": "tool",
