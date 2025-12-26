@@ -7,6 +7,12 @@
 # General switch
 enabled: true
 
+# Service mode configuration (for containerized deployment)
+service_mode:
+  enabled: true  # Enable stateless service mode
+  require_redis: true  # Redis is required in service mode
+  require_external_storage: true  # External storage (MySQL/DashVector) is required
+
 # Logging configuration
 logging:
   level: DEBUG # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -65,8 +71,11 @@ redis:
   retry_on_timeout: true
 
 # Context capture module - Push mode (external services push data to backend)
+# In service mode, all auto-capture components are disabled
+# Data is pushed via HTTP API from external services
 capture:
   enabled: true
+  mode: "push"  # Options: "pull" (auto-capture), "push" (external push via API)
   # Screenshot capture - disabled for push mode
   screenshot:
     enabled: false

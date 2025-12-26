@@ -5,18 +5,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Screenshot processor
+Screenshot processor - Stateless version with Redis state externalization.
+Supports high concurrency with async processing.
 """
 import asyncio
 import base64
 import datetime
-import heapq
 import json
 import os
-import queue
-import threading
-import time
-from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
@@ -43,56 +39,77 @@ from opencontext.monitoring import (
 
 logger = get_logger(__name__)
 
+# Redis key prefixes for state externalization
+REDIS_PHASH_KEY_PREFIX = "screenshot:phash"
+REDIS_PROCESSED_CACHE_PREFIX = "processed_cache"
+REDIS_LOCK_PREFIX = "lock:screenshot"
+
 
 class ScreenshotProcessor(BaseContextProcessor):
     """
-    Processor for processing and analyzing screenshots to extract context information.
-    It supports real-time deduplication, context-aware information extraction and periodic memory compression.
-    This processor uses a background thread model, placing processing tasks in a queue and executing them in the background.
+    Stateless processor for processing and analyzing screenshots.
+    
+    All state is externalized to Redis:
+    - Screenshot phash deduplication queue -> Redis List
+    - Processed context cache -> Redis Hash
+    
+    Supports high concurrency with async processing and distributed locks.
     """
 
     def __init__(self):
-        """
-        Initialize ScreenshotProcessor.
-        """
-        # Get from global configuration
-        from opencontext.config.global_config import get_config, get_prompt_manager
+        """Initialize ScreenshotProcessor."""
+        from opencontext.config.global_config import get_config
 
         config = get_config("processing.screenshot_processor") or {}
         super().__init__(config)
 
-
         self._similarity_hash_threshold = self.config.get("similarity_hash_threshold", 2)
         self._batch_size = self.config.get("batch_size", 10)
-        self._batch_timeout = self.config.get("batch_timeout", 20)  # seconds
+        self._batch_timeout = self.config.get("batch_timeout", 20)
         self._max_raw_properties = self.config.get("max_raw_properties", 5)
         self._max_image_size = self.config.get("max_image_size", 0)
         self._resize_quality = self.config.get("resize_quality", 95)
         self._enabled_delete = self.config.get("enabled_delete", False)
+        
+        # Redis cache settings
+        self._phash_cache_size = self.config.get("phash_cache_size", 100)
+        self._phash_cache_ttl = self.config.get("phash_cache_ttl", 3600)  # 1 hour
+        self._processed_cache_ttl = self.config.get("processed_cache_ttl", 3600)  # 1 hour
+        self._lock_timeout = self.config.get("lock_timeout", 30)  # 30 seconds
+        
+        # Get Redis cache instance
+        self._redis_cache = None
+        self._init_redis_cache()
 
-        self._stop_event = threading.Event()
+    def _init_redis_cache(self):
+        """Initialize Redis cache connection."""
+        try:
+            from opencontext.storage.redis_cache import get_redis_cache
+            self._redis_cache = get_redis_cache()
+            if self._redis_cache and self._redis_cache.is_connected():
+                logger.info("ScreenshotProcessor: Redis cache connected for state externalization")
+            else:
+                logger.warning("ScreenshotProcessor: Redis not available, using degraded mode")
+                self._redis_cache = None
+        except Exception as e:
+            logger.warning(f"ScreenshotProcessor: Failed to init Redis cache: {e}")
+            self._redis_cache = None
 
-        # Pipeline related
-        self._input_queue = queue.Queue(maxsize=self._batch_size * 3)
-        self._processing_task = threading.Thread(target=self._run_processing_loop, daemon=True)
-        self._processing_task.start()
+    def _get_phash_key(self, user_id: str = "default", device_id: str = "default") -> str:
+        """Generate Redis key for phash cache."""
+        return f"{REDIS_PHASH_KEY_PREFIX}:{user_id}:{device_id}"
 
-        # State cache
-        self._processed_cache = (
-            {}
-        )
-        self._current_screenshot = deque(maxlen=self._batch_size * 2)
+    def _get_processed_cache_key(self, context_type: str, user_id: str = "default", device_id: str = "default") -> str:
+        """Generate Redis key for processed context cache."""
+        return f"{REDIS_PROCESSED_CACHE_PREFIX}:{context_type}:{user_id}:{device_id}"
+
+    def _get_lock_key(self, user_id: str = "default", device_id: str = "default") -> str:
+        """Generate Redis key for distributed lock."""
+        return f"{REDIS_LOCK_PREFIX}:{user_id}:{device_id}"
 
     def shutdown(self, graceful: bool = False):
-        """Gracefully shut down background processing tasks."""
-        logger.info("Shutting down ScreenshotProcessor...")
-        self._stop_event.set()
-        # Put a sentinel value in the queue to unblock the blocked get()
-        self._input_queue.put(None)
-        self._processing_task.join(timeout=5)
-        if self._processing_task.is_alive():
-            logger.warning("ScreenshotProcessor background task failed to stop in time.")
-        logger.info("ScreenshotProcessor has been shut down.")
+        """Gracefully shut down processor (no-op for stateless processor)."""
+        logger.info("ScreenshotProcessor shutdown (stateless, no cleanup needed)")
 
     def get_name(self) -> str:
         """Return the processor name."""
@@ -100,118 +117,191 @@ class ScreenshotProcessor(BaseContextProcessor):
 
     def get_description(self) -> str:
         """Return the processor description."""
-        return "Analyze screenshot streams, deduplicate images, and asynchronously extract context information."
+        return "Stateless screenshot processor with Redis state externalization and async processing."
 
     def can_process(self, context: RawContextProperties) -> bool:
-        """
-        Check if this processor can handle the given context.
-        This processor only processes screenshot contexts.
-        """
+        """Check if this processor can handle the given context."""
         return (
             isinstance(context, RawContextProperties) and context.source == ContextSource.SCREENSHOT
         )
 
-    def _is_duplicate(self, new_context: RawContextProperties) -> bool:
+    def _is_duplicate_redis(self, phash: str, user_id: str = "default", device_id: str = "default") -> bool:
         """
-        Real-time deduplication of incoming screenshots after image compression.
-
+        Check if screenshot is duplicate using Redis cache.
+        
         Args:
-            new_context (RawContextProperties): New screenshot context.
-            cache (list): The cache to check for duplicates.
-
+            phash: Perceptual hash of the screenshot
+            user_id: User identifier
+            device_id: Device identifier
+            
         Returns:
-            bool: Returns True if it's a new image, False if it's a duplicate image.
+            True if duplicate, False if new
         """
-        new_phash = calculate_phash(new_context.content_path)
-        if new_phash is None:
-            raise ValueError("Failed to calculate screenshot pHash")
+        if not self._redis_cache or not self._redis_cache.is_connected():
+            # Degraded mode: no deduplication
+            logger.warning("Redis not available, skipping deduplication")
+            return False
+        
+        key = self._get_phash_key(user_id, device_id)
+        
+        try:
+            # Get recent phashes from Redis
+            recent_hashes = self._redis_cache.lrange(key, 0, self._phash_cache_size - 1)
+            
+            for cached_hash in recent_hashes:
+                try:
+                    diff = bin(int(str(phash), 16) ^ int(str(cached_hash), 16)).count("1")
+                    if diff <= self._similarity_hash_threshold:
+                        # Found duplicate
+                        return True
+                except (ValueError, TypeError):
+                    continue
+            
+            # Not duplicate, add to cache
+            self._redis_cache.lpush(key, phash)
+            self._redis_cache.ltrim(key, 0, self._phash_cache_size - 1)
+            self._redis_cache.expire(key, self._phash_cache_ttl)
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Redis phash check error: {e}")
+            return False
 
-        # To avoid modification during iteration
-        for item in list(self._current_screenshot):
-            diff = bin(int(str(new_phash), 16) ^ int(str(item["phash"]), 16)).count("1")
-            if diff <= self._similarity_hash_threshold:
-                # Find duplicate, move it to end of list (consider as most recently used)
-                self._current_screenshot.remove(item)
-                self._current_screenshot.append(item)
-
-                if self._enabled_delete:
-                    try:
-                        os.remove(new_context.content_path)
-                    except Exception as e:
-                        logger.error(f"Failed to delete duplicate screenshot file: {e}")
-                return True
-
-        # If no duplicate found, it's a new image
-        self._current_screenshot.append({"phash": new_phash, "id": new_context.object_id})
-
-        return False
-
-    def process(self, context: RawContextProperties) -> bool:
+    def _get_cached_contexts(self, context_type: str, user_id: str = "default", device_id: str = "default") -> Dict[str, ProcessedContext]:
         """
-        Process a single screenshot context.
-        This method handles deduplication and adds new screenshots to temporary cache for batch processing.
-        When cache reaches batch size, triggers information extraction.
+        Get cached processed contexts from Redis.
+        
+        Args:
+            context_type: Type of context
+            user_id: User identifier
+            device_id: Device identifier
+            
+        Returns:
+            Dictionary of context_id -> ProcessedContext
+        """
+        if not self._redis_cache or not self._redis_cache.is_connected():
+            return {}
+        
+        key = self._get_processed_cache_key(context_type, user_id, device_id)
+        
+        try:
+            cached_data = self._redis_cache.hgetall_json(key)
+            result = {}
+            for ctx_id, ctx_data in cached_data.items():
+                try:
+                    if isinstance(ctx_data, dict):
+                        result[ctx_id] = ProcessedContext.from_dict(ctx_data)
+                    elif isinstance(ctx_data, ProcessedContext):
+                        result[ctx_id] = ctx_data
+                except Exception as e:
+                    logger.warning(f"Failed to deserialize cached context {ctx_id}: {e}")
+            return result
+        except Exception as e:
+            logger.error(f"Redis get cached contexts error: {e}")
+            return {}
+
+    def _set_cached_contexts(self, context_type: str, contexts: Dict[str, ProcessedContext], 
+                             user_id: str = "default", device_id: str = "default"):
+        """
+        Set cached processed contexts in Redis.
+        
+        Args:
+            context_type: Type of context
+            contexts: Dictionary of context_id -> ProcessedContext
+            user_id: User identifier
+            device_id: Device identifier
+        """
+        if not self._redis_cache or not self._redis_cache.is_connected():
+            return
+        
+        key = self._get_processed_cache_key(context_type, user_id, device_id)
+        
+        try:
+            # Convert ProcessedContext to dict for storage
+            data = {}
+            for ctx_id, ctx in contexts.items():
+                if hasattr(ctx, 'to_dict'):
+                    data[ctx_id] = ctx.to_dict()
+                else:
+                    data[ctx_id] = ctx
+            
+            if data:
+                self._redis_cache.hmset_json(key, data)
+                self._redis_cache.expire(key, self._processed_cache_ttl)
+        except Exception as e:
+            logger.error(f"Redis set cached contexts error: {e}")
+
+    def _delete_cached_context(self, context_type: str, context_id: str,
+                               user_id: str = "default", device_id: str = "default"):
+        """Delete a specific context from Redis cache."""
+        if not self._redis_cache or not self._redis_cache.is_connected():
+            return
+        
+        key = self._get_processed_cache_key(context_type, user_id, device_id)
+        
+        try:
+            self._redis_cache.hdel(key, context_id)
+        except Exception as e:
+            logger.error(f"Redis delete cached context error: {e}")
+
+    async def process_async(self, context: RawContextProperties, 
+                           user_id: str = "default", device_id: str = "default") -> List[ProcessedContext]:
+        """
+        Process a single screenshot asynchronously.
+        
+        This is the main entry point for async processing.
+        Supports concurrent requests without blocking.
+        
+        Args:
+            context: Raw screenshot context
+            user_id: User identifier for state isolation
+            device_id: Device identifier for state isolation
+            
+        Returns:
+            List of processed contexts
         """
         if not self.can_process(context):
-            return False
+            return []
+        
         try:
+            # Resize image if needed
             if self._max_image_size > 0:
                 resize_image(context.content_path, self._max_image_size, self._resize_quality)
-            if not self._is_duplicate(context):
-                self._input_queue.put(context, timeout=2)
-                # Record screenshot path for UI display
+            
+            # Calculate phash for deduplication
+            phash = calculate_phash(context.content_path)
+            if phash is None:
+                logger.error(f"Failed to calculate phash for {context.content_path}")
+                return []
+            
+            # Check for duplicate using Redis
+            if self._is_duplicate_redis(phash, user_id, device_id):
+                logger.debug(f"Duplicate screenshot detected, skipping")
+                if self._enabled_delete:
+                    try:
+                        os.remove(context.content_path)
+                    except Exception as e:
+                        logger.error(f"Failed to delete duplicate screenshot: {e}")
+                return []
+            
+            # Record screenshot path for UI display
+            try:
                 from opencontext.monitoring import record_screenshot_path
-
                 if context.content_path:
                     record_screenshot_path(context.content_path)
-        except Exception as e:
-            logger.exception(f"Error processing screenshot {context.content_path}: {e}")
-            return False
-        return True
-
-    def _run_processing_loop(self):
-        from opencontext.monitoring import (
-            increment_data_count,
-            increment_recording_stat,
-            record_processing_metrics,
-        )
-        """Background processing loop for handling screenshots in input queue."""
-        unprocessed_contexts = []
-        last_process_time = int(time.time())
-        while not self._stop_event.is_set():
-            try:
-                # Wait for new items or timeout
-                raw_context = self._input_queue.get(timeout=self._batch_timeout)
-                if raw_context is None:  # sentinel value
-                    logger.info("Received sentinel value, exiting processing loop")
-                    break
-                # Process deduplication
-                unprocessed_contexts.append(raw_context)
-                if (int(time.time()) - last_process_time) < self._batch_timeout * 2 and len(
-                    unprocessed_contexts
-                ) < self._batch_size:
-                    # logger.info(f"Screenshots in cache: {len(unprocessed_contexts)}")
-                    continue
-            except queue.Empty:
-                # logger.info("Queue empty, waiting for new data")
-                continue
-            except Exception as e:
-                logger.error(f"Unexpected error in processing loop: {e}")
-                time.sleep(1)
+            except ImportError:
+                pass
+            
+            # Process with VLM
+            increment_data_count("screenshot", count=1)
+            
+            import time
             start_time = time.time()
-            increment_data_count("screenshot", count=len(unprocessed_contexts))
-            try:
-                processed_contexts =  asyncio.run(self.batch_process(unprocessed_contexts))
-                if processed_contexts:
-                    get_storage().batch_upsert_processed_context(processed_contexts)
-            except Exception as e:
-                error_msg = f"Failed during concurrent VLM processing: {e}"
-                logger.error(error_msg)
-                record_processing_error(
-                    error_msg, processor_name=self.get_name(), context_count=len(unprocessed_contexts)
-                )
-                increment_recording_stat("failed", len(unprocessed_contexts))
-                continue
+            
+            processed_contexts = await self._process_single_screenshot(context, user_id, device_id)
+            
+            # Record metrics
             try:
                 duration_ms = int((time.time() - start_time) * 1000)
                 record_processing_metrics(
@@ -220,33 +310,84 @@ class ScreenshotProcessor(BaseContextProcessor):
                     duration_ms=duration_ms,
                     context_count=len(processed_contexts),
                 )
-
-                # Record context count by type
-                for context in processed_contexts:
-                    increment_data_count("context", count=1, context_type=context.extracted_data.context_type.value)
-
-                # Increment processed screenshots count
+                
+                for ctx in processed_contexts:
+                    increment_data_count("context", count=1, context_type=ctx.extracted_data.context_type.value)
+                
                 increment_recording_stat("processed", len(processed_contexts))
-
-            except ImportError:
+            except Exception:
                 pass
-            unprocessed_contexts.clear()
-            last_process_time = int(time.time())
+            
+            return processed_contexts
+            
+        except Exception as e:
+            logger.exception(f"Error processing screenshot {context.content_path}: {e}")
+            record_processing_error(str(e), processor_name=self.get_name(), context_count=1)
+            increment_recording_stat("failed", 1)
+            return []
+
+    def process(self, context: RawContextProperties) -> bool:
+        """
+        Synchronous wrapper for process_async.
+        For backward compatibility.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If already in async context, create task
+                asyncio.create_task(self._process_and_store(context))
+                return True
+            else:
+                # Run in new event loop
+                results = asyncio.run(self.process_async(context))
+                if results:
+                    get_storage().batch_upsert_processed_context(results)
+                return bool(results)
+        except Exception as e:
+            logger.error(f"Error in synchronous process: {e}")
+            return False
+
+    async def _process_and_store(self, context: RawContextProperties):
+        """Process and store results asynchronously."""
+        results = await self.process_async(context)
+        if results:
+            get_storage().batch_upsert_processed_context(results)
+
+    async def _process_single_screenshot(self, raw_context: RawContextProperties,
+                                         user_id: str = "default", 
+                                         device_id: str = "default") -> List[ProcessedContext]:
+        """
+        Process a single screenshot with VLM and merge with cached contexts.
+        
+        Args:
+            raw_context: Raw screenshot context
+            user_id: User identifier
+            device_id: Device identifier
+            
+        Returns:
+            List of processed contexts ready for storage
+        """
+        # Step 1: Extract information with VLM
+        vlm_items = await self._process_vlm_single(raw_context)
+        
+        if not vlm_items:
+            return []
+        
+        # Step 2: Merge with cached contexts
+        merged_contexts = await self._merge_contexts(vlm_items, user_id, device_id)
+        
+        return merged_contexts
 
     async def _process_vlm_single(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
-        """
-        Process a single screenshot with VLM
-        """
-        prompt_group = get_prompt_group(
-            "processing.extraction.screenshot_analyze"
-        )
+        """Process a single screenshot with VLM."""
+        prompt_group = get_prompt_group("processing.extraction.screenshot_analyze")
         system_prompt = prompt_group.get("system")
         user_prompt_template = prompt_group.get("user")
+        
         if not system_prompt or not user_prompt_template:
             logger.error("Failed to get complete prompt for screenshot_analyze.")
             raise ValueError("Missing prompt configuration for screenshot_analyze")
 
-        # Prepare image data
         image_path = raw_context.content_path
         if not image_path or not os.path.exists(image_path):
             logger.error(f"Screenshot path is invalid or does not exist: {image_path}")
@@ -282,7 +423,6 @@ class ScreenshotProcessor(BaseContextProcessor):
             {"role": "user", "content": content},
         ]
 
-        raw_llm_response = ''
         try:
             raw_llm_response = await generate_with_messages_async(messages)
         except Exception as e:
@@ -291,52 +431,72 @@ class ScreenshotProcessor(BaseContextProcessor):
 
         raw_resp = parse_json_from_response(raw_llm_response)
         if not raw_resp:
-            logger.error(f"Empty VLM response.")
-            raise ValueError(f"Empty VLM response.")
+            logger.error("Empty VLM response.")
+            raise ValueError("Empty VLM response.")
         
         items = raw_resp.get("items", [])
         processed_items = []
         for item in items:
-            processed_items.append(self._create_processed_context(item, raw_context))
+            ctx = self._create_processed_context(item, raw_context)
+            if ctx:
+                processed_items.append(ctx)
+        
         return processed_items
 
-    async def _merge_contexts(self, processed_items: List[ProcessedContext]) -> List[ProcessedContext]:
+    async def _merge_contexts(self, processed_items: List[ProcessedContext],
+                             user_id: str = "default", 
+                             device_id: str = "default") -> List[ProcessedContext]:
         """
         Merge newly processed items with cached items based on context_type semantics.
+        Uses Redis for state storage.
         """
         if not processed_items:
             return []
 
         # Group by context_type
-        items_by_type = {}
+        items_by_type: Dict[ContextType, List[ProcessedContext]] = {}
         for item in processed_items:
             context_type = item.extracted_data.context_type
             items_by_type.setdefault(context_type, []).append(item)
 
+        # Process each context type concurrently
         tasks = []
         for context_type, new_items in items_by_type.items():
-            cached_items = list(self._processed_cache.get(context_type.value, {}).values())
-            tasks.append(self._merge_items_with_llm(context_type, new_items, cached_items))
+            # Get cached items from Redis
+            cached_items_dict = self._get_cached_contexts(context_type.value, user_id, device_id)
+            cached_items = list(cached_items_dict.values())
+            tasks.append(self._merge_items_with_llm(context_type, new_items, cached_items, user_id, device_id))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_newly_created = []
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.error(f"Merge task {idx} failed with error: {result} for context type: {context_type.value}")
+                logger.error(f"Merge task {idx} failed with error: {result}")
                 continue
             if result:
                 context_type = result.get("context_type")
                 all_newly_created.extend(result.get("processed_contexts", []))
-                self._processed_cache[context_type] = result.get("new_ctxs", {})
+                
+                # Update Redis cache
+                new_ctxs = result.get("new_ctxs", {})
+                if new_ctxs:
+                    self._set_cached_contexts(context_type, new_ctxs, user_id, device_id)
+                
+                # Delete old contexts from storage
                 for item_id in result.get("need_to_del_ids", []):
                     get_storage().delete_processed_context(item_id, context_type)
+                    self._delete_cached_context(context_type, item_id, user_id, device_id)
+        
         return all_newly_created
 
-    async def _merge_items_with_llm(self, context_type: ContextType, new_items: List[ProcessedContext], cached_items: List[ProcessedContext]) -> Dict[str, Any]:
+    async def _merge_items_with_llm(self, context_type: ContextType, 
+                                    new_items: List[ProcessedContext], 
+                                    cached_items: List[ProcessedContext],
+                                    user_id: str = "default",
+                                    device_id: str = "default") -> Dict[str, Any]:
         """
         Call LLM to merge items and directly return ProcessedContext objects.
-        Handles both merged (multiple items -> one) and new (independent) items.
         """
         prompt_group = get_prompt_group("merging.screenshot_batch_merging")
         all_items_map = {item.id: item for item in new_items + cached_items}
@@ -351,7 +511,6 @@ class ScreenshotProcessor(BaseContextProcessor):
         ]
         response = await generate_with_messages_async(messages)
 
-
         if not response:
             raise ValueError(f"Empty LLM response when merge items for context type: {context_type.value}")
 
@@ -363,12 +522,11 @@ class ScreenshotProcessor(BaseContextProcessor):
         # Process results and build ProcessedContext objects
         result_contexts = []
         now = datetime.datetime.now()
-        if context_type.value not in self._processed_cache:
-            self._processed_cache[context_type.value] = {}
         need_to_del_ids = []
         final_context = None
         new_ctxs = {}
         entity_refresh_items = []
+        
         for result in response_data.get("items", []):
             merge_type = result.get("merge_type")
             data = result.get("data", {})
@@ -376,7 +534,7 @@ class ScreenshotProcessor(BaseContextProcessor):
             if merge_type == "merged":
                 merged_ids = result.get("merged_ids", [])
                 if not merged_ids:
-                    logger.error(f"merged type but no merged_ids, skipping")
+                    logger.error("merged type but no merged_ids, skipping")
                     continue
                 items_to_merge = [all_items_map[id] for id in merged_ids if id in all_items_map]
                 if not items_to_merge:
@@ -408,7 +566,7 @@ class ScreenshotProcessor(BaseContextProcessor):
                         title=data.get("title", ""),
                         summary=data.get("summary", ""),
                         keywords=sorted(set(data.get("keywords", []))),
-                        entities=[],  # Will be populated below
+                        entities=[],
                         context_type=context_type,
                         importance=self._safe_int(data.get("importance")),
                         confidence=self._safe_int(data.get("confidence")),
@@ -420,34 +578,47 @@ class ScreenshotProcessor(BaseContextProcessor):
                 )
 
                 final_context = merged_ctx
-                need_to_del_ids.extend([item.id for item in items_to_merge if item.id in self._processed_cache.get(context_type.value, {})])
+                # Mark old items for deletion from cache
+                for item in items_to_merge:
+                    if item.id in all_items_map:
+                        need_to_del_ids.append(item.id)
                 logger.debug(f"Merged {len(merged_ids)} items for context type: {context_type.value}")
+                
             elif merge_type == "new":
-                # Independent new item
                 merged_ids = result.get("merged_ids", [])
                 if not merged_ids or merged_ids[0] not in all_items_map:
-                    logger.error(f"new type but no merged_ids or merged_ids[0] not in all_items_map, skipping")
+                    logger.error("new type but no merged_ids or merged_ids[0] not in all_items_map, skipping")
                     continue
-                if merged_ids[0] in self._processed_cache.get(context_type.value, {}):
+                # Check if already in cache (from Redis)
+                cached = self._get_cached_contexts(context_type.value, user_id, device_id)
+                if merged_ids[0] in cached:
                     continue
                 final_context = all_items_map[merged_ids[0]]
-            new_ctxs[final_context.id] = final_context
-            entity_refresh_items.append(final_context)
+            
+            if final_context:
+                new_ctxs[final_context.id] = final_context
+                entity_refresh_items.append((final_context, data.get("entities", [])))
 
         # Second pass: parallel refresh entities
         entity_tasks = [
-            self._parse_single_context(item, data.get("entities", []))
-            for item in entity_refresh_items
+            self._parse_single_context(item, entities)
+            for item, entities in entity_refresh_items
         ]
-        # Execute all entity refresh tasks in parallel
-        entities_results = await asyncio.gather(*entity_tasks, return_exceptions=True)
-        for entities_result in entities_results:
-            if isinstance(entities_result, Exception):
-                logger.error(f"Entity refresh failed for context {item.id}: {entities_result}")
-            else:
-                result_contexts.append(entities_result)
+        
+        if entity_tasks:
+            entities_results = await asyncio.gather(*entity_tasks, return_exceptions=True)
+            for entities_result in entities_results:
+                if isinstance(entities_result, Exception):
+                    logger.error(f"Entity refresh failed: {entities_result}")
+                elif entities_result:
+                    result_contexts.append(entities_result)
 
-        return {"processed_contexts": result_contexts, "need_to_del_ids": need_to_del_ids, "new_ctxs": new_ctxs, "context_type": context_type.value}
+        return {
+            "processed_contexts": result_contexts, 
+            "need_to_del_ids": need_to_del_ids, 
+            "new_ctxs": new_ctxs, 
+            "context_type": context_type.value
+        }
 
     async def _parse_single_context(self, item: ProcessedContext, entities: List[Dict[str, Any]]) -> ProcessedContext:
         """Parse a single context item."""
@@ -467,11 +638,10 @@ class ScreenshotProcessor(BaseContextProcessor):
                 invalid_char in time_str
                 for invalid_char in ["xxxx", "XXXX", "TZ:TZ", "TZ", "????"]
             ):
-                event_time = default
+                return default
             elif time_str.endswith("Z"):
                 time_str = time_str[:-1] + "+00:00"
-                event_time = datetime.datetime.fromisoformat(time_str)
-                return event_time
+                return datetime.datetime.fromisoformat(time_str)
             return default
         except (ValueError, TypeError):
             return default
@@ -495,11 +665,20 @@ class ScreenshotProcessor(BaseContextProcessor):
             else None,
         }
 
-    async def batch_process(self, raw_contexts: List[RawContextProperties]) -> List[ProcessedContext]:
+    async def batch_process(self, raw_contexts: List[RawContextProperties],
+                           user_id: str = "default",
+                           device_id: str = "default") -> List[ProcessedContext]:
         """
-        Batch process screenshots using Vision LLM with concurrent batch processing
+        Batch process screenshots using Vision LLM with concurrent processing.
+        
+        Args:
+            raw_contexts: List of raw screenshot contexts
+            user_id: User identifier
+            device_id: Device identifier
+            
+        Returns:
+            List of processed contexts
         """
-
         logger.info(f"Processing {len(raw_contexts)} screenshots concurrently")
 
         # Step 1: Process all VLM tasks concurrently
@@ -516,9 +695,6 @@ class ScreenshotProcessor(BaseContextProcessor):
                 record_processing_error(str(result), processor_name=self.get_name(), context_count=1)
                 continue
             if result:
-                # for item in result:
-                #     print(f"result.extracted_data.context_type: {item.extracted_data.context_type} result: {item.vectorize.text}")
-                #     print("-"*80)
                 all_vlm_items.extend(result)
 
         if not all_vlm_items:
@@ -527,18 +703,19 @@ class ScreenshotProcessor(BaseContextProcessor):
         logger.info(f"VLM parsing completed, got {len(all_vlm_items)} items")
 
         # Step 2: Merge contexts concurrently
-        newly_processed_contexts = await self._merge_contexts(all_vlm_items)
+        newly_processed_contexts = await self._merge_contexts(all_vlm_items, user_id, device_id)
         return newly_processed_contexts
 
     def _create_processed_context(self, analysis: Dict[str, Any], raw_context: RawContextProperties = None) -> ProcessedContext:
+        """Create a ProcessedContext from VLM analysis."""
         now = datetime.datetime.now()
         if not analysis:
             logger.warning(f"Skipping incomplete item: {analysis}")
             return None
+        
         context_type = None
         try:
             context_type_str = analysis.get("context_type", "semantic_context")
-            # Use the robust context type helper
             from opencontext.models.enums import get_context_type_for_analysis
             context_type = get_context_type_for_analysis(context_type_str)
         except Exception as e:
@@ -548,7 +725,6 @@ class ScreenshotProcessor(BaseContextProcessor):
 
         event_time = self._parse_event_time_str(analysis.get("event_time"), now)
 
-        # Entity extraction moved to merge phase
         entities = []
         raw_keywords = analysis.get("keywords", [])
         extracted_data = ExtractedData(

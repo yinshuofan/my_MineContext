@@ -458,6 +458,27 @@ class RedisCache:
             return 0
         return self.rpush(key, *json_values)
     
+    def lpush_json(self, key: str, *values: Any) -> int:
+        """
+        Push JSON values to the left of a list.
+        
+        Args:
+            key: List key
+            values: Python objects to serialize and push
+            
+        Returns:
+            Length of list after push
+        """
+        json_values = []
+        for v in values:
+            try:
+                json_values.append(json.dumps(v, ensure_ascii=False, default=str))
+            except Exception as e:
+                logger.error(f"JSON encode error: {e}")
+        if not json_values:
+            return 0
+        return self.lpush(key, *json_values)
+    
     # =========================================================================
     # Hash Operations (for structured data)
     # =========================================================================
@@ -531,6 +552,80 @@ class RedisCache:
         except Exception as e:
             logger.error(f"Redis HEXISTS error: {e}")
             return False
+    
+    def hget_json(self, key: str, field: str) -> Optional[Any]:
+        """Get a JSON field from a hash."""
+        value = self.hget(key, field)
+        if value is None:
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    
+    def hset_json(self, key: str, field: str, value: Any) -> int:
+        """Set a JSON field in a hash."""
+        try:
+            json_str = json.dumps(value, ensure_ascii=False, default=str)
+            return self.hset(key, field, json_str)
+        except Exception as e:
+            logger.error(f"Redis HSET_JSON error: {e}")
+            return 0
+    
+    def hmset_json(self, key: str, mapping: Dict[str, Any]) -> bool:
+        """Set multiple JSON fields in a hash."""
+        if not mapping:
+            return False
+        try:
+            json_mapping = {}
+            for k, v in mapping.items():
+                json_mapping[k] = json.dumps(v, ensure_ascii=False, default=str)
+            return self.hmset(key, json_mapping)
+        except Exception as e:
+            logger.error(f"Redis HMSET_JSON error: {e}")
+            return False
+    
+    def hgetall_json(self, key: str) -> Dict[str, Any]:
+        """Get all fields from a hash as JSON objects."""
+        data = self.hgetall(key)
+        result = {}
+        for k, v in data.items():
+            try:
+                result[k] = json.loads(v)
+            except json.JSONDecodeError:
+                result[k] = v
+        return result
+    
+    def hkeys(self, key: str) -> List[str]:
+        """Get all field names from a hash."""
+        if not self.is_connected():
+            return []
+        try:
+            return list(self._client.hkeys(self._make_key(key)))
+        except Exception as e:
+            logger.error(f"Redis HKEYS error: {e}")
+            return []
+    
+    def hvals(self, key: str) -> List[str]:
+        """Get all values from a hash."""
+        if not self.is_connected():
+            return []
+        try:
+            return list(self._client.hvals(self._make_key(key)))
+        except Exception as e:
+            logger.error(f"Redis HVALS error: {e}")
+            return []
+    
+    def hvals_json(self, key: str) -> List[Any]:
+        """Get all values from a hash as JSON objects."""
+        values = self.hvals(key)
+        result = []
+        for v in values:
+            try:
+                result.append(json.loads(v))
+            except json.JSONDecodeError:
+                result.append(v)
+        return result
     
     # =========================================================================
     # Set Operations (for deduplication)
