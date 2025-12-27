@@ -1,4 +1,0 @@
-provider: github
-owner: volcengine
-repo: MineContext
-updaterCacheDirName: minecontext-updater
