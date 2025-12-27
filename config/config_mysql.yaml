@@ -1,10 +1,17 @@
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 #
-# OpenContext Configuration File
+# OpenContext Configuration File - MySQL Backend Example
+# This configuration uses MySQL as the document storage backend
 
 # General switch
 enabled: true
+
+# Service mode configuration (for containerized deployment)
+service_mode:
+  enabled: true  # Enable stateless service mode
+  require_redis: true  # Redis is required in service mode
+  require_external_storage: true  # External storage (MySQL/DashVector) is required
 
 # Logging configuration
 logging:
@@ -12,12 +19,6 @@ logging:
   log_path: "${CONTEXT_PATH:.}/logs/opencontext.log" # Log file path
 
 user_setting_path: "${CONTEXT_PATH:.}/config/user_setting.yaml"
-
-# Service mode configuration (for containerized deployment)
-service_mode:
-  enabled: true  # Enable stateless service mode
-  require_redis: true  # Redis is required in service mode
-  require_external_storage: true  # External storage (MySQL/DashVector) is required
 
 # 文档处理配置
 document_processing:
@@ -36,29 +37,46 @@ llm:
   provider: "openai"  # MineContext uses 'openai' client for Volcengine/Doubao too
   config:
     # ⚠️ MUST FILL IN YOUR KEY HERE
-    api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe" 
-    base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    model: "doubao-seed-1-6-251015" 
+    api_key: "${LLM_API_KEY:your-api-key-here}" 
+    base_url: "${LLM_BASE_URL:https://api.openai.com/v1}"
+    model: "${LLM_MODEL:gpt-4}" 
     temperature: 0.1
     max_tokens: 4096
 
 vlm_model:
-  base_url: "https://ark.cn-beijing.volces.com/api/v3"
-  api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
-  model: "doubao-seed-1-6-251015"
+  base_url: "${VLM_BASE_URL:https://api.openai.com/v1}"
+  api_key: "${VLM_API_KEY:your-api-key-here}"
+  model: "${VLM_MODEL:gpt-4-vision-preview}"
   provider: "openai"
 
 embedding_model:
-  base_url: "https://ark.cn-beijing.volces.com/api/v3"
-  api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
-  model: "doubao-embedding-large-text-240915"
+  base_url: "${EMBEDDING_BASE_URL:https://api.openai.com/v1}"
+  api_key: "${EMBEDDING_API_KEY:your-api-key-here}"
+  model: "${EMBEDDING_MODEL:text-embedding-ada-002}"
   provider: "openai"
-  output_dim: 2048
+  output_dim: 1536
 
-# Context capture module
+# Redis cache configuration (for multi-instance deployment)
+redis:
+  enabled: true
+  host: "${REDIS_HOST:localhost}"
+  port: ${REDIS_PORT:6379}
+  password: "${REDIS_PASSWORD:}"
+  db: ${REDIS_DB:0}
+  key_prefix: "opencontext:"
+  # Connection pool settings
+  max_connections: 10
+  socket_timeout: 5.0
+  socket_connect_timeout: 5.0
+  retry_on_timeout: true
+
+# Context capture module - Push mode (external services push data to backend)
+# In service mode, all auto-capture components are disabled
+# Data is pushed via HTTP API from external services
 capture:
   enabled: true
-  # Screenshot capture
+  mode: "push"  # Options: "pull" (auto-capture), "push" (external push via API)
+  # Screenshot capture - disabled for push mode
   screenshot:
     enabled: false
     capture_interval: 5 # Screenshot interval (seconds)
@@ -66,8 +84,11 @@ capture:
   text_chat:
     enabled: true
     buffer_size: 10
+    buffer_ttl: 86400  # Buffer TTL in seconds (24 hours)
+    redis:
+      enabled: true  # Use Redis for multi-instance support
 
-  # Folder monitoring
+  # Folder monitoring - disabled for push mode
   folder_monitor:
     enabled: false
     monitor_interval: 30 # Monitor interval (seconds)
@@ -78,7 +99,7 @@ capture:
     max_file_size: 104857600 # Maximum file size to process (bytes), default: 100MB
     initial_scan: true
 
-  # File monitoring
+  # File monitoring - disabled for push mode
   file_monitor:
     enabled: false
     recursive: true
@@ -89,7 +110,7 @@ capture:
       - "**/node_modules/**"
       - "**/.git/**"
 
-  # Vaults document monitoring
+  # Vaults document monitoring - disabled for push mode
   vault_document_monitor:
     enabled: false
     monitor_interval: 30 # Monitoring interval (seconds)
@@ -166,76 +187,34 @@ processing:
     state_context_max_merge_count: 10
     state_context_time_window_minutes: 30
 
-redis:
-  enabled: true
-  host: "${REDIS_HOST:localhost}"
-  port: ${REDIS_PORT:6379}
-  password: "${REDIS_PASSWORD:}"
-  db: ${REDIS_DB:0}
-  key_prefix: "opencontext:"
-  # Connection pool settings
-  max_connections: 10
-  socket_timeout: 5.0
-  socket_connect_timeout: 5.0
-  retry_on_timeout: true
-
-# Context storage module
+# Context storage module - MySQL Backend Configuration
 storage:
   enabled: true
   backends:
     # Vector database configuration - Choose either ChromaDB or Qdrant
     # ChromaDB (default)
-    # - name: "default_vector"
-    #   storage_type: "vector_db"
-    #   backend: "chromadb"
-    #   config:
-    #     mode: "local" # Options: "local", "server"
-    #     path: "${CONTEXT_PATH:.}/persist/chromadb"
-    #     collection_prefix: "opencontext"
-
-    # DashVector vector database configuration
     - name: "default_vector"
       storage_type: "vector_db"
-      backend: "dashvector"
-      default: true
+      backend: "chromadb"
       config:
-        api_key: "${DASHVECTOR_API_KEY:sk-OLJlNZyVdupgdON2m3Zw1P19S8vbx4CA4A2D8E17011F09C79F29B46C37D1D}"
-        endpoint: "${DASHVECTOR_ENDPOINT:vrs-cn-qzm4l025w0001s.dashvector.cn-beijing.aliyuncs.com}"
-        vector_size: 2048
-        timeout: 30.0
-        max_connections: 100           # 最大连接数
-        max_connections_per_host: 20   # 每主机最大连接数
+        mode: "local" # Options: "local", "server"
+        path: "${CONTEXT_PATH:.}/persist/chromadb"
+        collection_prefix: "opencontext"
 
-    # Qdrant (alternative vector database)
-    # Uncomment to use Qdrant instead of ChromaDB:
-    # - name: "default_vector"
-    #   storage_type: "vector_db"
-    #   backend: "qdrant"
-    #   config:
-    #     # Vector size MUST match your embedding model's output dimension
-    #     vector_size: 1536 # Set this to match embedding_model.output_dim above (line 37)
-    #
-    #     # Local mode (uses file-based storage):
-    #     path: "${CONTEXT_PATH:.}/persist/qdrant"
-    #
-    #     # Server mode (comment out 'path' above and uncomment the settings below):
-    #     # host: "localhost"
-    #     # port: 6333
-    #     # https: false
-    #     # api_key: "${QDRANT_API_KEY}"  # Optional: API key for authentication
-
+    # MySQL document storage backend (default for long-term memory service)
     - name: "document_store"
       storage_type: "document_db"
       backend: "mysql"
       default: true
       config:
         host: "${MYSQL_HOST:localhost}"
-        port: 3306
+        port: ${MYSQL_PORT:3306}
         user: "${MYSQL_USER:root}"
-        password: "${MYSQL_PASSWORD:mysql}"
+        password: "${MYSQL_PASSWORD:}"
         database: "${MYSQL_DATABASE:opencontext}"
         charset: "utf8mb4"
 
+    # SQLite fallback (uncomment to use SQLite instead of MySQL)
     # - name: "document_store"
     #   storage_type: "document_db"
     #   backend: "sqlite"
@@ -248,28 +227,18 @@ consumption:
 
 # web server
 web:
-  host: "127.0.0.1"
+  host: "0.0.0.0"  # Listen on all interfaces for service mode
   port: 1733
 
 # API authentication configuration
 api_auth:
-  enabled: false # Enable authentication in production environment for security
+  enabled: true # Enable authentication for service mode
   api_keys:
-    - "${CONTEXT_API_KEY:test}"
+    - "${CONTEXT_API_KEY:your-api-key-here}"
   excluded_paths:
     - "/health"
     - "/api/health"
     - "/api/auth/status"
-    - "/"
-    - "/static/*"
-    - "/contexts"
-    - "/vector_search"
-    - "/debug"
-    - "/chat"
-    - "/advanced_chat"
-    - "/monitoring"
-    - "/assistant"
-    - "/vaults"
 
 # Prompts configuration
 prompts:
@@ -282,21 +251,21 @@ content_generation:
     enabled: false # Enable debug mode to save generation messages and responses
     output_path: "${CONTEXT_PATH:.}/debug/generation" # Debug output directory
 
-  # Task configurations
+  # Task configurations - disabled for push mode (external services control timing)
   activity:
-    enabled: true
+    enabled: false
     interval: 900 # Seconds, minimum 600 (10 minutes), recommended 900-1800 (15-30 minutes)
 
   tips:
-    enabled: true
+    enabled: false
     interval: 3600 # Seconds, minimum 1800 (30 minutes), recommended 3600-7200 (1-2 hours)
 
   todos:
-    enabled: true
+    enabled: false
     interval: 1800 # Seconds, minimum 1800 (30 minutes), recommended 1800-3600 (30-60 minutes)
 
   report:
-    enabled: true
+    enabled: false
     time: "08:00" # Daily report generation time (HH:MM)
 
 tools:
@@ -312,3 +281,9 @@ tools:
 # Intelligent completion service configuration
 completion:
   enabled: true
+  cache:
+    max_size: 1000
+    ttl_seconds: 300
+    strategy: "hybrid"  # Options: lru, ttl, hybrid
+    redis:
+      enabled: true  # Use Redis for multi-instance cache sharing

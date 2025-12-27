@@ -125,6 +125,10 @@ class TextChatProcessor(BaseContextProcessor):
                 event_time=raw_context.create_time,
                 is_processed=True,
                 enable_merge=True,
+                # 传递多用户支持字段
+                user_id=raw_context.user_id,
+                device_id=raw_context.device_id,
+                agent_id=raw_context.agent_id,
             ),
             extracted_data=extracted_data,
             vectorize=Vectorize(

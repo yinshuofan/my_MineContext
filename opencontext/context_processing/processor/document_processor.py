@@ -5,17 +5,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Document Processor
+Document Processor - Stateless version with async processing.
+Supports high concurrency without blocking.
 """
 
 import asyncio
 import datetime
 import os
-import queue
-import threading
 import time
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 
 from PIL import Image
 
@@ -40,7 +39,11 @@ logger = get_logger(__name__)
 
 class DocumentProcessor(BaseContextProcessor):
     """
-    Document Processor
+    Stateless Document Processor with async processing support.
+    
+    All processing is done synchronously or asynchronously on-demand,
+    without background threads or local queues.
+    Supports high concurrency without blocking.
     """
 
     def __init__(self):
@@ -62,13 +65,6 @@ class DocumentProcessor(BaseContextProcessor):
         )
         self._text_threshold = doc_processing_config.get("text_threshold_per_page", 50)
 
-        # Thread control
-        self._stop_event = threading.Event()
-
-        # Queue and background thread
-        self._input_queue = queue.Queue(maxsize=self._batch_size * 2)
-        self._processing_task = threading.Thread(target=self._run_processing_loop, daemon=True)
-        self._processing_task.start()
         # Document converter
         self._document_converter = DocumentConverter(dpi=self._dpi)
 
@@ -83,23 +79,18 @@ class DocumentProcessor(BaseContextProcessor):
             )
         )
 
-        logger.info("DocumentProcessor initialized ")
+        logger.info("DocumentProcessor initialized (stateless mode)")
 
     def shutdown(self, _graceful: bool = False):
-        """Gracefully shutdown background processing task"""
-        self._stop_event.set()
-        self._input_queue.put(None)
-        self._processing_task.join(timeout=10)
-        if self._processing_task.is_alive():
-            logger.warning("UnifiedDocumentProcessor background task failed to stop in time.")
-        logger.info("UnifiedDocumentProcessor has been shut down.")
+        """Gracefully shutdown processor (no-op for stateless processor)."""
+        logger.info("DocumentProcessor shutdown (stateless, no cleanup needed)")
 
     def get_name(self) -> str:
         return "document_processor"
 
     def get_description(self) -> str:
         return (
-            "Unified document processor: structured (CSV/XLSX), text, and visual (PDF/DOCX/images)"
+            "Stateless document processor with async support: structured (CSV/XLSX), text, and visual (PDF/DOCX/images)"
         )
 
     def set_vlm_batch_size(self, vlm_batch_size: int) -> bool:
@@ -184,44 +175,54 @@ class DocumentProcessor(BaseContextProcessor):
         return False
 
     def process(self, context: RawContextProperties) -> bool:
-        """Process single document context (add to queue)"""
+        """
+        Process single document context synchronously.
+        For backward compatibility.
+        """
         if not self.can_process(context):
             return False
         try:
-            self._input_queue.put(context)
-            return True
+            processed_contexts = self.real_process(context)
+            if processed_contexts:
+                get_storage().batch_upsert_processed_context(processed_contexts)
+            return bool(processed_contexts)
         except Exception as e:
-            logger.exception(f"Error queuing document {context.object_id}: {e}")
+            logger.exception(f"Error processing document {context.object_id}: {e}")
             return False
 
-    def _run_processing_loop(self):
-        """Background processing loop (consume documents from queue)"""
-        while not self._stop_event.is_set():
-            unprocessed_context = None
-            try:
-                raw_context = self._input_queue.get(timeout=self._batch_timeout)
-                unprocessed_context = raw_context
-            except queue.Empty:
-                continue
-            except Exception as e:
-                logger.error(f"Unexpected error in processing loop: {e}")
-                time.sleep(3)
-                continue
-
-            if unprocessed_context:
-                time_start = int(time.time())
-                try:
-                    processed_contexts = self.real_process(unprocessed_context)
-                    if processed_contexts:
-                        get_storage().batch_upsert_processed_context(processed_contexts)
-                except Exception as e:
-                    logger.exception(f"Unexpected error in real_process: {e}")
-
-                time_end = int(time.time())
-                logger.info(f"Processed 1 document in {time_end - time_start} seconds")
+    async def process_async(self, context: RawContextProperties,
+                           user_id: str = "default",
+                           device_id: str = "default") -> List[ProcessedContext]:
+        """
+        Process single document context asynchronously.
+        
+        This is the main entry point for async processing.
+        Supports concurrent requests without blocking.
+        
+        Args:
+            context: Raw document context
+            user_id: User identifier (for future use)
+            device_id: Device identifier (for future use)
+            
+        Returns:
+            List of processed contexts
+        """
+        if not self.can_process(context):
+            return []
+        
+        try:
+            # Run the processing in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            processed_contexts = await loop.run_in_executor(
+                None, self.real_process, context
+            )
+            return processed_contexts if processed_contexts else []
+        except Exception as e:
+            logger.exception(f"Error in async document processing: {e}")
+            return []
 
     def real_process(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
-        """处理文档"""
+        """Process document and return processed contexts."""
         start_time = time.time()
         try:
             all_processed_contexts = []
@@ -242,7 +243,43 @@ class DocumentProcessor(BaseContextProcessor):
             error_msg = f"Failed to batch process documents. Error: {e}"
             logger.exception(error_msg)
             record_processing_error(error_msg, processor_name=self.get_name(), context_count=1)
-            return False
+            return []
+
+    async def batch_process_async(self, raw_contexts: List[RawContextProperties],
+                                  user_id: str = "default",
+                                  device_id: str = "default") -> List[ProcessedContext]:
+        """
+        Batch process multiple documents asynchronously.
+        
+        Args:
+            raw_contexts: List of raw document contexts
+            user_id: User identifier
+            device_id: Device identifier
+            
+        Returns:
+            List of all processed contexts
+        """
+        if not raw_contexts:
+            return []
+        
+        logger.info(f"Batch processing {len(raw_contexts)} documents asynchronously")
+        
+        # Process all documents concurrently
+        tasks = [
+            self.process_async(ctx, user_id, device_id)
+            for ctx in raw_contexts
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        all_contexts = []
+        for idx, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Document {idx} processing failed: {result}")
+            elif result:
+                all_contexts.extend(result)
+        
+        return all_contexts
 
     def _process_structured_document(
         self, raw_context: RawContextProperties
@@ -265,12 +302,10 @@ class DocumentProcessor(BaseContextProcessor):
         """Create ProcessedContext from Chunk list"""
         contexts = []
         now = datetime.datetime.now()
-        # TODO: semantic additional
         knowledge_metadata = KnowledgeContextMetadata(
             knowledge_source=raw_context.source,
             knowledge_file_path=raw_context.content_path,
             knowledge_raw_id=raw_context.object_id,
-            # knowledge_title=raw_context.title,
         )
         for chunk in chunks:
             ctx = ProcessedContext(
@@ -385,7 +420,7 @@ class DocumentProcessor(BaseContextProcessor):
                 new_page_info = PageInfo(
                     page_number=page_info.page_number,
                     text=vlm_texts[page_info.page_number],
-                    has_visual_elements=False,  # Already extracted as text, no longer needs VLM
+                    has_visual_elements=False,
                     doc_images=[],
                 )
                 all_page_infos.append(new_page_info)
@@ -424,7 +459,6 @@ class DocumentProcessor(BaseContextProcessor):
             return self._process_vlm_pages_with_doc_images(page_infos)
 
         # For PDF and other formats, convert pages to images
-        # Convert document to images
         all_images = self._document_converter.convert_to_images(file_path)
 
         # Only process pages that need VLM
@@ -442,13 +476,8 @@ class DocumentProcessor(BaseContextProcessor):
                 for img, page_num in zip(batch, batch_page_nums)
             ]
 
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            batch_results = loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+            # Run async tasks
+            batch_results = self._run_async_tasks(tasks)
 
             for idx, result in enumerate(batch_results):
                 if isinstance(result, Exception):
@@ -466,6 +495,24 @@ class DocumentProcessor(BaseContextProcessor):
         ]
 
         return text_list
+
+    def _run_async_tasks(self, tasks: List[Any]) -> List[Any]:
+        """Run async tasks in the appropriate event loop."""
+        try:
+            loop = asyncio.get_running_loop()
+            # If we're already in an async context, create a new thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, asyncio.gather(*tasks, return_exceptions=True))
+                return future.result()
+        except RuntimeError:
+            # No running event loop, create one
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            return loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
 
     def _process_vlm_pages_with_doc_images(self, page_infos: List[PageInfo]) -> List[str]:
         """
@@ -501,15 +548,7 @@ class DocumentProcessor(BaseContextProcessor):
                     for img, page_num in zip(batch_images, batch_page_nums)
                 ]
 
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-
-                batch_results = loop.run_until_complete(
-                    self._run_tasks_with_progress(tasks, i, total)
-                )
+                batch_results = self._run_async_tasks(tasks)
 
                 for idx, result in enumerate(batch_results):
                     if isinstance(result, Exception):
@@ -547,13 +586,7 @@ class DocumentProcessor(BaseContextProcessor):
         """Batch analyze document images using VLM, returns text list"""
         tasks = [self._analyze_image_with_vlm(img, i + 1) for i, img in enumerate(images)]
 
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        page_results = loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+        page_results = self._run_async_tasks(tasks)
 
         text_parts = []
         for idx, result in enumerate(page_results):

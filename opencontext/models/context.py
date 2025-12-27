@@ -43,6 +43,10 @@ class RawContextProperties(BaseModel):
     filter_path: Optional[str] = None  # filter path
     additional_info: Optional[Dict[str, Any]] = None  # additional information
     enable_merge: bool = True
+    # Multi-user support fields
+    user_id: Optional[str] = None  # User identifier
+    device_id: Optional[str] = None  # Device identifier
+    agent_id: Optional[str] = None  # Agent identifier
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary"""
@@ -104,6 +108,11 @@ class ContextProperties(BaseModel):
     file_path: Optional[str] = None  # file path (empty for documents)
     raw_type: Optional[str] = None  # raw type (e.g. 'vaults')
     raw_id: Optional[str] = None  # raw ID (ID in vaults table)
+
+    # Multi-user support fields
+    user_id: Optional[str] = None  # User identifier
+    device_id: Optional[str] = None  # Device identifier
+    agent_id: Optional[str] = None  # Agent identifier
 
 
 class Vectorize(BaseModel):
@@ -265,6 +274,10 @@ class ProcessedContextModel(BaseModel):
     duration_count: int  # context duration count
     is_happend: bool  # whether occurred
     metadata: Optional[Dict[str, Any]] = None  # metadata information
+    # Multi-user support fields
+    user_id: Optional[str] = None  # User identifier
+    device_id: Optional[str] = None  # Device identifier
+    agent_id: Optional[str] = None  # Agent identifier
 
     @classmethod
     def from_processed_context(
@@ -307,6 +320,10 @@ class ProcessedContextModel(BaseModel):
             raw_contexts=raw_contexts,
             is_happend=pc.properties.is_happend,
             metadata=pc.metadata,  # add metadata
+            # Multi-user support fields
+            user_id=pc.properties.user_id,
+            device_id=pc.properties.device_id,
+            agent_id=pc.properties.agent_id,
         )
 
     @classmethod

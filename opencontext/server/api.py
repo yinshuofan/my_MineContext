@@ -24,6 +24,7 @@ from .routes import (
     events,
     health,
     monitoring,
+    push,
     screenshots,
     settings,
     vaults,
@@ -55,3 +56,4 @@ router.include_router(settings.router)
 router.include_router(conversation.router)  # 新增：会话路由
 router.include_router(messages.router)  # 新增：消息路由
 router.include_router(documents.router)  # 新增：文档上传路由
+router.include_router(push.router)  # 新增：Push API路由（外部服务推送数据）

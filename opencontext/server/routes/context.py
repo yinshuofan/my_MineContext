@@ -64,6 +64,10 @@ class VectorSearchRequest(BaseModel):
     top_k: int = 10
     context_types: Optional[List[str]] = None
     filters: Optional[Dict[str, Any]] = None
+    # Multi-user support fields
+    user_id: Optional[str] = None
+    device_id: Optional[str] = None
+    agent_id: Optional[str] = None
 
 
 @router.post("/contexts/delete")
@@ -120,13 +124,19 @@ async def vector_search(
     opencontext: OpenContext = Depends(get_context_lab),
     _auth: str = auth_dependency,
 ):
-    """Directly search vector database without using LLM."""
+    """Directly search vector database without using LLM.
+
+    Supports multi-user filtering through user_id, device_id, and agent_id parameters.
+    """
     try:
         results = opencontext.search(
             query=request.query,
             top_k=request.top_k,
             context_types=request.context_types,
             filters=request.filters,
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
         )
 
         return convert_resp(
@@ -137,6 +147,9 @@ async def vector_search(
                 "top_k": request.top_k,
                 "context_types": request.context_types,
                 "filters": request.filters,
+                "user_id": request.user_id,
+                "device_id": request.device_id,
+                "agent_id": request.agent_id,
             }
         )
 

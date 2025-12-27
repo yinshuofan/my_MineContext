@@ -37,6 +37,10 @@ class ContextRetrievalFilter:
 
     time_range: Optional[TimeRangeFilter] = None
     entities: List[str] = field(default_factory=list)
+    # Multi-user support fields
+    user_id: Optional[str] = None
+    device_id: Optional[str] = None
+    agent_id: Optional[str] = None
 
 
 class BaseContextRetrievalTool(BaseTool):
@@ -103,7 +107,7 @@ class BaseContextRetrievalTool(BaseTool):
         Args:
             query: Optional search query. If provided, performs semantic search.
                   If None, performs filter-only retrieval.
-            filters: Filter conditions
+            filters: Filter conditions (includes user_id, device_id, agent_id for multi-user filtering)
             top_k: Number of results to return
 
         Returns:
@@ -113,18 +117,26 @@ class BaseContextRetrievalTool(BaseTool):
         built_filters = self._build_filters(filters)
 
         if query:
-            # Semantic search with query
+            # Semantic search with query (with multi-user filtering)
             vectorize = Vectorize(text=query)
             return self.storage.search(
                 query=vectorize,
                 context_types=[context_type_str],
                 filters=built_filters,
                 top_k=top_k,
+                user_id=filters.user_id,
+                device_id=filters.device_id,
+                agent_id=filters.agent_id,
             )
         else:
-            # Filter-only retrieval without query
+            # Filter-only retrieval without query (with multi-user filtering)
             results_dict = self.storage.get_all_processed_contexts(
-                context_types=[context_type_str], limit=top_k, filter=built_filters
+                context_types=[context_type_str],
+                limit=top_k,
+                filter=built_filters,
+                user_id=filters.user_id,
+                device_id=filters.device_id,
+                agent_id=filters.agent_id,
             )
 
             # Convert results to (context, score) format
@@ -215,6 +227,19 @@ class BaseContextRetrievalTool(BaseTool):
                     "maximum": 100,
                     "description": "Number of results to return",
                 },
+                # Multi-user support parameters
+                "user_id": {
+                    "type": "string",
+                    "description": "User identifier for multi-user filtering. Filter results to this specific user.",
+                },
+                "device_id": {
+                    "type": "string",
+                    "description": "Device identifier for multi-user filtering. Filter results to this specific device.",
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent identifier for multi-user filtering. Filter results to this specific agent.",
+                },
             },
             "required": [],
         }
@@ -228,6 +253,9 @@ class BaseContextRetrievalTool(BaseTool):
             entities: Optional entity list for filtering
             time_range: Optional time range filter
             top_k: Number of results to return (default 20)
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
 
         Returns:
             List of formatted context results
@@ -236,10 +264,16 @@ class BaseContextRetrievalTool(BaseTool):
         entities = kwargs.get("entities", [])
         time_range = kwargs.get("time_range")
         top_k = kwargs.get("top_k", 20)
+        user_id = kwargs.get("user_id")
+        device_id = kwargs.get("device_id")
+        agent_id = kwargs.get("agent_id")
 
         # Build filter conditions
         filters = ContextRetrievalFilter()
         filters.entities = entities
+        filters.user_id = user_id
+        filters.device_id = device_id
+        filters.agent_id = agent_id
 
         if time_range:
             filters.time_range = TimeRangeFilter(**time_range)
