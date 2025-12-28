@@ -47,9 +47,24 @@ async def lifespan(app: FastAPI):
     # Startup
     if not hasattr(app.state, "context_lab_instance"):
         app.state.context_lab_instance = get_or_create_context_lab()
+    
+    # Start task scheduler after event loop is running
+    try:
+        context_lab = app.state.context_lab_instance
+        if context_lab and hasattr(context_lab, 'component_initializer'):
+            await context_lab.component_initializer.start_task_scheduler()
+    except Exception as e:
+        logger.warning(f"Failed to start task scheduler: {e}")
+    
     yield
+    
     # Shutdown - cleanup if needed
-    pass
+    try:
+        context_lab = getattr(app.state, 'context_lab_instance', None)
+        if context_lab and hasattr(context_lab, 'component_initializer'):
+            context_lab.component_initializer.stop_task_scheduler()
+    except Exception as e:
+        logger.warning(f"Error stopping task scheduler: {e}")
 
 
 app = FastAPI(title="OpenContext", version="1.0.0", lifespan=lifespan)
