@@ -170,8 +170,9 @@ class ComponentInitializer:
 
             merger = ContextMerger()
             processor_manager.set_merger(merger)
-            processor_manager.start_periodic_compression()
-            logger.info("Periodic memory compression started")
+            logger.info("Context merger initialized")
+            # Note: Periodic compression is now managed by the task scheduler,
+            # not by processor_manager. Call initialize_task_scheduler() separately.
 
         logger.info("Context processors initialization complete")
 
@@ -229,7 +230,9 @@ class ComponentInitializer:
         component_class = getattr(module, class_name)
         return component_class()
 
-    def initialize_task_scheduler(self) -> None:
+    def initialize_task_scheduler(
+        self, processor_manager: Optional[ContextProcessorManager] = None
+    ) -> None:
         """
         Initialize the task scheduler for periodic tasks.
         
@@ -237,6 +240,10 @@ class ComponentInitializer:
         - Memory compression (user_activity triggered)
         - Data cleanup (periodic)
         - Other scheduled tasks
+        
+        Args:
+            processor_manager: Optional processor manager to get the merger instance.
+                              If provided and merger is set, it will be reused.
         """
         scheduler_config = self.config.get("scheduler", {})
         if not scheduler_config.get("enabled", False):
@@ -278,8 +285,19 @@ class ComponentInitializer:
             
             # Memory compression handler
             if tasks_config.get("memory_compression", {}).get("enabled", False):
-                from opencontext.context_processing.merger.context_merger import ContextMerger
-                merger = ContextMerger()
+                # Try to get merger from processor_manager first
+                merger = None
+                if processor_manager:
+                    merger = processor_manager.get_merger()
+                
+                # If not available, create a new one
+                if not merger:
+                    from opencontext.context_processing.merger.context_merger import ContextMerger
+                    merger = ContextMerger()
+                    logger.info("Created new ContextMerger for compression task")
+                else:
+                    logger.info("Reusing merger from processor_manager for compression task")
+                
                 compression_handler = create_compression_handler(merger)
                 scheduler.register_handler("memory_compression", compression_handler)
                 logger.info("Registered memory_compression task handler")
