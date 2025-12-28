@@ -109,7 +109,7 @@ class RedisTaskScheduler(ITaskScheduler):
         """Register a new task type in Redis"""
         try:
             key = f"{self.TASK_TYPE_PREFIX}{config.name}"
-            self._redis.hset_all(key, config.to_dict())
+            self._redis.hmset(key, config.to_dict())
             logger.info(f"Registered task type: {config.name}")
             return True
         except Exception as e:
@@ -210,7 +210,7 @@ class RedisTaskScheduler(ITaskScheduler):
         )
         
         # Write task state
-        self._redis.hset_all(task_key, task_info.to_dict())
+        self._redis.hmset(task_key, task_info.to_dict())
         self._redis.expire(task_key, task_ttl)
         
         # Add to task queue (sorted set with scheduled_at as score)
@@ -425,7 +425,7 @@ class RedisTaskScheduler(ITaskScheduler):
             try:
                 # Update state
                 interval = task_config.get("interval", 3600)
-                self._redis.hset_all(periodic_key, {
+                self._redis.hmset(periodic_key, {
                     "last_run": str(now),
                     "next_run": str(now + interval),
                     "status": "running"

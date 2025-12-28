@@ -334,7 +334,7 @@ scheduler:
       enabled: true
       trigger_mode: "user_activity"  # Options: user_activity, periodic
       # interval: 1800        # Delay after user activity (seconds)
-      interval: 300        # Delay after user activity (seconds)
+      interval: 60        # Delay after user activity (seconds)
       task_ttl: 7200        # Task state TTL (seconds)
     
     # Data cleanup task (periodic)
@@ -342,7 +342,7 @@ scheduler:
       enabled: false
       trigger_mode: "periodic"
       # interval: 86400       # Run every 24 hours
-      interval: 300       # Run every 5 minutes
+      interval: 60       # Run every 5 minutes
       retention_days: 30    # Keep data for 30 days
 
 # Intelligent completion service configuration
