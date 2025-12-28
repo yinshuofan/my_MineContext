@@ -66,10 +66,11 @@ class ContextMerger(BaseContextProcessor):
     def _initialize_strategies(self):
         """Initialize all supported merge strategies"""
         from opencontext.context_processing.merger.merge_strategies import StrategyFactory
+        strategy_factory = StrategyFactory(self.config)
 
-        supported_types = StrategyFactory.get_supported_types()
+        supported_types = strategy_factory.get_supported_types()
         for context_type in supported_types:
-            strategy = StrategyFactory.get_strategy(context_type, self.config)
+            strategy = strategy_factory.get_strategy(context_type)
             if strategy:
                 self.strategies[context_type] = strategy
                 logger.info(f"Initialized merge strategy for {context_type.value}")
@@ -519,8 +520,14 @@ class ContextMerger(BaseContextProcessor):
                             target_candidate = group[-1]
                             sources = group[:-1]
 
-                            logger.info(
+                            logger.debug(
                                 f"Merging {len(sources)} contexts into {target_candidate.id} within the group."
+                            )
+                            logger.debug(
+                                f"Group similarity: {self._calculate_similarity(target_candidate, sources)}"
+                            )
+                            logger.debug(
+                                f"Target candidate: {target_candidate.properties}, Sources: {[ctx.properties for ctx in sources]}"
                             )
                             merged_context = self.merge_multiple(target_candidate, sources)
                             if merged_context:

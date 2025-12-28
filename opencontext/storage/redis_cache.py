@@ -108,6 +108,7 @@ class RedisCache:
     def is_connected(self) -> bool:
         """Check if Redis is connected."""
         if not self._connected or not self._client:
+            logger.error("Redis client not connected")
             return False
         try:
             self._client.ping()

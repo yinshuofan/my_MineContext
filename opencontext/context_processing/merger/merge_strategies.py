@@ -1281,6 +1281,10 @@ class StrategyFactory:
             ContextType.PROCEDURAL_CONTEXT: ProceduralContextStrategy(config),
         }
 
+    def get_supported_types(self) -> List[ContextType]:
+        """Get all supported context types"""
+        return list[ContextType](self._strategies.keys())
+
     def get_strategy(self, context_type: ContextType) -> Optional[ContextTypeAwareStrategy]:
         """Get the merge strategy for a specific context type"""
         return self._strategies.get(context_type)

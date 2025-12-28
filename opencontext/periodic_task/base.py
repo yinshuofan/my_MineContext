@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 
 from opencontext.scheduler.base import TaskConfig, TriggerMode
 
+from loguru import logger
 
 class TaskPriority(int, Enum):
     """Task execution priority"""

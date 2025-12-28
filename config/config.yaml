@@ -118,7 +118,7 @@ processing:
 
   # Context merger configuration
   context_merger:
-    enabled: false
+    enabled: true
     # Basic configuration
     similarity_threshold: 0.90
     associative_similarity_threshold: 0.6
@@ -308,6 +308,42 @@ tools:
         engine: duckduckgo
         max_results: 5
         timeout: 10
+
+# Task scheduler configuration (for periodic tasks)
+scheduler:
+  enabled: true
+  
+  # User key configuration (determines how user tasks are identified)
+  user_key_config:
+    use_user_id: true      # Always true (required)
+    use_device_id: true    # Set to false to ignore device_id
+    use_agent_id: true     # Set to false to switch to 2-key mode (user_id:device_id)
+    default_device_id: "default"
+    default_agent_id: "default"
+  
+  # Executor configuration
+  executor:
+    check_interval: 10     # How often to check for due tasks (seconds)
+    max_concurrent: 5      # Maximum concurrent task executions
+    lock_timeout: 300      # Distributed lock timeout (seconds)
+  
+  # Task definitions
+  tasks:
+    # Memory compression task (triggered by user activity)
+    memory_compression:
+      enabled: true
+      trigger_mode: "user_activity"  # Options: user_activity, periodic
+      # interval: 1800        # Delay after user activity (seconds)
+      interval: 300        # Delay after user activity (seconds)
+      task_ttl: 7200        # Task state TTL (seconds)
+    
+    # Data cleanup task (periodic)
+    data_cleanup:
+      enabled: false
+      trigger_mode: "periodic"
+      # interval: 86400       # Run every 24 hours
+      interval: 300       # Run every 5 minutes
+      retention_days: 30    # Keep data for 30 days
 
 # Intelligent completion service configuration
 completion:
