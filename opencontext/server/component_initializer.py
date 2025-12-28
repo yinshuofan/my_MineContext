@@ -228,3 +228,100 @@ class ComponentInitializer:
         module = importlib.import_module(module_path)
         component_class = getattr(module, class_name)
         return component_class()
+
+    def initialize_task_scheduler(self) -> None:
+        """
+        Initialize the task scheduler for periodic tasks.
+        
+        The scheduler handles:
+        - Memory compression (user_activity triggered)
+        - Data cleanup (periodic)
+        - Other scheduled tasks
+        """
+        scheduler_config = self.config.get("scheduler", {})
+        if not scheduler_config.get("enabled", False):
+            logger.info("Task scheduler not enabled in configuration")
+            return
+        
+        try:
+            from opencontext.storage.redis_cache import RedisCache, get_redis_cache
+            from opencontext.scheduler import init_scheduler, get_scheduler
+            from opencontext.periodic_task import (
+                create_compression_handler,
+                create_cleanup_handler,
+            )
+            
+            # Get Redis cache
+            redis_cache = get_redis_cache()
+            if not redis_cache:
+                # Try to create Redis cache from config
+                redis_config = self.config.get("redis", {})
+                if redis_config:
+                    redis_cache = RedisCache(
+                        host=redis_config.get("host", "localhost"),
+                        port=redis_config.get("port", 6379),
+                        db=redis_config.get("db", 0),
+                        password=redis_config.get("password"),
+                    )
+            
+            if not redis_cache:
+                logger.warning(
+                    "Redis cache not available, task scheduler requires Redis"
+                )
+                return
+            
+            # Initialize scheduler
+            scheduler = init_scheduler(redis_cache, scheduler_config)
+            
+            # Register task handlers
+            tasks_config = scheduler_config.get("tasks", {})
+            
+            # Memory compression handler
+            if tasks_config.get("memory_compression", {}).get("enabled", False):
+                from opencontext.context_processing.merger.context_merger import ContextMerger
+                merger = ContextMerger()
+                compression_handler = create_compression_handler(merger)
+                scheduler.register_handler("memory_compression", compression_handler)
+                logger.info("Registered memory_compression task handler")
+            
+            # Data cleanup handler
+            if tasks_config.get("data_cleanup", {}).get("enabled", False):
+                storage = get_storage()
+                retention_days = tasks_config.get("data_cleanup", {}).get(
+                    "retention_days", 30
+                )
+                cleanup_handler = create_cleanup_handler(storage, retention_days)
+                scheduler.register_handler("data_cleanup", cleanup_handler)
+                logger.info("Registered data_cleanup task handler")
+            
+            logger.info("Task scheduler initialized successfully")
+            
+        except Exception as e:
+            logger.exception(f"Failed to initialize task scheduler: {e}")
+
+    async def start_task_scheduler(self) -> None:
+        """
+        Start the task scheduler background executor.
+        This should be called after the event loop is running.
+        """
+        try:
+            from opencontext.scheduler import get_scheduler
+            scheduler = get_scheduler()
+            if scheduler:
+                await scheduler.start()
+                logger.info("Task scheduler started")
+        except Exception as e:
+            logger.exception(f"Failed to start task scheduler: {e}")
+
+    def stop_task_scheduler(self) -> None:
+        """
+        Stop the task scheduler.
+        """
+        try:
+            from opencontext.scheduler import get_scheduler
+            scheduler = get_scheduler()
+            if scheduler:
+                scheduler.stop()
+                logger.info("Task scheduler stopped")
+        except Exception as e:
+            logger.exception(f"Failed to stop task scheduler: {e}")

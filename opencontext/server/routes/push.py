@@ -34,6 +34,37 @@ router = APIRouter(prefix="/api/push", tags=["push"])
 
 
 # ============================================================================
+# Task Scheduler Integration
+# ============================================================================
+
+def _schedule_user_compression(
+    user_id: Optional[str],
+    device_id: Optional[str] = None,
+    agent_id: Optional[str] = None
+) -> None:
+    """
+    Schedule a memory compression task for the user.
+    This is called after data capture to trigger delayed compression.
+    """
+    if not user_id:
+        return
+    
+    try:
+        from opencontext.scheduler import get_scheduler
+        scheduler = get_scheduler()
+        if scheduler:
+            scheduler.schedule_user_task(
+                task_type="memory_compression",
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+            )
+    except Exception as e:
+        # Don't fail the request if scheduling fails
+        logger.warning(f"Failed to schedule compression task: {e}")
+
+
+# ============================================================================
 # Request Models
 # ============================================================================
 
@@ -257,6 +288,13 @@ async def push_chat_message(
             agent_id=request.agent_id,
         )
         
+        # Schedule compression task for the user
+        _schedule_user_compression(
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+        )
+        
         return convert_resp(message="Chat message pushed successfully")
     except Exception as e:
         logger.exception(f"Error pushing chat message: {e}")
@@ -374,6 +412,12 @@ async def push_screenshot(
         
         if err_msg:
             return convert_resp(code=400, status=400, message=err_msg)
+        
+        # Schedule compression task for the user
+        _schedule_user_compression(
+            user_id=request.user_id,
+            device_id=request.device_id,
+        )
         
         return convert_resp(message="Screenshot pushed successfully", data={"path": file_path})
     except Exception as e:
