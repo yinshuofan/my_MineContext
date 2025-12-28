@@ -9,7 +9,7 @@
 Context processing manager for managing and coordinating context processing components
 """
 import concurrent.futures
-from threading import Lock, Timer
+from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
@@ -23,6 +23,9 @@ class ContextProcessorManager:
     Context processing manager
 
     Manages and coordinates multiple context processing components, providing unified interface for context processing
+    
+    Note: Periodic compression tasks are now managed by the task scheduler (opencontext.scheduler),
+    not by this manager. The merger is still set here for use by other components.
     """
 
     def __init__(self, max_workers: int = 5):
@@ -40,49 +43,6 @@ class ContextProcessorManager:
         self._define_routing()
         self._lock = Lock()
         self._max_workers = max_workers
-        self._compression_timer: Optional[Timer] = None
-        self._compression_interval: int = 1800  # default 1 hour
-
-    def start_periodic_compression(self):
-        """Start periodic memory compression"""
-        self._compression_interval = self._compression_interval
-        if self._compression_timer:
-            self._compression_timer.cancel()
-
-        # first execution in non-blocking mode
-        self._compression_timer = Timer(1, self._run_periodic_compression)
-        self._compression_timer.daemon = True
-        self._compression_timer.start()
-
-        logger.info(
-            f"Started periodic memory compression, interval: {self._compression_interval} seconds"
-        )
-
-    def _run_periodic_compression(self):
-        """Execute and reschedule next compression"""
-        if self._merger and hasattr(self._merger, "periodic_memory_compression"):
-            try:
-                logger.info("Starting periodic memory compression...")
-                self._merger.periodic_memory_compression(self._compression_interval)
-                logger.info("Periodic memory compression completed.")
-            except Exception as e:
-                logger.error(f"Periodic memory compression failed: {e}", exc_info=True)
-        else:
-            logger.warning(
-                "Merger processor not found or does not support periodic_memory_compression, skipping periodic compression."
-            )
-
-        # reschedule next execution
-        self._compression_timer = Timer(self._compression_interval, self._run_periodic_compression)
-        self._compression_timer.daemon = True
-        self._compression_timer.start()
-
-    def stop_periodic_compression(self):
-        """Stop periodic memory compression"""
-        if self._compression_timer:
-            self._compression_timer.cancel()
-            self._compression_timer = None
-            logger.info("Periodic memory compression stopped.")
 
     def _define_routing(self):
         """
@@ -118,9 +78,21 @@ class ContextProcessorManager:
     def set_merger(self, merger: IContextProcessor) -> None:
         """
         Set merger component
+        
+        Note: The merger is set here for use by other components (e.g., Push API triggered compression).
+        Periodic compression is now managed by the task scheduler.
         """
         self._merger = merger
         logger.info(f"Merger component '{merger.get_name()}' has been set")
+
+    def get_merger(self) -> Optional[IContextProcessor]:
+        """
+        Get the merger component
+        
+        Returns:
+            The merger component if set, None otherwise
+        """
+        return self._merger
 
     def get_processor(self, processor_name: str) -> Optional[IContextProcessor]:
         return self._processors.get(processor_name)
@@ -193,11 +165,12 @@ class ContextProcessorManager:
     def shutdown(self, graceful: bool = False) -> None:
         """
         Close manager and all processors
+        
+        Note: Task scheduler shutdown is handled separately by OpenContext.
         """
         logger.info("Shutting down context processing manager...")
         for processor in self._processors.values():
             processor.shutdown()
-        self.stop_periodic_compression()
         logger.info("Context processing manager has been shut down")
 
     def reset_statistics(self) -> None:
