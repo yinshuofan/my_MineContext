@@ -32,7 +32,8 @@ class MemoryCompressionTask(BasePeriodicTask):
     def __init__(
         self,
         context_merger: Any = None,
-        interval: int = 1800,
+        # interval: int = 1800,
+        interval: int = 172800,
         timeout: int = 300,
     ):
         """

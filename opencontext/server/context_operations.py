@@ -178,6 +178,7 @@ class ContextOperations:
             raise RuntimeError("Storage not initialized")
 
         try:
+            logger.debug(f"Searching with filters: {filters}")
             # Create query vector
             query_vectorize = Vectorize(text=query)
 
