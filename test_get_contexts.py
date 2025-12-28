@@ -10,9 +10,10 @@ def test_get_processed_contexts():
     storage = get_storage()
     
     filter_conditions = {
-        "create_time_ts": {"$gte": 1766836980.0, "$lte": 1766923380.0},
+        # "update_time_ts": {"$gte": 1766754091.0, "$lte": 1766926891.0},
         # "has_compression": False,
         # "enable_merge": True,
+        # "id": "9cc5a6ec-7dcb-40a4-b5cc-d570ab772270"
     }
     
     limit = 100

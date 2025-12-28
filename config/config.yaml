@@ -122,8 +122,8 @@ processing:
     # Basic configuration
     # similarity_threshold: 0.90
     # associative_similarity_threshold: 0.6
-    similarity_threshold: 0.15
-    associative_similarity_threshold: 0.15
+    similarity_threshold: 0.01
+    associative_similarity_threshold: 0.01
 
     # Intelligent merging configuration
     use_intelligent_merging: true # Enable intelligent strategy merging

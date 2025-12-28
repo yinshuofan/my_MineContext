@@ -495,7 +495,7 @@ class ContextMerger(BaseContextProcessor):
             offset = 0
             while True:
                 contexts_by_backend = self.storage.get_all_processed_contexts(
-                    limit=limit, offset=offset, filter=filter
+                    limit=limit, offset=offset, filter=filter, need_vector=True
                 )
 
                 if not any(contexts_by_backend.values()):
@@ -513,6 +513,7 @@ class ContextMerger(BaseContextProcessor):
                     groups = self._group_contexts_by_similarity(
                         backend_contexts, self._similarity_threshold
                     )
+                    logger.debug(f"Grouped contexts {groups}.")
 
                     for group in groups:
                         if len(group) > 1:
@@ -523,9 +524,7 @@ class ContextMerger(BaseContextProcessor):
                             logger.debug(
                                 f"Merging {len(sources)} contexts into {target_candidate.id} within the group."
                             )
-                            logger.debug(
-                                f"Group similarity: {self._calculate_similarity(target_candidate, sources)}"
-                            )
+
                             logger.debug(
                                 f"Target candidate: {target_candidate.properties}, Sources: {[ctx.properties for ctx in sources]}"
                             )
@@ -590,7 +589,7 @@ class ContextMerger(BaseContextProcessor):
                     ),
                     "$lte": int((datetime.datetime.now() - timedelta(minutes=5)).timestamp()),
                 },
-                "has_compression": False,
+                # "has_compression": False,
                 "enable_merge": True,
                 "user_id": user_id,
             }
@@ -606,7 +605,7 @@ class ContextMerger(BaseContextProcessor):
             
             while True:
                 contexts_by_backend = self.storage.get_all_processed_contexts(
-                    limit=limit, offset=offset, filter=filter
+                    limit=limit, offset=offset, filter=filter, need_vector=True
                 )
 
                 if not any(contexts_by_backend.values()):
@@ -639,6 +638,15 @@ class ContextMerger(BaseContextProcessor):
                                 f"Merging {len(sources)} contexts into {target_candidate.id} "
                                 f"within the group for user={user_id}."
                             )
+
+                            logger.debug(
+                                f"Merging {len(sources)} contexts into {target_candidate.id} within the group."
+                            )
+
+                            logger.debug(
+                                f"Target candidate: {target_candidate.properties}, Sources: {[ctx.properties for ctx in sources]}"
+                            )
+
                             merged_context = self.merge_multiple(target_candidate, sources)
                             if merged_context:
                                 self.storage.upsert_processed_context(merged_context)
@@ -687,6 +695,9 @@ class ContextMerger(BaseContextProcessor):
             for i, ctx in enumerate(remaining_contexts):
                 ctx_embedding = ctx.vectorize.vector
                 if self._calculate_similarity(seed_embedding, ctx_embedding) > threshold:
+                    logger.debug(f"Similarity:{self._calculate_similarity(seed_embedding, ctx_embedding)}")
+                    logger.debug(f"Seed: {seed.vectorize.text}")
+                    logger.debug(f"Context: {ctx.vectorize.text}")
                     new_group.append(ctx)
                     to_remove.append(i)
 
