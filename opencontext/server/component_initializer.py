@@ -308,9 +308,26 @@ class ComponentInitializer:
                 retention_days = tasks_config.get("data_cleanup", {}).get(
                     "retention_days", 30
                 )
-                cleanup_handler = create_cleanup_handler(storage, retention_days)
+                
+                # Get or create merger for intelligent cleanup
+                cleanup_merger = None
+                if processor_manager:
+                    cleanup_merger = processor_manager.get_merger()
+                
+                if not cleanup_merger:
+                    from opencontext.context_processing.merger.context_merger import ContextMerger
+                    cleanup_merger = ContextMerger()
+                    logger.info("Created new ContextMerger for cleanup task")
+                else:
+                    logger.info("Reusing merger from processor_manager for cleanup task")
+                
+                cleanup_handler = create_cleanup_handler(
+                    context_merger=cleanup_merger,
+                    storage=storage,
+                    retention_days=retention_days
+                )
                 scheduler.register_handler("data_cleanup", cleanup_handler)
-                logger.info("Registered data_cleanup task handler")
+                logger.info("Registered data_cleanup task handler with intelligent cleanup")
             
             logger.info("Task scheduler initialized successfully")
             
