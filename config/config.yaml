@@ -245,8 +245,10 @@ storage:
     #     path: "${CONTEXT_PATH:.}/persist/sqlite/app.db"
 
 # Context consumption module
+# Set to false to disable all consumption components (tips, todos, activity, report)
+# This also prevents creation of todo collection in vector databases
 consumption:
-  enabled: true
+  enabled: false
 
 # web server
 web:

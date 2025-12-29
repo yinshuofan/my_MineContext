@@ -170,15 +170,21 @@ class ChromaDBBackend(IVectorStorageBackend):
                 )
                 self._collections[context_type] = collection
 
-            # Create dedicated todo collection for deduplication
-            todo_collection = self._client.get_or_create_collection(
-                name="todo",
-                metadata={
-                    "hnsw:space": "cosine",
-                    "description": "Todo embeddings for deduplication",
-                },
-            )
-            self._collections["todo"] = todo_collection
+            # Create dedicated todo collection for deduplication only if consumption is enabled
+            from opencontext.config.global_config import GlobalConfig
+            consumption_enabled = GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+            if consumption_enabled:
+                todo_collection = self._client.get_or_create_collection(
+                    name="todo",
+                    metadata={
+                        "hnsw:space": "cosine",
+                        "description": "Todo embeddings for deduplication",
+                    },
+                )
+                self._collections["todo"] = todo_collection
+                logger.info("Todo collection initialized")
+            else:
+                logger.info("Todo collection skipped (consumption disabled)")
 
             self._initialized = True
             logger.info(

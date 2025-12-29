@@ -417,9 +417,15 @@ class DashVectorBackend(IVectorStorageBackend):
                 self._ensure_collection(collection_name)
                 self._collections[collection_name] = collection_name
 
-            # Initialize todo collection
-            self._ensure_collection(TODO_COLLECTION)
-            self._collections[TODO_COLLECTION] = TODO_COLLECTION
+            # Initialize todo collection only if consumption is enabled
+            from opencontext.config.global_config import GlobalConfig
+            consumption_enabled = GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+            if consumption_enabled:
+                self._ensure_collection(TODO_COLLECTION)
+                self._collections[TODO_COLLECTION] = TODO_COLLECTION
+                logger.info("Todo collection initialized")
+            else:
+                logger.info("Todo collection skipped (consumption disabled)")
 
             self._initialized = True
             logger.info(f"DashVector HTTP backend initialized with {len(self._collections)} collections")

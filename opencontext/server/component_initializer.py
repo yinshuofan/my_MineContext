@@ -199,11 +199,23 @@ class ComponentInitializer:
             logger.exception(f"Failed to initialize completion service: {e}")
             return None
 
-    def initialize_consumption_components(self) -> ConsumptionManager:
+    def initialize_consumption_components(self) -> Optional[ConsumptionManager]:
+        """Initialize consumption components if enabled in configuration."""
+        # Check if consumption is enabled
+        consumption_config = self.config.get("consumption", {})
+        if not consumption_config.get("enabled", True):
+            logger.info("Consumption components disabled by configuration")
+            return None
+        
+        # Check if content_generation is enabled
+        content_generation_config = self.config.get("content_generation", {})
+        if not content_generation_config:
+            logger.info("Content generation not configured, skipping consumption initialization")
+            return None
+        
         consumption_manager = ConsumptionManager()
 
         # Start scheduled tasks (individual tasks controlled by their enabled flags)
-        content_generation_config = self.config.get("content_generation", {})
         consumption_manager.start_scheduled_tasks(content_generation_config)
 
         logger.info("Context consumption components initialization complete")

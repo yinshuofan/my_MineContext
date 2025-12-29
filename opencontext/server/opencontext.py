@@ -84,10 +84,16 @@ class OpenContext:
             # Initialize task scheduler after processors (to reuse merger)
             self.component_initializer.initialize_task_scheduler(self.processor_manager)
             
-            self.consumption_manager = (
-                self.component_initializer.initialize_consumption_components()
-            )
-            self.completion_service = self.component_initializer.initialize_completion_service()
+            # Initialize consumption components only if enabled
+            consumption_config = GlobalConfig.get_instance().get_config().get("consumption", {})
+            if consumption_config.get("enabled", True):
+                self.consumption_manager = (
+                    self.component_initializer.initialize_consumption_components()
+                )
+                self.completion_service = self.component_initializer.initialize_completion_service()
+                logger.info("Consumption components initialized")
+            else:
+                logger.info("Consumption components disabled by configuration")
             self._initialize_monitoring()
             logger.info("All components initialization completed successfully")
 
