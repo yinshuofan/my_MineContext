@@ -108,6 +108,7 @@ class RedisCache:
     def is_connected(self) -> bool:
         """Check if Redis is connected."""
         if not self._connected or not self._client:
+            logger.error("Redis client not connected")
             return False
         try:
             self._client.ping()
@@ -680,7 +681,71 @@ class RedisCache:
         except Exception as e:
             logger.error(f"Redis SCARD error: {e}")
             return 0
-    
+
+    # =========================================================================
+    # Sorted Set Operations (for priority/ordered data)
+    # =========================================================================
+
+    def zadd(self, key: str, mapping: Dict[str, float]) -> int:
+        """Add members to a sorted set with their scores."""
+        if not self.is_connected() or not mapping:
+            return 0
+        try:
+            return self._client.zadd(self._make_key(key), mapping)
+        except Exception as e:
+            logger.error(f"Redis ZADD error: {e}")
+            return 0
+
+    def zrangebyscore(
+        self,
+        key: str,
+        min_score: float,
+        max_score: float,
+        withscores: bool = False
+    ) -> List[str]:
+        """Get members from a sorted set within a score range."""
+        if not self.is_connected():
+            return []
+        try:
+            full_key = self._make_key(key)
+            if withscores:
+                return self._client.zrangebyscore(full_key, min_score, max_score, withscores=True)
+            else:
+                return self._client.zrangebyscore(full_key, min_score, max_score)
+        except Exception as e:
+            logger.error(f"Redis ZRANGEBYSCORE error: {e}")
+            return []
+
+    def zrem(self, key: str, *members: str) -> int:
+        """Remove members from a sorted set."""
+        if not self.is_connected() or not members:
+            return 0
+        try:
+            return self._client.zrem(self._make_key(key), *members)
+        except Exception as e:
+            logger.error(f"Redis ZREM error: {e}")
+            return 0
+
+    def zscore(self, key: str, member: str) -> Optional[float]:
+        """Get the score of a member in a sorted set."""
+        if not self.is_connected():
+            return None
+        try:
+            return self._client.zscore(self._make_key(key), member)
+        except Exception as e:
+            logger.error(f"Redis ZSCORE error: {e}")
+            return None
+
+    def zcard(self, key: str) -> int:
+        """Get number of members in a sorted set."""
+        if not self.is_connected():
+            return 0
+        try:
+            return self._client.zcard(self._make_key(key))
+        except Exception as e:
+            logger.error(f"Redis ZCARD error: {e}")
+            return 0
+
     # =========================================================================
     # Atomic Operations
     # =========================================================================

@@ -66,10 +66,11 @@ class ContextMerger(BaseContextProcessor):
     def _initialize_strategies(self):
         """Initialize all supported merge strategies"""
         from opencontext.context_processing.merger.merge_strategies import StrategyFactory
+        strategy_factory = StrategyFactory(self.config)
 
-        supported_types = StrategyFactory.get_supported_types()
+        supported_types = strategy_factory.get_supported_types()
         for context_type in supported_types:
-            strategy = StrategyFactory.get_strategy(context_type, self.config)
+            strategy = strategy_factory.get_strategy(context_type)
             if strategy:
                 self.strategies[context_type] = strategy
                 logger.info(f"Initialized merge strategy for {context_type.value}")
@@ -448,6 +449,9 @@ class ContextMerger(BaseContextProcessor):
                     logger.info(
                         f"Successfully merged {len(sources)} sources into context {target.id}"
                     )
+                    logger.debug(f"sources:\n{json.dumps([s.extracted_data.summary for s in sources], ensure_ascii=False, indent=2)}")
+                    logger.debug(f"target:\n  {target.extracted_data.summary}")
+                    logger.debug(f"merged_context:\n  {merged_context.extracted_data.summary}")
                     return merged_context
                 except json.JSONDecodeError:
                     logger.warning(f"Failed to decode LLM response as JSON: {response}")
@@ -494,7 +498,7 @@ class ContextMerger(BaseContextProcessor):
             offset = 0
             while True:
                 contexts_by_backend = self.storage.get_all_processed_contexts(
-                    limit=limit, offset=offset, filter=filter
+                    limit=limit, offset=offset, filter=filter, need_vector=True
                 )
 
                 if not any(contexts_by_backend.values()):
@@ -512,6 +516,7 @@ class ContextMerger(BaseContextProcessor):
                     groups = self._group_contexts_by_similarity(
                         backend_contexts, self._similarity_threshold
                     )
+                    logger.debug(f"Grouped contexts {groups}.")
 
                     for group in groups:
                         if len(group) > 1:
@@ -519,8 +524,12 @@ class ContextMerger(BaseContextProcessor):
                             target_candidate = group[-1]
                             sources = group[:-1]
 
-                            logger.info(
+                            logger.debug(
                                 f"Merging {len(sources)} contexts into {target_candidate.id} within the group."
+                            )
+
+                            logger.debug(
+                                f"Target candidate: {target_candidate.properties}, Sources: {[ctx.properties for ctx in sources]}"
                             )
                             merged_context = self.merge_multiple(target_candidate, sources)
                             if merged_context:
@@ -545,6 +554,130 @@ class ContextMerger(BaseContextProcessor):
         except Exception as e:
             logger.exception(f"Error during periodic memory compression: {e}")
 
+    def periodic_memory_compression_for_user(
+        self,
+        user_id: str,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        interval_seconds: int = 1800
+    ):
+        """
+        对指定用户的上下文进行记忆压缩
+        
+        Args:
+            user_id: 用户ID
+            device_id: 设备ID（可选）
+            agent_id: 代理ID（可选）
+            interval_seconds: 时间窗口（秒）
+        """
+        if interval_seconds <= 0:
+            logger.warning("interval_seconds must be greater than 0.")
+            return
+        
+        logger.info(
+            f"Starting periodic memory compression for user={user_id}, "
+            f"device={device_id}, agent={agent_id}..."
+        )
+        
+        try:
+            # 构建用户过滤条件
+            filter = {
+                "update_time_ts": {
+                    "$gte": int(
+                        (
+                            datetime.datetime.now()
+                            - timedelta(seconds=interval_seconds)
+                            - timedelta(minutes=5)
+                        ).timestamp()
+                    ),
+                    "$lte": int((datetime.datetime.now() - timedelta(minutes=5)).timestamp()),
+                },
+                # "has_compression": False,
+                "enable_merge": True,
+                "user_id": user_id,
+            }
+            
+            # 添加可选的设备和代理过滤
+            if device_id:
+                filter["device_id"] = device_id
+            if agent_id:
+                filter["agent_id"] = agent_id
+            
+            limit = 1000
+            offset = 0
+            
+            while True:
+                contexts_by_backend = self.storage.get_all_processed_contexts(
+                    limit=limit, offset=offset, filter=filter, need_vector=True
+                )
+
+                if not any(contexts_by_backend.values()):
+                    logger.info(
+                        f"No more recent contexts to process for user={user_id} in this iteration."
+                    )
+                    break
+                
+                has_merge = False
+                for backend_name, backend_contexts in contexts_by_backend.items():
+                    if len(backend_contexts) < 2:
+                        continue
+                    has_merge = True
+                    logger.info(
+                        f"Processing {len(backend_contexts)} contexts from backend '{backend_name}' "
+                        f"for user={user_id}."
+                    )
+
+                    groups = self._group_contexts_by_similarity(
+                        backend_contexts, self._similarity_threshold
+                    )
+
+                    for group in groups:
+                        if len(group) > 1:
+                            group.sort(key=lambda c: c.properties.create_time)
+                            target_candidate = group[-1]
+                            sources = group[:-1]
+
+                            logger.info(
+                                f"Merging {len(sources)} contexts into {target_candidate.id} "
+                                f"within the group for user={user_id}."
+                            )
+
+                            logger.debug(
+                                f"Merging {len(sources)} contexts into {target_candidate.id} within the group."
+                            )
+
+                            logger.debug(
+                                f"Target candidate: {target_candidate.properties}, Sources: {[ctx.properties for ctx in sources]}"
+                            )
+
+                            merged_context = self.merge_multiple(target_candidate, sources)
+                            if merged_context:
+                                self.storage.upsert_processed_context(merged_context)
+                                self.storage.delete_processed_context(
+                                    target_candidate.id,
+                                    target_candidate.extracted_data.context_type.value,
+                                )
+                                for ctx in sources:
+                                    self.storage.delete_processed_context(
+                                        ctx.id, ctx.extracted_data.context_type.value
+                                    )
+                                logger.info(
+                                    f"Successfully merged within group and cleaned up "
+                                    f"{len(sources)} source contexts for user={user_id}."
+                                )
+
+                if not has_merge:
+                    break
+                offset += limit
+
+            logger.info(
+                f"Periodic memory compression finished for user={user_id}."
+            )
+        except Exception as e:
+            logger.exception(
+                f"Error during periodic memory compression for user={user_id}: {e}"
+            )
+
     def _group_contexts_by_similarity(
         self, contexts: List[ProcessedContext], threshold: float
     ) -> List[List[ProcessedContext]]:
@@ -565,6 +698,9 @@ class ContextMerger(BaseContextProcessor):
             for i, ctx in enumerate(remaining_contexts):
                 ctx_embedding = ctx.vectorize.vector
                 if self._calculate_similarity(seed_embedding, ctx_embedding) > threshold:
+                    logger.debug(f"Similarity:{self._calculate_similarity(seed_embedding, ctx_embedding)}")
+                    logger.debug(f"Seed: {seed.vectorize.text}")
+                    logger.debug(f"Context: {ctx.vectorize.text}")
                     new_group.append(ctx)
                     to_remove.append(i)
 

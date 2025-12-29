@@ -50,12 +50,47 @@ FIELD_DOCUMENT = "document"
 FIELD_ORIGINAL_ID = "original_id"
 FIELD_TODO_ID = "todo_id"
 FIELD_CONTENT = "content"
+
+# Time fields
 FIELD_CREATED_AT = "created_at"
 FIELD_CREATED_AT_TS = "created_at_ts"
+FIELD_CREATE_TIME = "create_time"
 FIELD_CREATE_TIME_TS = "create_time_ts"
+FIELD_EVENT_TIME = "event_time"
+FIELD_EVENT_TIME_TS = "event_time_ts"
+FIELD_UPDATE_TIME = "update_time"
+FIELD_UPDATE_TIME_TS = "update_time_ts"
+FIELD_LAST_CALL_TIME = "last_call_time"
+FIELD_LAST_CALL_TIME_TS = "last_call_time_ts"
+
+# User identification fields
 FIELD_USER_ID = "user_id"
 FIELD_DEVICE_ID = "device_id"
 FIELD_AGENT_ID = "agent_id"
+
+# Extracted data fields
+FIELD_TITLE = "title"
+FIELD_SUMMARY = "summary"
+FIELD_KEYWORDS = "keywords"
+FIELD_ENTITIES = "entities"
+FIELD_CONTEXT_TYPE = "context_type"
+FIELD_CONFIDENCE = "confidence"
+FIELD_IMPORTANCE = "importance"
+FIELD_SOURCE = "source"
+
+# Properties fields
+FIELD_IS_PROCESSED = "is_processed"
+FIELD_HAS_COMPRESSION = "has_compression"
+FIELD_ENABLE_MERGE = "enable_merge"
+FIELD_IS_HAPPEND = "is_happend"
+FIELD_CALL_COUNT = "call_count"
+FIELD_MERGE_COUNT = "merge_count"
+FIELD_DURATION_COUNT = "duration_count"
+
+# Document tracking fields
+FIELD_FILE_PATH = "file_path"
+FIELD_RAW_TYPE = "raw_type"
+FIELD_RAW_ID = "raw_id"
 
 # HTTP API constants
 API_VERSION = "v1"
@@ -382,9 +417,15 @@ class DashVectorBackend(IVectorStorageBackend):
                 self._ensure_collection(collection_name)
                 self._collections[collection_name] = collection_name
 
-            # Initialize todo collection
-            self._ensure_collection(TODO_COLLECTION)
-            self._collections[TODO_COLLECTION] = TODO_COLLECTION
+            # Initialize todo collection only if consumption is enabled
+            from opencontext.config.global_config import GlobalConfig
+            consumption_enabled = GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+            if consumption_enabled:
+                self._ensure_collection(TODO_COLLECTION)
+                self._collections[TODO_COLLECTION] = TODO_COLLECTION
+                logger.info("Todo collection initialized")
+            else:
+                logger.info("Todo collection skipped (consumption disabled)")
 
             self._initialized = True
             logger.info(f"DashVector HTTP backend initialized with {len(self._collections)} collections")
@@ -432,19 +473,54 @@ class DashVectorBackend(IVectorStorageBackend):
                     "metric": "cosine",
                     "dtype": "FLOAT",
                     "fields_schema": {
+                        # ID fields
                         FIELD_ORIGINAL_ID: "STRING",
-                        "context_type": "STRING",
-                        FIELD_DOCUMENT: "STRING",
+                        
+                        # Time fields (string format)
                         FIELD_CREATED_AT: "STRING",
+                        FIELD_CREATE_TIME: "STRING",
+                        FIELD_EVENT_TIME: "STRING",
+                        FIELD_UPDATE_TIME: "STRING",
+                        FIELD_LAST_CALL_TIME: "STRING",
+                        
+                        # Time fields (timestamp for filtering)
                         FIELD_CREATED_AT_TS: "FLOAT",
                         FIELD_CREATE_TIME_TS: "FLOAT",
+                        FIELD_EVENT_TIME_TS: "FLOAT",
+                        FIELD_UPDATE_TIME_TS: "FLOAT",
+                        FIELD_LAST_CALL_TIME_TS: "FLOAT",
+                        
+                        # User identification fields
                         FIELD_USER_ID: "STRING",
                         FIELD_DEVICE_ID: "STRING",
                         FIELD_AGENT_ID: "STRING",
-                        "title": "STRING",
-                        "summary": "STRING",
-                        "source": "STRING",
-                        "confidence": "FLOAT",
+                        
+                        # Extracted data fields
+                        FIELD_TITLE: "STRING",
+                        FIELD_SUMMARY: "STRING",
+                        FIELD_KEYWORDS: "STRING",  # JSON array as string
+                        FIELD_ENTITIES: "STRING",  # JSON array as string
+                        FIELD_CONTEXT_TYPE: "STRING",
+                        FIELD_CONFIDENCE: "FLOAT",
+                        FIELD_IMPORTANCE: "FLOAT",
+                        FIELD_SOURCE: "STRING",
+                        
+                        # Properties fields
+                        FIELD_IS_PROCESSED: "BOOL",
+                        FIELD_HAS_COMPRESSION: "BOOL",
+                        FIELD_ENABLE_MERGE: "BOOL",
+                        FIELD_IS_HAPPEND: "BOOL",
+                        FIELD_CALL_COUNT: "FLOAT",
+                        FIELD_MERGE_COUNT: "FLOAT",
+                        FIELD_DURATION_COUNT: "FLOAT",
+                        
+                        # Document tracking fields
+                        FIELD_FILE_PATH: "STRING",
+                        FIELD_RAW_TYPE: "STRING",
+                        FIELD_RAW_ID: "STRING",
+                        
+                        # Document content
+                        FIELD_DOCUMENT: "STRING",
                     },
                 }
                 
@@ -531,59 +607,99 @@ class DashVectorBackend(IVectorStorageBackend):
         """
         Convert ProcessedContext to DashVector Doc format.
         
+        This method mirrors chromadb_backend._context_to_chroma_format to ensure
+        all fields are properly stored with both ISO format and timestamp versions
+        for datetime fields.
+        
         Args:
             context: ProcessedContext to convert
             
         Returns:
-            Dictionary in DashVector Doc format
+            Dictionary in DashVector Doc format with all fields properly serialized
         """
-        fields = {}
-
-        # Add basic context fields
+        # Start with basic context fields (excluding nested objects)
+        doc = context.model_dump(
+            exclude_none=True, 
+            exclude={"properties", "extracted_data", "vectorize", "metadata"}
+        )
+        
+        # Add extracted_data fields
         if context.extracted_data:
-            extracted_dict = context.extracted_data.model_dump(exclude_none=True)
-            for key, value in extracted_dict.items():
-                fields[key] = self._serialize_value(value)
-
-        # Add properties
-        if context.properties:
-            props_dict = context.properties.model_dump(exclude_none=True)
-            for key, value in props_dict.items():
-                fields[key] = self._serialize_value(value)
-
-        # Add metadata
+            extracted_data_dict = context.extracted_data.model_dump(exclude_none=True)
+            doc.update(extracted_data_dict)
+        
+        # Add metadata fields
         if context.metadata:
-            for key, value in context.metadata.items():
-                fields[key] = self._serialize_value(value)
-
-        # Add document text for retrieval
+            doc.update(context.metadata)
+        
+        # Add document text
         if context.vectorize:
             if context.vectorize.content_format == ContentFormat.TEXT:
-                fields[FIELD_DOCUMENT] = context.vectorize.text or ""
-
-        # Add timestamp (both ISO format and Unix timestamp)
+                doc[FIELD_DOCUMENT] = context.vectorize.text or ""
+        
+        # Add properties fields (excluding raw_properties which is a nested list)
+        if context.properties:
+            properties_dict = context.properties.model_dump(exclude_none=True)
+            properties_dict.pop("raw_properties", None)
+            doc.update(properties_dict)
+        
+        # JSON serializer for datetime and enum
+        def default_json_serializer(obj):
+            if isinstance(obj, datetime.datetime):
+                return obj.isoformat()
+            if isinstance(obj, Enum):
+                return obj.value
+            return str(obj)
+        
+        # Process all fields for proper serialization
+        fields = {}
+        for key, value in list(doc.items()):
+            # Skip special fields
+            if key in ["id", "embedding", "document"]:
+                if key == "id":
+                    fields[FIELD_ORIGINAL_ID] = value
+                elif key == "document":
+                    fields[FIELD_DOCUMENT] = value
+                continue
+            
+            if value is None:
+                continue
+            
+            # Handle datetime fields - store both ISO string and timestamp
+            if isinstance(value, datetime.datetime):
+                fields[f"{key}_ts"] = value.timestamp()
+                fields[key] = value.isoformat()
+            # Handle enum fields
+            elif isinstance(value, Enum):
+                fields[key] = value.value
+            # Handle dict and list fields - serialize to JSON string
+            elif isinstance(value, (dict, list)):
+                try:
+                    fields[key] = json.dumps(
+                        value, ensure_ascii=False, default=default_json_serializer
+                    )
+                except (TypeError, ValueError):
+                    fields[key] = str(value)
+            # Handle boolean fields
+            elif isinstance(value, bool):
+                fields[key] = value
+            # Handle numeric fields
+            elif isinstance(value, (int, float)):
+                fields[key] = float(value)  # DashVector uses FLOAT for numbers
+            # Handle string fields
+            elif isinstance(value, str):
+                fields[key] = value
+            else:
+                fields[key] = str(value)
+        
+        # Ensure original_id is set
+        fields[FIELD_ORIGINAL_ID] = context.id
+        
+        # Add created_at timestamp (storage time)
         now = datetime.datetime.now()
         fields[FIELD_CREATED_AT] = now.isoformat()
         fields[FIELD_CREATED_AT_TS] = now.timestamp()
         
-        # Add create_time timestamp if available from properties
-        if context.properties and context.properties.create_time:
-            try:
-                if isinstance(context.properties.create_time, datetime.datetime):
-                    fields[FIELD_CREATE_TIME_TS] = context.properties.create_time.timestamp()
-                elif isinstance(context.properties.create_time, str):
-                    dt = datetime.datetime.fromisoformat(
-                        context.properties.create_time.replace('Z', '+00:00')
-                    )
-                    fields[FIELD_CREATE_TIME_TS] = dt.timestamp()
-            except (ValueError, AttributeError) as e:
-                logger.debug(f"Failed to parse create_time: {e}")
-                fields[FIELD_CREATE_TIME_TS] = now.timestamp()
-        else:
-            fields[FIELD_CREATE_TIME_TS] = now.timestamp()
-
-        fields[FIELD_ORIGINAL_ID] = context.id
-
         return fields
 
     def _serialize_value(self, value: Any) -> Any:

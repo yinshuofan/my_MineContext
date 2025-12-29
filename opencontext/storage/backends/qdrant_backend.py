@@ -64,8 +64,15 @@ class QdrantBackend(IVectorStorageBackend):
                 self._ensure_collection(collection_name, context_type)
                 self._collections[context_type] = collection_name
 
-            self._ensure_collection(TODO_COLLECTION, TODO_COLLECTION)
-            self._collections[TODO_COLLECTION] = TODO_COLLECTION
+            # Create todo collection only if consumption is enabled
+            from opencontext.config.global_config import GlobalConfig
+            consumption_enabled = GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+            if consumption_enabled:
+                self._ensure_collection(TODO_COLLECTION, TODO_COLLECTION)
+                self._collections[TODO_COLLECTION] = TODO_COLLECTION
+                logger.info("Todo collection initialized")
+            else:
+                logger.info("Todo collection skipped (consumption disabled)")
 
             self._initialized = True
             logger.info(

@@ -356,6 +356,14 @@ class UnifiedStorage:
             logger.exception(f"Vector search failed: {e}")
             return []
 
+    def _is_consumption_enabled(self) -> bool:
+        """Check if consumption module is enabled in configuration."""
+        try:
+            from opencontext.config.global_config import GlobalConfig
+            return GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+        except Exception:
+            return True  # Default to enabled if config not available
+
     def upsert_todo_embedding(
         self,
         todo_id: int,
@@ -364,6 +372,9 @@ class UnifiedStorage:
         metadata: Optional[Dict] = None,
     ) -> bool:
         """Store todo embedding to vector database for deduplication"""
+        if not self._is_consumption_enabled():
+            logger.debug("Consumption disabled, skipping todo embedding upsert")
+            return False
         if not self._initialized or not self._vector_backend:
             logger.warning("Storage not initialized, cannot store todo embedding")
             return False
@@ -377,6 +388,9 @@ class UnifiedStorage:
         similarity_threshold: float = 0.85,
     ) -> List[Tuple[int, str, float]]:
         """Search for similar todos using vector similarity"""
+        if not self._is_consumption_enabled():
+            logger.debug("Consumption disabled, skipping todo search")
+            return []
         if not self._initialized or not self._vector_backend:
             logger.warning("Storage not initialized, cannot search todos")
             return []
@@ -387,6 +401,9 @@ class UnifiedStorage:
 
     def delete_todo_embedding(self, todo_id: int) -> bool:
         """Delete todo embedding from vector database"""
+        if not self._is_consumption_enabled():
+            logger.debug("Consumption disabled, skipping todo embedding delete")
+            return False
         if not self._initialized or not self._vector_backend:
             logger.warning("Storage not initialized, cannot delete todo embedding")
             return False

@@ -80,10 +80,20 @@ class OpenContext:
             self.component_initializer.initialize_processors(
                 self.processor_manager, self._handle_processed_context
             )
-            self.consumption_manager = (
-                self.component_initializer.initialize_consumption_components()
-            )
-            self.completion_service = self.component_initializer.initialize_completion_service()
+            
+            # Initialize task scheduler after processors (to reuse merger)
+            self.component_initializer.initialize_task_scheduler(self.processor_manager)
+            
+            # Initialize consumption components only if enabled
+            consumption_config = GlobalConfig.get_instance().get_config().get("consumption", {})
+            if consumption_config.get("enabled", True):
+                self.consumption_manager = (
+                    self.component_initializer.initialize_consumption_components()
+                )
+                self.completion_service = self.component_initializer.initialize_completion_service()
+                logger.info("Consumption components initialized")
+            else:
+                logger.info("Consumption components disabled by configuration")
             self._initialize_monitoring()
             logger.info("All components initialization completed successfully")
 
@@ -172,6 +182,13 @@ class OpenContext:
                     logger.warning(
                         f"Error stopping content generation scheduled tasks: {e}")
 
+            # Stop task scheduler
+            try:
+                self.component_initializer.stop_task_scheduler()
+                logger.info("Task scheduler stopped")
+            except Exception as e:
+                logger.warning(f"Error stopping task scheduler: {e}")
+            
             # Shutdown managers
             self.capture_manager.shutdown(graceful=graceful)
             self.processor_manager.shutdown(graceful=graceful)
