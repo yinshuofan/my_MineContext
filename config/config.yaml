@@ -126,7 +126,7 @@ processing:
     associative_similarity_threshold: 0.01
 
     # Intelligent merging configuration
-    use_intelligent_merging: true # Enable intelligent strategy merging
+    use_intelligent_merging: false # Enable intelligent strategy merging
     enable_memory_management: true # Enable memory management
     cleanup_interval_hours: 24 # Cleanup check interval
 

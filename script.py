@@ -364,8 +364,8 @@ async def chat_loop():
                 messages=messages,
                 stream=True,
                 reasoning_effort="minimal",
-                tools=ALL_TOOL_DEFINITIONS,
-                tool_choice="auto",
+                # tools=ALL_TOOL_DEFINITIONS,
+                # tool_choice="auto",
             )
 
             print("Assistant: ", end="", flush=True)

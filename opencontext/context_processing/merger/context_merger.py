@@ -449,6 +449,9 @@ class ContextMerger(BaseContextProcessor):
                     logger.info(
                         f"Successfully merged {len(sources)} sources into context {target.id}"
                     )
+                    logger.debug(f"sources:\n{json.dumps([s.extracted_data.summary for s in sources], ensure_ascii=False, indent=2)}")
+                    logger.debug(f"target:\n  {target.extracted_data.summary}")
+                    logger.debug(f"merged_context:\n  {merged_context.extracted_data.summary}")
                     return merged_context
                 except json.JSONDecodeError:
                     logger.warning(f"Failed to decode LLM response as JSON: {response}")
