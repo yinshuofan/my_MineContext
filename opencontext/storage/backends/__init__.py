@@ -33,3 +33,10 @@ try:
     __all__.append("DashVectorBackend")
 except ImportError:
     pass
+
+# VikingDB backend is optional
+try:
+    from .vikingdb_backend import VikingDBBackend
+    __all__.append("VikingDBBackend")
+except ImportError:
+    pass
