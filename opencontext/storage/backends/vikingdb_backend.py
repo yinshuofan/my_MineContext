@@ -765,10 +765,19 @@ class VikingDBBackend(IVectorStorageBackend):
         
         logger.info(f"VikingDB index created: {self._index_name}")
     
-    @property
-    def storage_type(self) -> StorageType:
-        """Return storage type."""
+    def get_name(self) -> str:
+        """Get storage backend name."""
+        return "vikingdb"
+    
+    def get_storage_type(self) -> StorageType:
+        """Get storage type."""
         return StorageType.VECTOR_DB
+    
+    def get_collection_names(self) -> List[str]:
+        """Get all collection names managed by this backend."""
+        if self._collection_ready:
+            return [self._collection_name]
+        return []
     
     def is_initialized(self) -> bool:
         """Check if backend is initialized."""
