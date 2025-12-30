@@ -826,7 +826,7 @@ class VikingDBBackend(IVectorStorageBackend):
     def get_collection_names(self) -> List[str]:
         """Get all collection names managed by this backend."""
         if self._collection_ready:
-            return [self._collection_name]
+            return [ct.value for ct in ContextType]
         return []
     
     def is_initialized(self) -> bool:
@@ -982,6 +982,7 @@ class VikingDBBackend(IVectorStorageBackend):
             raise RuntimeError("VikingDB backend not initialized")
         
         data_list = []
+        logger.debug(f"Upserting contexts:{contexts}")
         for context in contexts:
             try:
                 vector = self._ensure_vectorized(context)

@@ -14,7 +14,7 @@
                 <form id="vectorSearchForm">
                     <div class="mb-3">
                         <label for="query" class="form-label">查询内容</label>
-                        <textarea class="form-control" id="query" rows="3" placeholder="输入要检索的内容..." required></textarea>
+                        <textarea class="form-control" id="query" rows="3" placeholder="输入要检索的内容..."></textarea>
                     </div>
                     
                     <div class="mb-3">
@@ -164,11 +164,6 @@ async function handleSearch(event) {
     // 获取选中的上下文类型
     const selectedContextTypes = Array.from(document.querySelectorAll('.context-type-checkbox:checked'))
         .map(cb => cb.value);
-    
-    if (!query) {
-        alert('请输入查询内容');
-        return;
-    }
     
     if (selectedContextTypes.length === 0) {
         alert('请至少选择一个上下文类型');
