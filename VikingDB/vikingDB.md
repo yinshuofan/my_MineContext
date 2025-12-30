@@ -58,62 +58,43 @@
 
 
 # Collection操作：
-## 创建数据集-CreateVikingdbCollection
-https://www.volcengine.com/docs/84313/1791154
+## 创建数据集-CreateVikingdbCollection.md
 
-## 查看数据集列表-ListVikingdbCollection
-https://www.volcengine.com/docs/84313/1791145
+## 查看数据集列表-ListVikingdbCollection.md
 
-## 删除数据集-DeleteVikingdbCollection
-https://www.volcengine.com/docs/84313/1791148
+## 删除数据集-DeleteVikingdbCollection.md
 
-## 查看数据集详情-GetVikingdbCollection
-https://www.volcengine.com/docs/84313/1791142
+## 查看数据集详情-GetVikingdbCollection.md
 
 # 索引操作
-## 创建索引-CreateVikingdbIndex
-https://www.volcengine.com/docs/84313/1791149
+## 创建索引-CreateVikingdbIndex.md
 
-## 删除索引-DeleteVikingdbIndex
-https://www.volcengine.com/docs/84313/1791150
+## 删除索引-DeleteVikingdbIndex.md
 
-## 查看索引列表-ListVikingdbIndex
-https://www.volcengine.com/docs/84313/1791156
+## 查看索引列表-ListVikingdbIndex.md
 
-## 查看索引详情-GetVikingdbIndex
-https://www.volcengine.com/docs/84313/1791157
+## 查看索引详情-GetVikingdbIndex.md
 
 # 数据操作
-## 数据写入-UpsertData
-https://www.volcengine.com/docs/84313/1791127
+## 数据写入-UpsertData.md
 
-## 数据更新-UpdateData
-https://www.volcengine.com/docs/84313/1791129
+## 数据更新-UpdateData.md
 
-## 数据删除-DeleteData
-https://www.volcengine.com/docs/84313/1791130
+## 数据删除-DeleteData.md
 
-## 在数据集中点查-FetchDataInCollection
-https://www.volcengine.com/docs/84313/1791131
+## 在数据集中点查-FetchDataInCollection.md
 
-## 在索引中点查-FetchDataInIndex
-https://www.volcengine.com/docs/84313/1791132
+## 在索引中点查-FetchDataInIndex.md
 
 # 检索操作
-## 检索公共参数
-https://www.volcengine.com/docs/84313/1791133
+## 检索公共参数.md
 
-## id检索-SearchById
-https://www.volcengine.com/docs/84313/1791136
+## id检索-SearchById.md
 
-## 向量检索-SearchByVector
-https://www.volcengine.com/docs/84313/1791165
+## 向量检索-SearchByVector.md
 
-## 标量排序检索-SearchByScalar
-https://www.volcengine.com/docs/84313/1791137
+## 标量排序检索-SearchByScalar.md
 
-## 随机检索-SearchByRandom
-https://www.volcengine.com/docs/84313/1791138
+## 随机检索-SearchByRandom.md
 
-## 关键词检索-SearchByKeywords
-https://www.volcengine.com/docs/84313/1791139
+## 关键词检索-SearchByKeywords.md
