@@ -395,7 +395,6 @@ class VikingDBHTTPClient:
         if params:
             url = f"{url}?{urlencode(params)}"
         
-        # Make request
         session = self._get_sync_session()
         response = session.request(
             method=method,
@@ -404,8 +403,17 @@ class VikingDBHTTPClient:
             data=body,
             timeout=self._timeout,
         )
+
+        if response.status_code != 200:
+            error_msg = f"API request failed with status {response.status_code}: {response.text[:500]}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
         
-        return response.json()
+        try:
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to parse JSON response: {response.text[:500]}")
+            raise
     
     def console_request(
         self,
