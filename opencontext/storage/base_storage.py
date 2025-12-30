@@ -132,6 +132,9 @@ class IVectorStorageBackend(IStorageBackend):
     def delete_processed_context(self, id: str, context_type: str) -> bool:
         """Delete specified context"""
 
+    def delete_contexts(self, ids: List[str], context_type: str) -> bool:
+        """Delete multiple contexts of specified type"""
+
     @abstractmethod
     def search(
         self,

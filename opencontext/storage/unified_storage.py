@@ -228,6 +228,9 @@ class UnifiedStorage:
     def delete_processed_context(self, id: str, context_type: str):
         return self._vector_backend.delete_processed_context(id, context_type)
 
+    def delete_batch_processed_contexts(self, ids: List[str], context_type: str):
+        return self._vector_backend.delete_contexts(ids, context_type)
+
     def get_all_processed_contexts(
         self,
         context_types: Optional[List[str]] = None,

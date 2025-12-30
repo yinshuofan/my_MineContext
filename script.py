@@ -33,14 +33,14 @@ class MineContextClient:
     MineContext Push API 客户端
     通过 HTTP API 与后端服务通信，推送聊天消息和其他上下文数据
     """
-    
+
     def __init__(
-        self,
-        base_url: str = "http://localhost:1733",
-        api_key: Optional[str] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+            self,
+            base_url: str = "http://localhost:1733",
+            api_key: Optional[str] = None,
+            user_id: Optional[str] = None,
+            device_id: Optional[str] = None,
+            agent_id: Optional[str] = None,
     ):
         """
         初始化客户端
@@ -57,15 +57,15 @@ class MineContextClient:
         self.user_id = user_id
         self.device_id = device_id
         self.agent_id = agent_id
-        
+
         # 构建请求头
         self.headers = {"Content-Type": "application/json"}
         if api_key:
             self.headers["Authorization"] = f"Bearer {api_key}"
-        
+
         # 创建异步 HTTP 客户端
         self._client: Optional[httpx.AsyncClient] = None
-    
+
     async def _get_client(self) -> httpx.AsyncClient:
         """获取或创建 HTTP 客户端"""
         if self._client is None or self._client.is_closed:
@@ -75,20 +75,20 @@ class MineContextClient:
                 timeout=30.0
             )
         return self._client
-    
+
     async def close(self):
         """关闭 HTTP 客户端"""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
-    
+
     async def push_chat_message(
-        self,
-        role: str,
-        content: str,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+            self,
+            role: str,
+            content: str,
+            user_id: Optional[str] = None,
+            device_id: Optional[str] = None,
+            agent_id: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         推送单条聊天消息
@@ -105,7 +105,7 @@ class MineContextClient:
             API 响应
         """
         client = await self._get_client()
-        
+
         payload = {
             "role": role,
             "content": content,
@@ -116,7 +116,7 @@ class MineContextClient:
         }
         if metadata:
             payload["metadata"] = metadata
-        
+
         try:
             response = await client.post("/api/push/chat/message", json=payload)
             response.raise_for_status()
@@ -127,11 +127,11 @@ class MineContextClient:
         except Exception as e:
             logger.error(f"Push chat message error: {e}")
             return {"code": 500, "message": str(e)}
-    
+
     async def push_chat_messages(
-        self,
-        messages: List[Dict[str, str]],
-        flush_immediately: bool = False,
+            self,
+            messages: List[Dict[str, str]],
+            flush_immediately: bool = False,
     ) -> Dict[str, Any]:
         """
         批量推送聊天消息
@@ -144,7 +144,7 @@ class MineContextClient:
             API 响应
         """
         client = await self._get_client()
-        
+
         payload = {
             "messages": [
                 {
@@ -161,7 +161,7 @@ class MineContextClient:
             "agent_id": self.agent_id,
             "flush_immediately": flush_immediately,
         }
-        
+
         try:
             response = await client.post("/api/push/chat/messages", json=payload)
             response.raise_for_status()
@@ -172,7 +172,7 @@ class MineContextClient:
         except Exception as e:
             logger.error(f"Push chat messages error: {e}")
             return {"code": 500, "message": str(e)}
-    
+
     async def flush_chat_buffer(self) -> Dict[str, Any]:
         """
         手动刷新聊天缓冲区
@@ -181,13 +181,13 @@ class MineContextClient:
             API 响应
         """
         client = await self._get_client()
-        
+
         payload = {
             "user_id": self.user_id,
             "device_id": self.device_id,
             "agent_id": self.agent_id,
         }
-        
+
         try:
             response = await client.post("/api/push/chat/flush", json=payload)
             response.raise_for_status()
@@ -198,15 +198,15 @@ class MineContextClient:
         except Exception as e:
             logger.error(f"Flush chat buffer error: {e}")
             return {"code": 500, "message": str(e)}
-    
+
     async def push_activity(
-        self,
-        title: str,
-        content: str,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        resources: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+            self,
+            title: str,
+            content: str,
+            start_time: Optional[str] = None,
+            end_time: Optional[str] = None,
+            resources: Optional[List[str]] = None,
+            metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         推送活动记录
@@ -223,7 +223,7 @@ class MineContextClient:
             API 响应
         """
         client = await self._get_client()
-        
+
         payload = {
             "title": title,
             "content": content,
@@ -238,7 +238,7 @@ class MineContextClient:
             payload["resources"] = resources
         if metadata:
             payload["metadata"] = metadata
-        
+
         try:
             response = await client.post("/api/push/activity", json=payload)
             response.raise_for_status()
@@ -315,13 +315,13 @@ async def execute_tool(tool_call: ChatCompletionMessageToolCall) -> Dict[str, An
 
 async def chat_loop():
     """主聊天循环"""
-    
+
     # 初始化 LLM 客户端
     client = openai.AsyncOpenAI(
         api_key=LLM_API_KEY,
         base_url=LLM_BASE_URL,
     )
-    
+
     # 初始化 MineContext 客户端（通过 HTTP API）
     mc_client = MineContextClient(
         base_url=MINECONTEXT_BASE_URL,
@@ -330,10 +330,10 @@ async def chat_loop():
         device_id=DEVICE_ID,
         agent_id=AGENT_ID,
     )
-    
+
     print(f"\n🔗 MineContext 后端服务: {MINECONTEXT_BASE_URL}")
     print(f"👤 用户标识: user_id={USER_ID}, device_id={DEVICE_ID}, agent_id={AGENT_ID}")
-    
+
     messages = [
         {"role": "system", "content": "你是一个拥有长期记忆的智能助手。你可以使用工具检索过去的对话和活动。"},
         {"role": "system", "content": f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"}
@@ -355,9 +355,10 @@ async def chat_loop():
                 break
 
             messages.append({"role": "user", "content": user_input})
-            
+
             # 通过 HTTP API 推送用户消息
-            await mc_client.push_chat_message("user", user_input, user_id=USER_ID, device_id=DEVICE_ID, agent_id=AGENT_ID)
+            await mc_client.push_chat_message("user", user_input, user_id=USER_ID, device_id=DEVICE_ID,
+                                              agent_id=AGENT_ID)
 
             response = await client.chat.completions.create(
                 model=LLM_MODEL,
@@ -369,24 +370,24 @@ async def chat_loop():
             )
 
             print("Assistant: ", end="", flush=True)
-            
+
             collected_content = ""
             tool_calls_buffer = []
 
             async for chunk in response:
                 delta = chunk.choices[0].delta
-                
+
                 if delta.content:
                     print(delta.content, end="", flush=True)
                     collected_content += delta.content
-                
+
                 if delta.tool_calls:
                     for tc_chunk in delta.tool_calls:
                         if len(tool_calls_buffer) <= tc_chunk.index:
                             tool_calls_buffer.append({
                                 "id": "", "type": "function", "function": {"name": "", "arguments": ""}
                             })
-                        
+
                         tc = tool_calls_buffer[tc_chunk.index]
                         if tc_chunk.id: tc["id"] += tc_chunk.id
                         if tc_chunk.function.name: tc["function"]["name"] += tc_chunk.function.name
@@ -399,15 +400,17 @@ async def chat_loop():
                     "tool_calls": tool_calls_buffer
                 }
                 messages.append(assistant_msg)
-                
+
                 for tc_data in tool_calls_buffer:
                     class MockToolCall:
                         id = tc_data["id"]
+
                         class Function:
                             name = tc_data["function"]["name"]
                             arguments = tc_data["function"]["arguments"]
+
                         function = Function()
-                    
+
                     tool_result_msg = await execute_tool(MockToolCall())
                     messages.append(tool_result_msg)
 
@@ -418,11 +421,11 @@ async def chat_loop():
                     reasoning_effort="minimal",
                     tools=ALL_TOOL_DEFINITIONS
                 )
-                
+
                 collected_content = ""
                 async for chunk in response_2:
                     delta = chunk.choices[0].delta
-                
+
                     if delta.content:
                         print(delta.content, end="", flush=True)
                         collected_content += delta.content
@@ -430,10 +433,11 @@ async def chat_loop():
             print()
 
             messages.append({"role": "assistant", "content": collected_content})
-            
+
             # 通过 HTTP API 推送助手回复
-            await mc_client.push_chat_message("assistant", collected_content, user_id=USER_ID, device_id=DEVICE_ID, agent_id=AGENT_ID)
-    
+            await mc_client.push_chat_message("assistant", collected_content, user_id=USER_ID, device_id=DEVICE_ID,
+                                              agent_id=AGENT_ID)
+
     finally:
         # 确保关闭 HTTP 客户端
         await mc_client.close()

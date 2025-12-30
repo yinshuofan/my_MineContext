@@ -80,7 +80,6 @@ class GlobalStorage:
             from opencontext.config.global_config import get_config
 
             storage_config = get_config("storage")
-
             if storage_config and storage_config.get("enabled", False):
                 backend_configs = storage_config.get("backends", [])
                 if backend_configs:
