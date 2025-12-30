@@ -44,6 +44,7 @@ dependencies = [
     "python-multipart",
     "playwright",
     "pymysql",
+    "dbutils>=3.0.0",
     "redis>=4.0.0",
     "dashvector",
     "aiohttp>=3.8.0",
