@@ -4,7 +4,7 @@
 
 本报告详细分析了OpenContext项目在高并发场景和多用户支持方面存在的问题。经过对项目核心组件的深入调查，识别出以下关键问题：
 
-- **高并发问题**：连接池缺失、锁机制限制、单例模式、内存状态管理
+- **高并发问题**：连接池缺失、锁机制限制、内存状态管理
 - **缺失关键字段问题**：user_id、device_id、agent_id 在部分组件中未正确使用
 
 > **评估说明**：本报告已于 2025-12-29 经过代码审查验证，确认问题的真实性和解决方案的合理性。
@@ -157,47 +157,40 @@ class ChromaDBBackend:
 
 ---
 
-### 1.4 Singleton模式限制扩展性
+### 1.4 Singleton模式（已验证：无需修改）
 
-**问题文件**:
+**相关文件**:
 - `opencontext/config/global_config.py`
 - `opencontext/llm/global_embedding_client.py`
 - `opencontext/storage/global_storage.py`
 
-**问题描述**:
-大量使用单例模式（Singleton Pattern），限制了多实例部署和水平扩展能力。
+**原问题描述**:
+原报告认为单例模式限制了多实例部署和水平扩展能力。
 
-**代码位置** (global_embedding_client.py):
-```python
-# 第27-38行
-class GlobalEmbeddingClient:
-    _instance = None
-    _lock = threading.Lock()
-    _initialized = False
+**✅ 验证状态**: 经过深入分析，**此问题不存在**
 
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
-```
+**分析结论**:
 
-**⚠️ 验证状态**: 问题存在，但需要区分场景
+这些 Singleton 是**进程级别**的单例，在分布式部署时每个进程有自己的实例，这是**完全正常的设计**：
 
-**影响分析**:
-- **单机部署**：单例模式是合理的设计，可以减少资源消耗
-- **分布式部署**：
-  - 无法水平扩展（多实例部署）
-  - 单点故障风险
-  - 资源竞争（如embedding API调用限流）
+| Singleton | 持有内容 | 状态存储位置 | 分布式部署 |
+|-----------|---------|-------------|-----------|
+| GlobalConfig | ConfigManager | 文件系统（只读） | ✅ 无问题 |
+| GlobalEmbeddingClient | LLMClient | 无状态（HTTP调用） | ✅ 无问题 |
+| GlobalStorage | UnifiedStorage | 外部数据库 | ✅ 无问题 |
 
-**建议解决方案**:
-1. **短期方案**：保持现有单例模式，对于单机部署场景足够
-2. **长期方案**（分布式部署时）：
-   - 将单例改为依赖注入模式
-   - 使用连接池管理共享资源
-   - 引入配置中心支持多实例配置
+**为什么不需要重构**:
+
+1. **GlobalConfig**: 从文件加载配置，多进程各自读取同一配置文件，完全正常
+2. **GlobalEmbeddingClient**: 调用外部 embedding API，每次请求独立，无共享状态
+3. **GlobalStorage**: 连接外部数据库（MySQL、VikingDB等），数据库本身处理并发
+
+**原分析的错误**:
+- "无法水平扩展" → 错误，每个进程独立的 Singleton 实例不影响水平扩展
+- "单点故障风险" → 错误，进程间相互独立，一个挂了其他继续运行
+- "资源竞争" → 不适用，这些 Singleton 不持有需要跨进程协调的共享资源
+
+**结论**: 当前的 Singleton 设计是合理的，**无需修改**。
 
 ---
 
@@ -512,8 +505,11 @@ class DashVectorHTTPClient:
 
 ### 低优先级（可选优化）
 
-8. **Singleton模式重构** - 仅在需要分布式部署时考虑
-9. **添加监控和告警** - 提升运维能力
+8. **添加监控和告警** - 提升运维能力
+
+### 无需修改
+
+- **Singleton模式** - 经验证，当前设计合理，不影响分布式部署（详见 1.4 节）
 
 ---
 
@@ -524,8 +520,7 @@ OpenContext项目在数据模型和存储接口层面已经为多用户支持做
 **高并发方面**:
 - 数据库连接池缺失（MySQL、SQLite）
 - 锁机制限制并发（ChromaDB的读写操作都使用同一把锁）
-- 单例模式限制扩展性（仅影响分布式部署）
-- 内存状态管理不适合分布式部署
+- 内存状态管理不适合分布式部署（Agent Chat、Event Manager）
 
 **多用户支持方面**:
 - Event Manager未实现用户级别的事件隔离
@@ -543,9 +538,10 @@ OpenContext项目在数据模型和存储接口层面已经为多用户支持做
 
 ## 附录：验证日志
 
-本报告于 2025-12-29 经过以下验证：
+本报告于 2025-12-30 经过以下验证：
 - 核实了所有代码文件的实际内容
 - 验证了问题描述与代码的一致性
 - 更新了代码行号引用
 - 调整了部分问题的分析（如 ChromaDB 锁机制、Periodic Tasks 设计）
 - 确认了 VikingDB/DashVector 的良好实现
+- **重新评估 Singleton 模式**：确认 GlobalConfig、GlobalEmbeddingClient、GlobalStorage 的单例设计是合理的，不会影响分布式部署，原分析存在误解
