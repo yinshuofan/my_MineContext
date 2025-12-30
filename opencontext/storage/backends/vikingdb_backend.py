@@ -404,6 +404,16 @@ class VikingDBHTTPClient:
             timeout=self._timeout,
         )
 
+        # For 404 status, return the response JSON so caller can handle NotFound errors
+        # This is needed for GetVikingdbCollection/GetVikingdbIndex to check if resource exists
+        if response.status_code == 404:
+            try:
+                return response.json()
+            except Exception:
+                error_msg = f"API request failed with status {response.status_code}: {response.text[:500]}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+        
         if response.status_code != 200:
             error_msg = f"API request failed with status {response.status_code}: {response.text[:500]}"
             logger.error(error_msg)
