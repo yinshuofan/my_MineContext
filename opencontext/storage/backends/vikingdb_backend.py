@@ -508,18 +508,19 @@ class VikingDBBackend(IVectorStorageBackend):
         """
         try:
             self._config = config
+            vikingdb_config = config.get("config", {})
             
             # Get credentials from config or environment
-            access_key_id = config.get("access_key_id") or os.environ.get("VOLCENGINE_ACCESS_KEY_ID")
-            secret_access_key = config.get("secret_access_key") or os.environ.get("VOLCENGINE_SECRET_ACCESS_KEY")
+            access_key_id = vikingdb_config.get("access_key_id") or os.environ.get("VOLCENGINE_ACCESS_KEY_ID")
+            secret_access_key = vikingdb_config.get("secret_access_key") or os.environ.get("VOLCENGINE_SECRET_ACCESS_KEY")
             
             if not access_key_id or not secret_access_key:
                 logger.error("VikingDB credentials not provided")
                 return False
             
-            region = config.get("region", "cn-beijing")
-            data_host = config.get("data_host")
-            console_host = config.get("console_host")
+            region = vikingdb_config.get("region", "cn-beijing")
+            data_host = vikingdb_config.get("data_host")
+            console_host = vikingdb_config.get("console_host")
             
             self._dimension = config.get("dimension", 1024)
             
