@@ -38,7 +38,7 @@ class ContextMerger(BaseContextProcessor):
 
         config = get_config("processing.context_merger") or {}
         super().__init__(config)
-
+        self.enable_memory_management = config.get("enable_memory_management", False)
         self.prompt_manager = get_prompt_manager()
         self._similarity_threshold = config.get("similarity_threshold", 0.85)
         self.associative_similarity_threshold = config.get("associative_similarity_threshold", 0.6)

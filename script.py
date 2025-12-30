@@ -33,7 +33,6 @@ class MineContextClient:
     MineContext Push API 客户端
     通过 HTTP API 与后端服务通信，推送聊天消息和其他上下文数据
     """
-
     def __init__(
             self,
             base_url: str = "http://localhost:1733",
