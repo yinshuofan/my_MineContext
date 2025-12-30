@@ -973,7 +973,7 @@ class VikingDBBackend(IVectorStorageBackend):
         # Batch upsert via data plane API
         try:
             result = self._client.data_request(
-                path="/api/collection/upsert_data",
+                path="/api/vikingdb/data/upsert",
                 data={
                     "collection_name": self._collection_name,
                     "data": data_list,
@@ -1017,17 +1017,20 @@ class VikingDBBackend(IVectorStorageBackend):
         try:
             # Fetch data by ID via data plane API
             result = self._client.data_request(
-                path="/api/collection/fetch_data",
+                path="/api/vikingdb/data/fetch_in_collection",
                 data={
                     "collection_name": self._collection_name,
                     "ids": [id],
                 }
             )
             
-            if result.get("code") == 0:
-                data = result.get("data", [])
-                if data and len(data) > 0:
-                    doc = data[0]
+            if result.get("code") == "Success":
+                fetch_result = result.get("result", {}).get("fetch", [])
+                if fetch_result and len(fetch_result) > 0:
+                    item = fetch_result[0]
+                    # Reconstruct doc from id and fields
+                    doc = {"id": item.get("id")}
+                    doc.update(item.get("fields", {}))
                     # Verify context_type matches
                     if doc.get(FIELD_CONTEXT_TYPE) == context_type:
                         return self._doc_to_context(doc, need_vector)
@@ -1088,22 +1091,26 @@ class VikingDBBackend(IVectorStorageBackend):
                     data_type=DATA_TYPE_CONTEXT,
                 )
                 
-                # Use search API with scalar filter
+                # Use scalar search API with filter
+                # Note: search_by_scalar requires a numeric field for sorting
+                # Using created_at_ts as the sort field
                 data = {
                     "collection_name": self._collection_name,
                     "index_name": self._index_name,
                     "limit": limit + offset,
+                    "field": FIELD_CREATED_AT_TS,
+                    "order": "desc",
                 }
                 if filter_dict:
                     data["filter"] = filter_dict
                 
                 query_result = self._client.data_request(
-                    path="/api/index/search_by_scalar",
+                    path="/api/vikingdb/data/search/scalar",
                     data=data
                 )
                 
-                if query_result.get("code") == 0:
-                    output = query_result.get("data", [])
+                if query_result.get("code") == "Success":
+                    output = query_result.get("result", {}).get("data", [])
                     # Apply offset
                     if offset > 0:
                         output = output[offset:]
@@ -1111,7 +1118,10 @@ class VikingDBBackend(IVectorStorageBackend):
                         output = output[:limit]
                     
                     contexts = []
-                    for doc in output:
+                    for item in output:
+                        # Reconstruct doc from id and fields
+                        doc = {"id": item.get("id")}
+                        doc.update(item.get("fields", {}))
                         context = self._doc_to_context(doc, need_vector)
                         if context:
                             contexts.append(context)
@@ -1154,14 +1164,14 @@ class VikingDBBackend(IVectorStorageBackend):
         
         try:
             result = self._client.data_request(
-                path="/api/collection/del_data",
+                path="/api/vikingdb/data/delete",
                 data={
                     "collection_name": self._collection_name,
                     "ids": ids,
                 }
             )
             
-            if result.get("code") == 0:
+            if result.get("code") == "Success":
                 logger.debug(f"Deleted {len(ids)} contexts from {self._collection_name}")
                 return True
             else:
@@ -1231,28 +1241,28 @@ class VikingDBBackend(IVectorStorageBackend):
             data = {
                 "collection_name": self._collection_name,
                 "index_name": self._index_name,
-                "search": {
-                    "dense_vectors": [query_vector],
-                    "limit": top_k,
-                }
+                "dense_vector": query_vector,
+                "limit": top_k,
             }
             if filter_dict:
-                data["search"]["filter"] = filter_dict
+                data["filter"] = filter_dict
             
             result = self._client.data_request(
-                path="/api/index/search",
+                path="/api/vikingdb/data/search/vector",
                 data=data
             )
             
-            if result.get("code") == 0:
-                output = result.get("data", [])
-                # VikingDB returns results in nested structure
-                if output and len(output) > 0:
-                    for item in output[0]:  # First query result
-                        context = self._doc_to_context(item, need_vector)
-                        if context:
-                            score = item.get("score", 0.0)
-                            all_results.append((context, score))
+            if result.get("code") == "Success":
+                output = result.get("result", {}).get("data", [])
+                # VikingDB returns results in flat list
+                for item in output:
+                    # Reconstruct doc from id and fields
+                    doc = {"id": item.get("id")}
+                    doc.update(item.get("fields", {}))
+                    context = self._doc_to_context(doc, need_vector)
+                    if context:
+                        score = item.get("score", 0.0)
+                        all_results.append((context, score))
                             
         except Exception as e:
             logger.exception(f"Vector search failed: {e}")
@@ -1432,48 +1442,48 @@ class VikingDBBackend(IVectorStorageBackend):
             FIELD_CREATED_AT: FIELD_CREATED_AT_TS,
         }
         
-        # Add data type filter
+        # Add data type filter using "must" operator
         if data_type:
             conditions.append({
-                "field_name": FIELD_DATA_TYPE,
-                "op": "=",
-                "value": data_type
+                "op": "must",
+                "field": FIELD_DATA_TYPE,
+                "conds": [data_type]
             })
         
-        # Add context type filter (single)
+        # Add context type filter (single) using "must" operator
         if context_type:
             conditions.append({
-                "field_name": FIELD_CONTEXT_TYPE,
-                "op": "=",
-                "value": context_type
+                "op": "must",
+                "field": FIELD_CONTEXT_TYPE,
+                "conds": [context_type]
             })
         
-        # Add context types filter (multiple - OR condition)
+        # Add context types filter (multiple - OR condition) using "must" operator
         if context_types and len(context_types) > 0:
             conditions.append({
-                "field_name": FIELD_CONTEXT_TYPE,
-                "op": "in",
-                "value": context_types
+                "op": "must",
+                "field": FIELD_CONTEXT_TYPE,
+                "conds": context_types
             })
         
-        # Add user identity filters
+        # Add user identity filters using "must" operator
         if user_id:
             conditions.append({
-                "field_name": FIELD_USER_ID,
-                "op": "=",
-                "value": user_id
+                "op": "must",
+                "field": FIELD_USER_ID,
+                "conds": [user_id]
             })
         if device_id:
             conditions.append({
-                "field_name": FIELD_DEVICE_ID,
-                "op": "=",
-                "value": device_id
+                "op": "must",
+                "field": FIELD_DEVICE_ID,
+                "conds": [device_id]
             })
         if agent_id:
             conditions.append({
-                "field_name": FIELD_AGENT_ID,
-                "op": "=",
-                "value": agent_id
+                "op": "must",
+                "field": FIELD_AGENT_ID,
+                "conds": [agent_id]
             })
         
         # Add custom filters
@@ -1488,38 +1498,50 @@ class VikingDBBackend(IVectorStorageBackend):
                 filter_key = TIME_FIELD_MAPPING.get(key, key)
                 
                 if isinstance(value, dict):
-                    # Handle comparison operators
-                    op_mapping = {
-                        '$gte': '>=',
-                        '$lte': '<=',
-                        '$gt': '>',
-                        '$lt': '<',
-                        '$eq': '=',
-                        '$ne': '!=',
+                    # Handle comparison operators using "range" operator
+                    range_filter = {
+                        "op": "range",
+                        "field": filter_key,
                     }
-                    for op, op_symbol in op_mapping.items():
+                    op_mapping = {
+                        '$gte': 'gte',
+                        '$lte': 'lte',
+                        '$gt': 'gt',
+                        '$lt': 'lt',
+                    }
+                    has_range = False
+                    for op, range_key in op_mapping.items():
                         if op in value:
                             op_value = value[op]
                             if is_time_field:
                                 ts = self._parse_time_to_timestamp(op_value)
                                 if ts is not None:
-                                    conditions.append({
-                                        "field_name": filter_key,
-                                        "op": op_symbol,
-                                        "value": ts
-                                    })
+                                    range_filter[range_key] = ts
+                                    has_range = True
                             else:
-                                conditions.append({
-                                    "field_name": filter_key,
-                                    "op": op_symbol,
-                                    "value": op_value
-                                })
+                                range_filter[range_key] = op_value
+                                has_range = True
+                    if has_range:
+                        conditions.append(range_filter)
+                    # Handle equality operators
+                    if '$eq' in value:
+                        conditions.append({
+                            "op": "must",
+                            "field": filter_key,
+                            "conds": [value['$eq']]
+                        })
+                    if '$ne' in value:
+                        conditions.append({
+                            "op": "must_not",
+                            "field": filter_key,
+                            "conds": [value['$ne']]
+                        })
                 elif isinstance(value, list):
-                    # Handle IN operator
+                    # Handle IN operator using "must" with multiple conds
                     conditions.append({
-                        "field_name": filter_key,
-                        "op": "in",
-                        "value": value
+                        "op": "must",
+                        "field": filter_key,
+                        "conds": value
                     })
                 elif isinstance(value, str):
                     if is_time_field:
@@ -1527,47 +1549,47 @@ class VikingDBBackend(IVectorStorageBackend):
                         if ts is not None:
                             # For exact time match, use range
                             conditions.append({
-                                "field_name": filter_key,
-                                "op": ">=",
-                                "value": ts - 0.5
-                            })
-                            conditions.append({
-                                "field_name": filter_key,
-                                "op": "<=",
-                                "value": ts + 0.5
+                                "op": "range",
+                                "field": filter_key,
+                                "gte": ts - 0.5,
+                                "lte": ts + 0.5
                             })
                         else:
                             conditions.append({
-                                "field_name": key,
-                                "op": "=",
-                                "value": value
+                                "op": "must",
+                                "field": key,
+                                "conds": [value]
                             })
                     else:
                         conditions.append({
-                            "field_name": filter_key,
-                            "op": "=",
-                            "value": value
+                            "op": "must",
+                            "field": filter_key,
+                            "conds": [value]
                         })
                 elif isinstance(value, bool):
                     conditions.append({
-                        "field_name": filter_key,
-                        "op": "=",
-                        "value": value
+                        "op": "must",
+                        "field": filter_key,
+                        "conds": [value]
                     })
                 else:
                     conditions.append({
-                        "field_name": filter_key,
-                        "op": "=",
-                        "value": value
+                        "op": "must",
+                        "field": filter_key,
+                        "conds": [value]
                     })
         
         if not conditions:
             return None
         
-        filter_dict = {
-            "op": "must",
-            "conditions": conditions
-        }
+        # Wrap all conditions in an "and" operator
+        if len(conditions) == 1:
+            filter_dict = conditions[0]
+        else:
+            filter_dict = {
+                "op": "and",
+                "conds": conditions
+            }
         logger.debug(f"Built VikingDB filter: {filter_dict}")
         return filter_dict
     
@@ -1595,20 +1617,24 @@ class VikingDBBackend(IVectorStorageBackend):
                 "collection_name": self._collection_name,
                 "index_name": self._index_name,
                 "limit": 1,  # We just need the count
+                "field": FIELD_CREATED_AT_TS,
+                "order": "desc",
             }
             if filter_dict:
                 data["filter"] = filter_dict
             
             result = self._client.data_request(
-                path="/api/index/search_by_scalar",
+                path="/api/vikingdb/data/search/scalar",
                 data=data
             )
             
-            if result.get("code") == 0:
-                # Note: VikingDB doesn't return total count in scalar search
-                # We would need to iterate or use a different approach
-                # For now, return the length of results
-                return len(result.get("data", []))
+            if result.get("code") == "Success":
+                # Note: VikingDB returns filter_matched_count if filter is provided
+                result_data = result.get("result", {})
+                if "filter_matched_count" in result_data:
+                    return result_data["filter_matched_count"]
+                # Fallback to total_return_count
+                return result_data.get("total_return_count", 0)
             return 0
         except Exception as e:
             logger.error(f"Failed to get count for {context_type}: {e}")
@@ -1668,7 +1694,7 @@ class VikingDBBackend(IVectorStorageBackend):
             }
             
             result = self._client.data_request(
-                path="/api/collection/upsert_data",
+                path="/api/vikingdb/data/upsert",
                 data={
                     "collection_name": self._collection_name,
                     "data": [data_item],
@@ -1716,28 +1742,26 @@ class VikingDBBackend(IVectorStorageBackend):
             data = {
                 "collection_name": self._collection_name,
                 "index_name": self._index_name,
-                "search": {
-                    "dense_vectors": [list(embedding)],
-                    "limit": top_k,
-                }
+                "dense_vector": list(embedding),
+                "limit": top_k,
             }
             if filter_dict:
-                data["search"]["filter"] = filter_dict
+                data["filter"] = filter_dict
             
             result = self._client.data_request(
-                path="/api/index/search",
+                path="/api/vikingdb/data/search/vector",
                 data=data
             )
             
-            if result.get("code") == 0:
-                output = result.get("data", [])
+            if result.get("code") == "Success":
+                output = result.get("result", {}).get("data", [])
                 results = []
-                if output and len(output) > 0:
-                    for item in output[0]:
-                        todo_id = item.get(FIELD_TODO_ID) or item.get("id", "").replace("todo_", "")
-                        content = item.get(FIELD_CONTENT, "")
-                        score = item.get("score", 0.0)
-                        results.append((todo_id, content, score))
+                for item in output:
+                    fields = item.get("fields", {})
+                    todo_id_val = fields.get(FIELD_TODO_ID) or item.get("id", "").replace("todo_", "")
+                    content = fields.get(FIELD_CONTENT, "")
+                    score = item.get("score", 0.0)
+                    results.append((todo_id_val, content, score))
                 return results
                 
         except Exception as e:
@@ -1760,13 +1784,13 @@ class VikingDBBackend(IVectorStorageBackend):
         
         try:
             result = self._client.data_request(
-                path="/api/collection/del_data",
+                path="/api/vikingdb/data/delete",
                 data={
                     "collection_name": self._collection_name,
                     "ids": [f"todo_{todo_id}"],  # Use prefixed ID
                 }
             )
-            return result.get("code") == 0
+            return result.get("code") == "Success"
             
         except Exception as e:
             logger.exception(f"Failed to delete todo embedding: {e}")
