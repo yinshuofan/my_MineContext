@@ -757,13 +757,22 @@ class VikingDBBackend(IVectorStorageBackend):
             "IndexName": self._index_name,
             "VectorIndex": vector_index,
             # Add scalar index for filtering fields
+            # Note: All fields that need range/enumeration filtering must be included here
+            # - Range filtering (int64, float32): time timestamp fields
+            # - Enumeration filtering (string, int64, bool, list): identity and type fields
             "ScalarIndex": [
+                # Identity and type fields (enumeration filtering)
                 FIELD_DATA_TYPE,
                 FIELD_CONTEXT_TYPE,
                 FIELD_USER_ID,
                 FIELD_DEVICE_ID,
                 FIELD_AGENT_ID,
+                # Time timestamp fields (range filtering)
                 FIELD_CREATED_AT_TS,
+                FIELD_CREATE_TIME_TS,
+                FIELD_EVENT_TIME_TS,
+                FIELD_UPDATE_TIME_TS,
+                FIELD_LAST_CALL_TIME_TS,
             ],
             "Description": f"Index for {self._collection_name}",
         }
@@ -1445,8 +1454,13 @@ class VikingDBBackend(IVectorStorageBackend):
         # Fields that support range operator (must be in ScalarIndex and be int64/float32 type)
         # Based on VikingDB documentation: range operator only supports int64 and float32 fields
         # that are included in ScalarIndex
+        # All timestamp fields are now included in ScalarIndex in _create_index method
         RANGE_SUPPORTED_FIELDS = {
-            FIELD_CREATED_AT_TS,  # float32, in ScalarIndex
+            FIELD_CREATED_AT_TS,
+            FIELD_CREATE_TIME_TS,
+            FIELD_EVENT_TIME_TS,
+            FIELD_UPDATE_TIME_TS,
+            FIELD_LAST_CALL_TIME_TS,
         }
         
         # Add data type filter using "must" operator
