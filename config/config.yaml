@@ -247,6 +247,7 @@ storage:
 # Context consumption module
 # Set to false to disable all consumption components (tips, todos, activity, report)
 # This also prevents creation of todo collection in vector databases
+# 服务器模式下不应该开启消费组件。
 consumption:
   enabled: false
 
@@ -351,4 +352,4 @@ scheduler:
 
 # Intelligent completion service configuration
 completion:
-  enabled: true
+  enabled: false
