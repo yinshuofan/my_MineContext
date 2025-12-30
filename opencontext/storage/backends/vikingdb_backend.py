@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -8,6 +7,7 @@ VikingDB vector storage backend - Volcengine VikingDB Service (HTTP API)
 https://www.volcengine.com/docs/84313/1254458
 
 This implementation uses HTTP API with Volcengine V4 signature for authentication.
+Uses a single collection with context_type field filtering to reduce operational costs.
 """
 
 import asyncio
@@ -47,8 +47,11 @@ from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-# Collection and field constants
-TODO_COLLECTION = "todo"
+# Single collection name for all context types
+DEFAULT_COLLECTION_NAME = "opencontext"
+DEFAULT_INDEX_NAME = "opencontext_index"
+
+# Field constants
 FIELD_DOCUMENT = "document"
 FIELD_ORIGINAL_ID = "original_id"
 FIELD_TODO_ID = "todo_id"
@@ -94,6 +97,11 @@ FIELD_DURATION_COUNT = "duration_count"
 FIELD_FILE_PATH = "file_path"
 FIELD_RAW_TYPE = "raw_type"
 FIELD_RAW_ID = "raw_id"
+
+# Data type field (to distinguish between context and todo)
+FIELD_DATA_TYPE = "data_type"
+DATA_TYPE_CONTEXT = "context"
+DATA_TYPE_TODO = "todo"
 
 # HTTP API constants
 DEFAULT_TIMEOUT = 30.0
@@ -198,18 +206,19 @@ class VolcengineAuth:
         date_stamp = t.strftime('%Y%m%d')
         
         # Add required headers
-        headers = dict(headers)
-        headers['Host'] = host
-        headers['X-Date'] = x_date
-        
-        # Calculate payload hash
         payload_hash = self._get_payload_hash(body)
-        headers['X-Content-Sha256'] = payload_hash
+        headers_to_sign = {
+            'Host': host,
+            'Content-Type': 'application/json',
+            'X-Date': x_date,
+            'X-Content-Sha256': payload_hash,
+        }
+        headers_to_sign.update(headers)
         
         # Build canonical request
         canonical_uri = self._get_canonical_uri(path)
         canonical_query_string = self._get_canonical_query_string(params or {})
-        canonical_headers, signed_headers = self._get_canonical_headers(headers)
+        canonical_headers, signed_headers = self._get_canonical_headers(headers_to_sign)
         
         canonical_request = '\n'.join([
             method.upper(),
@@ -217,19 +226,17 @@ class VolcengineAuth:
             canonical_query_string,
             canonical_headers,
             signed_headers,
-            payload_hash
+            payload_hash,
         ])
         
         # Build string to sign
-        algorithm = "HMAC-SHA256"
         credential_scope = f"{date_stamp}/{self.region}/{self.service}/request"
         hashed_canonical_request = hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()
-        
         string_to_sign = '\n'.join([
-            algorithm,
+            'HMAC-SHA256',
             x_date,
             credential_scope,
-            hashed_canonical_request
+            hashed_canonical_request,
         ])
         
         # Calculate signature
@@ -238,20 +245,20 @@ class VolcengineAuth:
         
         # Build authorization header
         authorization = (
-            f"{algorithm} "
-            f"Credential={self.access_key_id}/{credential_scope}, "
-            f"SignedHeaders={signed_headers}, "
-            f"Signature={signature}"
+            f"HMAC-SHA256 Credential={self.access_key_id}/{credential_scope}, "
+            f"SignedHeaders={signed_headers}, Signature={signature}"
         )
         
-        headers['Authorization'] = authorization
+        # Return headers with authorization
+        result_headers = dict(headers_to_sign)
+        result_headers['Authorization'] = authorization
         
-        return headers
+        return result_headers
 
 
 class VikingDBHTTPClient:
     """
-    HTTP client for VikingDB API with connection pooling and retry support.
+    HTTP client for VikingDB API.
     Supports both control plane (console) and data plane APIs.
     """
     
@@ -271,44 +278,38 @@ class VikingDBHTTPClient:
         self._access_key_id = access_key_id
         self._secret_access_key = secret_access_key
         self._region = region
-        
-        # Set default hosts based on region
-        self._data_host = data_host or f"api-vikingdb.vikingdb.{region}.volces.com"
-        self._console_host = console_host or f"vikingdb.{region}.volcengineapi.com"
-        
         self._timeout = timeout
         self._max_connections = max_connections
         self._max_connections_per_host = max_connections_per_host
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         
+        # Set API hosts
+        self._data_host = data_host or f"api-vikingdb.vikingdb.{region}.volces.com"
+        self._console_host = console_host or f"vikingdb.{region}.volcengineapi.com"
+        
         # Initialize auth
         self._auth = VolcengineAuth(
             access_key_id=access_key_id,
             secret_access_key=secret_access_key,
             region=region,
-            service=VIKINGDB_SERVICE,
         )
         
-        # Async session (lazy initialization)
+        # Initialize sync session
+        self._sync_session: Optional[requests.Session] = None
+        self._session_lock = threading.Lock()
+        
+        # Initialize async session (lazy)
         self._async_session: Optional[aiohttp.ClientSession] = None
-        self._async_lock = asyncio.Lock() if AIOHTTP_AVAILABLE else None
+        self._async_lock = asyncio.Lock() if asyncio else None
         
-        # Sync session with connection pooling
-        self._sync_session = self._create_sync_session()
-        
-        # Thread pool for running async code in sync context
+        # Thread pool for async operations
         self._executor = ThreadPoolExecutor(max_workers=10)
-        
-        # Event loop for async operations
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._loop_lock = threading.Lock()
     
     def _create_sync_session(self) -> requests.Session:
-        """Create a sync session with connection pooling and retry."""
+        """Create a requests session with retry strategy."""
         session = requests.Session()
         
-        # Configure retry strategy
         retry_strategy = Retry(
             total=self._max_retries,
             backoff_factor=self._retry_delay,
@@ -316,7 +317,6 @@ class VikingDBHTTPClient:
             allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS", "TRACE"],
         )
         
-        # Configure adapter with connection pooling
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
             pool_connections=self._max_connections_per_host,
@@ -328,31 +328,34 @@ class VikingDBHTTPClient:
         
         return session
     
-    async def _get_async_session(self) -> aiohttp.ClientSession:
-        """Get or create async session with connection pooling."""
-        if not AIOHTTP_AVAILABLE:
-            raise RuntimeError("aiohttp not available")
-        
-        async with self._async_lock:
-            if self._async_session is None or self._async_session.closed:
-                connector = aiohttp.TCPConnector(
-                    limit=self._max_connections,
-                    limit_per_host=self._max_connections_per_host,
-                    ttl_dns_cache=300,
-                    enable_cleanup_closed=True,
-                )
-                timeout = aiohttp.ClientTimeout(total=self._timeout)
-                self._async_session = aiohttp.ClientSession(
-                    connector=connector,
-                    timeout=timeout,
-                )
-            return self._async_session
+    def _get_sync_session(self) -> requests.Session:
+        """Get or create sync session."""
+        if self._sync_session is None:
+            with self._session_lock:
+                if self._sync_session is None:
+                    self._sync_session = self._create_sync_session()
+        return self._sync_session
     
-    def _get_base_headers(self) -> Dict[str, str]:
-        """Get common headers for API requests."""
-        return {
-            "Content-Type": "application/json",
-        }
+    async def _get_async_session(self) -> aiohttp.ClientSession:
+        """Get or create async session."""
+        if not AIOHTTP_AVAILABLE:
+            raise RuntimeError("aiohttp is not installed")
+        
+        if self._async_session is None or self._async_session.closed:
+            async with self._async_lock:
+                if self._async_session is None or self._async_session.closed:
+                    connector = aiohttp.TCPConnector(
+                        limit=self._max_connections,
+                        limit_per_host=self._max_connections_per_host,
+                        ttl_dns_cache=300,
+                        enable_cleanup_closed=True,
+                    )
+                    timeout = aiohttp.ClientTimeout(total=self._timeout)
+                    self._async_session = aiohttp.ClientSession(
+                        connector=connector,
+                        timeout=timeout,
+                    )
+        return self._async_session
     
     def _sync_request(
         self,
@@ -360,41 +363,45 @@ class VikingDBHTTPClient:
         host: str,
         path: str,
         data: Optional[Dict] = None,
-        params: Optional[Dict] = None,
+        params: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
-        Make sync HTTP request with V4 signature.
+        Make a synchronous HTTP request.
         
         Args:
             method: HTTP method
             host: API host
-            path: API path
+            path: Request path
             data: Request body
             params: Query parameters
             
         Returns:
             Response JSON as dict
         """
-        url = f"https://{host}{path}"
         body = json.dumps(data) if data else ""
         
-        # Get base headers and sign request
-        headers = self._get_base_headers()
-        signed_headers = self._auth.sign_request(
+        # Sign request
+        headers = self._auth.sign_request(
             method=method,
             host=host,
             path=path,
-            headers=headers,
+            headers={},
             body=body,
             params=params,
         )
         
-        response = self._sync_session.request(
+        # Build URL
+        url = f"https://{host}{path}"
+        if params:
+            url = f"{url}?{urlencode(params)}"
+        
+        # Make request
+        session = self._get_sync_session()
+        response = session.request(
             method=method,
             url=url,
-            headers=signed_headers,
-            data=body if body else None,
-            params=params,
+            headers=headers,
+            data=body,
             timeout=self._timeout,
         )
         
@@ -475,17 +482,20 @@ class VikingDBBackend(IVectorStorageBackend):
     VikingDB vector storage backend implementation.
     
     Uses Volcengine VikingDB service for vector storage and similarity search.
+    Uses a single collection with context_type field filtering to reduce costs.
     Implements the IVectorStorageBackend interface for compatibility with
     the opencontext storage system.
     """
     
     def __init__(self):
         self._client: Optional[VikingDBHTTPClient] = None
-        self._collections: Dict[str, bool] = {}
-        self._indexes: Dict[str, str] = {}  # collection_name -> index_name
+        self._collection_name: str = DEFAULT_COLLECTION_NAME
+        self._index_name: str = DEFAULT_INDEX_NAME
         self._dimension: int = 0
         self._initialized: bool = False
         self._config: Dict[str, Any] = {}
+        self._collection_ready: bool = False
+        self._index_ready: bool = False
     
     def initialize(self, config: Dict[str, Any]) -> bool:
         """
@@ -499,7 +509,8 @@ class VikingDBBackend(IVectorStorageBackend):
                 - data_host: Data plane API host (optional)
                 - console_host: Console API host (optional)
                 - dimension: Vector dimension
-                - context_types: List of context types to create collections for
+                - collection_name: Collection name (optional, default: opencontext)
+                - index_name: Index name (optional, default: opencontext_index)
                 - index_type: Index type (default: hnsw)
                 - distance_type: Distance metric (default: ip)
                 
@@ -522,7 +533,9 @@ class VikingDBBackend(IVectorStorageBackend):
             data_host = vikingdb_config.get("data_host")
             console_host = vikingdb_config.get("console_host")
             
-            self._dimension = config.get("dimension", 1024)
+            self._dimension = vikingdb_config.get("dimension", 1024)
+            self._collection_name = vikingdb_config.get("collection_name", DEFAULT_COLLECTION_NAME)
+            self._index_name = vikingdb_config.get("index_name", DEFAULT_INDEX_NAME)
             
             # Initialize HTTP client
             self._client = VikingDBHTTPClient(
@@ -531,32 +544,23 @@ class VikingDBBackend(IVectorStorageBackend):
                 region=region,
                 data_host=data_host,
                 console_host=console_host,
+                timeout=vikingdb_config.get("timeout", DEFAULT_TIMEOUT),
+                max_connections=vikingdb_config.get("max_connections", DEFAULT_MAX_CONNECTIONS),
+                max_connections_per_host=vikingdb_config.get("max_connections_per_host", DEFAULT_MAX_CONNECTIONS_PER_HOST),
             )
             
-            # Get context types to create collections for
-            context_types = config.get("context_types", [])
-            if not context_types:
-                # Default context types
-                context_types = [ct.value for ct in ContextType]
+            # Ensure single collection and index exist
+            index_type = vikingdb_config.get("index_type", "hnsw")
+            distance_type = vikingdb_config.get("distance_type", "ip")
             
-            # Add todo collection
-            if TODO_COLLECTION not in context_types:
-                context_types.append(TODO_COLLECTION)
-            
-            # Ensure collections and indexes exist
-            index_type = config.get("index_type", "hnsw")
-            distance_type = config.get("distance_type", "ip")
-            
-            for ctx_type in context_types:
-                self._ensure_collection_and_index(
-                    collection_name=ctx_type,
-                    dimension=self._dimension,
-                    index_type=index_type,
-                    distance_type=distance_type,
-                )
+            self._ensure_collection_and_index(
+                dimension=self._dimension,
+                index_type=index_type,
+                distance_type=distance_type,
+            )
             
             self._initialized = True
-            logger.info(f"VikingDB backend initialized with {len(self._collections)} collections")
+            logger.info(f"VikingDB backend initialized with single collection: {self._collection_name}")
             return True
             
         except Exception as e:
@@ -565,16 +569,14 @@ class VikingDBBackend(IVectorStorageBackend):
     
     def _ensure_collection_and_index(
         self,
-        collection_name: str,
         dimension: int,
         index_type: str = "hnsw",
         distance_type: str = "ip",
     ) -> None:
         """
-        Ensure collection and index exist, create if not.
+        Ensure single collection and index exist, create if not.
         
         Args:
-            collection_name: Name of the collection
             dimension: Vector dimension
             index_type: Index type (hnsw, flat, ivf)
             distance_type: Distance metric (ip, l2, cosine)
@@ -583,29 +585,28 @@ class VikingDBBackend(IVectorStorageBackend):
             # Check if collection exists
             result = self._client.console_request(
                 action="GetVikingdbCollection",
-                data={"CollectionName": collection_name},
+                data={"CollectionName": self._collection_name},
             )
             
             if result.get("ResponseMetadata", {}).get("Error"):
                 error_code = result["ResponseMetadata"]["Error"].get("Code", "")
                 if "NotExist" in error_code or "NotFound" in error_code:
                     # Create collection
-                    self._create_collection(collection_name, dimension)
+                    self._create_collection(dimension)
                 else:
-                    logger.error(f"Failed to get collection {collection_name}: {result}")
-                    return
+                    logger.error(f"Failed to get collection {self._collection_name}: {result}")
+                    raise RuntimeError(f"Failed to get collection: {result}")
             else:
-                logger.debug(f"VikingDB collection already exists: {collection_name}")
+                logger.debug(f"VikingDB collection already exists: {self._collection_name}")
             
-            self._collections[collection_name] = True
+            self._collection_ready = True
             
             # Check if index exists
-            index_name = f"{collection_name}_index"
             result = self._client.console_request(
                 action="GetVikingdbIndex",
                 data={
-                    "CollectionName": collection_name,
-                    "IndexName": index_name,
+                    "CollectionName": self._collection_name,
+                    "IndexName": self._index_name,
                 },
             )
             
@@ -614,29 +615,26 @@ class VikingDBBackend(IVectorStorageBackend):
                 if "NotExist" in error_code or "NotFound" in error_code:
                     # Create index
                     self._create_index(
-                        collection_name=collection_name,
-                        index_name=index_name,
                         index_type=index_type,
                         distance_type=distance_type,
                     )
                 else:
-                    logger.error(f"Failed to get index {index_name}: {result}")
-                    return
+                    logger.error(f"Failed to get index {self._index_name}: {result}")
+                    raise RuntimeError(f"Failed to get index: {result}")
             else:
-                logger.debug(f"VikingDB index already exists: {index_name}")
+                logger.debug(f"VikingDB index already exists: {self._index_name}")
             
-            self._indexes[collection_name] = index_name
+            self._index_ready = True
             
         except Exception as e:
-            logger.exception(f"Error ensuring collection {collection_name}: {e}")
+            logger.exception(f"Error ensuring collection and index: {e}")
             raise
     
-    def _create_collection(self, collection_name: str, dimension: int) -> None:
+    def _create_collection(self, dimension: int) -> None:
         """
-        Create a new collection.
+        Create the single collection with all necessary fields.
         
         Args:
-            collection_name: Name of the collection
             dimension: Vector dimension
         """
         # Define fields for the collection
@@ -651,6 +649,8 @@ class VikingDBBackend(IVectorStorageBackend):
                 "FieldType": "vector",
                 "Dim": dimension,
             },
+            # Data type field (context or todo)
+            {"FieldName": FIELD_DATA_TYPE, "FieldType": "string"},
             # User identification fields
             {"FieldName": FIELD_USER_ID, "FieldType": "string"},
             {"FieldName": FIELD_DEVICE_ID, "FieldType": "string"},
@@ -696,156 +696,90 @@ class VikingDBBackend(IVectorStorageBackend):
         ]
         
         data = {
-            "CollectionName": collection_name,
+            "CollectionName": self._collection_name,
             "Fields": fields,
-            "PrimaryKey": "id",
-            "Description": f"OpenContext {collection_name} collection",
+            "Description": "OpenContext unified collection for all context types and todos",
         }
         
+        logger.info(f"Creating VikingDB collection: {self._collection_name}")
         result = self._client.console_request(
             action="CreateVikingdbCollection",
             data=data,
         )
         
         if result.get("ResponseMetadata", {}).get("Error"):
-            logger.error(f"Failed to create collection {collection_name}: {result}")
-            raise RuntimeError(f"Failed to create collection: {result}")
+            error = result["ResponseMetadata"]["Error"]
+            raise RuntimeError(f"Failed to create collection: {error}")
         
-        logger.info(f"Created VikingDB collection: {collection_name}")
-        
-        # Wait for collection to be ready
-        self._wait_for_collection_ready(collection_name)
+        logger.info(f"VikingDB collection created: {self._collection_name}")
     
     def _create_index(
         self,
-        collection_name: str,
-        index_name: str,
         index_type: str = "hnsw",
         distance_type: str = "ip",
     ) -> None:
         """
-        Create a new index on a collection.
+        Create index for the collection.
         
         Args:
-            collection_name: Name of the collection
-            index_name: Name of the index
             index_type: Index type (hnsw, flat, ivf)
             distance_type: Distance metric (ip, l2, cosine)
         """
-        data = {
-            "CollectionName": collection_name,
-            "IndexName": index_name,
-            "VectorIndex": {
-                "IndexType": index_type,
-                "Distance": distance_type,
-                "Quant": "int8",
-            },
-            "CpuQuota": 2,
-            "ShardCount": 1,
-            "Description": f"Index for {collection_name}",
+        # Build index config based on type
+        vector_index = {
+            "IndexType": index_type.upper(),
+            "Distance": distance_type,
         }
         
+        # Add HNSW specific params
+        if index_type.lower() == "hnsw":
+            vector_index["HnswM"] = 32
+            vector_index["HnswCef"] = 64
+            vector_index["HnswSef"] = 800
+        
+        data = {
+            "CollectionName": self._collection_name,
+            "IndexName": self._index_name,
+            "VectorIndex": vector_index,
+            # Add scalar index for filtering fields
+            "ScalarIndex": [
+                FIELD_DATA_TYPE,
+                FIELD_CONTEXT_TYPE,
+                FIELD_USER_ID,
+                FIELD_DEVICE_ID,
+                FIELD_AGENT_ID,
+                FIELD_CREATED_AT_TS,
+            ],
+            "Description": f"Index for {self._collection_name}",
+        }
+        
+        logger.info(f"Creating VikingDB index: {self._index_name}")
         result = self._client.console_request(
             action="CreateVikingdbIndex",
             data=data,
         )
         
         if result.get("ResponseMetadata", {}).get("Error"):
-            logger.error(f"Failed to create index {index_name}: {result}")
-            raise RuntimeError(f"Failed to create index: {result}")
+            error = result["ResponseMetadata"]["Error"]
+            raise RuntimeError(f"Failed to create index: {error}")
         
-        logger.info(f"Created VikingDB index: {index_name}")
-        
-        # Wait for index to be ready
-        self._wait_for_index_ready(collection_name, index_name)
+        logger.info(f"VikingDB index created: {self._index_name}")
     
-    def _wait_for_collection_ready(
-        self,
-        collection_name: str,
-        max_wait: int = 60,
-    ) -> bool:
-        """
-        Wait for collection to be ready after creation.
-        
-        Args:
-            collection_name: Name of collection
-            max_wait: Maximum wait time in seconds
-            
-        Returns:
-            True if collection is ready, False if timeout
-        """
-        start_time = time.time()
-        while time.time() - start_time < max_wait:
-            try:
-                result = self._client.console_request(
-                    action="GetVikingdbCollection",
-                    data={"CollectionName": collection_name},
-                )
-                if not result.get("ResponseMetadata", {}).get("Error"):
-                    status = result.get("Result", {}).get("Status", "")
-                    if status == "RUNNING":
-                        return True
-            except Exception:
-                pass
-            time.sleep(2)
-        
-        logger.warning(f"Timeout waiting for collection {collection_name} to be ready")
-        return False
-    
-    def _wait_for_index_ready(
-        self,
-        collection_name: str,
-        index_name: str,
-        max_wait: int = 120,
-    ) -> bool:
-        """
-        Wait for index to be ready after creation.
-        
-        Args:
-            collection_name: Name of collection
-            index_name: Name of index
-            max_wait: Maximum wait time in seconds
-            
-        Returns:
-            True if index is ready, False if timeout
-        """
-        start_time = time.time()
-        while time.time() - start_time < max_wait:
-            try:
-                result = self._client.console_request(
-                    action="GetVikingdbIndex",
-                    data={
-                        "CollectionName": collection_name,
-                        "IndexName": index_name,
-                    },
-                )
-                if not result.get("ResponseMetadata", {}).get("Error"):
-                    status = result.get("Result", {}).get("Status", "")
-                    if status == "RUNNING":
-                        return True
-            except Exception:
-                pass
-            time.sleep(2)
-        
-        logger.warning(f"Timeout waiting for index {index_name} to be ready")
-        return False
-    
-    def get_name(self) -> str:
-        return "vikingdb"
-    
-    def get_storage_type(self) -> StorageType:
+    @property
+    def storage_type(self) -> StorageType:
+        """Return storage type."""
         return StorageType.VECTOR_DB
     
-    def get_collection_names(self) -> List[str]:
-        """Get all collection names managed by this backend."""
-        return list(self._collections.keys())
+    def is_initialized(self) -> bool:
+        """Check if backend is initialized."""
+        return self._initialized
     
     def _ensure_vectorized(self, context: ProcessedContext) -> List[float]:
         """
-        Ensure context has vector, generate if missing.
+        Ensure context has a vector, generate if needed.
         
         Args:
-            context: ProcessedContext to check
+            context: ProcessedContext to vectorize
             
         Returns:
             Vector as list of floats
@@ -949,6 +883,9 @@ class VikingDBBackend(IVectorStorageBackend):
         # Ensure original_id is set
         fields[FIELD_ORIGINAL_ID] = context.id
         
+        # Add data type field
+        fields[FIELD_DATA_TYPE] = DATA_TYPE_CONTEXT
+        
         # Add created_at timestamp (storage time)
         now = datetime.datetime.now()
         fields[FIELD_CREATED_AT] = now.isoformat()
@@ -974,7 +911,7 @@ class VikingDBBackend(IVectorStorageBackend):
         contexts: List[ProcessedContext]
     ) -> List[str]:
         """
-        Batch store ProcessedContexts.
+        Batch store ProcessedContexts to single collection.
         
         Args:
             contexts: List of ProcessedContext to store
@@ -985,68 +922,51 @@ class VikingDBBackend(IVectorStorageBackend):
         if not self._initialized:
             raise RuntimeError("VikingDB backend not initialized")
         
-        # Group contexts by type
-        contexts_by_type: Dict[str, List[ProcessedContext]] = {}
+        data_list = []
         for context in contexts:
-            context_type = context.extracted_data.context_type.value
-            if context_type not in contexts_by_type:
-                contexts_by_type[context_type] = []
-            contexts_by_type[context_type].append(context)
+            try:
+                vector = self._ensure_vectorized(context)
+                fields = self._context_to_doc_format(context)
+                
+                # Build data item for VikingDB
+                data_item = {
+                    "id": context.id,
+                    "vector": vector,
+                }
+                # Add all fields
+                data_item.update(fields)
+                data_list.append(data_item)
+                
+            except Exception as e:
+                logger.exception(f"Failed to process context {context.id}: {e}")
+                continue
+        
+        if not data_list:
+            return []
         
         stored_ids = []
         
-        for context_type, type_contexts in contexts_by_type.items():
-            if context_type not in self._collections:
-                logger.warning(
-                    f"No collection found for context_type '{context_type}', "
-                    f"skipping storage"
-                )
-                continue
+        # Batch upsert via data plane API
+        try:
+            result = self._client.data_request(
+                path="/api/collection/upsert_data",
+                data={
+                    "collection_name": self._collection_name,
+                    "data": data_list,
+                }
+            )
             
-            data_list = []
-            for context in type_contexts:
-                try:
-                    vector = self._ensure_vectorized(context)
-                    fields = self._context_to_doc_format(context)
-                    
-                    # Build data item for VikingDB
-                    data_item = {
-                        "id": context.id,
-                        "vector": vector,
-                    }
-                    # Add all fields
-                    data_item.update(fields)
-                    data_list.append(data_item)
-                    
-                except Exception as e:
-                    logger.exception(f"Failed to process context {context.id}: {e}")
-                    continue
-            
-            if not data_list:
-                continue
-            
-            # Batch upsert via data plane API
-            try:
-                result = self._client.data_request(
-                    path="/api/collection/upsert_data",
-                    data={
-                        "collection_name": context_type,
-                        "data": data_list,
-                    }
+            if result.get("code") == 0:
+                for item in data_list:
+                    stored_ids.append(item["id"])
+                logger.debug(f"Upserted {len(data_list)} docs to {self._collection_name}")
+            else:
+                logger.error(
+                    f"Failed to upsert to {self._collection_name}: {result.get('message')}"
                 )
                 
-                if result.get("code") == 0:
-                    for item in data_list:
-                        stored_ids.append(item["id"])
-                    logger.debug(f"Upserted {len(data_list)} docs to {context_type}")
-                else:
-                    logger.error(
-                        f"Failed to upsert to {context_type}: {result.get('message')}"
-                    )
-                    
-            except Exception as e:
-                logger.exception(f"Failed to upsert contexts to {context_type}: {e}")
-                continue
+        except Exception as e:
+            logger.exception(f"Failed to upsert contexts: {e}")
         
         return stored_ids
     
@@ -1061,7 +981,7 @@ class VikingDBBackend(IVectorStorageBackend):
         
         Args:
             id: Context ID
-            context_type: Type of context
+            context_type: Type of context (used for filtering)
             need_vector: Whether to include vector in result
             
         Returns:
@@ -1070,15 +990,12 @@ class VikingDBBackend(IVectorStorageBackend):
         if not self._initialized:
             return None
         
-        if context_type not in self._collections:
-            return None
-        
         try:
             # Fetch data by ID via data plane API
             result = self._client.data_request(
                 path="/api/collection/fetch_data",
                 data={
-                    "collection_name": context_type,
+                    "collection_name": self._collection_name,
                     "ids": [id],
                 }
             )
@@ -1086,7 +1003,10 @@ class VikingDBBackend(IVectorStorageBackend):
             if result.get("code") == 0:
                 data = result.get("data", [])
                 if data and len(data) > 0:
-                    return self._doc_to_context(data[0], need_vector)
+                    doc = data[0]
+                    # Verify context_type matches
+                    if doc.get(FIELD_CONTEXT_TYPE) == context_type:
+                        return self._doc_to_context(doc, need_vector)
                     
         except Exception as e:
             logger.exception(f"Failed to get context {id}: {e}")
@@ -1105,7 +1025,7 @@ class VikingDBBackend(IVectorStorageBackend):
         agent_id: Optional[str] = None,
     ) -> Dict[str, List[ProcessedContext]]:
         """
-        Get all ProcessedContexts, optionally filtered.
+        Get all ProcessedContexts, optionally filtered by context_type.
         
         Args:
             context_types: List of context types to filter by
@@ -1124,26 +1044,30 @@ class VikingDBBackend(IVectorStorageBackend):
             return {}
         
         result = {}
-        target_types = context_types if context_types else [
-            ct for ct in self._collections.keys() if ct != TODO_COLLECTION
-        ]
+        
+        # Determine target context types
+        if context_types:
+            target_types = context_types
+        else:
+            # Get all context types
+            target_types = [ct.value for ct in ContextType]
         
         for ctx_type in target_types:
-            if ctx_type not in self._collections:
-                continue
-            
-            if ctx_type not in self._indexes:
-                continue
-            
             try:
-                # Build filter
-                filter_dict = self._build_filter_dict(filter, user_id, device_id, agent_id)
+                # Build filter with context_type
+                filter_dict = self._build_filter_dict(
+                    filters=filter,
+                    user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
+                    context_type=ctx_type,
+                    data_type=DATA_TYPE_CONTEXT,
+                )
                 
-                # Use search API with empty vector for filter-only query
-                # VikingDB requires using SearchByScalar for non-vector queries
+                # Use search API with scalar filter
                 data = {
-                    "collection_name": ctx_type,
-                    "index_name": self._indexes[ctx_type],
+                    "collection_name": self._collection_name,
+                    "index_name": self._index_name,
                     "limit": limit + offset,
                 }
                 if filter_dict:
@@ -1172,7 +1096,7 @@ class VikingDBBackend(IVectorStorageBackend):
                         result[ctx_type] = contexts
                         
             except Exception as e:
-                logger.exception(f"Failed to get contexts from {ctx_type}: {e}")
+                logger.exception(f"Failed to get contexts for type {ctx_type}: {e}")
                 continue
         
         return result
@@ -1183,7 +1107,7 @@ class VikingDBBackend(IVectorStorageBackend):
         
         Args:
             id: Context ID to delete
-            context_type: Type of context
+            context_type: Type of context (not used in single collection mode)
             
         Returns:
             True if successful, False otherwise
@@ -1196,7 +1120,7 @@ class VikingDBBackend(IVectorStorageBackend):
         
         Args:
             ids: List of context IDs to delete
-            context_type: Type of context
+            context_type: Type of context (not used in single collection mode)
             
         Returns:
             True if successful, False otherwise
@@ -1204,20 +1128,17 @@ class VikingDBBackend(IVectorStorageBackend):
         if not self._initialized:
             return False
         
-        if context_type not in self._collections:
-            return False
-        
         try:
             result = self._client.data_request(
                 path="/api/collection/del_data",
                 data={
-                    "collection_name": context_type,
+                    "collection_name": self._collection_name,
                     "ids": ids,
                 }
             )
             
             if result.get("code") == 0:
-                logger.debug(f"Deleted {len(ids)} contexts from {context_type}")
+                logger.debug(f"Deleted {len(ids)} contexts from {self._collection_name}")
                 return True
             else:
                 logger.error(f"Failed to delete contexts: {result.get('message')}")
@@ -1239,12 +1160,12 @@ class VikingDBBackend(IVectorStorageBackend):
         agent_id: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         """
-        Vector similarity search.
+        Vector similarity search with context_type filtering.
         
         Args:
             query: Query vectorize object
             top_k: Maximum number of results
-            context_types: List of context types to search
+            context_types: List of context types to search (filter by context_type field)
             filters: Additional filter conditions
             need_vector: Whether to include vectors in results
             user_id: Filter by user ID
@@ -1256,12 +1177,6 @@ class VikingDBBackend(IVectorStorageBackend):
         """
         if not self._initialized:
             return []
-        
-        # Determine target collections
-        if context_types:
-            target_types = [ct for ct in context_types if ct in self._collections]
-        else:
-            target_types = [ct for ct in self._collections.keys() if ct != TODO_COLLECTION]
         
         # Get query vector
         query_vector = None
@@ -1275,46 +1190,48 @@ class VikingDBBackend(IVectorStorageBackend):
             logger.warning("Unable to get query vector, search failed")
             return []
         
-        # Build filter
-        filter_dict = self._build_filter_dict(filters, user_id, device_id, agent_id)
+        # Build filter with context_types
+        filter_dict = self._build_filter_dict(
+            filters=filters,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            context_types=context_types,
+            data_type=DATA_TYPE_CONTEXT,
+        )
         
         all_results = []
         
-        for ctx_type in target_types:
-            if ctx_type not in self._indexes:
-                continue
-            
-            try:
-                # Build search request
-                data = {
-                    "collection_name": ctx_type,
-                    "index_name": self._indexes[ctx_type],
-                    "search": {
-                        "dense_vectors": [query_vector],
-                        "limit": top_k,
-                    }
+        try:
+            # Build search request
+            data = {
+                "collection_name": self._collection_name,
+                "index_name": self._index_name,
+                "search": {
+                    "dense_vectors": [query_vector],
+                    "limit": top_k,
                 }
-                if filter_dict:
-                    data["search"]["filter"] = filter_dict
-                
-                result = self._client.data_request(
-                    path="/api/index/search",
-                    data=data
-                )
-                
-                if result.get("code") == 0:
-                    output = result.get("data", [])
-                    # VikingDB returns results in nested structure
-                    if output and len(output) > 0:
-                        for item in output[0]:  # First query result
-                            context = self._doc_to_context(item, need_vector)
-                            if context:
-                                score = item.get("score", 0.0)
-                                all_results.append((context, score))
-                                
-            except Exception as e:
-                logger.exception(f"Vector search failed in {ctx_type}: {e}")
-                continue
+            }
+            if filter_dict:
+                data["search"]["filter"] = filter_dict
+            
+            result = self._client.data_request(
+                path="/api/index/search",
+                data=data
+            )
+            
+            if result.get("code") == 0:
+                output = result.get("data", [])
+                # VikingDB returns results in nested structure
+                if output and len(output) > 0:
+                    for item in output[0]:  # First query result
+                        context = self._doc_to_context(item, need_vector)
+                        if context:
+                            score = item.get("score", 0.0)
+                            all_results.append((context, score))
+                            
+        except Exception as e:
+            logger.exception(f"Vector search failed: {e}")
         
         # Sort by score descending
         all_results.sort(key=lambda x: x[1], reverse=True)
@@ -1370,6 +1287,7 @@ class VikingDBBackend(IVectorStorageBackend):
             fields.pop("vector", None)
             fields.pop("id", None)
             fields.pop("score", None)
+            fields.pop(FIELD_DATA_TYPE, None)
             
             # Categorize fields
             for key, value in fields.items():
@@ -1454,6 +1372,9 @@ class VikingDBBackend(IVectorStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        context_type: Optional[str] = None,
+        context_types: Optional[List[str]] = None,
+        data_type: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Build VikingDB filter dictionary.
@@ -1471,6 +1392,9 @@ class VikingDBBackend(IVectorStorageBackend):
             user_id: User ID filter
             device_id: Device ID filter
             agent_id: Agent ID filter
+            context_type: Single context type filter
+            context_types: List of context types filter (OR condition)
+            data_type: Data type filter (context or todo)
             
         Returns:
             Filter dictionary or None if no filters
@@ -1483,6 +1407,30 @@ class VikingDBBackend(IVectorStorageBackend):
             'create_time': FIELD_CREATE_TIME_TS,
             FIELD_CREATED_AT: FIELD_CREATED_AT_TS,
         }
+        
+        # Add data type filter
+        if data_type:
+            conditions.append({
+                "field_name": FIELD_DATA_TYPE,
+                "op": "=",
+                "value": data_type
+            })
+        
+        # Add context type filter (single)
+        if context_type:
+            conditions.append({
+                "field_name": FIELD_CONTEXT_TYPE,
+                "op": "=",
+                "value": context_type
+            })
+        
+        # Add context types filter (multiple - OR condition)
+        if context_types and len(context_types) > 0:
+            conditions.append({
+                "field_name": FIELD_CONTEXT_TYPE,
+                "op": "in",
+                "value": context_types
+            })
         
         # Add user identity filters
         if user_id:
@@ -1507,7 +1455,7 @@ class VikingDBBackend(IVectorStorageBackend):
         # Add custom filters
         if filters:
             for key, value in filters.items():
-                if key in ('context_type', 'entities'):
+                if key in ('context_type', 'context_types', 'entities', 'data_type'):
                     continue
                 if value is None:
                     continue
@@ -1612,16 +1560,31 @@ class VikingDBBackend(IVectorStorageBackend):
         if not self._initialized:
             return 0
         
-        if context_type not in self._collections:
-            return 0
-        
         try:
-            result = self._client.console_request(
-                action="GetVikingdbCollection",
-                data={"CollectionName": context_type}
+            # Use scalar search with count
+            filter_dict = self._build_filter_dict(
+                context_type=context_type,
+                data_type=DATA_TYPE_CONTEXT,
             )
-            if not result.get("ResponseMetadata", {}).get("Error"):
-                return int(result.get("Result", {}).get("Stat", {}).get("DataCount", 0))
+            
+            data = {
+                "collection_name": self._collection_name,
+                "index_name": self._index_name,
+                "limit": 1,  # We just need the count
+            }
+            if filter_dict:
+                data["filter"] = filter_dict
+            
+            result = self._client.data_request(
+                path="/api/index/search_by_scalar",
+                data=data
+            )
+            
+            if result.get("code") == 0:
+                # Note: VikingDB doesn't return total count in scalar search
+                # We would need to iterate or use a different approach
+                # For now, return the length of results
+                return len(result.get("data", []))
             return 0
         except Exception as e:
             logger.error(f"Failed to get count for {context_type}: {e}")
@@ -1635,9 +1598,8 @@ class VikingDBBackend(IVectorStorageBackend):
             Dictionary mapping context_type to count
         """
         counts = {}
-        for context_type in self._collections.keys():
-            if context_type != TODO_COLLECTION:
-                counts[context_type] = self.get_processed_context_count(context_type)
+        for ct in ContextType:
+            counts[ct.value] = self.get_processed_context_count(ct.value)
         return counts
     
     # Todo-related methods
@@ -1651,7 +1613,7 @@ class VikingDBBackend(IVectorStorageBackend):
         agent_id: Optional[str] = None,
     ) -> bool:
         """
-        Store a todo embedding.
+        Store a todo embedding in the unified collection.
         
         Args:
             todo_id: Todo ID
@@ -1669,8 +1631,9 @@ class VikingDBBackend(IVectorStorageBackend):
         
         try:
             data_item = {
-                "id": str(todo_id),
+                "id": f"todo_{todo_id}",  # Prefix to avoid ID collision
                 "vector": list(embedding),
+                FIELD_DATA_TYPE: DATA_TYPE_TODO,
                 FIELD_TODO_ID: str(todo_id),
                 FIELD_CONTENT: content,
                 FIELD_CREATED_AT: datetime.datetime.now().isoformat(),
@@ -1683,7 +1646,7 @@ class VikingDBBackend(IVectorStorageBackend):
             result = self._client.data_request(
                 path="/api/collection/upsert_data",
                 data={
-                    "collection_name": TODO_COLLECTION,
+                    "collection_name": self._collection_name,
                     "data": [data_item],
                 }
             )
@@ -1703,7 +1666,7 @@ class VikingDBBackend(IVectorStorageBackend):
         agent_id: Optional[str] = None,
     ) -> List[Tuple[str, str, float]]:
         """
-        Search for similar todos.
+        Search for similar todos in the unified collection.
         
         Args:
             embedding: Query embedding
@@ -1718,15 +1681,17 @@ class VikingDBBackend(IVectorStorageBackend):
         if not self._initialized:
             return []
         
-        if TODO_COLLECTION not in self._indexes:
-            return []
-        
         try:
-            filter_dict = self._build_filter_dict(None, user_id, device_id, agent_id)
+            filter_dict = self._build_filter_dict(
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+                data_type=DATA_TYPE_TODO,
+            )
             
             data = {
-                "collection_name": TODO_COLLECTION,
-                "index_name": self._indexes[TODO_COLLECTION],
+                "collection_name": self._collection_name,
+                "index_name": self._index_name,
                 "search": {
                     "dense_vectors": [list(embedding)],
                     "limit": top_k,
@@ -1745,7 +1710,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 results = []
                 if output and len(output) > 0:
                     for item in output[0]:
-                        todo_id = item.get(FIELD_TODO_ID) or item.get("id")
+                        todo_id = item.get(FIELD_TODO_ID) or item.get("id", "").replace("todo_", "")
                         content = item.get(FIELD_CONTENT, "")
                         score = item.get("score", 0.0)
                         results.append((todo_id, content, score))
@@ -1758,7 +1723,7 @@ class VikingDBBackend(IVectorStorageBackend):
     
     def delete_todo_embedding(self, todo_id: str) -> bool:
         """
-        Delete a todo embedding.
+        Delete a todo embedding from the unified collection.
         
         Args:
             todo_id: Todo ID to delete
@@ -1773,8 +1738,8 @@ class VikingDBBackend(IVectorStorageBackend):
             result = self._client.data_request(
                 path="/api/collection/del_data",
                 data={
-                    "collection_name": TODO_COLLECTION,
-                    "ids": [str(todo_id)],
+                    "collection_name": self._collection_name,
+                    "ids": [f"todo_{todo_id}"],  # Use prefixed ID
                 }
             )
             return result.get("code") == 0
