@@ -1358,6 +1358,11 @@ class VikingDBBackend(IVectorStorageBackend):
             fields.pop("score", None)
             fields.pop(FIELD_DATA_TYPE, None)
             
+            # Time fields that should be datetime
+            TIME_FIELDS = {
+                'create_time', 'event_time', 'update_time', 'last_call_time'
+            }
+            
             # Categorize fields
             for key, value in fields.items():
                 if key.endswith("_ts"):
@@ -1370,6 +1375,20 @@ class VikingDBBackend(IVectorStorageBackend):
                         val = json.loads(value)
                     except (json.JSONDecodeError, TypeError):
                         pass
+                
+                # Handle time fields - skip invalid values like 'default'
+                if key in TIME_FIELDS:
+                    if isinstance(val, str):
+                        # Skip invalid time values
+                        if val in ('default', '', 'null', 'None'):
+                            continue
+                        # Try to parse ISO format datetime string
+                        try:
+                            val = datetime.datetime.fromisoformat(val.replace('Z', '+00:00'))
+                        except (ValueError, TypeError):
+                            # If parsing fails, skip this field
+                            logger.warning(f"Invalid datetime value for field '{key}': {val}")
+                            continue
                 
                 if key in extracted_data_field_names:
                     extracted_data_dict[key] = val
