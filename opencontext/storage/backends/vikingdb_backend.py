@@ -1442,6 +1442,13 @@ class VikingDBBackend(IVectorStorageBackend):
             FIELD_CREATED_AT: FIELD_CREATED_AT_TS,
         }
         
+        # Fields that support range operator (must be in ScalarIndex and be int64/float32 type)
+        # Based on VikingDB documentation: range operator only supports int64 and float32 fields
+        # that are included in ScalarIndex
+        RANGE_SUPPORTED_FIELDS = {
+            FIELD_CREATED_AT_TS,  # float32, in ScalarIndex
+        }
+        
         # Add data type filter using "must" operator
         if data_type:
             conditions.append({
@@ -1498,31 +1505,46 @@ class VikingDBBackend(IVectorStorageBackend):
                 filter_key = TIME_FIELD_MAPPING.get(key, key)
                 
                 if isinstance(value, dict):
-                    # Handle comparison operators using "range" operator
-                    range_filter = {
-                        "op": "range",
-                        "field": filter_key,
-                    }
-                    op_mapping = {
-                        '$gte': 'gte',
-                        '$lte': 'lte',
-                        '$gt': 'gt',
-                        '$lt': 'lt',
-                    }
-                    has_range = False
-                    for op, range_key in op_mapping.items():
-                        if op in value:
-                            op_value = value[op]
-                            if is_time_field:
-                                ts = self._parse_time_to_timestamp(op_value)
-                                if ts is not None:
-                                    range_filter[range_key] = ts
+                    # Check if this field supports range operator
+                    supports_range = filter_key in RANGE_SUPPORTED_FIELDS
+                    
+                    if supports_range:
+                        # Handle comparison operators using "range" operator
+                        range_filter = {
+                            "op": "range",
+                            "field": filter_key,
+                        }
+                        op_mapping = {
+                            '$gte': 'gte',
+                            '$lte': 'lte',
+                            '$gt': 'gt',
+                            '$lt': 'lt',
+                        }
+                        has_range = False
+                        for op, range_key in op_mapping.items():
+                            if op in value:
+                                op_value = value[op]
+                                if is_time_field:
+                                    ts = self._parse_time_to_timestamp(op_value)
+                                    if ts is not None:
+                                        range_filter[range_key] = ts
+                                        has_range = True
+                                else:
+                                    range_filter[range_key] = op_value
                                     has_range = True
-                            else:
-                                range_filter[range_key] = op_value
-                                has_range = True
-                    if has_range:
-                        conditions.append(range_filter)
+                        if has_range:
+                            conditions.append(range_filter)
+                    else:
+                        # For fields that don't support range, skip range operators
+                        # and log a warning
+                        range_ops = {'$gte', '$lte', '$gt', '$lt'}
+                        if any(op in value for op in range_ops):
+                            logger.warning(
+                                f"Field '{filter_key}' does not support range operator. "
+                                f"Only fields in ScalarIndex with int64/float32 type support range. "
+                                f"Skipping range filter for this field."
+                            )
+                    
                     # Handle equality operators
                     if '$eq' in value:
                         conditions.append({
@@ -1544,10 +1566,10 @@ class VikingDBBackend(IVectorStorageBackend):
                         "conds": value
                     })
                 elif isinstance(value, str):
-                    if is_time_field:
+                    if is_time_field and filter_key in RANGE_SUPPORTED_FIELDS:
                         ts = self._parse_time_to_timestamp(value)
                         if ts is not None:
-                            # For exact time match, use range
+                            # For exact time match, use range (only for supported fields)
                             conditions.append({
                                 "op": "range",
                                 "field": filter_key,
