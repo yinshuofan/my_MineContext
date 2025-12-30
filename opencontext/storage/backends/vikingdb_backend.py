@@ -540,8 +540,8 @@ class VikingDBBackend(IVectorStorageBackend):
                 context_types = [ct.value for ct in ContextType]
             
             # Add todo collection
-            if TODO_COLLECTION not in context_types:
-                context_types.append(TODO_COLLECTION)
+            # if TODO_COLLECTION not in context_types:
+            #     context_types.append(TODO_COLLECTION)
             
             # Ensure collections and indexes exist
             index_type = config.get("index_type", "hnsw")
