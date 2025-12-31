@@ -63,11 +63,9 @@ class TextChatCapture(BaseCaptureComponent):
 
             self._redis_cache = get_redis_cache(redis_cfg)
 
-            if not self._redis_cache.is_connected():
-                logger.error("TextChatCapture: Redis connection failed. Redis is required for stateless mode.")
-                raise RuntimeError("Redis connection required for TextChatCapture in stateless mode")
-
-            logger.info("TextChatCapture: Redis cache connected for stateless operation")
+            # 注意：is_connected() 现在是异步的，初始化时先创建实例
+            # 连接将在第一次异步操作时自动建立
+            logger.info("TextChatCapture: Redis cache configured for stateless operation")
             self._initialized = True
             return True
 
@@ -78,9 +76,11 @@ class TextChatCapture(BaseCaptureComponent):
             logger.error(f"TextChatCapture: Failed to initialize Redis: {e}")
             raise RuntimeError(f"Redis initialization failed: {e}") from e
 
-    def _ensure_redis(self):
-        """确保 Redis 连接可用"""
-        if not self._redis_cache or not self._redis_cache.is_connected():
+    async def _ensure_redis(self):
+        """确保 Redis 连接可用 (async)"""
+        if not self._redis_cache:
+            raise RuntimeError("Redis cache not configured. TextChatCapture requires Redis in stateless mode.")
+        if not await self._redis_cache.is_connected():
             raise RuntimeError("Redis connection not available. TextChatCapture requires Redis in stateless mode.")
 
     def _start_impl(self) -> bool:
@@ -89,8 +89,19 @@ class TextChatCapture(BaseCaptureComponent):
 
     def _stop_impl(self, graceful: bool = True) -> bool:
         """停止组件，刷新所有缓冲区"""
-        if graceful:
-            self._flush_all_buffers_sync()
+        if graceful and self._redis_cache:
+            # 在停止时需要异步刷新，使用事件循环运行
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # 如果事件循环正在运行，创建任务
+                    asyncio.create_task(self._flush_all_buffers())
+                else:
+                    # 否则直接运行
+                    loop.run_until_complete(self._flush_all_buffers())
+            except RuntimeError:
+                # 没有事件循环，创建新的
+                asyncio.run(self._flush_all_buffers())
         return True
 
     def _capture_impl(self) -> List[RawContextProperties]:
@@ -172,20 +183,24 @@ class TextChatCapture(BaseCaptureComponent):
         """
         self._create_and_send_context(messages, user_id, device_id, agent_id)
 
-    def _flush_all_buffers_sync(self):
-        """刷新所有缓冲区（停止时调用，同步版本）"""
-        if not self._redis_cache or not self._redis_cache.is_connected():
-            logger.warning("Redis not available, skipping flush_all_buffers")
+    async def _flush_all_buffers(self):
+        """刷新所有缓冲区（异步版本）"""
+        if not self._redis_cache:
+            logger.warning("Redis not configured, skipping flush_all_buffers")
             return
 
         try:
-            # 获取所有缓冲区 key（使用同步方法）
-            keys = self._redis_cache.keys(f"{self.BUFFER_KEY_PREFIX}*")
+            if not await self._redis_cache.is_connected():
+                logger.warning("Redis not connected, skipping flush_all_buffers")
+                return
+
+            # 获取所有缓冲区 key
+            keys = await self._redis_cache.keys(f"{self.BUFFER_KEY_PREFIX}*")
             for key in keys:
                 user_id, device_id, agent_id = self._parse_buffer_key(key)
                 try:
-                    # 使用同步 Redis 操作刷新缓冲区
-                    lock_token = self._redis_cache.acquire_lock(
+                    # 使用异步 Redis 操作刷新缓冲区
+                    lock_token = await self._redis_cache.acquire_lock(
                         f"flush:{key}",
                         timeout=30,
                         blocking=True,
@@ -193,20 +208,20 @@ class TextChatCapture(BaseCaptureComponent):
                     )
                     if lock_token:
                         try:
-                            messages = self._redis_cache.lrange_json(key, 0, -1)
+                            messages = await self._redis_cache.lrange_json(key, 0, -1)
                             if messages:
                                 self._create_and_send_context(messages, user_id, device_id, agent_id)
-                                self._redis_cache.delete(key)
+                                await self._redis_cache.delete(key)
                                 logger.info(f"Flushed {len(messages)} chat messages for {key} to pipeline.")
                         finally:
-                            self._redis_cache.release_lock(f"flush:{key}", lock_token)
+                            await self._redis_cache.release_lock(f"flush:{key}", lock_token)
                 except Exception as e:
                     logger.error(f"Error flushing buffer {key}: {e}")
         except Exception as e:
             logger.error(f"Error flushing all Redis buffers: {e}")
 
-    def get_buffer_stats(self) -> Dict[str, Any]:
-        """获取缓冲区统计信息"""
+    async def get_buffer_stats(self) -> Dict[str, Any]:
+        """获取缓冲区统计信息 (async)"""
         stats = {
             "mode": "stateless_redis",
             "buffer_size": self._buffer_size,
@@ -214,14 +229,19 @@ class TextChatCapture(BaseCaptureComponent):
             "redis_connected": False,
         }
 
-        if self._redis_cache and self._redis_cache.is_connected():
-            stats["redis_connected"] = True
+        if self._redis_cache:
             try:
-                keys = self._redis_cache.keys(f"{self.BUFFER_KEY_PREFIX}*")
-                stats["buffer_count"] = len(keys)
-                stats["total_messages"] = sum(
-                    self._redis_cache.llen(key) for key in keys
-                )
+                connected = await self._redis_cache.is_connected()
+                stats["redis_connected"] = connected
+
+                if connected:
+                    keys = await self._redis_cache.keys(f"{self.BUFFER_KEY_PREFIX}*")
+                    stats["buffer_count"] = len(keys)
+
+                    total_messages = 0
+                    for key in keys:
+                        total_messages += await self._redis_cache.llen(key)
+                    stats["total_messages"] = total_messages
             except Exception as e:
                 stats["redis_error"] = str(e)
 
@@ -250,7 +270,7 @@ class TextChatCapture(BaseCaptureComponent):
             device_id: 设备标识符
             agent_id: Agent标识符
         """
-        self._ensure_redis()
+        await self._ensure_redis()
 
         message = {
             "role": role,
@@ -261,14 +281,14 @@ class TextChatCapture(BaseCaptureComponent):
         buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
 
         try:
-            # 将消息推入 Redis 列表（异步）
-            await self._redis_cache.async_rpush_json(buffer_key, message)
+            # 将消息推入 Redis 列表
+            await self._redis_cache.rpush_json(buffer_key, message)
 
-            # 设置/刷新 TTL（异步）
-            await self._redis_cache.async_expire(buffer_key, self._buffer_ttl)
+            # 设置/刷新 TTL
+            await self._redis_cache.expire(buffer_key, self._buffer_ttl)
 
-            # 检查缓冲区大小（异步）
-            buffer_len = await self._redis_cache.async_llen(buffer_key)
+            # 检查缓冲区大小
+            buffer_len = await self._redis_cache.llen(buffer_key)
 
             if buffer_len >= self._buffer_size:
                 logger.info(f"Buffer size reached {self._buffer_size} for {buffer_key}, flushing messages.")
@@ -286,11 +306,11 @@ class TextChatCapture(BaseCaptureComponent):
         agent_id: Optional[str]
     ):
         """刷新 Redis 中的缓冲区，使用非阻塞的异步锁"""
-        self._ensure_redis()
+        await self._ensure_redis()
 
         try:
             # 使用异步分布式锁确保原子操作（不会阻塞事件循环）
-            lock_token = await self._redis_cache.async_acquire_lock(
+            lock_token = await self._redis_cache.acquire_lock(
                 f"flush:{buffer_key}",
                 timeout=30,
                 blocking=True,
@@ -302,8 +322,8 @@ class TextChatCapture(BaseCaptureComponent):
                 return
 
             try:
-                # 获取所有消息（异步）
-                messages = await self._redis_cache.async_lrange_json(buffer_key, 0, -1)
+                # 获取所有消息
+                messages = await self._redis_cache.lrange_json(buffer_key, 0, -1)
 
                 if not messages:
                     return
@@ -311,14 +331,14 @@ class TextChatCapture(BaseCaptureComponent):
                 # 创建 RawContext
                 self._create_and_send_context(messages, user_id, device_id, agent_id)
 
-                # 清空缓冲区（异步）
-                await self._redis_cache.async_delete(buffer_key)
+                # 清空缓冲区
+                await self._redis_cache.delete(buffer_key)
 
                 logger.info(f"Flushed {len(messages)} chat messages for {buffer_key} to pipeline.")
 
             finally:
-                # 释放锁（异步）
-                await self._redis_cache.async_release_lock(f"flush:{buffer_key}", lock_token)
+                # 释放锁
+                await self._redis_cache.release_lock(f"flush:{buffer_key}", lock_token)
 
         except Exception as e:
             logger.error(f"Redis _flush_buffer error: {e}")
@@ -339,12 +359,12 @@ class TextChatCapture(BaseCaptureComponent):
             device_id: 设备标识符
             agent_id: Agent标识符
         """
-        self._ensure_redis()
+        await self._ensure_redis()
 
         buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
 
-        # 检查缓冲区是否有数据（异步）
-        buffer_len = await self._redis_cache.async_llen(buffer_key)
+        # 检查缓冲区是否有数据
+        buffer_len = await self._redis_cache.llen(buffer_key)
         if buffer_len > 0:
             await self._flush_buffer(buffer_key, user_id, device_id, agent_id)
 
@@ -365,8 +385,14 @@ class TextChatCapture(BaseCaptureComponent):
         Returns:
             缓冲区中的消息数量
         """
-        if not self._redis_cache or not self._redis_cache.is_connected():
+        if not self._redis_cache:
+            return 0
+
+        try:
+            if not await self._redis_cache.is_connected():
+                return 0
+        except Exception:
             return 0
 
         buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
-        return await self._redis_cache.async_llen(buffer_key)
+        return await self._redis_cache.llen(buffer_key)
