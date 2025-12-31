@@ -181,21 +181,21 @@ class IUserKeyBuilder(abc.ABC):
 
 
 class ITaskScheduler(abc.ABC):
-    """Interface for task scheduler"""
-    
+    """Interface for task scheduler (async)"""
+
     @abc.abstractmethod
-    def register_task_type(self, config: TaskConfig) -> bool:
+    async def register_task_type(self, config: TaskConfig) -> bool:
         """
-        Register a new task type.
-        
+        Register a new task type (async).
+
         Args:
             config: Task type configuration
-            
+
         Returns:
             True if registration successful
         """
         pass
-    
+
     @abc.abstractmethod
     def register_handler(
         self,
@@ -204,18 +204,18 @@ class ITaskScheduler(abc.ABC):
     ) -> bool:
         """
         Register a handler function for a task type.
-        
+
         Args:
             task_type: Name of the task type
             handler: Function that takes (user_id, device_id, agent_id) and returns success bool
-            
+
         Returns:
             True if registration successful
         """
         pass
-    
+
     @abc.abstractmethod
-    def schedule_user_task(
+    async def schedule_user_task(
         self,
         task_type: str,
         user_id: str,
@@ -223,39 +223,39 @@ class ITaskScheduler(abc.ABC):
         agent_id: Optional[str] = None
     ) -> bool:
         """
-        Schedule a task for a specific user.
-        
+        Schedule a task for a specific user (async).
+
         For user_activity trigger mode, this creates a delayed task.
         If a task already exists for the user, it won't create a duplicate.
-        
+
         Args:
             task_type: Type of task to schedule
             user_id: User identifier
             device_id: Device identifier (optional)
             agent_id: Agent identifier (optional)
-            
+
         Returns:
             True if a new task was created, False if task already exists
         """
         pass
-    
+
     @abc.abstractmethod
-    def get_pending_task(self, task_type: str) -> Optional[TaskInfo]:
+    async def get_pending_task(self, task_type: str) -> Optional[TaskInfo]:
         """
-        Get a pending task ready for execution.
-        
+        Get a pending task ready for execution (async).
+
         This should acquire a distributed lock to prevent duplicate execution.
-        
+
         Args:
             task_type: Type of task to retrieve
-            
+
         Returns:
             TaskInfo if a task is available, None otherwise
         """
         pass
-    
+
     @abc.abstractmethod
-    def complete_task(
+    async def complete_task(
         self,
         task_type: str,
         user_key: str,
@@ -263,8 +263,8 @@ class ITaskScheduler(abc.ABC):
         success: bool = True
     ) -> None:
         """
-        Mark a task as completed and release the lock.
-        
+        Mark a task as completed and release the lock (async).
+
         Args:
             task_type: Type of the task
             user_key: User key identifying the task
@@ -272,30 +272,30 @@ class ITaskScheduler(abc.ABC):
             success: Whether the task completed successfully
         """
         pass
-    
+
     @abc.abstractmethod
-    def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
+    async def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
         """
-        Get configuration for a task type.
-        
+        Get configuration for a task type (async).
+
         Args:
             task_type: Name of the task type
-            
+
         Returns:
             TaskConfig if found, None otherwise
         """
         pass
-    
+
     @abc.abstractmethod
     async def start(self) -> None:
         """Start the scheduler background executor."""
         pass
-    
+
     @abc.abstractmethod
     def stop(self) -> None:
         """Stop the scheduler."""
         pass
-    
+
     @abc.abstractmethod
     def is_running(self) -> bool:
         """Check if the scheduler is running."""
