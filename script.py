@@ -83,7 +83,7 @@ class MineContextClient:
     async def push_chat_message(
             self,
             role: str,
-            content: str,
+            content: List[Dict[str, str]],
             user_id: Optional[str] = None,
             device_id: Optional[str] = None,
             agent_id: Optional[str] = None,
@@ -356,7 +356,7 @@ async def chat_loop():
             messages.append({"role": "user", "content": user_input})
 
             # 通过 HTTP API 推送用户消息
-            await mc_client.push_chat_message("user", user_input, user_id=USER_ID, device_id=DEVICE_ID,
+            await mc_client.push_chat_message("user", [{"type":"text","text":user_input}], user_id=USER_ID, device_id=DEVICE_ID,
                                               agent_id=AGENT_ID)
 
             response = await client.chat.completions.create(
@@ -434,7 +434,7 @@ async def chat_loop():
             messages.append({"role": "assistant", "content": collected_content})
 
             # 通过 HTTP API 推送助手回复
-            await mc_client.push_chat_message("assistant", collected_content, user_id=USER_ID, device_id=DEVICE_ID,
+            await mc_client.push_chat_message("assistant", [{"type":"text","text":collected_content}], user_id=USER_ID, device_id=DEVICE_ID,
                                               agent_id=AGENT_ID)
 
     finally:

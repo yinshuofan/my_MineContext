@@ -36,35 +36,35 @@ llm:
   provider: "openai"  # MineContext uses 'openai' client for Volcengine/Doubao too
   config:
     # ⚠️ MUST FILL IN YOUR KEY HERE
-    api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe" 
-    base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    model: "doubao-seed-1-6-251015" 
+    api_key: "${LLM_API_KEY}" 
+    base_url: "${LLM_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
+    model: "${LLM_MODEL:doubao-seed-1-6-251015}" 
     temperature: 0.1
     max_tokens: 4096
 
 vlm_model:
-  base_url: "https://ark.cn-beijing.volces.com/api/v3"
-  api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
-  model: "doubao-seed-1-6-251015"
+  base_url: "${VLM_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
+  api_key: "${VLM_API_KEY}"
+  model: "${VLM_MODEL:doubao-seed-1-6-251015}"
   provider: "openai"
 
 embedding_model:
-  base_url: "https://ark.cn-beijing.volces.com/api/v3"
-  api_key: "cd8b23c5-45f1-48a8-9009-e1ba7f592cfe"
-  model: "doubao-embedding-large-text-240915"
+  base_url: "${EMBEDDING_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
+  api_key: "${EMBEDDING_API_KEY}"
+  model: "${EMBEDDING_MODEL:doubao-embedding-large-text-240915}"
   provider: "openai"
   output_dim: 2048
 
 # Context capture module
 capture:
-  enabled: true
+  enabled: "${CAPTURE_ENABLED:true}"
   # Screenshot capture
   screenshot:
-    enabled: false
+    enabled: "${SCREENSHOT_CAPTURE_ENABLED:false}"
     capture_interval: 5 # Screenshot interval (seconds)
     storage_path: "${CONTEXT_PATH:.}/screenshots" # Screenshot save directory
   text_chat:
-    enabled: true
+    enabled: "${TEXT_CHAT_CAPTURE_ENABLED:true}"
     buffer_size: 10
 
   # Folder monitoring
@@ -97,16 +97,16 @@ capture:
 
 # Context processing module
 processing:
-  enabled: true
+  enabled: "${PROCESSING_ENABLED:true}"
   # Document processor configuration
   text_chat_processor:
-    enabled: true
+    enabled: "${TEXT_CHAT_PROCESSOR_ENABLED:true}"
   document_processor:
-    enabled: true
+    enabled: "${DOCUMENT_PROCESSOR_ENABLED:false}"
     batch_size: 5
     batch_timeout: 30
   screenshot_processor:
-    enabled: true
+    enabled: "${SCREENSHOT_PROCESSOR_ENABLED:false}"
     dedup_cache_size: 30
     similarity_hash_threshold: 7
     batch_size: 20 # Increase batch size to improve throughput
@@ -118,7 +118,7 @@ processing:
 
   # Context merger configuration
   context_merger:
-    enabled: true
+    enabled: "${CONTEXT_MERGER_ENABLED:true}"
     # Basic configuration
     # similarity_threshold: 0.90
     # associative_similarity_threshold: 0.6
@@ -214,9 +214,9 @@ storage:
       backend: "vikingdb"
       default: true
       config:
-        access_key_id: "${VOLCENGINE_ACCESS_KEY_ID}"
-        secret_access_key: "${VOLCENGINE_SECRET_ACCESS_KEY}"
-        region: "cn-beijing"
+        access_key_id: "${VIKINGDB_ACCESS_KEY_ID}"
+        secret_access_key: "${VIKINGDB_SECRET_ACCESS_KEY}"
+        region: "${VIKINGDB_REGION:cn-beijing}"
         dimension: 2048
         max_connections: 100           # 最大连接数
         max_connections_per_host: 20   # 每主机最大连接数
@@ -249,7 +249,7 @@ storage:
         host: "${MYSQL_HOST:localhost}"
         port: 3306
         user: "${MYSQL_USER:root}"
-        password: "${MYSQL_PASSWORD:mysql}"
+        password: "${MYSQL_PASSWORD:root123}"
         database: "${MYSQL_DATABASE:opencontext}"
         charset: "utf8mb4"
 
@@ -264,12 +264,13 @@ storage:
 # This also prevents creation of todo collection in vector databases
 # 服务器模式下不应该开启消费组件。
 consumption:
-  enabled: false
+  enabled: "${CONSUMPTION_ENABLED:false}"
 
 # web server
 web:
-  host: "127.0.0.1"
+  host: "0.0.0.0"
   port: 1733
+  enabled: "${WEB_ENABLED:true}"
 
 # API authentication configuration
 api_auth:
@@ -331,7 +332,7 @@ tools:
 
 # Task scheduler configuration (for periodic tasks)
 scheduler:
-  enabled: true
+  enabled: "${SCHEDULER_ENABLED:true}"
   
   # User key configuration (determines how user tasks are identified)
   user_key_config:
@@ -344,17 +345,17 @@ scheduler:
   # Executor configuration
   executor:
     check_interval: 10     # How often to check for due tasks (seconds)
-    max_concurrent: 5      # Maximum concurrent task executions
+    max_concurrent: ${SCHEDULER_EXECUTOR_MAX_CONCURRENT:5}
     lock_timeout: 300      # Distributed lock timeout (seconds)
   
   # Task definitions
   tasks:
     # Memory compression task (triggered by user activity)
     memory_compression:
-      enabled: true
+      enabled: "${MEMORY_COMPRESSION_TASK_ENABLED:true}"
       trigger_mode: "user_activity"  # Options: user_activity, periodic
       # interval: 1800        # Delay after user activity (seconds)
-      interval: 60        # Delay after user activity (seconds)
+      interval: 30        # Delay after user activity (seconds)
       task_ttl: 7200        # Task state TTL (seconds)
     
     # Data cleanup task (periodic)

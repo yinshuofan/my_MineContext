@@ -211,8 +211,8 @@ class DocumentProcessor(BaseContextProcessor):
             return []
         
         try:
-            # Run the processing in a thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
+                # Run the processing in a thread pool to avoid blocking
+            loop = asyncio.get_running_loop()
             processed_contexts = await loop.run_in_executor(
                 None, self.real_process, context
             )

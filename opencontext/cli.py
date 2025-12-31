@@ -208,10 +208,26 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
     Args:
         lab_instance: The opencontext instance
     """
+    import asyncio
+
+    async def _run_async():
+        try:
+            # Start task scheduler
+            if hasattr(lab_instance, 'component_initializer'):
+                await lab_instance.component_initializer.start_task_scheduler()
+            
+            logger.info("Running in headless mode. Press Ctrl+C to exit.")
+            while True:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Stop task scheduler
+            if hasattr(lab_instance, 'component_initializer'):
+                lab_instance.component_initializer.stop_task_scheduler()
+
     try:
-        logger.info("Running in headless mode. Press Ctrl+C to exit.")
-        while True:
-            time.sleep(1)
+        asyncio.run(_run_async())
     except KeyboardInterrupt:
         logger.info("Received interrupt signal, shutting down...")
         lab_instance.shutdown()

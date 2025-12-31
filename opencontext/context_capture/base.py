@@ -113,7 +113,7 @@ class BaseCaptureComponent(ICaptureComponent):
                 self._stop_event.clear()
 
                 # If capture interval is configured, start capture thread
-                if "capture_interval" in self._config:
+                if "capture_interval" in self._config and self._config.get("enabled", True):
                     self._capture_thread = threading.Thread(
                         target=self._capture_loop, name=f"{self._name}_capture_thread", daemon=True
                     )

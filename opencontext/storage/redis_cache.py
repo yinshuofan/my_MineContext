@@ -5,13 +5,21 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Redis Cache Manager
+Redis Cache Manager (Async Only)
+
 Provides a unified Redis caching layer for multi-instance deployment.
-Supports various data structures: strings, lists, hashes, and sets.
+All operations are asynchronous (non-blocking).
+
+Usage:
+    await cache.get("key")
+    await cache.set("key", "value")
+    await cache.hgetall("key")
 """
 
+import asyncio
 import json
 import threading
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Union
@@ -43,42 +51,48 @@ class RedisCacheConfig:
 
 class RedisCache:
     """
-    Redis Cache Manager
-    
+    Redis Cache Manager (Async Only)
+
     Provides a unified interface for Redis operations with support for:
     - Key-value storage with TTL
     - List operations (for message buffers)
     - Hash operations (for structured data)
     - Set operations (for deduplication)
     - Atomic operations for multi-instance safety
+
+    All methods are asynchronous (non-blocking).
     """
-    
+
     def __init__(self, config: Optional[RedisCacheConfig] = None):
         """
         Initialize Redis cache manager.
-        
+
         Args:
             config: Redis configuration. If None, uses default config.
         """
         self.config = config or RedisCacheConfig()
-        self._client = None
-        self._lock = threading.RLock()
-        self._connected = False
-        
-        # Try to connect
-        self._connect()
-    
-    def _connect(self) -> bool:
+        self._async_client = None
+        self._async_lock = asyncio.Lock()
+        self._async_connected = False
+
+    # =========================================================================
+    # Connection Management
+    # =========================================================================
+
+    async def _connect_async(self) -> bool:
         """
-        Establish connection to Redis server.
-        
+        Establish asynchronous connection to Redis server.
+
         Returns:
             True if connection successful, False otherwise.
         """
+        if self._async_connected and self._async_client:
+            return True
+
         try:
-            import redis
-            
-            self._client = redis.Redis(
+            import redis.asyncio as aioredis
+
+            self._async_client = aioredis.Redis(
                 host=self.config.host,
                 port=self.config.port,
                 password=self.config.password,
@@ -89,61 +103,58 @@ class RedisCache:
                 retry_on_timeout=self.config.retry_on_timeout,
                 max_connections=self.config.max_connections,
             )
-            
+
             # Test connection
-            self._client.ping()
-            self._connected = True
-            logger.info(f"Redis connected: {self.config.host}:{self.config.port}/{self.config.db}")
+            await self._async_client.ping()
+            self._async_connected = True
+            logger.info(f"Redis async client connected: {self.config.host}:{self.config.port}/{self.config.db}")
             return True
-            
+
         except ImportError:
-            logger.error("Redis package not installed. Run: pip install redis")
-            self._connected = False
+            logger.error("Redis asyncio package not available. Ensure redis>=4.2.0")
+            self._async_connected = False
             return False
         except Exception as e:
-            logger.error(f"Failed to connect to Redis: {e}")
-            self._connected = False
+            logger.error(f"Failed to connect async Redis client: {e}")
+            self._async_connected = False
             return False
-    
-    def is_connected(self) -> bool:
-        """Check if Redis is connected."""
-        if not self._connected or not self._client:
-            logger.error("Redis client not connected")
-            return False
+
+    async def _ensure_async_client(self) -> bool:
+        """Ensure async client is connected."""
+        if not self._async_connected:
+            return await self._connect_async()
+        return True
+
+    async def is_connected(self) -> bool:
+        """Check if async Redis is connected."""
+        if not self._async_connected or not self._async_client:
+            return await self._connect_async()
         try:
-            self._client.ping()
+            await self._async_client.ping()
             return True
         except Exception:
-            self._connected = False
+            self._async_connected = False
             return False
-    
+
     def _make_key(self, key: str) -> str:
         """Generate full Redis key with prefix."""
         return f"{self.config.key_prefix}{key}"
-    
+
     # =========================================================================
     # Basic Key-Value Operations
     # =========================================================================
-    
-    def get(self, key: str) -> Optional[str]:
-        """
-        Get value by key.
-        
-        Args:
-            key: Cache key
-            
-        Returns:
-            Value string or None if not found
-        """
-        if not self.is_connected():
+
+    async def get(self, key: str) -> Optional[str]:
+        """Get value by key."""
+        if not await self._ensure_async_client():
             return None
         try:
-            return self._client.get(self._make_key(key))
+            return await self._async_client.get(self._make_key(key))
         except Exception as e:
             logger.error(f"Redis GET error: {e}")
             return None
-    
-    def set(
+
+    async def set(
         self,
         key: str,
         value: str,
@@ -151,24 +162,12 @@ class RedisCache:
         nx: bool = False,
         xx: bool = False,
     ) -> bool:
-        """
-        Set key-value pair.
-        
-        Args:
-            key: Cache key
-            value: Value to store
-            ttl: Time-to-live in seconds (None uses default)
-            nx: Only set if key does not exist
-            xx: Only set if key exists
-            
-        Returns:
-            True if successful
-        """
-        if not self.is_connected():
+        """Set key-value pair."""
+        if not await self._ensure_async_client():
             return False
         try:
             ttl = ttl if ttl is not None else self.config.default_ttl
-            return bool(self._client.set(
+            return bool(await self._async_client.set(
                 self._make_key(key),
                 value,
                 ex=ttl if ttl > 0 else None,
@@ -178,71 +177,55 @@ class RedisCache:
         except Exception as e:
             logger.error(f"Redis SET error: {e}")
             return False
-    
-    def delete(self, *keys: str) -> int:
-        """
-        Delete one or more keys.
-        
-        Args:
-            keys: Keys to delete
-            
-        Returns:
-            Number of keys deleted
-        """
-        if not self.is_connected() or not keys:
+
+    async def delete(self, *keys: str) -> int:
+        """Delete one or more keys."""
+        if not await self._ensure_async_client() or not keys:
             return 0
         try:
             full_keys = [self._make_key(k) for k in keys]
-            return self._client.delete(*full_keys)
+            return await self._async_client.delete(*full_keys)
         except Exception as e:
             logger.error(f"Redis DELETE error: {e}")
             return 0
-    
-    def exists(self, key: str) -> bool:
+
+    async def exists(self, key: str) -> bool:
         """Check if key exists."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return False
         try:
-            return bool(self._client.exists(self._make_key(key)))
+            return bool(await self._async_client.exists(self._make_key(key)))
         except Exception as e:
             logger.error(f"Redis EXISTS error: {e}")
             return False
-    
-    def expire(self, key: str, ttl: int) -> bool:
+
+    async def expire(self, key: str, ttl: int) -> bool:
         """Set TTL for a key."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return False
         try:
-            return bool(self._client.expire(self._make_key(key), ttl))
+            return bool(await self._async_client.expire(self._make_key(key), ttl))
         except Exception as e:
             logger.error(f"Redis EXPIRE error: {e}")
             return False
-    
-    def ttl(self, key: str) -> int:
-        """Get remaining TTL for a key. Returns -1 if no TTL, -2 if key doesn't exist."""
-        if not self.is_connected():
+
+    async def ttl(self, key: str) -> int:
+        """Get remaining TTL for a key."""
+        if not await self._ensure_async_client():
             return -2
         try:
-            return self._client.ttl(self._make_key(key))
+            return await self._async_client.ttl(self._make_key(key))
         except Exception as e:
             logger.error(f"Redis TTL error: {e}")
             return -2
-    
+
     # =========================================================================
-    # JSON Operations (for complex objects)
+    # JSON Operations
     # =========================================================================
-    
-    def get_json(self, key: str) -> Optional[Any]:
-        """
-        Get JSON value by key.
-        
-        Args:
-            key: Cache key
-            
-        Returns:
-            Deserialized Python object or None
-        """
-        value = self.get(key)
+
+    async def get_json(self, key: str) -> Optional[Any]:
+        """Get JSON value by key."""
+        value = await self.get(key)
         if value is None:
             return None
         try:
@@ -250,8 +233,8 @@ class RedisCache:
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for key {key}: {e}")
             return None
-    
-    def set_json(
+
+    async def set_json(
         self,
         key: str,
         value: Any,
@@ -259,177 +242,91 @@ class RedisCache:
         nx: bool = False,
         xx: bool = False,
     ) -> bool:
-        """
-        Set JSON value.
-        
-        Args:
-            key: Cache key
-            value: Python object to serialize and store
-            ttl: Time-to-live in seconds
-            nx: Only set if key does not exist
-            xx: Only set if key exists
-            
-        Returns:
-            True if successful
-        """
+        """Set JSON value."""
         try:
             json_str = json.dumps(value, ensure_ascii=False, default=str)
-            return self.set(key, json_str, ttl=ttl, nx=nx, xx=xx)
+            return await self.set(key, json_str, ttl=ttl, nx=nx, xx=xx)
         except Exception as e:
             logger.error(f"JSON encode error for key {key}: {e}")
             return False
-    
+
     # =========================================================================
-    # List Operations (for message buffers)
+    # List Operations
     # =========================================================================
-    
-    def lpush(self, key: str, *values: str) -> int:
-        """
-        Push values to the left of a list.
-        
-        Args:
-            key: List key
-            values: Values to push
-            
-        Returns:
-            Length of list after push
-        """
-        if not self.is_connected() or not values:
+
+    async def lpush(self, key: str, *values: str) -> int:
+        """Push values to the left of a list."""
+        if not await self._ensure_async_client() or not values:
             return 0
         try:
-            return self._client.lpush(self._make_key(key), *values)
+            return await self._async_client.lpush(self._make_key(key), *values)
         except Exception as e:
             logger.error(f"Redis LPUSH error: {e}")
             return 0
-    
-    def rpush(self, key: str, *values: str) -> int:
-        """
-        Push values to the right of a list.
-        
-        Args:
-            key: List key
-            values: Values to push
-            
-        Returns:
-            Length of list after push
-        """
-        if not self.is_connected() or not values:
+
+    async def rpush(self, key: str, *values: str) -> int:
+        """Push values to the right of a list."""
+        if not await self._ensure_async_client() or not values:
             return 0
         try:
-            return self._client.rpush(self._make_key(key), *values)
+            return await self._async_client.rpush(self._make_key(key), *values)
         except Exception as e:
             logger.error(f"Redis RPUSH error: {e}")
             return 0
-    
-    def lpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
-        """
-        Pop values from the left of a list.
-        
-        Args:
-            key: List key
-            count: Number of elements to pop
-            
-        Returns:
-            Popped value(s) or None
-        """
-        if not self.is_connected():
+
+    async def lpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
+        """Pop values from the left of a list."""
+        if not await self._ensure_async_client():
             return None
         try:
-            return self._client.lpop(self._make_key(key), count)
+            return await self._async_client.lpop(self._make_key(key), count)
         except Exception as e:
             logger.error(f"Redis LPOP error: {e}")
             return None
-    
-    def rpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
-        """
-        Pop values from the right of a list.
-        
-        Args:
-            key: List key
-            count: Number of elements to pop
-            
-        Returns:
-            Popped value(s) or None
-        """
-        if not self.is_connected():
+
+    async def rpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
+        """Pop values from the right of a list."""
+        if not await self._ensure_async_client():
             return None
         try:
-            return self._client.rpop(self._make_key(key), count)
+            return await self._async_client.rpop(self._make_key(key), count)
         except Exception as e:
             logger.error(f"Redis RPOP error: {e}")
             return None
-    
-    def lrange(self, key: str, start: int = 0, end: int = -1) -> List[str]:
-        """
-        Get range of elements from a list.
-        
-        Args:
-            key: List key
-            start: Start index
-            end: End index (-1 for all)
-            
-        Returns:
-            List of elements
-        """
-        if not self.is_connected():
+
+    async def lrange(self, key: str, start: int = 0, end: int = -1) -> List[str]:
+        """Get range of elements from a list."""
+        if not await self._ensure_async_client():
             return []
         try:
-            return self._client.lrange(self._make_key(key), start, end)
+            return await self._async_client.lrange(self._make_key(key), start, end)
         except Exception as e:
             logger.error(f"Redis LRANGE error: {e}")
             return []
-    
-    def llen(self, key: str) -> int:
-        """
-        Get length of a list.
-        
-        Args:
-            key: List key
-            
-        Returns:
-            Length of list
-        """
-        if not self.is_connected():
+
+    async def llen(self, key: str) -> int:
+        """Get length of a list."""
+        if not await self._ensure_async_client():
             return 0
         try:
-            return self._client.llen(self._make_key(key))
+            return await self._async_client.llen(self._make_key(key))
         except Exception as e:
             logger.error(f"Redis LLEN error: {e}")
             return 0
-    
-    def ltrim(self, key: str, start: int, end: int) -> bool:
-        """
-        Trim a list to specified range.
-        
-        Args:
-            key: List key
-            start: Start index
-            end: End index
-            
-        Returns:
-            True if successful
-        """
-        if not self.is_connected():
+
+    async def ltrim(self, key: str, start: int, end: int) -> bool:
+        """Trim a list to specified range."""
+        if not await self._ensure_async_client():
             return False
         try:
-            return bool(self._client.ltrim(self._make_key(key), start, end))
+            return bool(await self._async_client.ltrim(self._make_key(key), start, end))
         except Exception as e:
             logger.error(f"Redis LTRIM error: {e}")
             return False
-    
-    def lrange_json(self, key: str, start: int = 0, end: int = -1) -> List[Any]:
-        """
-        Get range of JSON elements from a list.
-        
-        Args:
-            key: List key
-            start: Start index
-            end: End index
-            
-        Returns:
-            List of deserialized objects
-        """
-        items = self.lrange(key, start, end)
+
+    async def lrange_json(self, key: str, start: int = 0, end: int = -1) -> List[Any]:
+        """Get range of JSON elements from a list."""
+        items = await self.lrange(key, start, end)
         result = []
         for item in items:
             try:
@@ -437,18 +334,9 @@ class RedisCache:
             except json.JSONDecodeError:
                 result.append(item)
         return result
-    
-    def rpush_json(self, key: str, *values: Any) -> int:
-        """
-        Push JSON values to the right of a list.
-        
-        Args:
-            key: List key
-            values: Python objects to serialize and push
-            
-        Returns:
-            Length of list after push
-        """
+
+    async def rpush_json(self, key: str, *values: Any) -> int:
+        """Push JSON values to the right of a list."""
         json_values = []
         for v in values:
             try:
@@ -457,19 +345,10 @@ class RedisCache:
                 logger.error(f"JSON encode error: {e}")
         if not json_values:
             return 0
-        return self.rpush(key, *json_values)
-    
-    def lpush_json(self, key: str, *values: Any) -> int:
-        """
-        Push JSON values to the left of a list.
-        
-        Args:
-            key: List key
-            values: Python objects to serialize and push
-            
-        Returns:
-            Length of list after push
-        """
+        return await self.rpush(key, *json_values)
+
+    async def lpush_json(self, key: str, *values: Any) -> int:
+        """Push JSON values to the left of a list."""
         json_values = []
         for v in values:
             try:
@@ -478,102 +357,102 @@ class RedisCache:
                 logger.error(f"JSON encode error: {e}")
         if not json_values:
             return 0
-        return self.lpush(key, *json_values)
-    
+        return await self.lpush(key, *json_values)
+
     # =========================================================================
-    # Hash Operations (for structured data)
+    # Hash Operations
     # =========================================================================
-    
-    def hget(self, key: str, field: str) -> Optional[str]:
+
+    async def hget(self, key: str, field: str) -> Optional[str]:
         """Get a field from a hash."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return None
         try:
-            return self._client.hget(self._make_key(key), field)
+            return await self._async_client.hget(self._make_key(key), field)
         except Exception as e:
             logger.error(f"Redis HGET error: {e}")
             return None
-    
-    def hset(self, key: str, field: str, value: str) -> int:
+
+    async def hset(self, key: str, field: str, value: str) -> int:
         """Set a field in a hash."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return 0
         try:
-            return self._client.hset(self._make_key(key), field, value)
+            return await self._async_client.hset(self._make_key(key), field, value)
         except Exception as e:
             logger.error(f"Redis HSET error: {e}")
             return 0
-    
-    def hmset(self, key: str, mapping: Dict[str, str]) -> bool:
+
+    async def hmset(self, key: str, mapping: Dict[str, str]) -> bool:
         """Set multiple fields in a hash."""
-        if not self.is_connected() or not mapping:
+        if not await self._ensure_async_client() or not mapping:
             return False
         try:
-            return bool(self._client.hset(self._make_key(key), mapping=mapping))
+            return bool(await self._async_client.hset(self._make_key(key), mapping=mapping))
         except Exception as e:
             logger.error(f"Redis HMSET error: {e}")
             return False
-    
-    def hgetall(self, key: str) -> Dict[str, str]:
+
+    async def hgetall(self, key: str) -> Dict[str, str]:
         """Get all fields and values from a hash."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return {}
         try:
-            return self._client.hgetall(self._make_key(key))
+            return await self._async_client.hgetall(self._make_key(key))
         except Exception as e:
             logger.error(f"Redis HGETALL error: {e}")
             return {}
-    
-    def hdel(self, key: str, *fields: str) -> int:
+
+    async def hdel(self, key: str, *fields: str) -> int:
         """Delete fields from a hash."""
-        if not self.is_connected() or not fields:
+        if not await self._ensure_async_client() or not fields:
             return 0
         try:
-            return self._client.hdel(self._make_key(key), *fields)
+            return await self._async_client.hdel(self._make_key(key), *fields)
         except Exception as e:
             logger.error(f"Redis HDEL error: {e}")
             return 0
-    
-    def hlen(self, key: str) -> int:
+
+    async def hlen(self, key: str) -> int:
         """Get number of fields in a hash."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return 0
         try:
-            return self._client.hlen(self._make_key(key))
+            return await self._async_client.hlen(self._make_key(key))
         except Exception as e:
             logger.error(f"Redis HLEN error: {e}")
             return 0
-    
-    def hexists(self, key: str, field: str) -> bool:
+
+    async def hexists(self, key: str, field: str) -> bool:
         """Check if a field exists in a hash."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return False
         try:
-            return bool(self._client.hexists(self._make_key(key), field))
+            return bool(await self._async_client.hexists(self._make_key(key), field))
         except Exception as e:
             logger.error(f"Redis HEXISTS error: {e}")
             return False
-    
-    def hget_json(self, key: str, field: str) -> Optional[Any]:
+
+    async def hget_json(self, key: str, field: str) -> Optional[Any]:
         """Get a JSON field from a hash."""
-        value = self.hget(key, field)
+        value = await self.hget(key, field)
         if value is None:
             return None
         try:
             return json.loads(value)
         except json.JSONDecodeError:
             return value
-    
-    def hset_json(self, key: str, field: str, value: Any) -> int:
+
+    async def hset_json(self, key: str, field: str, value: Any) -> int:
         """Set a JSON field in a hash."""
         try:
             json_str = json.dumps(value, ensure_ascii=False, default=str)
-            return self.hset(key, field, json_str)
+            return await self.hset(key, field, json_str)
         except Exception as e:
             logger.error(f"Redis HSET_JSON error: {e}")
             return 0
-    
-    def hmset_json(self, key: str, mapping: Dict[str, Any]) -> bool:
+
+    async def hmset_json(self, key: str, mapping: Dict[str, Any]) -> bool:
         """Set multiple JSON fields in a hash."""
         if not mapping:
             return False
@@ -581,14 +460,14 @@ class RedisCache:
             json_mapping = {}
             for k, v in mapping.items():
                 json_mapping[k] = json.dumps(v, ensure_ascii=False, default=str)
-            return self.hmset(key, json_mapping)
+            return await self.hmset(key, json_mapping)
         except Exception as e:
             logger.error(f"Redis HMSET_JSON error: {e}")
             return False
-    
-    def hgetall_json(self, key: str) -> Dict[str, Any]:
+
+    async def hgetall_json(self, key: str) -> Dict[str, Any]:
         """Get all fields from a hash as JSON objects."""
-        data = self.hgetall(key)
+        data = await self.hgetall(key)
         result = {}
         for k, v in data.items():
             try:
@@ -596,30 +475,30 @@ class RedisCache:
             except json.JSONDecodeError:
                 result[k] = v
         return result
-    
-    def hkeys(self, key: str) -> List[str]:
+
+    async def hkeys(self, key: str) -> List[str]:
         """Get all field names from a hash."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return []
         try:
-            return list(self._client.hkeys(self._make_key(key)))
+            return list(await self._async_client.hkeys(self._make_key(key)))
         except Exception as e:
             logger.error(f"Redis HKEYS error: {e}")
             return []
-    
-    def hvals(self, key: str) -> List[str]:
+
+    async def hvals(self, key: str) -> List[str]:
         """Get all values from a hash."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return []
         try:
-            return list(self._client.hvals(self._make_key(key)))
+            return list(await self._async_client.hvals(self._make_key(key)))
         except Exception as e:
             logger.error(f"Redis HVALS error: {e}")
             return []
-    
-    def hvals_json(self, key: str) -> List[Any]:
+
+    async def hvals_json(self, key: str) -> List[Any]:
         """Get all values from a hash as JSON objects."""
-        values = self.hvals(key)
+        values = await self.hvals(key)
         result = []
         for v in values:
             try:
@@ -627,76 +506,76 @@ class RedisCache:
             except json.JSONDecodeError:
                 result.append(v)
         return result
-    
+
     # =========================================================================
-    # Set Operations (for deduplication)
+    # Set Operations
     # =========================================================================
-    
-    def sadd(self, key: str, *members: str) -> int:
+
+    async def sadd(self, key: str, *members: str) -> int:
         """Add members to a set."""
-        if not self.is_connected() or not members:
+        if not await self._ensure_async_client() or not members:
             return 0
         try:
-            return self._client.sadd(self._make_key(key), *members)
+            return await self._async_client.sadd(self._make_key(key), *members)
         except Exception as e:
             logger.error(f"Redis SADD error: {e}")
             return 0
-    
-    def srem(self, key: str, *members: str) -> int:
+
+    async def srem(self, key: str, *members: str) -> int:
         """Remove members from a set."""
-        if not self.is_connected() or not members:
+        if not await self._ensure_async_client() or not members:
             return 0
         try:
-            return self._client.srem(self._make_key(key), *members)
+            return await self._async_client.srem(self._make_key(key), *members)
         except Exception as e:
             logger.error(f"Redis SREM error: {e}")
             return 0
-    
-    def sismember(self, key: str, member: str) -> bool:
+
+    async def sismember(self, key: str, member: str) -> bool:
         """Check if a member is in a set."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return False
         try:
-            return bool(self._client.sismember(self._make_key(key), member))
+            return bool(await self._async_client.sismember(self._make_key(key), member))
         except Exception as e:
             logger.error(f"Redis SISMEMBER error: {e}")
             return False
-    
-    def smembers(self, key: str) -> Set[str]:
+
+    async def smembers(self, key: str) -> Set[str]:
         """Get all members of a set."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return set()
         try:
-            return self._client.smembers(self._make_key(key))
+            return await self._async_client.smembers(self._make_key(key))
         except Exception as e:
             logger.error(f"Redis SMEMBERS error: {e}")
             return set()
-    
-    def scard(self, key: str) -> int:
+
+    async def scard(self, key: str) -> int:
         """Get number of members in a set."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return 0
         try:
-            return self._client.scard(self._make_key(key))
+            return await self._async_client.scard(self._make_key(key))
         except Exception as e:
             logger.error(f"Redis SCARD error: {e}")
             return 0
 
     # =========================================================================
-    # Sorted Set Operations (for priority/ordered data)
+    # Sorted Set Operations
     # =========================================================================
 
-    def zadd(self, key: str, mapping: Dict[str, float]) -> int:
+    async def zadd(self, key: str, mapping: Dict[str, float]) -> int:
         """Add members to a sorted set with their scores."""
-        if not self.is_connected() or not mapping:
+        if not await self._ensure_async_client() or not mapping:
             return 0
         try:
-            return self._client.zadd(self._make_key(key), mapping)
+            return await self._async_client.zadd(self._make_key(key), mapping)
         except Exception as e:
             logger.error(f"Redis ZADD error: {e}")
             return 0
 
-    def zrangebyscore(
+    async def zrangebyscore(
         self,
         key: str,
         min_score: float,
@@ -704,44 +583,44 @@ class RedisCache:
         withscores: bool = False
     ) -> List[str]:
         """Get members from a sorted set within a score range."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return []
         try:
             full_key = self._make_key(key)
             if withscores:
-                return self._client.zrangebyscore(full_key, min_score, max_score, withscores=True)
+                return await self._async_client.zrangebyscore(full_key, min_score, max_score, withscores=True)
             else:
-                return self._client.zrangebyscore(full_key, min_score, max_score)
+                return await self._async_client.zrangebyscore(full_key, min_score, max_score)
         except Exception as e:
             logger.error(f"Redis ZRANGEBYSCORE error: {e}")
             return []
 
-    def zrem(self, key: str, *members: str) -> int:
+    async def zrem(self, key: str, *members: str) -> int:
         """Remove members from a sorted set."""
-        if not self.is_connected() or not members:
+        if not await self._ensure_async_client() or not members:
             return 0
         try:
-            return self._client.zrem(self._make_key(key), *members)
+            return await self._async_client.zrem(self._make_key(key), *members)
         except Exception as e:
             logger.error(f"Redis ZREM error: {e}")
             return 0
 
-    def zscore(self, key: str, member: str) -> Optional[float]:
+    async def zscore(self, key: str, member: str) -> Optional[float]:
         """Get the score of a member in a sorted set."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return None
         try:
-            return self._client.zscore(self._make_key(key), member)
+            return await self._async_client.zscore(self._make_key(key), member)
         except Exception as e:
             logger.error(f"Redis ZSCORE error: {e}")
             return None
 
-    def zcard(self, key: str) -> int:
+    async def zcard(self, key: str) -> int:
         """Get number of members in a sorted set."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return 0
         try:
-            return self._client.zcard(self._make_key(key))
+            return await self._async_client.zcard(self._make_key(key))
         except Exception as e:
             logger.error(f"Redis ZCARD error: {e}")
             return 0
@@ -749,42 +628,42 @@ class RedisCache:
     # =========================================================================
     # Atomic Operations
     # =========================================================================
-    
-    def incr(self, key: str, amount: int = 1) -> int:
+
+    async def incr(self, key: str, amount: int = 1) -> int:
         """Increment a key's value atomically."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return 0
         try:
-            return self._client.incr(self._make_key(key), amount)
+            return await self._async_client.incr(self._make_key(key), amount)
         except Exception as e:
             logger.error(f"Redis INCR error: {e}")
             return 0
-    
-    def decr(self, key: str, amount: int = 1) -> int:
+
+    async def decr(self, key: str, amount: int = 1) -> int:
         """Decrement a key's value atomically."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return 0
         try:
-            return self._client.decr(self._make_key(key), amount)
+            return await self._async_client.decr(self._make_key(key), amount)
         except Exception as e:
             logger.error(f"Redis DECR error: {e}")
             return 0
-    
-    def getset(self, key: str, value: str) -> Optional[str]:
+
+    async def getset(self, key: str, value: str) -> Optional[str]:
         """Set a new value and return the old value atomically."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return None
         try:
-            return self._client.getset(self._make_key(key), value)
+            return await self._async_client.getset(self._make_key(key), value)
         except Exception as e:
             logger.error(f"Redis GETSET error: {e}")
             return None
-    
+
     # =========================================================================
-    # Lock Operations (for distributed locking)
+    # Lock Operations (Non-blocking)
     # =========================================================================
-    
-    def acquire_lock(
+
+    async def acquire_lock(
         self,
         lock_name: str,
         timeout: int = 10,
@@ -792,124 +671,121 @@ class RedisCache:
         blocking_timeout: float = 5.0,
     ) -> Optional[str]:
         """
-        Acquire a distributed lock.
-        
+        Acquire a distributed lock (non-blocking).
+
+        Uses asyncio.sleep() instead of time.sleep(), won't block the event loop.
+
         Args:
             lock_name: Name of the lock
             timeout: Lock expiration time in seconds
             blocking: Whether to block until lock is acquired
             blocking_timeout: Maximum time to wait for lock
-            
+
         Returns:
             Lock token if acquired, None otherwise
         """
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return None
         try:
-            import uuid
             import time
-            
+
             lock_key = f"lock:{lock_name}"
             token = str(uuid.uuid4())
-            
+
             if blocking:
                 start_time = time.time()
                 while time.time() - start_time < blocking_timeout:
-                    if self.set(lock_key, token, ttl=timeout, nx=True):
+                    if await self.set(lock_key, token, ttl=timeout, nx=True):
                         return token
-                    time.sleep(0.1)
+                    await asyncio.sleep(0.1)  # Non-blocking sleep!
                 return None
             else:
-                if self.set(lock_key, token, ttl=timeout, nx=True):
+                if await self.set(lock_key, token, ttl=timeout, nx=True):
                     return token
                 return None
-                
+
         except Exception as e:
             logger.error(f"Redis acquire_lock error: {e}")
             return None
-    
-    def release_lock(self, lock_name: str, token: str) -> bool:
+
+    async def release_lock(self, lock_name: str, token: str) -> bool:
         """
         Release a distributed lock.
-        
+
         Args:
             lock_name: Name of the lock
             token: Lock token returned by acquire_lock
-            
+
         Returns:
             True if lock was released
         """
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return False
         try:
             lock_key = f"lock:{lock_name}"
             # Only release if we own the lock
-            current_token = self.get(lock_key)
+            current_token = await self.get(lock_key)
             if current_token == token:
-                self.delete(lock_key)
+                await self.delete(lock_key)
                 return True
             return False
         except Exception as e:
             logger.error(f"Redis release_lock error: {e}")
             return False
-    
+
     # =========================================================================
     # Utility Methods
     # =========================================================================
-    
-    def keys(self, pattern: str = "*") -> List[str]:
-        """
-        Get keys matching a pattern.
-        
-        Args:
-            pattern: Pattern to match (e.g., "user:*")
-            
-        Returns:
-            List of matching keys (without prefix)
-        """
-        if not self.is_connected():
+
+    async def keys(self, pattern: str = "*") -> List[str]:
+        """Get keys matching a pattern."""
+        if not await self._ensure_async_client():
             return []
         try:
             full_pattern = self._make_key(pattern)
-            keys = self._client.keys(full_pattern)
+            keys = await self._async_client.keys(full_pattern)
             prefix_len = len(self.config.key_prefix)
             return [k[prefix_len:] if isinstance(k, str) else k.decode()[prefix_len:] for k in keys]
         except Exception as e:
             logger.error(f"Redis KEYS error: {e}")
             return []
-    
-    def flush_db(self) -> bool:
+
+    async def flush_db(self) -> bool:
         """Flush the current database. Use with caution!"""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return False
         try:
-            self._client.flushdb()
+            await self._async_client.flushdb()
             logger.warning("Redis database flushed!")
             return True
         except Exception as e:
             logger.error(f"Redis FLUSHDB error: {e}")
             return False
-    
-    def info(self) -> Dict[str, Any]:
+
+    async def info(self) -> Dict[str, Any]:
         """Get Redis server info."""
-        if not self.is_connected():
+        if not await self._ensure_async_client():
             return {}
         try:
-            return self._client.info()
+            return await self._async_client.info()
         except Exception as e:
             logger.error(f"Redis INFO error: {e}")
             return {}
-    
-    def close(self):
-        """Close Redis connection."""
-        if self._client:
+
+    # =========================================================================
+    # Connection Cleanup
+    # =========================================================================
+
+    async def close(self):
+        """Close async Redis connection."""
+        if self._async_client:
             try:
-                self._client.close()
+                await self._async_client.close()
             except Exception:
                 pass
-            self._client = None
-            self._connected = False
-            logger.info("Redis connection closed")
+            self._async_client = None
+            self._async_connected = False
+            logger.info("Redis async connection closed")
 
 
 # =============================================================================
@@ -919,15 +795,15 @@ class RedisCache:
 def get_redis_cache(config: Optional[RedisCacheConfig] = None) -> RedisCache:
     """
     Get or create the global Redis cache instance.
-    
+
     Args:
         config: Redis configuration (only used on first call)
-        
+
     Returns:
         RedisCache instance
     """
     global _redis_client
-    
+
     with _redis_lock:
         if _redis_client is None:
             _redis_client = RedisCache(config)
@@ -937,29 +813,27 @@ def get_redis_cache(config: Optional[RedisCacheConfig] = None) -> RedisCache:
 def init_redis_cache(config: RedisCacheConfig) -> RedisCache:
     """
     Initialize the global Redis cache with specific configuration.
-    
+
     Args:
         config: Redis configuration
-        
+
     Returns:
         RedisCache instance
     """
     global _redis_client
-    
+
     with _redis_lock:
-        if _redis_client is not None:
-            _redis_client.close()
         _redis_client = RedisCache(config)
         return _redis_client
 
 
-def close_redis_cache():
+async def close_redis_cache():
     """Close the global Redis cache connection."""
     global _redis_client
-    
+
     with _redis_lock:
         if _redis_client is not None:
-            _redis_client.close()
+            await _redis_client.close()
             _redis_client = None
 
 
@@ -970,38 +844,46 @@ def close_redis_cache():
 class InMemoryCache:
     """
     In-memory cache fallback when Redis is unavailable.
-    Provides the same interface as RedisCache but stores data locally.
+    Provides the same async interface as RedisCache but stores data locally.
     Note: This does NOT support multi-instance sharing.
     """
-    
+
     def __init__(self):
         self._data: Dict[str, Any] = {}
         self._lists: Dict[str, List[str]] = {}
         self._hashes: Dict[str, Dict[str, str]] = {}
         self._sets: Dict[str, Set[str]] = {}
+        self._sorted_sets: Dict[str, Dict[str, float]] = {}
         self._expiry: Dict[str, datetime] = {}
-        self._lock = threading.RLock()
+        self._async_lock = asyncio.Lock()
         logger.warning("Using in-memory cache fallback. Multi-instance sharing is NOT supported!")
-    
-    def is_connected(self) -> bool:
+
+    async def is_connected(self) -> bool:
         return True
-    
+
     def _check_expiry(self, key: str) -> bool:
         """Check if key is expired and remove if so."""
         if key in self._expiry:
             if datetime.now() > self._expiry[key]:
-                self.delete(key)
+                # Remove expired key from all storages
+                self._data.pop(key, None)
+                self._lists.pop(key, None)
+                self._hashes.pop(key, None)
+                self._sets.pop(key, None)
+                self._sorted_sets.pop(key, None)
+                del self._expiry[key]
                 return True
         return False
-    
-    def get(self, key: str) -> Optional[str]:
-        with self._lock:
+
+    # Basic Key-Value Operations
+    async def get(self, key: str) -> Optional[str]:
+        async with self._async_lock:
             if self._check_expiry(key):
                 return None
             return self._data.get(key)
-    
-    def set(self, key: str, value: str, ttl: Optional[int] = None, nx: bool = False, xx: bool = False) -> bool:
-        with self._lock:
+
+    async def set(self, key: str, value: str, ttl: Optional[int] = None, nx: bool = False, xx: bool = False) -> bool:
+        async with self._async_lock:
             exists = key in self._data
             if nx and exists:
                 return False
@@ -1011,52 +893,109 @@ class InMemoryCache:
             if ttl and ttl > 0:
                 self._expiry[key] = datetime.now() + timedelta(seconds=ttl)
             return True
-    
-    def delete(self, *keys: str) -> int:
+
+    async def delete(self, *keys: str) -> int:
         count = 0
-        with self._lock:
+        async with self._async_lock:
             for key in keys:
                 if key in self._data:
                     del self._data[key]
                     count += 1
-                if key in self._lists:
-                    del self._lists[key]
-                if key in self._hashes:
-                    del self._hashes[key]
-                if key in self._sets:
-                    del self._sets[key]
-                if key in self._expiry:
-                    del self._expiry[key]
+                self._lists.pop(key, None)
+                self._hashes.pop(key, None)
+                self._sets.pop(key, None)
+                self._sorted_sets.pop(key, None)
+                self._expiry.pop(key, None)
         return count
-    
-    def exists(self, key: str) -> bool:
-        with self._lock:
+
+    async def exists(self, key: str) -> bool:
+        async with self._async_lock:
             if self._check_expiry(key):
                 return False
-            return key in self._data or key in self._lists or key in self._hashes or key in self._sets
-    
-    def rpush(self, key: str, *values: str) -> int:
-        with self._lock:
+            return key in self._data or key in self._lists or key in self._hashes or key in self._sets or key in self._sorted_sets
+
+    async def expire(self, key: str, ttl: int) -> bool:
+        async with self._async_lock:
+            if key in self._data or key in self._lists or key in self._hashes or key in self._sets or key in self._sorted_sets:
+                self._expiry[key] = datetime.now() + timedelta(seconds=ttl)
+                return True
+            return False
+
+    async def ttl(self, key: str) -> int:
+        async with self._async_lock:
+            if key in self._expiry:
+                remaining = (self._expiry[key] - datetime.now()).total_seconds()
+                return int(remaining) if remaining > 0 else -2
+            return -1
+
+    # JSON Operations
+    async def get_json(self, key: str) -> Optional[Any]:
+        value = await self.get(key)
+        if value is None:
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return None
+
+    async def set_json(self, key: str, value: Any, ttl: Optional[int] = None, nx: bool = False, xx: bool = False) -> bool:
+        try:
+            json_str = json.dumps(value, ensure_ascii=False, default=str)
+            return await self.set(key, json_str, ttl=ttl, nx=nx, xx=xx)
+        except Exception:
+            return False
+
+    # List Operations
+    async def rpush(self, key: str, *values: str) -> int:
+        async with self._async_lock:
             if key not in self._lists:
                 self._lists[key] = []
             self._lists[key].extend(values)
             return len(self._lists[key])
-    
-    def lrange(self, key: str, start: int = 0, end: int = -1) -> List[str]:
-        with self._lock:
+
+    async def lpush(self, key: str, *values: str) -> int:
+        async with self._async_lock:
+            if key not in self._lists:
+                self._lists[key] = []
+            for v in reversed(values):
+                self._lists[key].insert(0, v)
+            return len(self._lists[key])
+
+    async def lpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
+        async with self._async_lock:
+            if key not in self._lists or not self._lists[key]:
+                return None
+            if count == 1:
+                return self._lists[key].pop(0)
+            result = self._lists[key][:count]
+            self._lists[key] = self._lists[key][count:]
+            return result
+
+    async def rpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
+        async with self._async_lock:
+            if key not in self._lists or not self._lists[key]:
+                return None
+            if count == 1:
+                return self._lists[key].pop()
+            result = self._lists[key][-count:]
+            self._lists[key] = self._lists[key][:-count]
+            return result
+
+    async def lrange(self, key: str, start: int = 0, end: int = -1) -> List[str]:
+        async with self._async_lock:
             if key not in self._lists:
                 return []
             lst = self._lists[key]
             if end == -1:
                 return lst[start:]
             return lst[start:end + 1]
-    
-    def llen(self, key: str) -> int:
-        with self._lock:
+
+    async def llen(self, key: str) -> int:
+        async with self._async_lock:
             return len(self._lists.get(key, []))
-    
-    def ltrim(self, key: str, start: int, end: int) -> bool:
-        with self._lock:
+
+    async def ltrim(self, key: str, start: int, end: int) -> bool:
+        async with self._async_lock:
             if key not in self._lists:
                 return True
             lst = self._lists[key]
@@ -1065,27 +1004,9 @@ class InMemoryCache:
             else:
                 self._lists[key] = lst[start:end + 1]
             return True
-    
-    # Add other methods as needed...
-    
-    def get_json(self, key: str) -> Optional[Any]:
-        value = self.get(key)
-        if value is None:
-            return None
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return None
-    
-    def set_json(self, key: str, value: Any, ttl: Optional[int] = None, nx: bool = False, xx: bool = False) -> bool:
-        try:
-            json_str = json.dumps(value, ensure_ascii=False, default=str)
-            return self.set(key, json_str, ttl=ttl, nx=nx, xx=xx)
-        except Exception:
-            return False
-    
-    def lrange_json(self, key: str, start: int = 0, end: int = -1) -> List[Any]:
-        items = self.lrange(key, start, end)
+
+    async def lrange_json(self, key: str, start: int = 0, end: int = -1) -> List[Any]:
+        items = await self.lrange(key, start, end)
         result = []
         for item in items:
             try:
@@ -1093,8 +1014,8 @@ class InMemoryCache:
             except json.JSONDecodeError:
                 result.append(item)
         return result
-    
-    def rpush_json(self, key: str, *values: Any) -> int:
+
+    async def rpush_json(self, key: str, *values: Any) -> int:
         json_values = []
         for v in values:
             try:
@@ -1103,25 +1024,277 @@ class InMemoryCache:
                 pass
         if not json_values:
             return 0
-        return self.rpush(key, *json_values)
-    
-    def close(self):
+        return await self.rpush(key, *json_values)
+
+    async def lpush_json(self, key: str, *values: Any) -> int:
+        json_values = []
+        for v in values:
+            try:
+                json_values.append(json.dumps(v, ensure_ascii=False, default=str))
+            except Exception:
+                pass
+        if not json_values:
+            return 0
+        return await self.lpush(key, *json_values)
+
+    # Hash Operations
+    async def hget(self, key: str, field: str) -> Optional[str]:
+        async with self._async_lock:
+            return self._hashes.get(key, {}).get(field)
+
+    async def hset(self, key: str, field: str, value: str) -> int:
+        async with self._async_lock:
+            if key not in self._hashes:
+                self._hashes[key] = {}
+            is_new = field not in self._hashes[key]
+            self._hashes[key][field] = value
+            return 1 if is_new else 0
+
+    async def hmset(self, key: str, mapping: Dict[str, str]) -> bool:
+        async with self._async_lock:
+            if key not in self._hashes:
+                self._hashes[key] = {}
+            self._hashes[key].update(mapping)
+            return True
+
+    async def hgetall(self, key: str) -> Dict[str, str]:
+        async with self._async_lock:
+            return dict(self._hashes.get(key, {}))
+
+    async def hdel(self, key: str, *fields: str) -> int:
+        async with self._async_lock:
+            if key not in self._hashes:
+                return 0
+            count = 0
+            for field in fields:
+                if field in self._hashes[key]:
+                    del self._hashes[key][field]
+                    count += 1
+            return count
+
+    async def hlen(self, key: str) -> int:
+        async with self._async_lock:
+            return len(self._hashes.get(key, {}))
+
+    async def hexists(self, key: str, field: str) -> bool:
+        async with self._async_lock:
+            return field in self._hashes.get(key, {})
+
+    async def hget_json(self, key: str, field: str) -> Optional[Any]:
+        value = await self.hget(key, field)
+        if value is None:
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+
+    async def hset_json(self, key: str, field: str, value: Any) -> int:
+        try:
+            json_str = json.dumps(value, ensure_ascii=False, default=str)
+            return await self.hset(key, field, json_str)
+        except Exception:
+            return 0
+
+    async def hmset_json(self, key: str, mapping: Dict[str, Any]) -> bool:
+        if not mapping:
+            return False
+        try:
+            json_mapping = {}
+            for k, v in mapping.items():
+                json_mapping[k] = json.dumps(v, ensure_ascii=False, default=str)
+            return await self.hmset(key, json_mapping)
+        except Exception:
+            return False
+
+    async def hgetall_json(self, key: str) -> Dict[str, Any]:
+        data = await self.hgetall(key)
+        result = {}
+        for k, v in data.items():
+            try:
+                result[k] = json.loads(v)
+            except json.JSONDecodeError:
+                result[k] = v
+        return result
+
+    async def hkeys(self, key: str) -> List[str]:
+        async with self._async_lock:
+            return list(self._hashes.get(key, {}).keys())
+
+    async def hvals(self, key: str) -> List[str]:
+        async with self._async_lock:
+            return list(self._hashes.get(key, {}).values())
+
+    async def hvals_json(self, key: str) -> List[Any]:
+        values = await self.hvals(key)
+        result = []
+        for v in values:
+            try:
+                result.append(json.loads(v))
+            except json.JSONDecodeError:
+                result.append(v)
+        return result
+
+    # Set Operations
+    async def sadd(self, key: str, *members: str) -> int:
+        async with self._async_lock:
+            if key not in self._sets:
+                self._sets[key] = set()
+            before = len(self._sets[key])
+            self._sets[key].update(members)
+            return len(self._sets[key]) - before
+
+    async def srem(self, key: str, *members: str) -> int:
+        async with self._async_lock:
+            if key not in self._sets:
+                return 0
+            count = 0
+            for m in members:
+                if m in self._sets[key]:
+                    self._sets[key].remove(m)
+                    count += 1
+            return count
+
+    async def sismember(self, key: str, member: str) -> bool:
+        async with self._async_lock:
+            return member in self._sets.get(key, set())
+
+    async def smembers(self, key: str) -> Set[str]:
+        async with self._async_lock:
+            return set(self._sets.get(key, set()))
+
+    async def scard(self, key: str) -> int:
+        async with self._async_lock:
+            return len(self._sets.get(key, set()))
+
+    # Sorted Set Operations
+    async def zadd(self, key: str, mapping: Dict[str, float]) -> int:
+        async with self._async_lock:
+            if key not in self._sorted_sets:
+                self._sorted_sets[key] = {}
+            before = len(self._sorted_sets[key])
+            self._sorted_sets[key].update(mapping)
+            return len(self._sorted_sets[key]) - before
+
+    async def zrangebyscore(self, key: str, min_score: float, max_score: float, withscores: bool = False) -> List:
+        async with self._async_lock:
+            if key not in self._sorted_sets:
+                return []
+            items = [(m, s) for m, s in self._sorted_sets[key].items() if min_score <= s <= max_score]
+            items.sort(key=lambda x: x[1])
+            if withscores:
+                return items
+            return [m for m, s in items]
+
+    async def zrem(self, key: str, *members: str) -> int:
+        async with self._async_lock:
+            if key not in self._sorted_sets:
+                return 0
+            count = 0
+            for m in members:
+                if m in self._sorted_sets[key]:
+                    del self._sorted_sets[key][m]
+                    count += 1
+            return count
+
+    async def zscore(self, key: str, member: str) -> Optional[float]:
+        async with self._async_lock:
+            return self._sorted_sets.get(key, {}).get(member)
+
+    async def zcard(self, key: str) -> int:
+        async with self._async_lock:
+            return len(self._sorted_sets.get(key, {}))
+
+    # Atomic Operations
+    async def incr(self, key: str, amount: int = 1) -> int:
+        async with self._async_lock:
+            current = int(self._data.get(key, 0))
+            new_value = current + amount
+            self._data[key] = str(new_value)
+            return new_value
+
+    async def decr(self, key: str, amount: int = 1) -> int:
+        async with self._async_lock:
+            current = int(self._data.get(key, 0))
+            new_value = current - amount
+            self._data[key] = str(new_value)
+            return new_value
+
+    async def getset(self, key: str, value: str) -> Optional[str]:
+        async with self._async_lock:
+            old_value = self._data.get(key)
+            self._data[key] = value
+            return old_value
+
+    # Lock Operations
+    async def acquire_lock(self, lock_name: str, timeout: int = 10, blocking: bool = True, blocking_timeout: float = 5.0) -> Optional[str]:
+        import time
+        lock_key = f"lock:{lock_name}"
+        token = str(uuid.uuid4())
+
+        if blocking:
+            start_time = time.time()
+            while time.time() - start_time < blocking_timeout:
+                if await self.set(lock_key, token, ttl=timeout, nx=True):
+                    return token
+                await asyncio.sleep(0.1)  # Non-blocking
+            return None
+        else:
+            if await self.set(lock_key, token, ttl=timeout, nx=True):
+                return token
+            return None
+
+    async def release_lock(self, lock_name: str, token: str) -> bool:
+        lock_key = f"lock:{lock_name}"
+        current_token = await self.get(lock_key)
+        if current_token == token:
+            await self.delete(lock_key)
+            return True
+        return False
+
+    # Utility Methods
+    async def keys(self, pattern: str = "*") -> List[str]:
+        async with self._async_lock:
+            import fnmatch
+            all_keys = set(self._data.keys()) | set(self._lists.keys()) | set(self._hashes.keys()) | set(self._sets.keys()) | set(self._sorted_sets.keys())
+            if pattern == "*":
+                return list(all_keys)
+            return [k for k in all_keys if fnmatch.fnmatch(k, pattern)]
+
+    async def flush_db(self) -> bool:
+        async with self._async_lock:
+            self._data.clear()
+            self._lists.clear()
+            self._hashes.clear()
+            self._sets.clear()
+            self._sorted_sets.clear()
+            self._expiry.clear()
+            return True
+
+    async def info(self) -> Dict[str, Any]:
+        async with self._async_lock:
+            return {
+                "keys": len(self._data) + len(self._lists) + len(self._hashes) + len(self._sets) + len(self._sorted_sets),
+                "type": "in_memory"
+            }
+
+    async def close(self):
         pass
 
 
-def get_cache(config: Optional[RedisCacheConfig] = None) -> Union[RedisCache, InMemoryCache]:
+async def get_cache(config: Optional[RedisCacheConfig] = None) -> Union[RedisCache, InMemoryCache]:
     """
     Get the best available cache implementation.
     Returns RedisCache if Redis is available, otherwise InMemoryCache.
-    
+
     Args:
         config: Redis configuration
-        
+
     Returns:
         Cache instance (RedisCache or InMemoryCache)
     """
     redis_cache = get_redis_cache(config)
-    if redis_cache.is_connected():
+    if await redis_cache.is_connected():
         return redis_cache
     else:
         logger.warning("Redis unavailable, falling back to in-memory cache")

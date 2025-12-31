@@ -484,11 +484,19 @@ class VikingDBHTTPClient:
         if self._async_session and not self._async_session.closed:
             # Close async session in executor
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.ensure_future(self._async_session.close())
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+                if loop and loop.is_running():
+                    loop.create_task(self._async_session.close())
                 else:
-                    loop.run_until_complete(self._async_session.close())
+                    try:
+                        asyncio.run(self._async_session.close())
+                    except RuntimeError:
+                        # If we can't get a loop and can't run a new one (e.g. nested), just ignore
+                        pass
             except Exception:
                 pass
         if self._executor:
@@ -826,7 +834,7 @@ class VikingDBBackend(IVectorStorageBackend):
     def get_collection_names(self) -> List[str]:
         """Get all collection names managed by this backend."""
         if self._collection_ready:
-            return [ct.value for ct in ContextType]
+            return [ct for ct in ContextType]
         return []
     
     def is_initialized(self) -> bool:
@@ -1016,13 +1024,13 @@ class VikingDBBackend(IVectorStorageBackend):
                 }
             )
             
-            if result.get("code") == 0:
+            if result.get("code") == "Success":
                 for item in data_list:
                     stored_ids.append(item["id"])
-                logger.debug(f"Upserted {len(data_list)} docs to {self._collection_name}")
+                logger.debug(f"[VikingDB] Upserted {len(data_list)} docs to {self._collection_name}")
             else:
                 logger.error(
-                    f"Failed to upsert to {self._collection_name}: {result.get('message')}"
+                    f"[VikingDB] Failed to upsert to {self._collection_name}: {result.get('message')}"
                 )
                 
         except Exception as e:

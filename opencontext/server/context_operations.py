@@ -235,7 +235,9 @@ class ContextOperations:
 
         try:
             collection_names = self.storage.get_vector_collection_names()
-            return [name for name in collection_names if name in ContextType]
+            # Check if name is in ContextType values
+            context_type_values = {t.value for t in ContextType}
+            return [name for name in collection_names if name in context_type_values]
         except Exception as e:
             logger.exception(f"Failed to get context types: {e}")
             raise RuntimeError(f"Failed to get context types: {str(e)}") from e
