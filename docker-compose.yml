@@ -54,6 +54,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./persist:/app/persist
+      - ./config:/app/config
     deploy:
       replicas: 1
 

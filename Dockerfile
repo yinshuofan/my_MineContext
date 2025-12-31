@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && rm -rf /var/lib/apt/lists/*
+# RUN apt-get update && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
 COPY . .
@@ -20,8 +20,8 @@ COPY . .
 RUN pip install --no-cache-dir -e .
 
 # Install playwright dependencies
-RUN pip install playwright && \
-    playwright install --with-deps chromium
+# RUN pip install playwright && \
+#     playwright install --with-deps chromium
 
 # Create directories for logs and data
 RUN mkdir -p logs persist screenshots
