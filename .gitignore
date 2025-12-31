@@ -27,3 +27,6 @@ uv.toml
 GEMINI.md
 .gemini/
 .vscode/
+
+.env
+.ENV
