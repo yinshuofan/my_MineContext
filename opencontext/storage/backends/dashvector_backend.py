@@ -330,11 +330,19 @@ class DashVectorHTTPClient:
         if self._async_session and not self._async_session.closed:
             # Schedule async session close
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.ensure_future(self._async_session.close())
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+                if loop and loop.is_running():
+                    loop.create_task(self._async_session.close())
                 else:
-                    loop.run_until_complete(self._async_session.close())
+                    try:
+                        asyncio.run(self._async_session.close())
+                    except RuntimeError:
+                        # If we can't get a loop and can't run a new one, just ignore
+                        pass
             except Exception:
                 pass
         self._executor.shutdown(wait=False)

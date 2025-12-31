@@ -433,7 +433,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 
                 # Execute task
                 logger.info(f"Executing periodic task: {task_type}")
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, handler, None, None, None)
                 
                 self._redis.hset(periodic_key, "status", "idle")
