@@ -289,29 +289,30 @@ async def push_chat_message(
     """
     Push a single chat message to the context capture system.
     The message will be buffered and processed when the buffer is full.
+    Uses async Redis operations to avoid blocking the event loop.
     """
     try:
         # Get TextChatCapture component
         text_chat = opencontext.capture_manager.get_component("text_chat")
         if text_chat is None:
             return convert_resp(code=503, status=503, message="TextChatCapture component not available")
-        
-        # Push message
-        text_chat.push_message(
+
+        # Push message (async - non-blocking)
+        await text_chat.async_push_message(
             role=request.role,
             content=request.content,
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
         )
-        
+
         # Schedule compression task for the user
         _schedule_user_compression(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
         )
-        
+
         return convert_resp(message="Chat message pushed successfully")
     except Exception as e:
         logger.exception(f"Error pushing chat message: {e}")
@@ -326,30 +327,31 @@ async def push_chat_messages(
 ):
     """
     Push multiple chat messages in batch.
+    Uses async Redis operations to avoid blocking the event loop.
     """
     try:
         text_chat = opencontext.capture_manager.get_component("text_chat")
         if text_chat is None:
             return convert_resp(code=503, status=503, message="TextChatCapture component not available")
-        
-        # Push each message
+
+        # Push each message (async - non-blocking)
         for msg in request.messages:
-            text_chat.push_message(
-                role=msg.role,
-                content=msg.content,
-                user_id=msg.user_id or request.user_id,
-                device_id=msg.device_id or request.device_id,
-                agent_id=msg.agent_id or request.agent_id,
+            await text_chat.async_push_message(
+                role=msg.get("role", "user"),
+                content=msg.get("content", ""),
+                user_id=msg.get("user_id") or request.user_id,
+                device_id=msg.get("device_id") or request.device_id,
+                agent_id=msg.get("agent_id") or request.agent_id,
             )
-        
-        # Flush buffer if requested
+
+        # Flush buffer if requested (async - non-blocking)
         if request.flush_immediately:
-            text_chat.flush_user_buffer(
+            await text_chat.async_flush_user_buffer(
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,
             )
-        
+
         return convert_resp(
             message=f"Pushed {len(request.messages)} chat messages successfully",
             data={"count": len(request.messages)}
@@ -413,18 +415,20 @@ async def flush_chat_buffer(
 ):
     """
     Manually flush the chat message buffer for a specific user.
+    Uses async Redis operations to avoid blocking the event loop.
     """
     try:
         text_chat = opencontext.capture_manager.get_component("text_chat")
         if text_chat is None:
             return convert_resp(code=503, status=503, message="TextChatCapture component not available")
-        
-        text_chat.flush_user_buffer(
+
+        # Flush buffer (async - non-blocking)
+        await text_chat.async_flush_user_buffer(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
         )
-        
+
         return convert_resp(message="Chat buffer flushed successfully")
     except Exception as e:
         logger.exception(f"Error flushing chat buffer: {e}")
@@ -794,18 +798,20 @@ async def push_batch(
     """
     Push multiple items of different types in a single request.
     This is useful for syncing data from external services efficiently.
+    Uses async Redis operations for chat items to avoid blocking the event loop.
     """
     try:
         results = []
         storage = opencontext.storage
         text_chat = opencontext.capture_manager.get_component("text_chat")
-        
+
         for item in request.items:
             item_result = {"type": item.type, "success": False}
             try:
                 if item.type == "chat":
                     if text_chat:
-                        text_chat.push_message(
+                        # Use async version to avoid blocking the event loop
+                        await text_chat.async_push_message(
                             role=item.data.get("role", "user"),
                             content=item.data.get("content", ""),
                             user_id=item.data.get("user_id") or request.user_id,
