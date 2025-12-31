@@ -116,6 +116,7 @@ class PushScreenshotRequest(BaseModel):
     create_time: Optional[str] = Field(None, description="Screenshot creation time (ISO format)")
     user_id: Optional[str] = Field(None, description="User identifier")
     device_id: Optional[str] = Field(None, description="Device identifier")
+    agent_id: Optional[str] = Field(None, description="Agent identifier")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
@@ -484,6 +485,7 @@ async def push_screenshot(
         await _schedule_user_compression(
             user_id=request.user_id,
             device_id=request.device_id,
+            agent_id=request.agent_id,
         )
 
         return convert_resp(message="Screenshot pushed successfully", data={"path": file_path})
