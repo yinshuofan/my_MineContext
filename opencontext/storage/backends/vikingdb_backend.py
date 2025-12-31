@@ -1024,13 +1024,13 @@ class VikingDBBackend(IVectorStorageBackend):
                 }
             )
             
-            if result.get("code") == 0:
+            if result.get("code") == "Success":
                 for item in data_list:
                     stored_ids.append(item["id"])
-                logger.debug(f"Upserted {len(data_list)} docs to {self._collection_name}")
+                logger.debug(f"[VikingDB] Upserted {len(data_list)} docs to {self._collection_name}")
             else:
                 logger.error(
-                    f"Failed to upsert to {self._collection_name}: {result.get('message')}"
+                    f"[VikingDB] Failed to upsert to {self._collection_name}: {result.get('message')}"
                 )
                 
         except Exception as e:
