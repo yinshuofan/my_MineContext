@@ -43,6 +43,18 @@
                     <li class="list-group-item"><strong>置信度:</strong> <small class="text-muted">{{ context.confidence }}</small></li>
                     <li class="list-group-item"><strong>重要性:</strong> <small class="text-muted">{{ context.importance }}</small></li>
                     <li class="list-group-item"><strong>是否发生:</strong> <small class="text-muted">{{ context.is_happend }}</small></li>
+                    <li class="list-group-item"><strong>允许合并:</strong> <small class="text-muted">{{ context.enable_merge }}</small></li>
+                    <li class="list-group-item"><strong>合并次数:</strong> <small class="text-muted">{{ context.merge_count }}</small></li>
+                    <li class="list-group-item"><strong>最后调用时间:</strong> <small class="text-muted">{{ context.last_call_time or 'N/A' }}</small></li>
+                    {% if context.user_id %}
+                    <li class="list-group-item"><strong>User ID:</strong> <small class="text-muted">{{ context.user_id }}</small></li>
+                    {% endif %}
+                    {% if context.device_id %}
+                    <li class="list-group-item"><strong>Device ID:</strong> <small class="text-muted">{{ context.device_id }}</small></li>
+                    {% endif %}
+                    {% if context.agent_id %}
+                    <li class="list-group-item"><strong>Agent ID:</strong> <small class="text-muted">{{ context.agent_id }}</small></li>
+                    {% endif %}
                 </ul>
                 {% if context.entities %}
                 <hr>
