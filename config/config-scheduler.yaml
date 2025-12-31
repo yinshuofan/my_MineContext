@@ -1,0 +1,109 @@
+enabled: true
+
+service_mode:
+  enabled: true
+  require_redis: true
+  require_external_storage: true
+
+logging:
+  level: INFO
+  log_path: "${CONTEXT_PATH:.}/logs/opencontext-scheduler.log"
+
+redis:
+  enabled: true
+  host: "${REDIS_HOST:redis}"
+  port: ${REDIS_PORT:6379}
+  password: "${REDIS_PASSWORD:}"
+  db: ${REDIS_DB:0}
+  key_prefix: "opencontext:"
+
+capture:
+  enabled: false
+
+processing:
+  enabled: true
+  text_chat_processor:
+    enabled: false
+  document_processor:
+    enabled: false
+  screenshot_processor:
+    enabled: false
+  context_merger:
+    enabled: false
+    enable_memory_management: true
+    cleanup_interval_hours: 24
+
+    similarity_threshold: 0.01
+    associative_similarity_threshold: 0.01
+
+    use_intelligent_merging: false
+
+    ENTITY_CONTEXT_retention_days: 365
+    activity_context_retention_days: 90
+    intent_context_retention_days: 180
+    semantic_context_retention_days: 180
+    procedural_context_retention_days: 120
+    state_context_retention_days: 7
+
+storage:
+  enabled: true
+  backends:
+    - name: "default_vector"
+      storage_type: "vector_db"
+      backend: "vikingdb"
+      config:
+        access_key_id: "${VIKINGDB_ACCESS_KEY_ID}"
+        secret_access_key: "${VIKINGDB_SECRET_ACCESS_KEY}"
+        region: "${VIKINGDB_REGION:cn-beijing}"
+        dimension: 2048
+        max_connections: 100
+        max_connections_per_host: 20
+        collection_name: "opencontext"
+        index_name: "opencontext_index"
+    - name: "document_store"
+      storage_type: "document_db"
+      backend: "mysql"
+      default: true
+      config:
+        host: "${MYSQL_HOST:mysql}"
+        port: ${MYSQL_PORT:3306}
+        user: "${MYSQL_USER:root}"
+        password: "${MYSQL_PASSWORD:opencontext}"
+        database: "${MYSQL_DATABASE:opencontext}"
+        charset: "utf8mb4"
+
+consumption:
+  enabled: false
+
+web:
+  host: "0.0.0.0"
+  port: 1733
+  enabled: false
+
+llm:
+  enabled: true
+  provider: "openai"
+  config:
+    api_key: "${LLM_API_KEY}"
+    base_url: "${LLM_BASE_URL}"
+    model: "${LLM_MODEL}"
+    temperature: 0.1
+
+vlm_model:
+  base_url: "${VLM_BASE_URL}"
+  api_key: "${VLM_API_KEY}"
+  model: "${VLM_MODEL}"
+  provider: "openai"
+
+embedding_model:
+  base_url: "${EMBEDDING_BASE_URL}"
+  api_key: "${EMBEDDING_API_KEY}"
+  model: "${EMBEDDING_MODEL}"
+  provider: "openai"
+  output_dim: 2048
+
+scheduler:
+  enabled: false
+
+completion:
+  enabled: false
