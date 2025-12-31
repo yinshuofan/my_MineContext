@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile, Form, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -362,41 +362,46 @@ async def push_chat_messages(
 @router.post("/chat/process", response_class=JSONResponse)
 async def process_chat_messages(
     request: ProcessChatMessagesRequest,
+    background_tasks: BackgroundTasks,
     opencontext: OpenContext = Depends(get_context_lab),
     _auth: str = auth_dependency,
 ):
     """
     Process chat messages directly and send to pipeline, bypassing Redis buffer.
     Messages are immediately sent to the context processing pipeline without buffering.
+    This endpoint returns immediately after task submission.
     """
     try:
         message_capturer = opencontext.capture_manager.get_component("text_chat")
         if message_capturer is None:
             return convert_resp(code=503, status=503, message="TextChatCapture component not available")
-        
-        message_capturer.process_messages_directly(
+
+        background_tasks.add_task(
+            message_capturer.process_messages_directly,
             messages=request.messages,
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
         )
 
-        # Schedule compression task for the user
-        _schedule_user_compression(
+        background_tasks.add_task(
+            _schedule_user_compression,
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
         )
-        
+
         return convert_resp(
-            data={"message_count": len(request.messages),
-                  "user_id": request.user_id,
-                  "device_id": request.device_id,
-                  "agent_id": request.agent_id,
-                 }
+            message="Chat messages submitted for processing",
+            data={
+                "message_count": len(request.messages),
+                "user_id": request.user_id,
+                "device_id": request.device_id,
+                "agent_id": request.agent_id,
+            }
         )
     except Exception as e:
-        logger.exception(f"Error processing chat messages: {e}")
+        logger.exception(f"Error submitting chat messages: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
 
 
