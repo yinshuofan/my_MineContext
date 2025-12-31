@@ -334,17 +334,161 @@ class TextChatCapture(BaseCaptureComponent):
     ) -> int:
         """
         获取指定用户缓冲区中的消息数量。
-        
+
         Args:
             user_id: 用户标识符
             device_id: 设备标识符
             agent_id: Agent标识符
-            
+
         Returns:
             缓冲区中的消息数量
         """
         if not self._redis_cache or not self._redis_cache.is_connected():
             return 0
-        
+
         buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
         return self._redis_cache.llen(buffer_key)
+
+    # =========================================================================
+    # 异步方法 (Async Methods) - 用于 FastAPI async 路由，避免阻塞事件循环
+    # =========================================================================
+
+    async def async_push_message(
+        self,
+        role: str,
+        content: str,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None
+    ):
+        """
+        异步版本：供外部聊天机器人调用的接口，推入新消息。
+        使用异步 Redis 操作，不会阻塞事件循环。
+
+        Args:
+            role: 消息角色 (user/assistant)
+            content: 消息内容
+            user_id: 用户标识符
+            device_id: 设备标识符
+            agent_id: Agent标识符
+        """
+        self._ensure_redis()
+
+        message = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
+
+        try:
+            # 将消息推入 Redis 列表（异步）
+            await self._redis_cache.async_rpush_json(buffer_key, message)
+
+            # 设置/刷新 TTL（异步）
+            await self._redis_cache.async_expire(buffer_key, self._buffer_ttl)
+
+            # 检查缓冲区大小（异步）
+            buffer_len = await self._redis_cache.async_llen(buffer_key)
+
+            if buffer_len >= self._buffer_size:
+                logger.info(f"Buffer size reached {self._buffer_size} for {buffer_key}, flushing messages.")
+                await self.async_flush_buffer(buffer_key, user_id, device_id, agent_id)
+
+        except Exception as e:
+            logger.error(f"Redis async_push_message error: {e}")
+            raise RuntimeError(f"Failed to push message to Redis: {e}") from e
+
+    async def async_flush_buffer(
+        self,
+        buffer_key: str,
+        user_id: Optional[str],
+        device_id: Optional[str],
+        agent_id: Optional[str]
+    ):
+        """异步版本：刷新 Redis 中的缓冲区，使用非阻塞的异步锁"""
+        self._ensure_redis()
+
+        try:
+            # 使用异步分布式锁确保原子操作（不会阻塞事件循环）
+            lock_token = await self._redis_cache.async_acquire_lock(
+                f"flush:{buffer_key}",
+                timeout=30,
+                blocking=True,
+                blocking_timeout=5.0
+            )
+
+            if not lock_token:
+                logger.warning(f"Failed to acquire lock for flushing {buffer_key}")
+                return
+
+            try:
+                # 获取所有消息（异步）
+                messages = await self._redis_cache.async_lrange_json(buffer_key, 0, -1)
+
+                if not messages:
+                    return
+
+                # 创建 RawContext
+                self._create_and_send_context(messages, user_id, device_id, agent_id)
+
+                # 清空缓冲区（异步）
+                await self._redis_cache.async_delete(buffer_key)
+
+                logger.info(f"Flushed {len(messages)} chat messages for {buffer_key} to pipeline.")
+
+            finally:
+                # 释放锁（异步）
+                await self._redis_cache.async_release_lock(f"flush:{buffer_key}", lock_token)
+
+        except Exception as e:
+            logger.error(f"Redis async_flush_buffer error: {e}")
+            raise RuntimeError(f"Failed to flush buffer: {e}") from e
+
+    async def async_flush_user_buffer(
+        self,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None
+    ):
+        """
+        异步版本：手动刷新指定用户的缓冲区。
+        使用异步 Redis 操作，不会阻塞事件循环。
+
+        Args:
+            user_id: 用户标识符
+            device_id: 设备标识符
+            agent_id: Agent标识符
+        """
+        self._ensure_redis()
+
+        buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
+
+        # 检查缓冲区是否有数据（异步）
+        buffer_len = await self._redis_cache.async_llen(buffer_key)
+        if buffer_len > 0:
+            await self.async_flush_buffer(buffer_key, user_id, device_id, agent_id)
+
+    async def async_get_user_buffer_length(
+        self,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None
+    ) -> int:
+        """
+        异步版本：获取指定用户缓冲区中的消息数量。
+
+        Args:
+            user_id: 用户标识符
+            device_id: 设备标识符
+            agent_id: Agent标识符
+
+        Returns:
+            缓冲区中的消息数量
+        """
+        if not self._redis_cache or not self._redis_cache.is_connected():
+            return 0
+
+        buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
+        return await self._redis_cache.async_llen(buffer_key)
