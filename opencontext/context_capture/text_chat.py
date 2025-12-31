@@ -244,6 +244,24 @@ class TextChatCapture(BaseCaptureComponent):
         if self._callback:
             self._callback([raw_context])
 
+    def process_messages_directly(
+        self,
+        messages: List[Dict[str, Any]],
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None
+    ):
+        """
+        直接处理聊天消息，跳过 Redis 缓冲区，立即发送到处理管道。
+
+        Args:
+            messages: 消息列表，每条消息包含 role 和 content
+            user_id: 用户标识符
+            device_id: 设备标识符
+            agent_id: Agent标识符
+        """
+        self._create_and_send_context(messages, user_id, device_id, agent_id)
+
     def flush_user_buffer(
         self,
         user_id: Optional[str] = None,

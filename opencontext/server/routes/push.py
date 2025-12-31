@@ -71,7 +71,10 @@ def _schedule_user_compression(
 class PushChatMessageRequest(BaseModel):
     """Push a single chat message"""
     role: str = Field(..., description="Message role: user, assistant, system")
-    content: str = Field(..., description="Message content")
+    content: List[Dict[str, Any]] = Field(
+        ..., 
+        description="Message content (OpenAI format: List of content blocks with type and text)"
+    )
     user_id: Optional[str] = Field(None, description="User identifier")
     device_id: Optional[str] = Field(None, description="Device identifier")
     agent_id: Optional[str] = Field(None, description="Agent identifier")
@@ -81,11 +84,25 @@ class PushChatMessageRequest(BaseModel):
 
 class PushChatMessagesRequest(BaseModel):
     """Push multiple chat messages in batch"""
-    messages: List[PushChatMessageRequest]
+    messages: List[Dict[str, Any]] = Field(
+        ..., 
+        description="List of chat messages (OpenAI format: role, content)"
+    )
     user_id: Optional[str] = Field(None, description="Default user identifier")
     device_id: Optional[str] = Field(None, description="Default device identifier")
     agent_id: Optional[str] = Field(None, description="Default agent identifier")
     flush_immediately: bool = Field(False, description="Whether to flush buffer immediately")
+
+
+class ProcessChatMessagesRequest(BaseModel):
+    """Process chat messages directly (bypass buffer)"""
+    messages: List[Dict[str, Any]] = Field(
+        ..., 
+        description="List of chat messages (OpenAI format: role, content[type, text] or other format)"
+    )
+    user_id: Optional[str] = Field(None, description="User identifier")
+    device_id: Optional[str] = Field(None, description="Device identifier")
+    agent_id: Optional[str] = Field(None, description="Agent identifier")
 
 
 class PushScreenshotRequest(BaseModel):
@@ -339,6 +356,47 @@ async def push_chat_messages(
         )
     except Exception as e:
         logger.exception(f"Error pushing chat messages: {e}")
+        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
+
+
+@router.post("/chat/process", response_class=JSONResponse)
+async def process_chat_messages(
+    request: ProcessChatMessagesRequest,
+    opencontext: OpenContext = Depends(get_context_lab),
+    _auth: str = auth_dependency,
+):
+    """
+    Process chat messages directly and send to pipeline, bypassing Redis buffer.
+    Messages are immediately sent to the context processing pipeline without buffering.
+    """
+    try:
+        message_capturer = opencontext.capture_manager.get_component("text_chat")
+        if message_capturer is None:
+            return convert_resp(code=503, status=503, message="TextChatCapture component not available")
+        
+        message_capturer.process_messages_directly(
+            messages=request.messages,
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+        )
+
+        # Schedule compression task for the user
+        _schedule_user_compression(
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+        )
+        
+        return convert_resp(
+            data={"message_count": len(request.messages),
+                  "user_id": request.user_id,
+                  "device_id": request.device_id,
+                  "agent_id": request.agent_id,
+                 }
+        )
+    except Exception as e:
+        logger.exception(f"Error processing chat messages: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
 
 
