@@ -306,6 +306,7 @@ class ProcessedContextModel(BaseModel):
             importance=pc.extracted_data.importance,
             is_processed=pc.properties.is_processed,
             call_count=pc.properties.call_count,
+            enable_merge=pc.properties.enable_merge,  # set enable merge
             merge_count=pc.properties.merge_count,  # set merge count
             duration_count=pc.properties.duration_count,  # set duration count
             last_call_time=(

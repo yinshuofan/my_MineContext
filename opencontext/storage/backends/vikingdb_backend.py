@@ -1253,12 +1253,25 @@ class VikingDBBackend(IVectorStorageBackend):
         if query.vector and len(query.vector) > 0:
             query_vector = list(query.vector)
         else:
-            do_vectorize(query)
-            query_vector = list(query.vector) if query.vector else None
+            if query.text:
+                do_vectorize(query)
+                query_vector = list(query.vector) if query.vector else None
         
         if not query_vector:
-            logger.warning("Unable to get query vector, search failed")
-            return []
+            all_contexts = self.get_all_processed_contexts(
+                context_types=context_types,
+                limit=top_k,
+                filter=filters,
+                need_vector=need_vector,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+            )
+            all_results = []
+            for type_contexts in all_contexts.values():
+                for context in type_contexts:
+                    all_results.append((context, 1.0))
+            return all_results[:top_k] if len(all_results) > top_k else all_results
         
         # Build filter with context_types
         filter_dict = self._build_filter_dict(
