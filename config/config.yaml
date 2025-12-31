@@ -359,7 +359,7 @@ scheduler:
     
     # Data cleanup task (periodic)
     data_cleanup:
-      enabled: false
+      enabled: true
       trigger_mode: "periodic"
       # interval: 86400       # Run every 24 hours
       interval: 60       # Run every 5 minutes
