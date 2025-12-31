@@ -36,6 +36,7 @@ class StorageBackendFactory:
                 "chromadb": self._create_chromadb_backend,
                 "qdrant": self._create_qdrant_backend,
                 "dashvector": self._create_dashvector_backend,
+                "vikingdb": self._create_vikingdb_backend,
             },
             StorageType.DOCUMENT_DB: {
                 "mysql": self._create_mysql_backend,
@@ -97,6 +98,11 @@ class StorageBackendFactory:
         from opencontext.storage.backends.dashvector_backend import DashVectorBackend
 
         return DashVectorBackend()
+
+    def _create_vikingdb_backend(self, config: Dict[str, Any]):
+        from opencontext.storage.backends.vikingdb_backend import VikingDBBackend
+
+        return VikingDBBackend()
 
 
 class UnifiedStorage:
@@ -221,6 +227,9 @@ class UnifiedStorage:
 
     def delete_processed_context(self, id: str, context_type: str):
         return self._vector_backend.delete_processed_context(id, context_type)
+
+    def delete_batch_processed_contexts(self, ids: List[str], context_type: str):
+        return self._vector_backend.delete_contexts(ids, context_type)
 
     def get_all_processed_contexts(
         self,

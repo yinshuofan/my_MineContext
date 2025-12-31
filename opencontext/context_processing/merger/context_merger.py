@@ -38,7 +38,7 @@ class ContextMerger(BaseContextProcessor):
 
         config = get_config("processing.context_merger") or {}
         super().__init__(config)
-
+        self.enable_memory_management = config.get("enable_memory_management", False)
         self.prompt_manager = get_prompt_manager()
         self._similarity_threshold = config.get("similarity_threshold", 0.85)
         self.associative_similarity_threshold = config.get("associative_similarity_threshold", 0.6)
@@ -764,37 +764,44 @@ class ContextMerger(BaseContextProcessor):
 
         try:
             # 获取该类型的所有上下文
-            backend = self.storage._get_or_create_backend(context_type.value)
-            if not backend:
-                return stats
+            # backend = self.storage._get_or_create_backend(context_type.value)
+            # if not backend:
+            #     return stats
 
             # 分批获取上下文进行清理
             limit = 100
             offset = 0
 
+            ids_to_delete: List[str] = []
             while True:
                 contexts = self._get_contexts_for_cleanup(context_type.value, limit, offset)
+                logger.info(f"Found {[ctx.id for ctx in contexts]}")
                 if not contexts:
                     break
 
                 for context in contexts:
                     stats["checked"] += 1
-
                     try:
                         if strategy.should_cleanup(context):
-                            self.storage.delete_processed_context(context.id, context_type.value)
-                            stats["cleaned"] += 1
-                            logger.debug(
-                                f"Cleaned up context {context.id} of type {context_type.value}"
-                            )
-
+                            ids_to_delete.append(context.id)
                     except Exception as e:
                         stats["errors"] += 1
-                        logger.error(f"Error cleaning up context {context.id}: {e}")
+                        logger.error(f"Error evaluating cleanup for context {context.id}: {e}")
 
                 if len(contexts) < limit:
                     break
                 offset += limit
+
+            if ids_to_delete:
+                try:
+                    if self.storage.delete_batch_processed_contexts(ids_to_delete, context_type.value):
+                        stats["cleaned"] += len(ids_to_delete)
+                        logger.info(f"Batch cleaned {len(ids_to_delete)} contexts of type {context_type.value}")
+                    else:
+                        logger.error(f"Batch delete failed for {len(ids_to_delete)} contexts of type {context_type.value}")
+                except Exception as e:
+                    stats["errors"] += 1
+                    logger.error(f"Error during batch delete: {e}")
 
             logger.info(
                 f"Cleanup for {context_type.value}: checked {stats['checked']}, cleaned {stats['cleaned']}"
@@ -812,7 +819,7 @@ class ContextMerger(BaseContextProcessor):
         """获取需要清理检查的上下文"""
         try:
             contexts_dict = self.storage.get_all_processed_contexts(
-                limit=limit, offset=offset, filter={}
+                limit=limit, offset=offset, context_types=[context_type_value]
             )
 
             return contexts_dict.get(context_type_value, [])

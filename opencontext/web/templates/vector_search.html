@@ -14,7 +14,7 @@
                 <form id="vectorSearchForm">
                     <div class="mb-3">
                         <label for="query" class="form-label">查询内容</label>
-                        <textarea class="form-control" id="query" rows="3" placeholder="输入要检索的内容..." required></textarea>
+                        <textarea class="form-control" id="query" rows="3" placeholder="输入要检索的内容..."></textarea>
                     </div>
                     
                     <div class="mb-3">
@@ -49,6 +49,21 @@
                         <label for="keywords" class="form-label">关键词过滤</label>
                         <input type="text" class="form-control" id="keywords" placeholder="用逗号分隔多个关键词">
                         <div class="form-text">例如: keyword1,keyword2,keyword3</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="userId" class="form-label">用户ID</label>
+                        <input type="text" class="form-control" id="userId" placeholder="输入用户ID">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="deviceId" class="form-label">设备ID</label>
+                        <input type="text" class="form-control" id="deviceId" placeholder="输入设备ID">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="agentId" class="form-label">代理ID</label>
+                        <input type="text" class="form-control" id="agentId" placeholder="输入代理ID">
                     </div>
                     
                     <button type="submit" class="btn btn-primary w-100">
@@ -160,15 +175,13 @@ async function handleSearch(event) {
     const endTime = document.getElementById('endTime').value;
     const entities = document.getElementById('entities').value;
     const keywords = document.getElementById('keywords').value;
+    const userId = document.getElementById('userId').value.trim();
+    const deviceId = document.getElementById('deviceId').value.trim();
+    const agentId = document.getElementById('agentId').value.trim();
     
     // 获取选中的上下文类型
     const selectedContextTypes = Array.from(document.querySelectorAll('.context-type-checkbox:checked'))
         .map(cb => cb.value);
-    
-    if (!query) {
-        alert('请输入查询内容');
-        return;
-    }
     
     if (selectedContextTypes.length === 0) {
         alert('请至少选择一个上下文类型');
@@ -207,7 +220,10 @@ async function handleSearch(event) {
             query: query,
             top_k: topK,
             context_types: selectedContextTypes,
-            filters: filters
+            filters: filters,
+            user_id: userId || undefined,
+            device_id: deviceId || undefined,
+            agent_id: agentId || undefined
         };
 
         const response = await fetch('/api/vector_search', {
@@ -270,7 +286,7 @@ function displayResults(results) {
     results.forEach((result, index) => {
         const context = result.context;
         const score = result.score;
-        const createTime = new Date(context.properties.create_time * 1000).toLocaleString('zh-CN');
+        const createTime = new Date(context.properties.create_time).toLocaleString('zh-CN');
         
         html += `
             <div class="border rounded mb-3 p-3">

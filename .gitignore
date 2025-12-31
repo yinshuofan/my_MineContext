@@ -26,3 +26,4 @@ uv.toml
 # gemini cli
 GEMINI.md
 .gemini/
+.vscode/
