@@ -834,7 +834,7 @@ class VikingDBBackend(IVectorStorageBackend):
     def get_collection_names(self) -> List[str]:
         """Get all collection names managed by this backend."""
         if self._collection_ready:
-            return [ct.value for ct in ContextType]
+            return [ct for ct in ContextType]
         return []
     
     def is_initialized(self) -> bool:
