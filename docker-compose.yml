@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - server
+
+  server:
+    build: .
+    command: ["-m", "opencontext.cli", "start", "--config", "config/config-docker.yaml"]
+    environment:
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - MYSQL_HOST=${MYSQL_HOST:-mysql}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - CONTEXT_API_KEY=${CONTEXT_API_KEY}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL}
+      - VLM_API_KEY=${VLM_API_KEY}
+      - VLM_BASE_URL=${VLM_BASE_URL}
+      - VLM_MODEL=${VLM_MODEL}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - VIKINGDB_ACCESS_KEY_ID=${VIKINGDB_ACCESS_KEY_ID}
+      - VIKINGDB_SECRET_ACCESS_KEY=${VIKINGDB_SECRET_ACCESS_KEY}
+      - VIKINGDB_REGION=${VIKINGDB_REGION}
+      - SCHEDULER_ENABLED=false
+    volumes:
+      - ./logs:/app/logs
+      - ./persist:/app/persist
+    deploy:
+      replicas: 3
+
+  script-scheduler:
+    build: .
+    command: scripts/scheduler_runner.py --config config/tasks.yaml --project-config config/config-scheduler.yaml
+    environment:
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - MYSQL_HOST=${MYSQL_HOST:-mysql}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - PYTHONPATH=/app
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL}
+      - VIKINGDB_ACCESS_KEY_ID=${VIKINGDB_ACCESS_KEY_ID}
+      - VIKINGDB_SECRET_ACCESS_KEY=${VIKINGDB_SECRET_ACCESS_KEY}
+      - VIKINGDB_REGION=${VIKINGDB_REGION}
+    volumes:
+      - ./logs:/app/logs
+      - ./persist:/app/persist
+    deploy:
+      replicas: 1
+
+  # Infrastructure Services
+  mysql:
+    image: mysql:8.0
+    profiles: ["test"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: opencontext
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "${MYSQL_PORT_PUBLISHED:-3307}:3306"
+
+  redis:
+    image: redis:alpine
+    profiles: ["test"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT_PUBLISHED:-6380}:6379"
+
+
+volumes:
+  mysql_data:
+  redis_data:
