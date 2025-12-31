@@ -298,7 +298,7 @@ async def push_chat_message(
             return convert_resp(code=503, status=503, message="TextChatCapture component not available")
 
         # Push message (async - non-blocking)
-        await text_chat.async_push_message(
+        await text_chat.push_message(
             role=request.role,
             content=request.content,
             user_id=request.user_id,
@@ -336,7 +336,7 @@ async def push_chat_messages(
 
         # Push each message (async - non-blocking)
         for msg in request.messages:
-            await text_chat.async_push_message(
+            await text_chat.push_message(
                 role=msg.get("role", "user"),
                 content=msg.get("content", ""),
                 user_id=msg.get("user_id") or request.user_id,
@@ -346,7 +346,7 @@ async def push_chat_messages(
 
         # Flush buffer if requested (async - non-blocking)
         if request.flush_immediately:
-            await text_chat.async_flush_user_buffer(
+            await text_chat.flush_user_buffer(
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,
@@ -423,7 +423,7 @@ async def flush_chat_buffer(
             return convert_resp(code=503, status=503, message="TextChatCapture component not available")
 
         # Flush buffer (async - non-blocking)
-        await text_chat.async_flush_user_buffer(
+        await text_chat.flush_user_buffer(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
@@ -811,7 +811,7 @@ async def push_batch(
                 if item.type == "chat":
                     if text_chat:
                         # Use async version to avoid blocking the event loop
-                        await text_chat.async_push_message(
+                        await text_chat.push_message(
                             role=item.data.get("role", "user"),
                             content=item.data.get("content", ""),
                             user_id=item.data.get("user_id") or request.user_id,
