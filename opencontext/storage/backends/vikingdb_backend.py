@@ -1133,7 +1133,8 @@ class VikingDBBackend(IVectorStorageBackend):
                 data = {
                     "collection_name": self._collection_name,
                     "index_name": self._index_name,
-                    "limit": limit + offset,
+                    "limit": limit,
+                    "offset": offset,
                     "field": FIELD_CREATED_AT_TS,
                     "order": "desc",
                 }
@@ -1148,8 +1149,9 @@ class VikingDBBackend(IVectorStorageBackend):
                 if query_result.get("code") == "Success":
                     output = query_result.get("result", {}).get("data", [])
                     # Apply offset
-                    if offset > 0:
-                        output = output[offset:]
+                    # VikingDB API already handles offset and limit, so we don't need to slice by offset again
+                    # if offset > 0:
+                    #     output = output[offset:]
                     if len(output) > limit:
                         output = output[:limit]
                     
@@ -1904,3 +1906,107 @@ class VikingDBBackend(IVectorStorageBackend):
             self._client.close()
         self._initialized = False
         logger.info("VikingDB backend closed")
+
+
+if __name__ == '__main__':
+    import os
+    from dotenv import load_dotenv
+    from opencontext.config.global_config import get_config, GlobalConfig
+    
+    # Load environment variables from .env file
+    load_dotenv()
+
+    # Explicitly initialize GlobalConfig to ensure config is loaded
+    # Calculate project root relative to this file
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+    config_path = os.path.join(project_root, "config", "config.yaml")
+    
+    if os.path.exists(config_path):
+        GlobalConfig.get_instance().initialize(config_path)
+        print(f"Initialized GlobalConfig with: {config_path}")
+    else:
+        print(f"Warning: Config file not found at {config_path}")
+    
+    # Configure logging to output to stdout
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Get configuration for VikingDB
+    config = get_config("vikingdb")
+    if not config:
+        print("Config 'vikingdb' not found directly.")
+        # If no specific vikingdb config exists, try to get general storage config
+        config = get_config("storage")
+        if config:
+            print("Found 'storage' config.")
+            # Look for vikingdb configuration within storage config
+            backends = config.get("backends", [])
+            vikingdb_config = None
+            for backend in backends:
+                if backend.get("backend", "").lower() == "vikingdb":
+                    vikingdb_config = backend
+                    break
+            if vikingdb_config:
+                print("Found 'vikingdb' backend config in storage.")
+                config = vikingdb_config
+            else:
+                print("Did not find 'vikingdb' backend in storage backends.")
+        else:
+            print("Config 'storage' not found.")
+    
+    if config:
+        print(f"Initializing VikingDB with config keys: {config.keys()}")
+        if 'config' in config:
+             print(f"VikingDB internal config keys: {config['config'].keys()}")
+    else:
+        print("Final config object is None.")
+
+    # Initialize VikingDB client
+    client = VikingDBBackend()
+    try:
+        if client.initialize(config):
+            print(f"VikingDB backend initialized successfully: {client.get_name()}")
+            
+            # Test basic functionality
+            print("Testing basic functionality...")
+            
+            # Get collection names
+            collections = client.get_collection_names()
+            print(f"Collections: {collections}")
+            
+            # Example usage would go here
+            # For example, you could test upsert, search, etc. methods
+
+            # Test get_all_processed_contexts with offset
+            print("\nTesting get_all_processed_contexts with offset...")
+            
+            # Fetch page 1
+            limit = 1
+            offset_page1 = 0
+            print(f"Fetching Page 1 (limit={limit}, offset={offset_page1})...")
+            results_page1 = client.get_all_processed_contexts(limit=limit, offset=offset_page1)
+            print(f"Page 1 Results Structure: {type(results_page1)}")
+            for ctx_type, contexts in results_page1.items():
+                print(f"  Type: {ctx_type}, Count: {len(contexts)}")
+                for ctx in contexts:
+                    summary = ctx.extracted_data.summary if ctx.extracted_data and ctx.extracted_data.summary else 'None'
+                    print(f"    - ID: {ctx.id}, Summary: {summary[:30]}")
+            
+            # Fetch page 2
+            offset_page2 = 1
+            print(f"\nFetching Page 2 (limit={limit}, offset={offset_page2})...")
+            results_page2 = client.get_all_processed_contexts(limit=limit, offset=offset_page2)
+            print(f"Page 2 Results Structure: {type(results_page2)}")
+            for ctx_type, contexts in results_page2.items():
+                print(f"  Type: {ctx_type}, Count: {len(contexts)}")
+                for ctx in contexts:
+                    summary = ctx.extracted_data.summary if ctx.extracted_data and ctx.extracted_data.summary else 'None'
+                    print(f"    - ID: {ctx.id}, Summary: {summary[:30]}")
+            
+        else:
+            print("Failed to initialize VikingDB backend (returned False)")
+    except Exception as e:
+        print(f"Exception during initialization: {e}")
+        import traceback
+        traceback.print_exc()
