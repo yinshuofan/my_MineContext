@@ -15,6 +15,7 @@ import re
 from typing import Any, Dict, Optional
 
 import yaml
+from dotenv import load_dotenv
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -60,7 +61,10 @@ class ConfigManager:
         return True
 
     def _load_env_vars(self) -> None:
-        """Load environment variables"""
+        """Load environment variables from system and .env file"""
+        # Load .env file if it exists (does not override existing env vars)
+        load_dotenv()
+        
         for key, value in os.environ.items():
             self._env_vars[key] = value
 
@@ -83,19 +87,21 @@ class ConfigManager:
         elif isinstance(config_data, list):
             return [self._replace_env_vars(item) for item in config_data]
         elif isinstance(config_data, str):
-            # Match environment variables in the format ${VAR} or ${VAR:default}
             pattern = r"\$\{([^}:]+)(?::([^}]*))?\}"
 
             def replace_match(match):
                 var_name = match.group(1)
                 default_value = match.group(2) if match.group(2) is not None else ""
-
                 env_value = self._env_vars.get(var_name)
-
-                # ${VAR:default}: Use default value if the variable does not exist
                 return env_value if env_value is not None else default_value
 
-            return re.sub(pattern, replace_match, config_data)
+            replaced = re.sub(pattern, replace_match, config_data)
+            low = replaced.strip().lower()
+            if low == "true":
+                return True
+            if low == "false":
+                return False
+            return replaced
         else:
             return config_data
 

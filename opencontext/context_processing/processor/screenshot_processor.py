@@ -332,10 +332,14 @@ class ScreenshotProcessor(BaseContextProcessor):
         For backward compatibility.
         """
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
                 # If already in async context, create task
-                asyncio.create_task(self._process_and_store(context))
+                loop.create_task(self._process_and_store(context))
                 return True
             else:
                 # Run in new event loop

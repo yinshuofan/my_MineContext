@@ -35,6 +35,7 @@ class LogManager:
         Args:
             config (Dict[str, Any]): Logging configuration
         """
+        logger.remove()
         level = config.get("level", "INFO")
 
         # Console logging
