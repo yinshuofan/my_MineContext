@@ -19,13 +19,14 @@ sys.path.append(project_root)
 from opencontext.utils.logging_utils import setup_logging, get_logger
 
 # Configure basic logging for the scheduler itself
-import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("SchedulerRunner")
+from opencontext.config.global_config import GlobalConfig
+logger = get_logger("SchedulerRunner")
+
 
 def load_task_config(config_path):
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
+
 
 def get_trigger(trigger_type, trigger_args):
     if trigger_type == 'interval':
@@ -37,6 +38,7 @@ def get_trigger(trigger_type, trigger_args):
     else:
         raise ValueError(f"Unknown trigger type: {trigger_type}")
 
+
 def get_task_module(script_path):
     script_name = os.path.basename(script_path).replace('.py', '')
     spec = importlib.util.spec_from_file_location(script_name, script_path)
@@ -45,13 +47,15 @@ def get_task_module(script_path):
     spec.loader.exec_module(module)
     return module
 
+
 def job_wrapper(func, **kwargs):
     try:
         logger.info(f"Starting job: {func.__name__}")
         func(**kwargs)
         logger.info(f"Job finished: {func.__name__}")
     except Exception as e:
-        logger.error(f"Job failed: {func.__name__}, Error: {e}", exc_info=True)
+        logger.exception(f"Job failed: {func.__name__}, Error: {e}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Unified Task Scheduler Runner")
@@ -62,6 +66,20 @@ def main():
     if not os.path.exists(args.config):
         logger.error(f"Config file not found: {args.config}")
         return
+
+    # Initialize config and logging for scheduler
+    chosen_config = None
+    if args.project_config and os.path.exists(args.project_config):
+        chosen_config = args.project_config
+    else:
+        default_cfg = os.path.join(project_root, "config", "config-scheduler.yaml")
+        if os.path.exists(default_cfg):
+            chosen_config = default_cfg
+
+    if chosen_config:
+        GlobalConfig.get_instance().initialize(chosen_config)
+        cfg = GlobalConfig.get_instance().get_config() or {}
+        setup_logging(cfg.get("logging", {}))
 
     task_config = load_task_config(args.config)
     tasks = task_config.get('tasks', {})
@@ -77,10 +95,18 @@ def main():
         trigger_type = task_info.get('trigger', 'interval')
         trigger_args = task_info.get('trigger_args', {})
         task_args = task_info.get('args', {})
-        
+        if 'config_path' not in task_args and 'project_config' in locals():
+            pass
+        # Ensure each task uses the chosen project config to avoid mixed logging
+        if 'config_path' not in task_args and 'chosen_config' in locals() and chosen_config:
+            task_args['config_path'] = chosen_config
+
         # Pass project config if available and not overridden
         if args.project_config and 'config_path' not in task_args:
             task_args['config_path'] = args.project_config
+        # Ensure tasks do not reinitialize logging to a different file
+        if 'init_logging' not in task_args:
+            task_args['init_logging'] = False
 
         # Resolve script path relative to scripts directory
         if not os.path.isabs(script_file):
@@ -96,9 +122,9 @@ def main():
             logger.info(f"Loading task: {task_name} from {script_path}")
             module = get_task_module(script_path)
             func = getattr(module, entry_point)
-            
+
             trigger = get_trigger(trigger_type, trigger_args)
-            
+
             scheduler.add_job(
                 job_wrapper,
                 trigger=trigger,
@@ -109,9 +135,9 @@ def main():
                 replace_existing=True
             )
             logger.info(f"Scheduled task: {task_name} with trigger: {trigger_type} {trigger_args}")
-            
+
         except Exception as e:
-            logger.error(f"Failed to load/schedule task {task_name}: {e}", exc_info=True)
+            logger.exception(f"Failed to load/schedule task {task_name}: {e}")
 
     if not scheduler.get_jobs():
         logger.warning("No jobs scheduled. Exiting.")
@@ -126,6 +152,7 @@ def main():
     except (KeyboardInterrupt, SystemExit):
         logger.info("Stopping scheduler...")
         scheduler.shutdown()
+
 
 if __name__ == "__main__":
     main()

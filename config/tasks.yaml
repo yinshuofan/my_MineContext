@@ -5,6 +5,6 @@ tasks:
     entry_point: "run_cleanup"
     trigger: "interval"
     trigger_args:
-      seconds: 10
+      hours: 12
     args:
       retention_days: 30

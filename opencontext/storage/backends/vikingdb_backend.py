@@ -1702,7 +1702,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 "op": "and",
                 "conds": conditions
             }
-        logger.debug(f"Built VikingDB filter: {filter_dict}")
+        # logger.debug(f"Built VikingDB filter: {filter_dict}")
         return filter_dict
     
     def get_processed_context_count(self, context_type: str) -> int:

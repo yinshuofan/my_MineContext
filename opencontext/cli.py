@@ -8,6 +8,7 @@ Command-line interface - provides the entry point for command-line tools
 """
 
 import argparse
+import os
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -141,15 +142,57 @@ def start_web_server(
     global _config_path
     _config_path = config_path
 
+    from opencontext.config.global_config import GlobalConfig
+    log_cfg = GlobalConfig.get_instance().get_config("logging") or {}
+    base_log_path = log_cfg.get("log_path") or os.path.join(str(_get_project_root()), "logs", "opencontext.log")
+    base_dir = os.path.dirname(base_log_path) if base_log_path else os.path.join(str(_get_project_root()), "logs")
+    os.makedirs(base_dir, exist_ok=True)
+    hostname = os.environ.get("HOSTNAME", "localhost")
+    access_log_filename = f"uvicorn_access_{hostname}.log"
+    env_access = os.environ.get("UVICORN_ACCESS_LOG_PATH")
+    if env_access:
+        os.makedirs(os.path.dirname(env_access) or base_dir, exist_ok=True)
+        access_log_path = env_access
+    else:
+        access_log_path = os.path.join(base_dir, access_log_filename)
+
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {"format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"}
+        },
+        "handlers": {
+            "file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "default",
+                "filename": access_log_path,
+                "maxBytes": 10485760,
+                "backupCount": 2,
+                "encoding": "utf-8",
+            },
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "stream": "ext://sys.stderr",
+            },
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["file", "console"], "level": "INFO", "propagate": False},
+            "uvicorn.access": {"handlers": ["file", "console"], "level": "INFO", "propagate": False},
+            "uvicorn.error": {"handlers": ["file", "console"], "level": "INFO", "propagate": False},
+        },
+    }
+
     if workers > 1:
         logger.info(f"Starting with {workers} worker processes")
         # For multi-process mode, use import string to avoid the warning
         uvicorn.run("opencontext.cli:app", host=host, port=port,
-                    log_level="info", workers=workers)
+                    log_level="info", workers=workers, log_config=log_config)
     else:
         # For single process mode, use the existing instance
         app.state.context_lab_instance = context_lab_instance
-        uvicorn.run(app, host=host, port=port, log_level="info")
+        uvicorn.run(app, host=host, port=port, log_level="info", log_config=log_config)
 
 
 def parse_args() -> argparse.Namespace:

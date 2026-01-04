@@ -33,8 +33,10 @@ def run_cleanup(config_path: str = None, **kwargs):
     GlobalConfig.get_instance().initialize(config_path)
     config = GlobalConfig.get_instance().get_config()
     
-    # Initialize logging
-    setup_logging(config.get("logging", {}))
+    # Initialize logging (allow caller to disable re-init to avoid mixing)
+    init_logging = kwargs.get("init_logging", True)
+    if init_logging:
+        setup_logging(config.get("logging", {}))
     
     # Initialize GlobalStorage (auto-init relies on GlobalConfig being ready)
     storage = GlobalStorage.get_instance().get_storage()

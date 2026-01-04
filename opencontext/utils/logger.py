@@ -49,12 +49,13 @@ class LogManager:
             if log_dir:
                 os.makedirs(log_dir, exist_ok=True)
 
-            # Add date to log filename: opentext_2025-10-13.log
-            # When rotated, it becomes: opentext_2025-10-13.log.2025-10-13_14-30-00
+            # Add date and hostname to log filename: opentext_hostname_2025-10-13.log
+            # When rotated, it becomes: opentext_hostname_2025-10-13.log.2025-10-13_14-30-00
             base_name = os.path.basename(log_path)
             name_without_ext = os.path.splitext(base_name)[0]
             ext = os.path.splitext(base_name)[1]
-            dated_log_path = os.path.join(log_dir, f"{name_without_ext}_{{time:YYYY-MM-DD}}{ext}")
+            hostname = os.environ.get("HOSTNAME", "localhost")
+            dated_log_path = os.path.join(log_dir, f"{name_without_ext}_{hostname}_{{time:YYYY-MM-DD}}{ext}")
 
             file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
             rotation = "100 MB"
