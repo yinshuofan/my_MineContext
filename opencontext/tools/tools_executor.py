@@ -22,11 +22,6 @@ class ToolsExecutor:
             # Profile retrieval tools (relational DB)
             ProfileRetrievalTool.get_name(): ProfileRetrievalTool(),
             ProfileEntityTool.get_name(): ProfileEntityTool(),
-            # Document retrieval tools (SQLite-based)
-            GetDailyReportsTool.get_name(): GetDailyReportsTool(),
-            GetActivitiesTool.get_name(): GetActivitiesTool(),
-            GetTipsTool.get_name(): GetTipsTool(),
-            GetTodosTool.get_name(): GetTodosTool(),
             # Operation tools
             WebSearchTool.get_name(): WebSearchTool(),
         }

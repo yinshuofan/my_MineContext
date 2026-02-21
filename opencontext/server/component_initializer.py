@@ -19,14 +19,9 @@ from opencontext.config.prompt_manager import PromptManager
 # Import capture components
 from opencontext.context_capture.vault_document_monitor import VaultDocumentMonitor
 from opencontext.context_capture.web_link_capture import WebLinkCapture
-from opencontext.context_consumption.completion import CompletionService
 from opencontext.context_capture.text_chat import TextChatCapture
-
-# Import consumption components
-from opencontext.context_consumption.generation import *
 from opencontext.context_processing.processor.processor_factory import ProcessorFactory
 from opencontext.managers.capture_manager import ContextCaptureManager
-from opencontext.managers.consumption_manager import ConsumptionManager
 from opencontext.managers.processor_manager import ContextProcessorManager
 from opencontext.storage.global_storage import get_storage
 from opencontext.storage.unified_storage import UnifiedStorage
@@ -40,14 +35,6 @@ CAPTURE_COMPONENTS = {
     "web_link_capture": WebLinkCapture,
     "text_chat": TextChatCapture,
 }
-
-CONSUMPTION_COMPONENTS = {
-    "smart_tip_generator": SmartTipGenerator,
-    "realtime_activity_monitor": RealtimeActivityMonitor,
-    "generation_report": ReportGenerator,
-    "smart_todo_manager": SmartTodoManager,
-}
-
 
 class ComponentInitializer:
     """Handles initialization of various OpenContext components."""
@@ -173,72 +160,6 @@ class ComponentInitializer:
             # not by processor_manager. Call initialize_task_scheduler() separately.
 
         logger.info("Context processors initialization complete")
-
-    def initialize_completion_service(self) -> Optional[CompletionService]:
-        """Initialize completion service for smart content completion."""
-        logger.info("Initializing completion service...")
-
-        try:
-            # Get completion configuration
-            completion_config = self.config.get("completion", {})
-            if not completion_config.get("enabled", True):
-                logger.info("Completion service disabled in configuration")
-                return None
-
-            # Use global service instance to avoid duplicate initialization
-            from opencontext.context_consumption.completion import get_completion_service
-
-            completion_service = get_completion_service()
-            logger.info("Completion service initialized successfully")
-
-            return completion_service
-
-        except Exception as e:
-            logger.exception(f"Failed to initialize completion service: {e}")
-            return None
-
-    def initialize_consumption_components(self) -> Optional[ConsumptionManager]:
-        """Initialize consumption components if enabled in configuration."""
-        # Check if consumption is enabled
-        consumption_config = self.config.get("consumption", {})
-        if not consumption_config.get("enabled", True):
-            logger.info("Consumption components disabled by configuration")
-            return None
-        
-        # Check if content_generation is enabled
-        content_generation_config = self.config.get("content_generation", {})
-        if not content_generation_config:
-            logger.info("Content generation not configured, skipping consumption initialization")
-            return None
-        
-        consumption_manager = ConsumptionManager()
-
-        # Start scheduled tasks (individual tasks controlled by their enabled flags)
-        consumption_manager.start_scheduled_tasks(content_generation_config)
-
-        logger.info("Context consumption components initialization complete")
-        return consumption_manager
-
-    def _create_consumption_component(self, name: str, config: Dict[str, Any]):
-        """Create a consumption component instance."""
-        if name in CONSUMPTION_COMPONENTS:
-            component_class = CONSUMPTION_COMPONENTS[name]
-            return component_class()  # Now use parameterless constructor
-
-        # Fallback to dynamic import
-        module_path = config.get("module")
-        class_name = config.get("class")
-
-        if not module_path or not class_name:
-            module_path = f"opencontext.context_consumption.{name}"
-            class_name = f"{self._to_camel_case(name)}Consumer"
-            logger.info(
-                f"Auto-inferred consumption component '{name}' module='{module_path}' and class='{class_name}'"
-            )
-
-        module = importlib.import_module(module_path)
-        component_class = getattr(module, class_name)
-        return component_class()
 
     def initialize_task_scheduler(
         self, processor_manager: Optional[ContextProcessorManager] = None
