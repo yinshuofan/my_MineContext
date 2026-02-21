@@ -45,7 +45,7 @@ class ToolsExecutor:
                     "received_type": type(tool_input).__name__,
                 }
 
-            return tool.execute(**tool_input)
+            return await asyncio.to_thread(tool.execute, **tool_input)
         else:
             # Log unknown tool call but don't throw exception, return warning message
             import logging

@@ -1,0 +1,133 @@
+# -*- coding: utf-8 -*-
+
+"""
+Unified Search API Route
+
+POST /api/search — Single endpoint with fast and intelligent search strategies.
+"""
+
+import time
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from opencontext.models.enums import ContextType
+from opencontext.server.middleware.auth import auth_dependency
+from opencontext.server.search.fast_strategy import FastSearchStrategy
+from opencontext.server.search.intelligent_strategy import IntelligentSearchStrategy
+from opencontext.server.search.models import (
+    SearchMetadata,
+    SearchStrategy,
+    TypedResults,
+    UnifiedSearchRequest,
+    UnifiedSearchResponse,
+)
+from opencontext.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/api", tags=["search"])
+
+# Lazy-initialized strategy singletons (stateless, reusable)
+_fast_strategy = None
+_intelligent_strategy = None
+
+ALL_CONTEXT_TYPES = [ct.value for ct in ContextType]
+
+
+def _get_fast_strategy() -> FastSearchStrategy:
+    global _fast_strategy
+    if _fast_strategy is None:
+        _fast_strategy = FastSearchStrategy()
+    return _fast_strategy
+
+
+def _get_intelligent_strategy() -> IntelligentSearchStrategy:
+    global _intelligent_strategy
+    if _intelligent_strategy is None:
+        _intelligent_strategy = IntelligentSearchStrategy()
+    return _intelligent_strategy
+
+
+@router.post("/search")
+async def unified_search(
+    request: UnifiedSearchRequest,
+    _auth: str = auth_dependency,
+):
+    """
+    Unified search endpoint with strategy selection.
+
+    - **fast**: Direct parallel search across all types. Zero LLM reasoning calls.
+    - **intelligent**: LLM-driven agentic search with tool selection and result validation.
+
+    Both strategies return the same response shape with results grouped by type.
+    """
+    start_time = time.monotonic()
+
+    # Validate and resolve context_types
+    context_types = request.context_types or ALL_CONTEXT_TYPES
+    context_types = [ct for ct in context_types if ct in ALL_CONTEXT_TYPES]
+
+    if not context_types:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": f"No valid context types specified. Valid types: {ALL_CONTEXT_TYPES}",
+            },
+        )
+
+    # Select strategy
+    if request.strategy == SearchStrategy.FAST:
+        strategy = _get_fast_strategy()
+    else:
+        strategy = _get_intelligent_strategy()
+
+    try:
+        results = await strategy.search(
+            query=request.query,
+            context_types=context_types,
+            top_k=request.top_k,
+            time_range=request.time_range,
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+        )
+
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+
+        total = (
+            (1 if results.profile else 0)
+            + len(results.entities)
+            + len(results.documents)
+            + len(results.events)
+            + len(results.knowledge)
+        )
+
+        return UnifiedSearchResponse(
+            success=True,
+            results=results,
+            metadata=SearchMetadata(
+                strategy=request.strategy.value,
+                query=request.query,
+                total_results=total,
+                search_time_ms=round(elapsed_ms, 2),
+                types_searched=context_types,
+            ),
+        )
+
+    except Exception as e:
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+        logger.exception(f"Unified search failed: {e}")
+
+        return UnifiedSearchResponse(
+            success=False,
+            results=TypedResults(),
+            metadata=SearchMetadata(
+                strategy=request.strategy.value,
+                query=request.query,
+                total_results=0,
+                search_time_ms=round(elapsed_ms, 2),
+                types_searched=context_types,
+            ),
+        )

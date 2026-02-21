@@ -24,6 +24,7 @@ from .routes import (
     messages,
     monitoring,
     push,
+    search,
     settings,
     vaults,
     web,
@@ -49,3 +50,4 @@ router.include_router(conversation.router)
 router.include_router(messages.router)
 router.include_router(documents.router)
 router.include_router(push.router)
+router.include_router(search.router)
