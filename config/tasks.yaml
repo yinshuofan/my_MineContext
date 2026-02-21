@@ -1,0 +1,10 @@
+tasks:
+  memory_cleanup:
+    enabled: true
+    script: "run_memory_cleanup.py"
+    entry_point: "run_cleanup"
+    trigger: "interval"
+    trigger_args:
+      seconds: 10
+    args:
+      retention_days: 30

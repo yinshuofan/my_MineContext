@@ -1,0 +1,323 @@
+# Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+#
+# OpenContext Configuration File - MySQL Backend Example
+# This configuration uses MySQL as the document storage backend
+
+# General switch
+enabled: true
+
+# Service mode configuration (for containerized deployment)
+service_mode:
+  enabled: true  # Enable stateless service mode
+  require_redis: true  # Redis is required in service mode
+  require_external_storage: true  # External storage (MySQL/DashVector) is required
+
+# Logging configuration
+logging:
+  level: DEBUG # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_path: "${CONTEXT_PATH:.}/logs/opencontext.log" # Log file path
+
+user_setting_path: "${CONTEXT_PATH:.}/config/user_setting.yaml"
+
+# 文档处理配置
+document_processing:
+  enabled: true
+  batch_size: 3        # Number of images processed by VLM at once (recommended 2-5)
+  max_image_size: 1024 # Maximum image size (pixels), larger sizes increase accuracy but also API costs
+  dpi: 200             # DPI for converting PDF to images (recommended 150-300)
+
+  # Page-by-page detection configuration (to optimize VLM usage)
+  text_threshold_per_page: 50 # Scanned document threshold: pages with fewer characters than this value are considered scanned documents (requires VLM)
+
+# config/config.yaml
+
+llm:
+  enabled: true
+  provider: "openai"  # MineContext uses 'openai' client for Volcengine/Doubao too
+  config:
+    # ⚠️ MUST FILL IN YOUR KEY HERE
+    api_key: "${LLM_API_KEY:your-api-key-here}" 
+    base_url: "${LLM_BASE_URL:https://api.openai.com/v1}"
+    model: "${LLM_MODEL:gpt-4}" 
+    temperature: 0.1
+    max_tokens: 4096
+
+vlm_model:
+  base_url: "${VLM_BASE_URL:https://api.openai.com/v1}"
+  api_key: "${VLM_API_KEY:your-api-key-here}"
+  model: "${VLM_MODEL:gpt-4-vision-preview}"
+  provider: "openai"
+
+embedding_model:
+  base_url: "${EMBEDDING_BASE_URL:https://api.openai.com/v1}"
+  api_key: "${EMBEDDING_API_KEY:your-api-key-here}"
+  model: "${EMBEDDING_MODEL:text-embedding-ada-002}"
+  provider: "openai"
+  output_dim: 1536
+
+# Redis cache configuration (for multi-instance deployment)
+redis:
+  enabled: true
+  host: "${REDIS_HOST:localhost}"
+  port: ${REDIS_PORT:6379}
+  password: "${REDIS_PASSWORD:}"
+  db: ${REDIS_DB:0}
+  key_prefix: "opencontext:"
+  # Connection pool settings
+  max_connections: 10
+  socket_timeout: 5.0
+  socket_connect_timeout: 5.0
+  retry_on_timeout: true
+
+# Context capture module - Push mode (external services push data to backend)
+# In service mode, all auto-capture components are disabled
+# Data is pushed via HTTP API from external services
+capture:
+  enabled: true
+  mode: "push"  # Options: "pull" (auto-capture), "push" (external push via API)
+  # Screenshot capture - disabled for push mode
+  screenshot:
+    enabled: false
+    capture_interval: 5 # Screenshot interval (seconds)
+    storage_path: "${CONTEXT_PATH:.}/screenshots" # Screenshot save directory
+  text_chat:
+    enabled: true
+    buffer_size: 10
+    buffer_ttl: 86400  # Buffer TTL in seconds (24 hours)
+    redis:
+      enabled: true  # Use Redis for multi-instance support
+
+  # Folder monitoring - disabled for push mode
+  folder_monitor:
+    enabled: false
+    monitor_interval: 30 # Monitor interval (seconds)
+    watch_folder_paths:
+      - "${CONTEXT_PATH:.}/persist/Documents"
+
+    recursive: true
+    max_file_size: 104857600 # Maximum file size to process (bytes), default: 100MB
+    initial_scan: true
+
+  # File monitoring - disabled for push mode
+  file_monitor:
+    enabled: false
+    recursive: true
+    initial_scan: true
+    monitor_paths: "./doc"
+    capture_interval: 30 # File monitoring interval (seconds)
+    ignore_patterns:
+      - "**/node_modules/**"
+      - "**/.git/**"
+
+  # Vaults document monitoring - disabled for push mode
+  vault_document_monitor:
+    enabled: false
+    monitor_interval: 30 # Monitoring interval (seconds)
+    initial_scan: true # Whether to perform an initial scan
+
+# Context processing module
+processing:
+  enabled: true
+  # Document processor configuration
+  text_chat_processor:
+    enabled: true
+  document_processor:
+    enabled: true
+    batch_size: 5
+    batch_timeout: 30
+  screenshot_processor:
+    enabled: true
+    dedup_cache_size: 30
+    similarity_hash_threshold: 7
+    batch_size: 20 # Increase batch size to improve throughput
+    batch_timeout: 10 # Reduce timeout to improve response speed
+    max_image_size: 1920 # Limit image size to reduce memory usage
+    resize_quality: 85 # Balance quality and performance
+    enabled_delete: true
+    max_raw_properties: 5
+
+  # Context merger configuration
+  context_merger:
+    enabled: false
+    # Basic configuration
+    similarity_threshold: 0.90
+    associative_similarity_threshold: 0.6
+
+    # Intelligent merging configuration
+    use_intelligent_merging: true # Enable intelligent strategy merging
+    enable_memory_management: true # Enable memory management
+    cleanup_interval_hours: 24 # Cleanup check interval
+
+    # Cross-type association configuration
+    enable_cross_type_processing: true # Enable cross-type processing
+    conversion_confidence_threshold: 0.8 # Conversion confidence threshold
+    max_conversions_per_session: 10 # Maximum conversions per session
+
+    # Type-specific configuration
+    # Profile type configuration
+    ENTITY_CONTEXT_similarity_threshold: 0.85
+    ENTITY_CONTEXT_retention_days: 365
+    ENTITY_CONTEXT_max_merge_count: 5
+
+    # Activity type configuration
+    activity_context_similarity_threshold: 0.80
+    activity_context_retention_days: 90
+    activity_context_max_merge_count: 3
+    activity_context_time_window_hours: 24
+
+    # Intent type configuration
+    intent_context_similarity_threshold: 0.75
+    intent_context_retention_days: 180
+    intent_context_max_merge_count: 4
+
+    # Semantic type configuration
+    semantic_context_similarity_threshold: 0.72
+    semantic_context_retention_days: 180
+    semantic_context_max_merge_count: 6
+
+    # Procedural type configuration
+    procedural_context_similarity_threshold: 0.75
+    procedural_context_retention_days: 120
+    procedural_context_max_merge_count: 4
+
+    # State type configuration
+    state_context_similarity_threshold: 0.70
+    state_context_retention_days: 7
+    state_context_max_merge_count: 10
+    state_context_time_window_minutes: 30
+
+# Context storage module - MySQL Backend Configuration
+storage:
+  enabled: true
+  backends:
+    # Vector database configuration - Choose either ChromaDB or Qdrant
+    # ChromaDB (default)
+    - name: "default_vector"
+      storage_type: "vector_db"
+      backend: "chromadb"
+      config:
+        mode: "local" # Options: "local", "server"
+        path: "${CONTEXT_PATH:.}/persist/chromadb"
+        collection_prefix: "opencontext"
+
+    # MySQL document storage backend (default for long-term memory service)
+    - name: "document_store"
+      storage_type: "document_db"
+      backend: "mysql"
+      default: true
+      config:
+        host: "${MYSQL_HOST:localhost}"
+        port: ${MYSQL_PORT:3306}
+        user: "${MYSQL_USER:root}"
+        password: "${MYSQL_PASSWORD:}"
+        database: "${MYSQL_DATABASE:opencontext}"
+        charset: "utf8mb4"
+
+    # SQLite fallback (uncomment to use SQLite instead of MySQL)
+    # - name: "document_store"
+    #   storage_type: "document_db"
+    #   backend: "sqlite"
+    #   config:
+    #     path: "${CONTEXT_PATH:.}/persist/sqlite/app.db"
+
+# Context consumption module
+consumption:
+  enabled: true
+
+# web server
+web:
+  host: "0.0.0.0"  # Listen on all interfaces for service mode
+  port: 1733
+
+# API authentication configuration
+api_auth:
+  enabled: true # Enable authentication for service mode
+  api_keys:
+    - "${CONTEXT_API_KEY:your-api-key-here}"
+  excluded_paths:
+    - "/health"
+    - "/api/health"
+    - "/api/auth/status"
+
+# Prompts configuration
+prompts:
+  language: "zh"
+
+# Content generation service configuration
+content_generation:
+  # Debug configuration
+  debug:
+    enabled: false # Enable debug mode to save generation messages and responses
+    output_path: "${CONTEXT_PATH:.}/debug/generation" # Debug output directory
+
+  # Task configurations - disabled for push mode (external services control timing)
+  activity:
+    enabled: false
+    interval: 900 # Seconds, minimum 600 (10 minutes), recommended 900-1800 (15-30 minutes)
+
+  tips:
+    enabled: false
+    interval: 3600 # Seconds, minimum 1800 (30 minutes), recommended 3600-7200 (1-2 hours)
+
+  todos:
+    enabled: false
+    interval: 1800 # Seconds, minimum 1800 (30 minutes), recommended 1800-3600 (30-60 minutes)
+
+  report:
+    enabled: false
+    time: "08:00" # Daily report generation time (HH:MM)
+
+tools:
+  # Operation tools configuration
+  operation_tools:
+    web_search_tool:
+      enabled: true
+      web_search:
+        engine: duckduckgo
+        max_results: 5
+        timeout: 10
+
+# Task scheduler configuration (for periodic tasks)
+scheduler:
+  enabled: true
+  
+  # User key configuration (determines how user tasks are identified)
+  user_key_config:
+    use_user_id: true      # Always true (required)
+    use_device_id: true    # Set to false to ignore device_id
+    use_agent_id: true     # Set to false to switch to 2-key mode (user_id:device_id)
+    default_device_id: "default"
+    default_agent_id: "default"
+  
+  # Executor configuration
+  executor:
+    check_interval: 10     # How often to check for due tasks (seconds)
+    max_concurrent: 5      # Maximum concurrent task executions
+    lock_timeout: 300      # Distributed lock timeout (seconds)
+  
+  # Task definitions
+  tasks:
+    # Memory compression task (triggered by user activity)
+    memory_compression:
+      enabled: true
+      trigger_mode: "user_activity"  # Options: user_activity, periodic
+      interval: 1800        # Delay after user activity (seconds)
+      task_ttl: 7200        # Task state TTL (seconds)
+    
+    # Data cleanup task (periodic)
+    data_cleanup:
+      enabled: false
+      trigger_mode: "periodic"
+      interval: 86400       # Run every 24 hours
+      retention_days: 30    # Keep data for 30 days
+
+# Intelligent completion service configuration
+completion:
+  enabled: true
+  cache:
+    max_size: 1000
+    ttl_seconds: 300
+    strategy: "hybrid"  # Options: lru, ttl, hybrid
+    redis:
+      enabled: true  # Use Redis for multi-instance cache sharing

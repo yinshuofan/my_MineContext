@@ -1,0 +1,157 @@
+# OpenContext Configuration for Docker Deployment (Server)
+# Based on config_mysql.yaml
+
+enabled: true
+
+service_mode:
+  enabled: true
+  require_redis: true
+  require_external_storage: true
+
+logging:
+  level: INFO
+  log_path: "${CONTEXT_PATH:.}/logs/opencontext.log"
+
+user_setting_path: "${CONTEXT_PATH:.}/config/user_setting.yaml"
+
+# Redis Configuration
+redis:
+  enabled: true
+  host: "${REDIS_HOST:redis}"
+  port: ${REDIS_PORT:6379}
+  password: "${REDIS_PASSWORD:}"
+  db: ${REDIS_DB:0}
+  key_prefix: "opencontext:"
+
+# Capture Configuration (Push Mode)
+capture:
+  enabled: true
+  mode: "push"
+  screenshot:
+    enabled: false
+  text_chat:
+    enabled: true
+    redis:
+      enabled: true
+  folder_monitor:
+    enabled: false
+  file_monitor:
+    enabled: false
+  vault_document_monitor:
+    enabled: false
+
+# Processing Configuration
+processing:
+  enabled: true
+  text_chat_processor:
+    enabled: true
+  document_processor:
+    enabled: true
+    batch_size: 5
+  screenshot_processor:
+    enabled: true
+  context_merger:
+    enabled: false
+    use_intelligent_merging: true
+    enable_memory_management: true
+    enable_cross_type_processing: true
+
+# Storage Configuration
+storage:
+  enabled: true
+  backends:
+    - name: "default_vector"
+      storage_type: "vector_db"
+      backend: "vikingdb"
+      config:
+        access_key_id: "${VIKINGDB_ACCESS_KEY_ID}"
+        secret_access_key: "${VIKINGDB_SECRET_ACCESS_KEY}"
+        region: "${VIKINGDB_REGION:cn-beijing}"
+        dimension: 2048
+        max_connections: 100
+        max_connections_per_host: 20
+        collection_name: "opencontext"
+        index_name: "opencontext_index"
+
+    # MySQL Document DB
+    - name: "document_store"
+      storage_type: "document_db"
+      backend: "mysql"
+      default: true
+      config:
+        host: "${MYSQL_HOST:mysql}"
+        port: ${MYSQL_PORT:3306}
+        user: "${MYSQL_USER:root}"
+        password: "${MYSQL_PASSWORD:opencontext}"
+        database: "${MYSQL_DATABASE:opencontext}"
+        charset: "utf8mb4"
+
+# Consumption Configuration
+consumption:
+  enabled: true
+
+# Web Server Configuration
+web:
+  host: "0.0.0.0"
+  port: 1733
+  enabled: true
+
+# API Authentication
+api_auth:
+  enabled: true
+  api_keys:
+    - "${CONTEXT_API_KEY:default-key}"
+  excluded_paths:
+    - "/health"
+    - "/api/health"
+
+# LLM Configuration (Env vars required)
+llm:
+  enabled: true
+  provider: "openai"
+  config:
+    api_key: "${LLM_API_KEY}"
+    base_url: "${LLM_BASE_URL}"
+    model: "${LLM_MODEL}"
+    temperature: 0.1
+
+vlm_model:
+  base_url: "${VLM_BASE_URL}"
+  api_key: "${VLM_API_KEY}"
+  model: "${VLM_MODEL}"
+  provider: "openai"
+
+embedding_model:
+  base_url: "${EMBEDDING_BASE_URL}"
+  api_key: "${EMBEDDING_API_KEY}"
+  model: "${EMBEDDING_MODEL}"
+  provider: "openai"
+  output_dim: 2048
+
+# Scheduler Configuration
+scheduler:
+  enabled: "${SCHEDULER_ENABLED:false}"
+  user_key_config:
+    use_user_id: true
+    use_device_id: true
+    use_agent_id: true
+  executor:
+    check_interval: 10
+    max_concurrent: ${SCHEDULER_EXECUTOR_MAX_CONCURRENT:5}      # Number of concurrent tasks allowed
+    lock_timeout: 300
+  tasks:
+    memory_compression:
+      enabled: true
+      trigger_mode: "user_activity"
+      interval: 1800
+    data_cleanup:
+      enabled: true
+      trigger_mode: "periodic"
+      interval: 86400
+      retention_days: 30
+
+completion:
+  enabled: true
+  cache:
+    redis:
+      enabled: true
