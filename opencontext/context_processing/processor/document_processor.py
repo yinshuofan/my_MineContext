@@ -323,7 +323,7 @@ class DocumentProcessor(BaseContextProcessor):
                     summary=chunk.text,
                     keywords=chunk.keywords if chunk.keywords else [],
                     entities=chunk.entities if chunk.entities else [],
-                    context_type=ContextType.KNOWLEDGE_CONTEXT,
+                    context_type=ContextType.DOCUMENT,
                 ),
                 vectorize=Vectorize(
                     content_format=ContentFormat.TEXT,

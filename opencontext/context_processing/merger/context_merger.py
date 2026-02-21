@@ -5,17 +5,21 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Context merge processor - Responsible for merging similar contexts into one.
+Context merge processor — simplified to only handle KNOWLEDGE type merging.
+
+After the type system refactor:
+- profile/entity: overwrite via relational DB (no merging needed)
+- document: delete-old + insert-new (no merging needed)
+- event: immutable append (no merging needed)
+- knowledge: similarity-based merge (this module)
 """
+import datetime
 import json
 import math
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.config import GlobalConfig
-from opencontext.context_processing.merger.cross_type_relationships import (
-    CrossTypeRelationshipManager,
-)
 from opencontext.context_processing.merger.merge_strategies import (
     ContextTypeAwareStrategy,
     StrategyFactory,
@@ -24,7 +28,7 @@ from opencontext.context_processing.processor.base_processor import BaseContextP
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import *
-from opencontext.models.enums import ContextType, MergeType
+from opencontext.models.enums import ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
@@ -41,11 +45,9 @@ class ContextMerger(BaseContextProcessor):
         self.enable_memory_management = config.get("enable_memory_management", False)
         self.prompt_manager = get_prompt_manager()
         self._similarity_threshold = config.get("similarity_threshold", 0.85)
-        self.associative_similarity_threshold = config.get("associative_similarity_threshold", 0.6)
         self._statistics = {"merges_attempted": 0, "merges_succeeded": 0, "errors": 0}
-        self.merge_type_for_target = {}
 
-        # Initialize strategy management
+        # Initialize strategy management (only knowledge strategy)
         self.strategies: Dict[ContextType, ContextTypeAwareStrategy] = {}
         self._initialize_strategies()
 
@@ -61,11 +63,10 @@ class ContextMerger(BaseContextProcessor):
         return "merger"
 
     def get_description(self) -> str:
-        return "Merges similar contexts using intelligent type-aware strategies."
+        return "Merges similar knowledge contexts using intelligent strategies."
 
     def _initialize_strategies(self):
-        """Initialize all supported merge strategies"""
-        from opencontext.context_processing.merger.merge_strategies import StrategyFactory
+        """Initialize merge strategies — only knowledge type"""
         strategy_factory = StrategyFactory(self.config)
 
         supported_types = strategy_factory.get_supported_types()
@@ -81,13 +82,22 @@ class ContextMerger(BaseContextProcessor):
         return []
 
     def can_process(self, context: ProcessedContext) -> bool:
-        return context.extracted_data.summary is not None
+        """Only knowledge type contexts can be merged"""
+        return (
+            context.extracted_data.summary is not None
+            and context.extracted_data.context_type == ContextType.KNOWLEDGE
+        )
 
-    def find_merge_target(self, context: ProcessedContext) -> ProcessedContext:
+    def find_merge_target(self, context: ProcessedContext) -> Optional[ProcessedContext]:
         """
-        Find merge target using intelligent strategies
+        Find merge target for knowledge contexts using intelligent strategies.
+        Only processes KNOWLEDGE type — other types skip merging entirely.
         """
         if not context.properties.enable_merge:
+            return None
+
+        # Only knowledge type goes through merge
+        if context.extracted_data.context_type != ContextType.KNOWLEDGE:
             return None
 
         # Check for vectorization
@@ -116,7 +126,6 @@ class ContextMerger(BaseContextProcessor):
             return None
 
         try:
-            # Get candidates with same type
             candidates = self._get_merge_candidates(context)
 
             best_target = None
@@ -132,9 +141,9 @@ class ContextMerger(BaseContextProcessor):
                     best_score = score
 
             if best_target:
-                self.merge_type_for_target[best_target.id] = MergeType.SIMILARITY
                 logger.info(
-                    f"Found intelligent merge target {best_target.id} for {context.id} with score {best_score:.3f}"
+                    f"Found intelligent merge target {best_target.id} for {context.id} "
+                    f"with score {best_score:.3f}"
                 )
 
             return best_target
@@ -152,14 +161,12 @@ class ContextMerger(BaseContextProcessor):
             if not backend:
                 return []
 
-            # Use vector similarity query
             similar_results = backend.query(
                 query=Vectorize(vector=context.vectorize.vector),
-                top_k=max_candidates + 1,  # +1 because the result might include self
+                top_k=max_candidates + 1,
                 filters={},
             )
 
-            # Return context objects (excluding self)
             candidates = [result[0] for result in similar_results if result[0].id != context.id]
             return candidates[:max_candidates]
 
@@ -168,75 +175,9 @@ class ContextMerger(BaseContextProcessor):
             return []
 
     def _find_legacy_merge_target(self, context: ProcessedContext) -> Optional[ProcessedContext]:
-        """Find merge target using legacy logic (for backward compatibility)"""
-        # Strategy 1: Associative Merge
-        assoc_target, _ = self._find_associative_merge_target(context)
-        if assoc_target:
-            self.merge_type_for_target[assoc_target.id] = MergeType.ASSOCIATIVE
-            return assoc_target
-
-        # Strategy 2: Similarity Merge
+        """Find merge target using legacy similarity logic"""
         sim_target, _ = self._find_similarity_merge_target(context)
-        if sim_target and (not assoc_target or sim_target.id != assoc_target.id):
-            self.merge_type_for_target[sim_target.id] = MergeType.SIMILARITY
-            return sim_target
-
-        return None
-
-    def _find_associative_merge_target(
-        self, context: ProcessedContext
-    ) -> tuple[Optional[ProcessedContext], float]:
-        """
-        Finds a recent context of the same type that is associatively related, created within the last 30 minutes.
-        Association is determined by semantic similarity and shared entities.
-        """
-        try:
-
-            context_entities = set(context.extracted_data.entities)
-
-            # Define time window for recent contexts
-            thirty_minutes_ago = datetime.now() - timedelta(minutes=30)
-            time_filter = {"update_time_ts": {"$gte": int(thirty_minutes_ago.timestamp())}}
-
-            # Get the appropriate storage backend
-            backend = self.storage._get_or_create_backend(context.extracted_data.context_type.value)
-            if not backend:
-                logger.warning(
-                    f"No backend found for context type {context.extracted_data.context_type.value}"
-                )
-                return None, 0.0
-
-            # Query for similar contexts within the time window
-            similar_results = backend.query(
-                query=Vectorize(vector=context.vectorize.vector), top_k=5, filters=time_filter
-            )
-
-            # Filter out the context itself from the results
-            similar_results = [res for res in similar_results if res[0].id != context.id]
-
-            if not similar_results:
-                return None, 0.0
-
-            # Check for similarity score and entity overlap
-            for recent_ctx, score in similar_results:
-                if score > self.associative_similarity_threshold:
-                    recent_entities = set(recent_ctx.extracted_data.entities)
-                    # If the source context has no entities, any similar context is a potential match.
-                    # Otherwise, require entity overlap.
-                    if not context_entities or (
-                        recent_entities and context_entities.intersection(recent_entities)
-                    ):
-                        logger.info(
-                            f"Found potential associative merge target {recent_ctx.id} for {context.id} with score {score} and entity overlap."
-                        )
-                        return recent_ctx, score
-
-        except Exception as e:
-            logger.error(
-                f"Error finding associative merge target for {context.id}: {e}", exc_info=True
-            )
-
-        return None, 0.0
+        return sim_target
 
     def _find_similarity_merge_target(
         self, context: ProcessedContext
@@ -252,7 +193,8 @@ class ContextMerger(BaseContextProcessor):
             if similar_results:
                 most_similar_context, score = similar_results[0]
                 logger.info(
-                    f"Most similar context to {context.id} is {most_similar_context.id} with score: {score}"
+                    f"Most similar context to {context.id} is {most_similar_context.id} "
+                    f"with score: {score}"
                 )
                 if score > self._similarity_threshold:
                     return most_similar_context, score
@@ -267,7 +209,7 @@ class ContextMerger(BaseContextProcessor):
         self, target: ProcessedContext, sources: List[ProcessedContext]
     ) -> Optional[ProcessedContext]:
         """
-        Merges multiple source contexts into a target context using intelligent strategies.
+        Merges multiple source contexts into a target context.
         """
         if not sources:
             return target
@@ -281,7 +223,6 @@ class ContextMerger(BaseContextProcessor):
             if self.use_intelligent_merging and context_type in self.strategies:
                 merged_context = self._merge_with_intelligent_strategy(target, sources)
             else:
-                # Fallback to LLM merging
                 merged_context = self._merge_with_llm(target, sources)
 
             if merged_context:
@@ -308,7 +249,8 @@ class ContextMerger(BaseContextProcessor):
 
         if not strategy:
             logger.warning(
-                f"No strategy found for context type {context_type.value}, falling back to LLM merge"
+                f"No strategy found for context type {context_type.value}, "
+                f"falling back to LLM merge"
             )
             return self._merge_with_llm(target, sources)
 
@@ -316,13 +258,13 @@ class ContextMerger(BaseContextProcessor):
             merged_context = strategy.merge_contexts(target, sources)
             if merged_context:
                 logger.info(
-                    f"Successfully merged using {context_type.value} strategy: {len(sources)} sources into target {target.id}"
+                    f"Successfully merged using {context_type.value} strategy: "
+                    f"{len(sources)} sources into target {target.id}"
                 )
             return merged_context
 
         except Exception as e:
             logger.error(f"Error in intelligent strategy merge: {e}", exc_info=True)
-            # Fallback to LLM merging
             logger.info("Falling back to LLM-based merge")
             return self._merge_with_llm(target, sources)
 
@@ -333,17 +275,14 @@ class ContextMerger(BaseContextProcessor):
         Uses an LLM to merge a list of source contexts into a target context.
         """
         try:
-            # Try to use a type-specific prompt
             context_type = target.extracted_data.context_type
             type_specific_prompt = f"merging.{context_type.value}_merging"
 
-            # First, try the type-specific prompt
             prompt_group = self.prompt_manager.get_prompt_group(type_specific_prompt)
             if prompt_group and "user" in prompt_group:
                 prompt_name = type_specific_prompt
                 logger.info(f"Using type-specific prompt: {prompt_name}")
             else:
-                # Fallback to the generic prompt
                 prompt_name = "merging.context_merging_multiple"
                 prompt_group = self.prompt_manager.get_prompt_group(prompt_name)
                 logger.info(f"Using generic prompt: {prompt_name}")
@@ -371,7 +310,6 @@ class ContextMerger(BaseContextProcessor):
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": user_prompt})
 
-            # logger.info(f"LLM messages for merging: {messages}")
             response = generate_with_messages(messages)
             if response:
                 if "无需合并" in response:
@@ -391,7 +329,8 @@ class ContextMerger(BaseContextProcessor):
                     ]
                     if not all(field in response_data for field in required_fields):
                         logger.warning(
-                            f"LLM response is missing one or more required fields. Got: {response_data.keys()}"
+                            f"LLM response is missing one or more required fields. "
+                            f"Got: {response_data.keys()}"
                         )
                         return None
                     extracted_data = ExtractedData(
@@ -422,22 +361,18 @@ class ContextMerger(BaseContextProcessor):
                     ):
                         try:
                             event_time_str = response_data.get("event_time")
-                            # Check if it's only the time part, e.g., '11:53:00'
                             if len(event_time_str) == 8 and ":" in event_time_str:
-                                # Add the current date to form a full ISO format
                                 today = datetime.date.today().isoformat()
                                 full_event_time_str = f"{today}T{event_time_str}"
                                 properties.event_time = datetime.datetime.fromisoformat(
                                     full_event_time_str
                                 )
                             else:
-                                # Try to parse directly
                                 properties.event_time = datetime.datetime.fromisoformat(
                                     event_time_str
                                 )
                         except ValueError:
-                            logger.warning(f"无法解析event_time格式: {event_time_str}")
-                            # Keep the original event_time
+                            logger.warning(f"Cannot parse event_time format: {event_time_str}")
 
                     merged_context = ProcessedContext(
                         extracted_data=extracted_data,
@@ -449,7 +384,9 @@ class ContextMerger(BaseContextProcessor):
                     logger.info(
                         f"Successfully merged {len(sources)} sources into context {target.id}"
                     )
-                    logger.debug(f"sources:\n{json.dumps([s.extracted_data.summary for s in sources], ensure_ascii=False, indent=2)}")
+                    logger.debug(
+                        f"sources:\n{json.dumps([s.extracted_data.summary for s in sources], ensure_ascii=False, indent=2)}"
+                    )
                     logger.debug(f"target:\n  {target.extracted_data.summary}")
                     logger.debug(f"merged_context:\n  {merged_context.extracted_data.summary}")
                     return merged_context
@@ -468,18 +405,13 @@ class ContextMerger(BaseContextProcessor):
 
     def periodic_memory_compression(self, interval_seconds: int):
         """
-        定期对上下文进行记忆压缩
-        1. 获取指定时间窗口内、未压缩、可合并的上下文。
-        2. 对这些上下文按相似度进行分组。
-        3. 在每个分组内部，将较早的上下文合并到最新的一个上下文中。
-        4. 更新合并后的上下文，并删除被合并的源上下文。
+        Periodic memory compression — only for KNOWLEDGE type.
         """
         if interval_seconds <= 0:
             logger.warning("interval_seconds must be greater than 0.")
             return
         logger.info("Starting periodic memory compression...")
         try:
-            # 1. 获取所有截图上下文
             filter = {
                 "update_time_ts": {
                     "$gte": int(
@@ -498,11 +430,15 @@ class ContextMerger(BaseContextProcessor):
             offset = 0
             while True:
                 contexts_by_backend = self.storage.get_all_processed_contexts(
-                    limit=limit, offset=offset, filter=filter, need_vector=True
+                    limit=limit,
+                    offset=offset,
+                    filter=filter,
+                    need_vector=True,
+                    context_types=[ContextType.KNOWLEDGE.value],
                 )
 
                 if not any(contexts_by_backend.values()):
-                    logger.info("No more recent contexts to process in this iteration.")
+                    logger.info("No more recent knowledge contexts to process in this iteration.")
                     break
                 has_merge = False
                 for backend_name, backend_contexts in contexts_by_backend.items():
@@ -510,13 +446,13 @@ class ContextMerger(BaseContextProcessor):
                         continue
                     has_merge = True
                     logger.info(
-                        f"Processing {len(backend_contexts)} contexts from backend '{backend_name}'."
+                        f"Processing {len(backend_contexts)} knowledge contexts "
+                        f"from backend '{backend_name}'."
                     )
 
                     groups = self._group_contexts_by_similarity(
                         backend_contexts, self._similarity_threshold
                     )
-                    logger.debug(f"Grouped contexts {groups}.")
 
                     for group in groups:
                         if len(group) > 1:
@@ -524,13 +460,6 @@ class ContextMerger(BaseContextProcessor):
                             target_candidate = group[-1]
                             sources = group[:-1]
 
-                            logger.debug(
-                                f"Merging {len(sources)} contexts into {target_candidate.id} within the group."
-                            )
-
-                            logger.debug(
-                                f"Target candidate: {target_candidate.properties}, Sources: {[ctx.properties for ctx in sources]}"
-                            )
                             merged_context = self.merge_multiple(target_candidate, sources)
                             if merged_context:
                                 self.storage.upsert_processed_context(merged_context)
@@ -543,7 +472,8 @@ class ContextMerger(BaseContextProcessor):
                                         ctx.id, ctx.extracted_data.context_type.value
                                     )
                                 logger.info(
-                                    f"Successfully merged within group and cleaned up {len(sources)} source contexts."
+                                    f"Successfully merged within group and cleaned up "
+                                    f"{len(sources)} source contexts."
                                 )
 
                 if not has_merge:
@@ -559,28 +489,21 @@ class ContextMerger(BaseContextProcessor):
         user_id: str,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        interval_seconds: int = 1800
+        interval_seconds: int = 1800,
     ):
         """
-        对指定用户的上下文进行记忆压缩
-        
-        Args:
-            user_id: 用户ID
-            device_id: 设备ID（可选）
-            agent_id: 代理ID（可选）
-            interval_seconds: 时间窗口（秒）
+        Periodic memory compression for a specific user — only KNOWLEDGE type.
         """
         if interval_seconds <= 0:
             logger.warning("interval_seconds must be greater than 0.")
             return
-        
+
         logger.info(
             f"Starting periodic memory compression for user={user_id}, "
             f"device={device_id}, agent={agent_id}..."
         )
-        
+
         try:
-            # 构建用户过滤条件
             filter = {
                 "update_time_ts": {
                     "$gte": int(
@@ -592,39 +515,42 @@ class ContextMerger(BaseContextProcessor):
                     ),
                     "$lte": int((datetime.datetime.now() - timedelta(minutes=5)).timestamp()),
                 },
-                # "has_compression": False,
                 "enable_merge": True,
                 "user_id": user_id,
             }
-            
-            # 添加可选的设备和代理过滤
+
             if device_id:
                 filter["device_id"] = device_id
             if agent_id:
                 filter["agent_id"] = agent_id
-            
+
             limit = 1000
             offset = 0
-            
+
             while True:
                 contexts_by_backend = self.storage.get_all_processed_contexts(
-                    limit=limit, offset=offset, filter=filter, need_vector=True
+                    limit=limit,
+                    offset=offset,
+                    filter=filter,
+                    need_vector=True,
+                    context_types=[ContextType.KNOWLEDGE.value],
                 )
 
                 if not any(contexts_by_backend.values()):
                     logger.info(
-                        f"No more recent contexts to process for user={user_id} in this iteration."
+                        f"No more recent knowledge contexts to process "
+                        f"for user={user_id} in this iteration."
                     )
                     break
-                
+
                 has_merge = False
                 for backend_name, backend_contexts in contexts_by_backend.items():
                     if len(backend_contexts) < 2:
                         continue
                     has_merge = True
                     logger.info(
-                        f"Processing {len(backend_contexts)} contexts from backend '{backend_name}' "
-                        f"for user={user_id}."
+                        f"Processing {len(backend_contexts)} knowledge contexts "
+                        f"from backend '{backend_name}' for user={user_id}."
                     )
 
                     groups = self._group_contexts_by_similarity(
@@ -636,19 +562,6 @@ class ContextMerger(BaseContextProcessor):
                             group.sort(key=lambda c: c.properties.create_time)
                             target_candidate = group[-1]
                             sources = group[:-1]
-
-                            logger.info(
-                                f"Merging {len(sources)} contexts into {target_candidate.id} "
-                                f"within the group for user={user_id}."
-                            )
-
-                            logger.debug(
-                                f"Merging {len(sources)} contexts into {target_candidate.id} within the group."
-                            )
-
-                            logger.debug(
-                                f"Target candidate: {target_candidate.properties}, Sources: {[ctx.properties for ctx in sources]}"
-                            )
 
                             merged_context = self.merge_multiple(target_candidate, sources)
                             if merged_context:
@@ -670,9 +583,7 @@ class ContextMerger(BaseContextProcessor):
                     break
                 offset += limit
 
-            logger.info(
-                f"Periodic memory compression finished for user={user_id}."
-            )
+            logger.info(f"Periodic memory compression finished for user={user_id}.")
         except Exception as e:
             logger.exception(
                 f"Error during periodic memory compression for user={user_id}: {e}"
@@ -692,19 +603,14 @@ class ContextMerger(BaseContextProcessor):
             seed = remaining_contexts.pop(0)
             new_group = [seed]
 
-            # Use a list comprehension to build the list of contexts to remove, then iterate
             to_remove = []
             seed_embedding = seed.vectorize.vector
             for i, ctx in enumerate(remaining_contexts):
                 ctx_embedding = ctx.vectorize.vector
                 if self._calculate_similarity(seed_embedding, ctx_embedding) > threshold:
-                    logger.debug(f"Similarity:{self._calculate_similarity(seed_embedding, ctx_embedding)}")
-                    logger.debug(f"Seed: {seed.vectorize.text}")
-                    logger.debug(f"Context: {ctx.vectorize.text}")
                     new_group.append(ctx)
                     to_remove.append(i)
 
-            # Remove items in reverse index order to avoid index shifting issues
             for i in sorted(to_remove, reverse=True):
                 remaining_contexts.pop(i)
 
@@ -717,10 +623,7 @@ class ContextMerger(BaseContextProcessor):
         if emb1 is None or emb2 is None or not emb1 or not emb2:
             return 0.0
 
-        # Calculate dot product
         dot_product = sum(a * b for a, b in zip(emb1, emb2))
-
-        # Calculate norms
         norm_emb1 = math.sqrt(sum(a * a for a in emb1))
         norm_emb2 = math.sqrt(sum(b * b for b in emb2))
 
@@ -731,7 +634,8 @@ class ContextMerger(BaseContextProcessor):
 
     def intelligent_memory_cleanup(self):
         """
-        智能记忆清理：基于遗忘曲线和重要性进行选择性清理
+        Intelligent memory cleanup: based on forgetting curve and importance.
+        Only applies to knowledge type.
         """
         if not self.enable_memory_management:
             return
@@ -741,7 +645,6 @@ class ContextMerger(BaseContextProcessor):
         try:
             cleanup_stats = {"total_checked": 0, "cleaned_up": 0, "errors": 0}
 
-            # 遍历所有支持策略的上下文类型
             for context_type, strategy in self.strategies.items():
                 type_stats = self._cleanup_contexts_by_type(context_type, strategy)
                 cleanup_stats["total_checked"] += type_stats["checked"]
@@ -759,23 +662,16 @@ class ContextMerger(BaseContextProcessor):
     def _cleanup_contexts_by_type(
         self, context_type: ContextType, strategy: ContextTypeAwareStrategy
     ) -> Dict[str, int]:
-        """按类型清理上下文"""
+        """Clean up contexts by type"""
         stats = {"checked": 0, "cleaned": 0, "errors": 0}
 
         try:
-            # 获取该类型的所有上下文
-            # backend = self.storage._get_or_create_backend(context_type.value)
-            # if not backend:
-            #     return stats
-
-            # 分批获取上下文进行清理
             limit = 100
             offset = 0
 
             ids_to_delete: List[str] = []
             while True:
                 contexts = self._get_contexts_for_cleanup(context_type.value, limit, offset)
-                logger.info(f"Found {[ctx.id for ctx in contexts]}")
                 if not contexts:
                     break
 
@@ -794,17 +690,26 @@ class ContextMerger(BaseContextProcessor):
 
             if ids_to_delete:
                 try:
-                    if self.storage.delete_batch_processed_contexts(ids_to_delete, context_type.value):
+                    if self.storage.delete_batch_processed_contexts(
+                        ids_to_delete, context_type.value
+                    ):
                         stats["cleaned"] += len(ids_to_delete)
-                        logger.info(f"Batch cleaned {len(ids_to_delete)} contexts of type {context_type.value}")
+                        logger.info(
+                            f"Batch cleaned {len(ids_to_delete)} contexts "
+                            f"of type {context_type.value}"
+                        )
                     else:
-                        logger.error(f"Batch delete failed for {len(ids_to_delete)} contexts of type {context_type.value}")
+                        logger.error(
+                            f"Batch delete failed for {len(ids_to_delete)} contexts "
+                            f"of type {context_type.value}"
+                        )
                 except Exception as e:
                     stats["errors"] += 1
                     logger.error(f"Error during batch delete: {e}")
 
             logger.info(
-                f"Cleanup for {context_type.value}: checked {stats['checked']}, cleaned {stats['cleaned']}"
+                f"Cleanup for {context_type.value}: "
+                f"checked {stats['checked']}, cleaned {stats['cleaned']}"
             )
 
         except Exception as e:
@@ -816,12 +721,11 @@ class ContextMerger(BaseContextProcessor):
     def _get_contexts_for_cleanup(
         self, context_type_value: str, limit: int, offset: int
     ) -> List[ProcessedContext]:
-        """获取需要清理检查的上下文"""
+        """Get contexts that need cleanup checking"""
         try:
             contexts_dict = self.storage.get_all_processed_contexts(
                 limit=limit, offset=offset, context_types=[context_type_value]
             )
-
             return contexts_dict.get(context_type_value, [])
 
         except Exception as e:
@@ -830,7 +734,7 @@ class ContextMerger(BaseContextProcessor):
 
     def memory_reinforcement(self, context_ids: List[str]):
         """
-        记忆强化：重置指定上下文的遗忘状态，提升重要性
+        Memory reinforcement: reset forgetting state and boost importance.
         """
         if not context_ids:
             return
@@ -841,16 +745,13 @@ class ContextMerger(BaseContextProcessor):
 
         for context_id in context_ids:
             try:
-                # 通过所有后端查找上下文
                 context = self._find_context_by_id(context_id)
                 if not context:
                     logger.warning(f"Context {context_id} not found for reinforcement")
                     continue
 
-                # 应用记忆强化
                 reinforced_context = self._apply_memory_reinforcement(context)
                 if reinforced_context:
-                    # 更新存储
                     self.storage.upsert_processed_context(reinforced_context)
                     reinforced_count += 1
                     logger.debug(f"Reinforced context {context_id}")
@@ -859,18 +760,16 @@ class ContextMerger(BaseContextProcessor):
                 logger.error(f"Error reinforcing context {context_id}: {e}", exc_info=True)
 
         logger.info(
-            f"Memory reinforcement completed: {reinforced_count}/{len(context_ids)} contexts reinforced"
+            f"Memory reinforcement completed: "
+            f"{reinforced_count}/{len(context_ids)} contexts reinforced"
         )
 
     def _find_context_by_id(self, context_id: str) -> Optional[ProcessedContext]:
-        """在所有后端中查找指定ID的上下文"""
+        """Find a context by ID across all backends"""
         try:
-            # 遍历所有后端查找
             for context_type in ContextType:
                 backend = self.storage._get_or_create_backend(context_type.value)
                 if backend:
-                    # 这里需要实现根据ID查找的方法，当前storage可能不支持
-                    # 暂时使用查询方法的变通方案
                     contexts_dict = self.storage.get_all_processed_contexts(
                         limit=1000, offset=0, filter={}
                     )
@@ -889,24 +788,22 @@ class ContextMerger(BaseContextProcessor):
             return None
 
     def _apply_memory_reinforcement(self, context: ProcessedContext) -> Optional[ProcessedContext]:
-        """应用记忆强化逻辑"""
-        from opencontext.models.context import ContextProperties
+        """Apply memory reinforcement logic"""
+        from datetime import datetime as dt
 
         try:
-            # 创建强化后的属性
             reinforced_properties = ContextProperties(
                 raw_properties=context.properties.raw_properties,
                 create_time=context.properties.create_time,
                 event_time=context.properties.event_time,
                 is_processed=context.properties.is_processed,
                 has_compression=context.properties.has_compression,
-                update_time=datetime.now(),  # 更新时间，影响遗忘曲线
-                merge_count=context.properties.merge_count + 1,  # 增加访问计数
+                update_time=dt.now(),
+                merge_count=context.properties.merge_count + 1,
                 duration_count=context.properties.duration_count,
                 enable_merge=context.properties.enable_merge,
             )
 
-            # 提升重要性（最多到9）
             reinforced_importance = min(context.extracted_data.importance + 1, 9)
 
             reinforced_extracted_data = ExtractedData(
@@ -920,7 +817,7 @@ class ContextMerger(BaseContextProcessor):
             )
 
             return ProcessedContext(
-                id=context.id,  # 保持原ID
+                id=context.id,
                 extracted_data=reinforced_extracted_data,
                 properties=reinforced_properties,
                 vectorize=context.vectorize,
@@ -931,7 +828,7 @@ class ContextMerger(BaseContextProcessor):
             return None
 
     def get_memory_statistics(self) -> Dict[str, Any]:
-        """获取记忆管理统计信息"""
+        """Get memory management statistics"""
         stats = {
             "merge_statistics": self._statistics,
             "strategy_count": len(self.strategies),
@@ -939,11 +836,9 @@ class ContextMerger(BaseContextProcessor):
             "config": {
                 "use_intelligent_merging": self.use_intelligent_merging,
                 "enable_memory_management": self.enable_memory_management,
-                "cleanup_interval_hours": self.cleanup_interval_hours,
             },
         }
 
-        # 添加各策略的统计信息
         strategy_stats = {}
         for context_type, strategy in self.strategies.items():
             try:
@@ -956,168 +851,4 @@ class ContextMerger(BaseContextProcessor):
                 logger.error(f"Error getting stats for {context_type.value}: {e}")
 
         stats["strategy_configurations"] = strategy_stats
-
-        # 添加跨类型关联统计
-        if self.enable_cross_type_processing:
-            stats["cross_type_statistics"] = self.cross_type_manager.get_conversion_statistics()
-
         return stats
-
-    def process_cross_type_relationships(
-        self, contexts: List[ProcessedContext]
-    ) -> List[ProcessedContext]:
-        """
-        处理跨类型关联：识别转换机会并创建新的关联上下文
-        """
-        if not self.enable_cross_type_processing or not contexts:
-            return []
-
-        logger.info(f"Processing cross-type relationships for {len(contexts)} contexts")
-
-        try:
-            # 识别转换机会
-            conversion_opportunities = self.cross_type_manager.identify_conversion_opportunities(
-                contexts
-            )
-
-            new_contexts = []
-
-            for context, transition, confidence in conversion_opportunities:
-                logger.info(
-                    f"Converting {context.id} via {transition.value} with confidence {confidence:.3f}"
-                )
-
-                converted_context = self.cross_type_manager.convert_context_type(
-                    context, transition
-                )
-                if converted_context:
-                    new_contexts.append(converted_context)
-
-            logger.info(f"Generated {len(new_contexts)} cross-type converted contexts")
-            return new_contexts
-
-        except Exception as e:
-            logger.error(f"Error in cross-type relationship processing: {e}", exc_info=True)
-            return []
-
-    def find_related_contexts_across_types(
-        self, context: ProcessedContext, limit: int = 5
-    ) -> List[Tuple[ProcessedContext, str, float]]:
-        """
-        跨类型寻找相关上下文
-        """
-        if not self.enable_cross_type_processing:
-            return []
-
-        try:
-            # 获取所有上下文进行关联分析
-            all_contexts_dict = self.storage.get_all_processed_contexts(
-                limit=1000, offset=0, filter={}
-            )
-            all_contexts = []
-            for contexts_list in all_contexts_dict.values():
-                all_contexts.extend(contexts_list)
-
-            # 使用跨类型管理器寻找关联
-            related_contexts = self.cross_type_manager.suggest_related_contexts(
-                context, all_contexts
-            )
-
-            return related_contexts[:limit]
-
-        except Exception as e:
-            logger.error(f"Error finding related contexts across types: {e}", exc_info=True)
-            return []
-
-    def intelligent_context_evolution(self):
-        """
-        智能上下文演化：定期处理跨类型转换和关联
-        """
-        if not self.enable_cross_type_processing:
-            return
-
-        logger.info("Starting intelligent context evolution process")
-
-        try:
-            # 获取最近的上下文进行演化分析
-            recent_filter = {
-                "update_time_ts": {
-                    "$gte": int(
-                        (datetime.now() - timedelta(hours=self.cleanup_interval_hours)).timestamp()
-                    )
-                }
-            }
-
-            contexts_dict = self.storage.get_all_processed_contexts(
-                limit=500, offset=0, filter=recent_filter
-            )
-
-            all_contexts = []
-            for contexts_list in contexts_dict.values():
-                all_contexts.extend(contexts_list)
-
-            if not all_contexts:
-                logger.info("No recent contexts found for evolution processing")
-                return
-
-            # 处理跨类型关联
-            new_contexts = self.process_cross_type_relationships(all_contexts)
-
-            # 存储新生成的关联上下文
-            stored_count = 0
-            for new_context in new_contexts:
-                try:
-                    self.storage.upsert_processed_context(new_context)
-                    stored_count += 1
-                except Exception as e:
-                    logger.error(f"Error storing evolved context: {e}")
-
-            logger.info(f"Context evolution completed: {stored_count} new contexts created")
-
-        except Exception as e:
-            logger.error(f"Error during intelligent context evolution: {e}", exc_info=True)
-
-    def analyze_context_relationships(self, context_id: str) -> Dict[str, Any]:
-        """
-        分析指定上下文的跨类型关系
-        """
-        try:
-            # 找到目标上下文
-            target_context = self._find_context_by_id(context_id)
-            if not target_context:
-                return {"error": f"Context {context_id} not found"}
-
-            # 分析关系
-            related_contexts = self.find_related_contexts_across_types(target_context, limit=10)
-
-            # 识别可能的转换
-            conversion_opportunities = self.cross_type_manager.identify_conversion_opportunities(
-                [target_context]
-            )
-
-            return {
-                "context_id": context_id,
-                "context_type": target_context.extracted_data.context_type.value,
-                "related_contexts": [
-                    {
-                        "id": ctx.id,
-                        "type": ctx.extracted_data.context_type.value,
-                        "title": ctx.extracted_data.title,
-                        "relation_type": rel_type,
-                        "strength": strength,
-                    }
-                    for ctx, rel_type, strength in related_contexts
-                ],
-                "conversion_opportunities": [
-                    {
-                        "transition": transition.value,
-                        "confidence": confidence,
-                        "target_type": self.cross_type_manager._get_target_type(transition).value,
-                    }
-                    for _, transition, confidence in conversion_opportunities
-                ],
-            }
-
-        except Exception as e:
-            logger.error(f"Error analyzing context relationships: {e}", exc_info=True)
-            return {"error": str(e)}

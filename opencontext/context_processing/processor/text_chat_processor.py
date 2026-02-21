@@ -104,7 +104,7 @@ class TextChatProcessor(BaseContextProcessor):
                 elif isinstance(e, dict):
                     entity_names.append(e.get('name', str(e)))
         # 5. 构建 ProcessedContext
-        context_type = get_context_type_for_analysis(analysis.get("context_type", "activity_context"))
+        context_type = get_context_type_for_analysis(analysis.get("context_type", "event"))
         logger.debug(f"Extracted entities: {entity_names}")
         extracted_data = ExtractedData(
             title=analysis.get("title", "Chat Summary"),

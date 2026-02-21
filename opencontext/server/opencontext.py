@@ -246,15 +246,6 @@ class OpenContext:
             return False
         return self.context_operations.delete_context(doc_id, context_type)
 
-    def add_screenshot(self, path: str, window: str, create_time: str, app: str) -> Optional[str]:
-        """Add a screenshot to the system."""
-        if not self.context_operations:
-            logger.warning("Context operations not initialized.")
-            return "Context operations not initialized"
-        return self.context_operations.add_screenshot(
-            path, window, create_time, app, self.add_context
-        )
-
     def add_document(self, file_path: str) -> Optional[str]:
         """Add a document to the system."""
         if not self.context_operations:

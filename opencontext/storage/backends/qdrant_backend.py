@@ -439,10 +439,8 @@ class QdrantBackend(IVectorStorageBackend):
             metadata_field_names = set()
             context_type_value = payload.get("context_type")
 
-            if context_type_value == ContextType.ENTITY_CONTEXT.value:
-                from opencontext.models.context import ProfileContextMetadata
-
-                metadata_field_names = set(ProfileContextMetadata.model_fields.keys())
+            # Entity type is now stored in relational DB, not vector DB.
+            # No special metadata field handling needed for vector-stored types.
 
             original_id = payload.pop(FIELD_ORIGINAL_ID, str(point.id))
 

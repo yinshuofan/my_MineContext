@@ -17,7 +17,6 @@ from opencontext.config.global_config import GlobalConfig
 from opencontext.config.prompt_manager import PromptManager
 
 # Import capture components
-from opencontext.context_capture.screenshot import ScreenshotCapture
 from opencontext.context_capture.vault_document_monitor import VaultDocumentMonitor
 from opencontext.context_capture.web_link_capture import WebLinkCapture
 from opencontext.context_consumption.completion import CompletionService
@@ -37,7 +36,6 @@ logger = get_logger(__name__)
 
 # Component mappings
 CAPTURE_COMPONENTS = {
-    "screenshot": ScreenshotCapture,
     "vault_document_monitor": VaultDocumentMonitor,
     "web_link_capture": WebLinkCapture,
     "text_chat": TextChatCapture,
@@ -135,7 +133,7 @@ class ComponentInitializer:
 
         # Now config.yaml structure is flattened, directly under processing
         # Create various processors
-        processor_types = ["document_processor", "screenshot_processor", "text_chat_processor"]
+        processor_types = ["document_processor", "text_chat_processor"]
 
         for processor_type in processor_types:
             processor_config = processing_config.get(processor_type, {})

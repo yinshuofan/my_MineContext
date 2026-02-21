@@ -10,11 +10,10 @@ Separated from main OpenContext class for better maintainability.
 """
 
 import datetime
-import os
 from typing import Any, Dict, List, Optional
 
 from opencontext.models.context import ProcessedContext, RawContextProperties, Vectorize
-from opencontext.models.enums import ContentFormat, ContextSource, ContextType
+from opencontext.models.enums import ContextSource, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
 
@@ -63,49 +62,6 @@ class ContextOperations:
             return self.storage.delete_processed_context(doc_id, context_type)
         logger.warning("Storage is not initialized.")
         return False
-
-    def add_screenshot(
-        self, path: str, window: str, create_time: str, app: str, context_processor_callback
-    ) -> Optional[str]:
-        """Add a screenshot to the system."""
-
-        # Validate inputs
-        if not path:
-            error_msg = "Screenshot path cannot be empty"
-            logger.error(error_msg)
-            return error_msg
-
-        if not os.path.exists(path):
-            error_msg = f"Screenshot path {path} does not exist"
-            logger.error(error_msg)
-            return error_msg
-
-        try:
-            screenshot_format = os.path.splitext(path)[1][1:]
-            # Handle ISO format time string, supports Z suffix
-            if create_time.endswith("Z"):
-                create_time = create_time[:-1] + "+00:00"
-
-            raw_context = RawContextProperties(
-                source=ContextSource.SCREENSHOT,
-                content_format=ContentFormat.IMAGE,
-                create_time=datetime.datetime.fromisoformat(create_time),
-                content_path=path,
-                additional_info={
-                    "window": window,
-                    "app": app,
-                    "duration_count": 1,
-                    "screenshot_format": screenshot_format,
-                },
-            )
-
-            if not context_processor_callback(raw_context):
-                return "Failed to add screenshot"
-            return None
-        except Exception as e:
-            error_msg = f"Failed to process screenshot: {e}"
-            logger.error(error_msg)
-            return error_msg
 
     def add_document(self, file_path: str, context_processor_callback) -> Optional[str]:
         """Add a document to the system."""
@@ -228,16 +184,6 @@ class ContextOperations:
         Get all available context types.
 
         Returns:
-            List of context types
+            List of context types (all 5 types are always available)
         """
-        if not self.storage:
-            raise RuntimeError("Storage not initialized")
-
-        try:
-            collection_names = self.storage.get_vector_collection_names()
-            # Check if name is in ContextType values
-            context_type_values = {t.value for t in ContextType}
-            return [name for name in collection_names if name in context_type_values]
-        except Exception as e:
-            logger.exception(f"Failed to get context types: {e}")
-            raise RuntimeError(f"Failed to get context types: {str(e)}") from e
+        return [t.value for t in ContextType]

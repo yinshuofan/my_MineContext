@@ -725,15 +725,8 @@ class ChromaDBBackend(IVectorStorageBackend):
             metadata_field_names = set()
             context_type_value = metadata.get("context_type")
 
-            if context_type_value == ContextType.ENTITY_CONTEXT.value:
-                # Import ProfileContextMetadata to get its field names
-                from opencontext.models.context import ProfileContextMetadata
-
-                metadata_field_names = set(ProfileContextMetadata.model_fields.keys())
-            # Other context_types can add corresponding metadata models here
-            # elif context_type_value == ContextType.ACTIVITY_CONTEXT.value:
-            #     from opencontext.models.context import ActivityContextMetadata
-            #     metadata_field_names = set(ActivityContextMetadata.model_fields.keys())
+            # Entity type is now stored in relational DB, not vector DB.
+            # No special metadata field handling needed for vector-stored types.
 
             # Reconstruct objects from flattened fields
             for key, value in metadata.items():

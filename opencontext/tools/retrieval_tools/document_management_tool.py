@@ -61,7 +61,7 @@ class DocumentManagementTool:
             # Retrieve all related chunks
             results = self._execute_document_search(
                 query=" ",
-                context_types=[ContextType.SEMANTIC_CONTEXT.value],
+                context_types=[ContextType.DOCUMENT.value],
                 filters=filters,
                 top_k=1000,  # Get all chunks
             )
@@ -109,7 +109,7 @@ class DocumentManagementTool:
             # Find chunks to delete
             results = self._execute_document_search(
                 query="",
-                context_types=[ContextType.SEMANTIC_CONTEXT.value],
+                context_types=[ContextType.DOCUMENT.value],
                 filters=filters,
                 top_k=1000,
             )

@@ -253,14 +253,12 @@ def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
 def _get_source_enum(source_str: str) -> ContextSource:
     """Convert source string to ContextSource enum"""
     source_map = {
-        "screenshot": ContextSource.SCREENSHOT,
         "document": ContextSource.LOCAL_FILE,
         "chat": ContextSource.CHAT_LOG,
-        "activity": ContextSource.INPUT,
         "vault": ContextSource.VAULT,
-        "text": ContextSource.TEXT,
         "input": ContextSource.INPUT,
         "local_file": ContextSource.LOCAL_FILE,
+        "web_link": ContextSource.WEB_LINK,
     }
     return source_map.get(source_str.lower(), ContextSource.INPUT)
 
