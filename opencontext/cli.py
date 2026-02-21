@@ -47,21 +47,21 @@ async def lifespan(app: FastAPI):
     # Startup
     if not hasattr(app.state, "context_lab_instance"):
         app.state.context_lab_instance = get_or_create_context_lab()
-    
+
     # Start task scheduler after event loop is running
     try:
         context_lab = app.state.context_lab_instance
-        if context_lab and hasattr(context_lab, 'component_initializer'):
+        if context_lab and hasattr(context_lab, "component_initializer"):
             await context_lab.component_initializer.start_task_scheduler()
     except Exception as e:
         logger.warning(f"Failed to start task scheduler: {e}")
-    
+
     yield
-    
+
     # Shutdown - cleanup if needed
     try:
-        context_lab = getattr(app.state, 'context_lab_instance', None)
-        if context_lab and hasattr(context_lab, 'component_initializer'):
+        context_lab = getattr(app.state, "context_lab_instance", None)
+        if context_lab and hasattr(context_lab, "component_initializer"):
             context_lab.component_initializer.stop_task_scheduler()
     except Exception as e:
         logger.warning(f"Error stopping task scheduler: {e}")
@@ -72,8 +72,7 @@ app = FastAPI(title="OpenContext", version="1.0.0", lifespan=lifespan)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173",
-                   "http://localhost"],  # React dev server
+    allow_origins=["http://localhost:5173", "http://localhost"],  # React dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,12 +103,10 @@ def _setup_static_files() -> None:
     print(f"Static path absolute: {static_path.resolve()}")
 
     if static_path.exists():
-        app.mount("/static", StaticFiles(directory=str(static_path)),
-                  name="static")
+        app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
         print(f"Mounted static files from: {static_path}")
     else:
         print(f"Static path does not exist: {static_path}")
-
 
 
 _setup_static_files()
@@ -139,8 +136,7 @@ def start_web_server(
     if workers > 1:
         logger.info(f"Starting with {workers} worker processes")
         # For multi-process mode, use import string to avoid the warning
-        uvicorn.run("opencontext.cli:app", host=host, port=port,
-                    log_level="info", workers=workers)
+        uvicorn.run("opencontext.cli:app", host=host, port=port, log_level="info", workers=workers)
     else:
         # For single process mode, use the existing instance
         app.state.context_lab_instance = context_lab_instance
@@ -157,18 +153,13 @@ def parse_args() -> argparse.Namespace:
         description="OpenContext - Context capture, processing, storage and consumption system"
     )
 
-    subparsers = parser.add_subparsers(
-        dest="command", help="Available commands")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Start command
-    start_parser = subparsers.add_parser(
-        "start", help="Start OpenContext server")
-    start_parser.add_argument("--config", type=str,
-                              help="Configuration file path")
-    start_parser.add_argument(
-        "--host", type=str, help="Host address (overrides config file)")
-    start_parser.add_argument(
-        "--port", type=int, help="Port number (overrides config file)")
+    start_parser = subparsers.add_parser("start", help="Start OpenContext server")
+    start_parser.add_argument("--config", type=str, help="Configuration file path")
+    start_parser.add_argument("--host", type=str, help="Host address (overrides config file)")
+    start_parser.add_argument("--port", type=int, help="Port number (overrides config file)")
     start_parser.add_argument(
         "--workers", type=int, default=1, help="Number of worker processes (default: 1)"
     )
@@ -208,9 +199,9 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
     async def _run_async():
         try:
             # Start task scheduler
-            if hasattr(lab_instance, 'component_initializer'):
+            if hasattr(lab_instance, "component_initializer"):
                 await lab_instance.component_initializer.start_task_scheduler()
-            
+
             logger.info("Running in headless mode. Press Ctrl+C to exit.")
             while True:
                 await asyncio.sleep(1)
@@ -218,7 +209,7 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
             pass
         finally:
             # Stop task scheduler
-            if hasattr(lab_instance, 'component_initializer'):
+            if hasattr(lab_instance, "component_initializer"):
                 lab_instance.component_initializer.stop_task_scheduler()
 
     try:

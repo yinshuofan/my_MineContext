@@ -93,6 +93,7 @@ class ContextTypeAwareStrategy(ABC):
             return True
 
         import random
+
         forgetting_prob = self.calculate_forgetting_probability(context)
         return random.random() < forgetting_prob
 
@@ -146,9 +147,7 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
             )
 
             if vector_sim > self.similarity_threshold:
-                final_score = (
-                    (entity_overlap * 0.3) + (keyword_overlap * 0.3) + (vector_sim * 0.4)
-                )
+                final_score = (entity_overlap * 0.3) + (keyword_overlap * 0.3) + (vector_sim * 0.4)
                 return True, final_score
 
         return False, 0.0

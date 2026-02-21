@@ -13,12 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from qdrant_client import QdrantClient, models
 
 from opencontext.llm.global_embedding_client import do_vectorize
-from opencontext.models.context import (
-    ContextProperties,
-    ExtractedData,
-    ProcessedContext,
-    Vectorize,
-)
+from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
 from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
 from opencontext.utils.logging_utils import get_logger
@@ -52,9 +47,7 @@ class QdrantBackend(IVectorStorageBackend):
             qdrant_config = config.get("config", {})
 
             self._vector_size = qdrant_config.get("vector_size", None)
-            client_config = {
-                k: v for k, v in qdrant_config.items() if k != "vector_size"
-            }
+            client_config = {k: v for k, v in qdrant_config.items() if k != "vector_size"}
             self._client = QdrantClient(**client_config)
 
             context_types = [ct.value for ct in ContextType]
@@ -66,7 +59,10 @@ class QdrantBackend(IVectorStorageBackend):
 
             # Create todo collection only if consumption is enabled
             from opencontext.config.global_config import GlobalConfig
-            consumption_enabled = GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+
+            consumption_enabled = (
+                GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+            )
             if consumption_enabled:
                 self._ensure_collection(TODO_COLLECTION, TODO_COLLECTION)
                 self._collections[TODO_COLLECTION] = TODO_COLLECTION
@@ -185,9 +181,7 @@ class QdrantBackend(IVectorStorageBackend):
     def upsert_processed_context(self, context: ProcessedContext) -> str:
         return self.batch_upsert_processed_context([context])[0]
 
-    def batch_upsert_processed_context(
-        self, contexts: List[ProcessedContext]
-    ) -> List[str]:
+    def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> List[str]:
         if not self._initialized:
             raise RuntimeError("Qdrant backend not initialized")
 
@@ -244,9 +238,7 @@ class QdrantBackend(IVectorStorageBackend):
                 stored_ids.extend(point_to_context_id.values())
 
             except Exception as e:
-                logger.error(
-                    f"Batch storing context to {context_type} collection failed: {e}"
-                )
+                logger.error(f"Batch storing context to {context_type} collection failed: {e}")
                 continue
 
         return stored_ids
@@ -274,9 +266,7 @@ class QdrantBackend(IVectorStorageBackend):
                 return self._qdrant_result_to_context(point, need_vector)
 
         except Exception as e:
-            logger.debug(
-                f"Failed to retrieve context {id} from {context_type} collection: {e}"
-            )
+            logger.debug(f"Failed to retrieve context {id} from {context_type} collection: {e}")
             return None
 
     def get_all_processed_contexts(
@@ -286,22 +276,32 @@ class QdrantBackend(IVectorStorageBackend):
         offset: int = 0,
         filter: Optional[Dict[str, Any]] = None,
         need_vector: bool = False,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> Dict[str, List[ProcessedContext]]:
         if not self._initialized:
             return {}
 
         result = {}
         if not context_types:
-            context_types = [
-                k for k in self._collections.keys() if k != TODO_COLLECTION
-            ]
+            context_types = [k for k in self._collections.keys() if k != TODO_COLLECTION]
+
+        # Merge multi-user fields into filter dict
+        merged_filter = dict(filter) if filter else {}
+        if user_id:
+            merged_filter["user_id"] = user_id
+        if device_id:
+            merged_filter["device_id"] = device_id
+        if agent_id:
+            merged_filter["agent_id"] = agent_id
 
         for context_type in context_types:
             if context_type not in self._collections:
                 continue
             collection_name = self._collections[context_type]
             try:
-                filter_condition = self._build_filter_condition(filter)
+                filter_condition = self._build_filter_condition(merged_filter)
 
                 fetch_limit = limit + offset
 
@@ -331,9 +331,7 @@ class QdrantBackend(IVectorStorageBackend):
                     result[context_type] = contexts
 
             except Exception as e:
-                logger.exception(
-                    f"Failed to get contexts from {context_type} collection: {e}"
-                )
+                logger.exception(f"Failed to get contexts from {context_type} collection: {e}")
                 continue
 
         return result
@@ -347,6 +345,9 @@ class QdrantBackend(IVectorStorageBackend):
         top_k: int = 10,
         context_types: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         need_vector: bool = False,
     ) -> List[Tuple[ProcessedContext, float]]:
         if not self._initialized:
@@ -375,6 +376,15 @@ class QdrantBackend(IVectorStorageBackend):
             logger.warning("Unable to get query vector, search failed")
             return []
 
+        # Merge multi-user fields into filters
+        merged_filters = dict(filters) if filters else {}
+        if user_id:
+            merged_filters["user_id"] = user_id
+        if device_id:
+            merged_filters["device_id"] = device_id
+        if agent_id:
+            merged_filters["agent_id"] = agent_id
+
         all_results = []
 
         for context_type, collection_name in target_collections.items():
@@ -383,7 +393,7 @@ class QdrantBackend(IVectorStorageBackend):
                 if collection_info.points_count == 0:
                     continue
 
-                filter_condition = self._build_filter_condition(filters)
+                filter_condition = self._build_filter_condition(merged_filters)
 
                 results = self._client.query_points(
                     collection_name=collection_name,
@@ -401,9 +411,7 @@ class QdrantBackend(IVectorStorageBackend):
                         all_results.append((context, score))
 
             except Exception as e:
-                logger.exception(
-                    f"Vector search failed in {context_type} collection: {e}"
-                )
+                logger.exception(f"Vector search failed in {context_type} collection: {e}")
                 continue
 
         all_results.sort(key=lambda x: x[1], reverse=True)
@@ -467,12 +475,8 @@ class QdrantBackend(IVectorStorageBackend):
                     metadata_dict[key] = val
 
             context_dict["id"] = original_id
-            context_dict["extracted_data"] = ExtractedData.model_validate(
-                extracted_data_dict
-            )
-            context_dict["properties"] = ContextProperties.model_validate(
-                properties_dict
-            )
+            context_dict["extracted_data"] = ExtractedData.model_validate(extracted_data_dict)
+            context_dict["properties"] = ContextProperties.model_validate(properties_dict)
             context_dict["vectorize"] = Vectorize.model_validate(vectorize_dict)
 
             if metadata_dict:
@@ -484,14 +488,10 @@ class QdrantBackend(IVectorStorageBackend):
             return context
 
         except Exception as e:
-            logger.exception(
-                f"Failed to convert Qdrant result to ProcessedContext: {e}"
-            )
+            logger.exception(f"Failed to convert Qdrant result to ProcessedContext: {e}")
             return None
 
-    def _build_filter_condition(
-        self, filters: Optional[Dict[str, Any]]
-    ) -> Optional[models.Filter]:
+    def _build_filter_condition(self, filters: Optional[Dict[str, Any]]) -> Optional[models.Filter]:
         if not filters:
             return None
 
@@ -886,9 +886,7 @@ class QdrantBackend(IVectorStorageBackend):
                         results.append(context)
 
             except Exception as e:
-                logger.debug(
-                    f"Failed to retrieve IDs from collection '{collection_name}': {e}"
-                )
+                logger.debug(f"Failed to retrieve IDs from collection '{collection_name}': {e}")
                 continue
 
         return results

@@ -64,7 +64,7 @@ class ConfigManager:
         """Load environment variables from system and .env file"""
         # Load .env file if it exists (does not override existing env vars)
         load_dotenv()
-        
+
         for key, value in os.environ.items():
             self._env_vars[key] = value
 

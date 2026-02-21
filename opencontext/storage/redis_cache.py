@@ -36,6 +36,7 @@ _redis_lock = threading.Lock()
 @dataclass
 class RedisCacheConfig:
     """Redis cache configuration"""
+
     host: str = "localhost"
     port: int = 6379
     password: Optional[str] = None
@@ -107,7 +108,9 @@ class RedisCache:
             # Test connection
             await self._async_client.ping()
             self._async_connected = True
-            logger.info(f"Redis async client connected: {self.config.host}:{self.config.port}/{self.config.db}")
+            logger.info(
+                f"Redis async client connected: {self.config.host}:{self.config.port}/{self.config.db}"
+            )
             return True
 
         except ImportError:
@@ -167,13 +170,15 @@ class RedisCache:
             return False
         try:
             ttl = ttl if ttl is not None else self.config.default_ttl
-            return bool(await self._async_client.set(
-                self._make_key(key),
-                value,
-                ex=ttl if ttl > 0 else None,
-                nx=nx,
-                xx=xx,
-            ))
+            return bool(
+                await self._async_client.set(
+                    self._make_key(key),
+                    value,
+                    ex=ttl if ttl > 0 else None,
+                    nx=nx,
+                    xx=xx,
+                )
+            )
         except Exception as e:
             logger.error(f"Redis SET error: {e}")
             return False
@@ -576,11 +581,7 @@ class RedisCache:
             return 0
 
     async def zrangebyscore(
-        self,
-        key: str,
-        min_score: float,
-        max_score: float,
-        withscores: bool = False
+        self, key: str, min_score: float, max_score: float, withscores: bool = False
     ) -> List[str]:
         """Get members from a sorted set within a score range."""
         if not await self._ensure_async_client():
@@ -588,7 +589,9 @@ class RedisCache:
         try:
             full_key = self._make_key(key)
             if withscores:
-                return await self._async_client.zrangebyscore(full_key, min_score, max_score, withscores=True)
+                return await self._async_client.zrangebyscore(
+                    full_key, min_score, max_score, withscores=True
+                )
             else:
                 return await self._async_client.zrangebyscore(full_key, min_score, max_score)
         except Exception as e:
@@ -792,6 +795,7 @@ class RedisCache:
 # Global Redis Cache Instance
 # =============================================================================
 
+
 def get_redis_cache(config: Optional[RedisCacheConfig] = None) -> RedisCache:
     """
     Get or create the global Redis cache instance.
@@ -841,6 +845,7 @@ async def close_redis_cache():
 # Fallback In-Memory Cache (when Redis is unavailable)
 # =============================================================================
 
+
 class InMemoryCache:
     """
     In-memory cache fallback when Redis is unavailable.
@@ -882,7 +887,9 @@ class InMemoryCache:
                 return None
             return self._data.get(key)
 
-    async def set(self, key: str, value: str, ttl: Optional[int] = None, nx: bool = False, xx: bool = False) -> bool:
+    async def set(
+        self, key: str, value: str, ttl: Optional[int] = None, nx: bool = False, xx: bool = False
+    ) -> bool:
         async with self._async_lock:
             exists = key in self._data
             if nx and exists:
@@ -912,11 +919,23 @@ class InMemoryCache:
         async with self._async_lock:
             if self._check_expiry(key):
                 return False
-            return key in self._data or key in self._lists or key in self._hashes or key in self._sets or key in self._sorted_sets
+            return (
+                key in self._data
+                or key in self._lists
+                or key in self._hashes
+                or key in self._sets
+                or key in self._sorted_sets
+            )
 
     async def expire(self, key: str, ttl: int) -> bool:
         async with self._async_lock:
-            if key in self._data or key in self._lists or key in self._hashes or key in self._sets or key in self._sorted_sets:
+            if (
+                key in self._data
+                or key in self._lists
+                or key in self._hashes
+                or key in self._sets
+                or key in self._sorted_sets
+            ):
                 self._expiry[key] = datetime.now() + timedelta(seconds=ttl)
                 return True
             return False
@@ -938,7 +957,9 @@ class InMemoryCache:
         except json.JSONDecodeError:
             return None
 
-    async def set_json(self, key: str, value: Any, ttl: Optional[int] = None, nx: bool = False, xx: bool = False) -> bool:
+    async def set_json(
+        self, key: str, value: Any, ttl: Optional[int] = None, nx: bool = False, xx: bool = False
+    ) -> bool:
         try:
             json_str = json.dumps(value, ensure_ascii=False, default=str)
             return await self.set(key, json_str, ttl=ttl, nx=nx, xx=xx)
@@ -988,7 +1009,7 @@ class InMemoryCache:
             lst = self._lists[key]
             if end == -1:
                 return lst[start:]
-            return lst[start:end + 1]
+            return lst[start : end + 1]
 
     async def llen(self, key: str) -> int:
         async with self._async_lock:
@@ -1002,7 +1023,7 @@ class InMemoryCache:
             if end == -1:
                 self._lists[key] = lst[start:]
             else:
-                self._lists[key] = lst[start:end + 1]
+                self._lists[key] = lst[start : end + 1]
             return True
 
     async def lrange_json(self, key: str, start: int = 0, end: int = -1) -> List[Any]:
@@ -1176,11 +1197,15 @@ class InMemoryCache:
             self._sorted_sets[key].update(mapping)
             return len(self._sorted_sets[key]) - before
 
-    async def zrangebyscore(self, key: str, min_score: float, max_score: float, withscores: bool = False) -> List:
+    async def zrangebyscore(
+        self, key: str, min_score: float, max_score: float, withscores: bool = False
+    ) -> List:
         async with self._async_lock:
             if key not in self._sorted_sets:
                 return []
-            items = [(m, s) for m, s in self._sorted_sets[key].items() if min_score <= s <= max_score]
+            items = [
+                (m, s) for m, s in self._sorted_sets[key].items() if min_score <= s <= max_score
+            ]
             items.sort(key=lambda x: x[1])
             if withscores:
                 return items
@@ -1227,8 +1252,15 @@ class InMemoryCache:
             return old_value
 
     # Lock Operations
-    async def acquire_lock(self, lock_name: str, timeout: int = 10, blocking: bool = True, blocking_timeout: float = 5.0) -> Optional[str]:
+    async def acquire_lock(
+        self,
+        lock_name: str,
+        timeout: int = 10,
+        blocking: bool = True,
+        blocking_timeout: float = 5.0,
+    ) -> Optional[str]:
         import time
+
         lock_key = f"lock:{lock_name}"
         token = str(uuid.uuid4())
 
@@ -1256,7 +1288,14 @@ class InMemoryCache:
     async def keys(self, pattern: str = "*") -> List[str]:
         async with self._async_lock:
             import fnmatch
-            all_keys = set(self._data.keys()) | set(self._lists.keys()) | set(self._hashes.keys()) | set(self._sets.keys()) | set(self._sorted_sets.keys())
+
+            all_keys = (
+                set(self._data.keys())
+                | set(self._lists.keys())
+                | set(self._hashes.keys())
+                | set(self._sets.keys())
+                | set(self._sorted_sets.keys())
+            )
             if pattern == "*":
                 return list(all_keys)
             return [k for k in all_keys if fnmatch.fnmatch(k, pattern)]
@@ -1274,8 +1313,12 @@ class InMemoryCache:
     async def info(self) -> Dict[str, Any]:
         async with self._async_lock:
             return {
-                "keys": len(self._data) + len(self._lists) + len(self._hashes) + len(self._sets) + len(self._sorted_sets),
-                "type": "in_memory"
+                "keys": len(self._data)
+                + len(self._lists)
+                + len(self._hashes)
+                + len(self._sets)
+                + len(self._sorted_sets),
+                "type": "in_memory",
             }
 
     async def close(self):

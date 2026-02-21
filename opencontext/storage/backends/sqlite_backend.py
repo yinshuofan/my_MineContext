@@ -41,22 +41,19 @@ class SQLiteBackend(IDocumentStorageBackend):
         """Initialize SQLite database"""
         try:
             # Use path from configuration, default to ./persist/sqlite/app.db
-            self.db_path = config.get("config", {}).get(
-                "path", "./persist/sqlite/app.db")
+            self.db_path = config.get("config", {}).get("path", "./persist/sqlite/app.db")
 
             # Ensure directory exists
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
-            self.connection = sqlite3.connect(
-                self.db_path, check_same_thread=False)
+            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
             self.connection.row_factory = sqlite3.Row  # Allow column name access
 
             # Create table structure
             self._create_tables()
 
             self._initialized = True
-            logger.info(
-                f"SQLite backend initialized successfully, database path: {self.db_path}")
+            logger.info(f"SQLite backend initialized successfully, database path: {self.db_path}")
             return True
 
         except Exception as e:
@@ -293,25 +290,17 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # New table indexes
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vaults_created ON vaults (created_at)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vaults_type ON vaults (document_type)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vaults_folder ON vaults (is_folder)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vaults_deleted ON vaults (is_deleted)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_todo_status ON todo (status)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_todo_urgency ON todo (urgency)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_todo_created ON todo (created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vaults_created ON vaults (created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vaults_type ON vaults (document_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vaults_folder ON vaults (is_folder)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vaults_deleted ON vaults (is_deleted)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_todo_status ON todo (status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_todo_urgency ON todo (urgency)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_todo_created ON todo (created_at)")
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_activity_time ON activity (start_time, end_time)"
         )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tips_time ON tips (created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tips_time ON tips (created_at)")
 
         # Monitoring table indexes
         cursor.execute(
@@ -334,10 +323,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Conversation/Message indexes
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status)")
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)"
         )
@@ -349,10 +336,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Entity indexes
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_entity_user ON entities (user_id)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_entity_type ON entities (entity_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_entity_user ON entities (user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_entity_type ON entities (entity_type)")
 
         # Message thinking table (stores thinking process for messages)
         cursor.execute(
@@ -392,23 +377,20 @@ class SQLiteBackend(IDocumentStorageBackend):
         cursor = self.connection.cursor()
 
         # Check if Quick Start document already exists
-        cursor.execute(
-            "SELECT COUNT(*) FROM vaults WHERE title = 'Start With Tutorial'")
+        cursor.execute("SELECT COUNT(*) FROM vaults WHERE title = 'Start With Tutorial'")
         if cursor.fetchone()[0] > 0:
             return
 
         try:
             config_dir = "./config"
-            quick_start_file = os.path.join(
-                config_dir, "quick_start_default.md")
+            quick_start_file = os.path.join(config_dir, "quick_start_default.md")
 
             if os.path.exists(quick_start_file):
                 with open(quick_start_file, "r", encoding="utf-8") as f:
                     default_content = f.read()
             else:
                 # If file doesn't exist, use fallback content
-                logger.error(
-                    f"Quick Start document {quick_start_file} does not exist")
+                logger.error(f"Quick Start document {quick_start_file} does not exist")
                 default_content = "Welcome to MineContext!\n\nYour Context-Aware AI Partner is ready to help you work, study, and create better."
 
         except Exception as e:
@@ -447,8 +429,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             event_manager.publish_event(event_type=event_type, data=data)
 
         except Exception as e:
-            logger.exception(
-                f"Failed to insert default Quick Start document: {e}")
+            logger.exception(f"Failed to insert default Quick Start document: {e}")
             self.connection.rollback()
 
     # Report table operations
@@ -735,8 +716,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             if status is not None:
                 where_conditions.append("status = ?")
                 params.append(status)
-            where_clause = " AND ".join(
-                where_conditions) if where_conditions else "1=1"
+            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
             params.extend([limit, offset])
             cursor.execute(
                 f"""
@@ -855,8 +835,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 where_conditions.append("end_time <= ?")
                 params.append(end_time)
 
-            where_clause = " AND ".join(
-                where_conditions) if where_conditions else "1=1"
+            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
             params.extend([limit, offset])
 
             cursor.execute(
@@ -924,8 +903,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 where_conditions.append("created_at <= ?")
                 params.append(end_time.isoformat())
 
-            where_clause = " AND ".join(
-                where_conditions) if where_conditions else "1=1"
+            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
             params.extend([limit, offset])
 
             cursor.execute(
@@ -984,8 +962,16 @@ class SQLiteBackend(IDocumentStorageBackend):
                     updated_at = excluded.updated_at
                 """,
                 (
-                    user_id, agent_id, content, summary, keywords_json,
-                    entities_json, importance, metadata_json, now, now,
+                    user_id,
+                    agent_id,
+                    content,
+                    summary,
+                    keywords_json,
+                    entities_json,
+                    importance,
+                    metadata_json,
+                    now,
+                    now,
                 ),
             )
             self.connection.commit()
@@ -1096,8 +1082,17 @@ class SQLiteBackend(IDocumentStorageBackend):
                     updated_at = excluded.updated_at
                 """,
                 (
-                    entity_id, user_id, entity_name, entity_type, content, summary,
-                    keywords_json, aliases_json, metadata_json, now, now,
+                    entity_id,
+                    user_id,
+                    entity_name,
+                    entity_type,
+                    content,
+                    summary,
+                    keywords_json,
+                    aliases_json,
+                    metadata_json,
+                    now,
+                    now,
                 ),
             )
             self.connection.commit()
@@ -1756,8 +1751,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 where_clauses.append("user_id = ?")
                 params.append(user_id)
 
-            where_sql = " AND ".join(
-                where_clauses) if where_clauses else "1=1"
+            where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
             # Get total count
             count_params = params[:]
@@ -1835,7 +1829,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                 return self.get_conversation(conversation_id)
             else:
                 logger.warning(
-                    f"Failed to update conversation {conversation_id}, row not found or no change.")
+                    f"Failed to update conversation {conversation_id}, row not found or no change."
+                )
                 return None
         except Exception as e:
             self.connection.rollback()
@@ -1847,9 +1842,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         Mark a conversation as deleted (4.1.5)
         """
         # Note: The spec uses 'delected', we'll update status to 'deleted'
-        updated_convo = self.update_conversation(
-            conversation_id=conversation_id, status="deleted"
-        )
+        updated_convo = self.update_conversation(conversation_id=conversation_id, status="deleted")
         success = updated_convo is not None
         return {"success": success, "id": conversation_id}
 
@@ -1857,7 +1850,9 @@ class SQLiteBackend(IDocumentStorageBackend):
     # Conversation/Message operations (Continued)
     # -----------------------------------------------------------------
 
-    def get_message(self, message_id: int, include_thinking: bool = True) -> Optional[Dict[str, Any]]:
+    def get_message(
+        self, message_id: int, include_thinking: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """
         Get a single message by its ID, optionally including thinking records.
 
@@ -1885,7 +1880,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
                 # Include thinking records if requested
                 if include_thinking:
-                    message['thinking'] = self.get_message_thinking(message_id)
+                    message["thinking"] = self.get_message_thinking(message_id)
 
                 return message
             return None
@@ -2025,8 +2020,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             if cursor.rowcount > 0:
                 return self.get_message(message_id)
             else:
-                logger.warning(
-                    f"Failed to update message {message_id}, not found.")
+                logger.warning(f"Failed to update message {message_id}, not found.")
                 return None
         except Exception as e:
             self.connection.rollback()
@@ -2064,8 +2058,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
 
             if cursor.rowcount == 0:
-                logger.warning(
-                    f"Failed to append message {message_id}, not found.")
+                logger.warning(f"Failed to append message {message_id}, not found.")
                 return False
 
             # Update conversation's updated_at
@@ -2084,11 +2077,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to append message content: {e}")
             return False
 
-    def update_message_metadata(
-        self,
-        message_id: int,
-        metadata: Dict[str, Any]
-    ) -> bool:
+    def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
         """
         Update message metadata
         """
@@ -2118,10 +2107,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
     def mark_message_finished(
-        self,
-        message_id: int,
-        status: str = "completed",
-        error_message: Optional[str] = None
+        self, message_id: int, status: str = "completed", error_message: Optional[str] = None
     ) -> bool:
         """
         Mark a message as finished (completed, failed, or cancelled) (4.2.6 & Interrupt)
@@ -2157,14 +2143,14 @@ class SQLiteBackend(IDocumentStorageBackend):
             success = cursor.rowcount > 0
             if not success:
                 # Check if it failed because it was already in the desired state
-                cursor.execute(
-                    "SELECT status FROM messages WHERE id = ?", (message_id,))
+                cursor.execute("SELECT status FROM messages WHERE id = ?", (message_id,))
                 row = cursor.fetchone()
                 if row and row[0] == status:
                     success = True  # Already done, count as success
                 else:
                     logger.warning(
-                        f"Failed to mark message {message_id} as {status}, not found or no change.")
+                        f"Failed to mark message {message_id} as {status}, not found or no change."
+                    )
 
             # Update conversation's updated_at
             cursor.execute(
@@ -2187,9 +2173,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         Interrupt a streaming message (marks as 'cancelled')
         """
         return self.mark_message_finished(
-            message_id=message_id,
-            status="cancelled",
-            error_message="Message interrupted by user."
+            message_id=message_id, status="cancelled", error_message="Message interrupted by user."
         )
 
     def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
@@ -2216,7 +2200,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             for row in rows:
                 message = dict(row)
                 # Add thinking records for this message
-                message['thinking'] = self.get_message_thinking(message['id'])
+                message["thinking"] = self.get_message_thinking(message["id"])
                 messages.append(message)
             return messages
         except Exception as e:
@@ -2239,10 +2223,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         cursor = self.connection.cursor()
         try:
-            cursor.execute(
-                "DELETE FROM messages WHERE id = ?",
-                (message_id,)
-            )
+            cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
             self.connection.commit()
             return cursor.rowcount > 0
         except Exception as e:
@@ -2285,7 +2266,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             if sequence is None:
                 cursor.execute(
                     "SELECT COALESCE(MAX(sequence), -1) + 1 FROM message_thinking WHERE message_id = ?",
-                    (message_id,)
+                    (message_id,),
                 )
                 sequence = cursor.fetchone()[0]
 
@@ -2330,7 +2311,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 WHERE message_id = ?
                 ORDER BY sequence ASC, created_at ASC
                 """,
-                (message_id,)
+                (message_id,),
             )
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
@@ -2353,10 +2334,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         cursor = self.connection.cursor()
         try:
-            cursor.execute(
-                "DELETE FROM message_thinking WHERE message_id = ?",
-                (message_id,)
-            )
+            cursor.execute("DELETE FROM message_thinking WHERE message_id = ?", (message_id,))
             self.connection.commit()
             return True
         except Exception as e:
@@ -2389,8 +2367,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             # Filter conditions
             if filters:
                 if "content_type" in filters:
-                    where_conditions.append(
-                        'JSON_EXTRACT(metadata, "$.content_type") = ?')
+                    where_conditions.append('JSON_EXTRACT(metadata, "$.content_type") = ?')
                     params.append(filters["content_type"])
 
                 if "data_type" in filters:
@@ -2399,21 +2376,19 @@ class SQLiteBackend(IDocumentStorageBackend):
 
                 if "tags" in filters:
                     tags = (
-                        filters["tags"] if isinstance(filters["tags"], list) else [
-                            filters["tags"]]
+                        filters["tags"] if isinstance(filters["tags"], list) else [filters["tags"]]
                     )
                     if tags:
                         # Use proper parameterized query for tags
                         tag_placeholders = ",".join(["?"] * len(tags))
                         where_conditions.append(
-                            f'id IN (SELECT document_id FROM document_tags WHERE tag IN ({tag_placeholders}))'
+                            f"id IN (SELECT document_id FROM document_tags WHERE tag IN ({tag_placeholders}))"
                         )
                         for tag in tags:
                             params.append(tag.lower())
 
             # Build SQL query
-            where_clause = " AND ".join(
-                where_conditions) if where_conditions else "1=1"
+            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
 
             # Get documents
             # Use text() for safe SQL composition with parameters
@@ -2422,10 +2397,14 @@ class SQLiteBackend(IDocumentStorageBackend):
                 FROM documents d
                 LEFT JOIN document_tags dt ON d.id = dt.document_id
                 WHERE """
-            sql = base_sql + where_clause + """
+            sql = (
+                base_sql
+                + where_clause
+                + """
                 ORDER BY d.updated_at DESC
                 LIMIT ?
             """
+            )
             params.append(limit)
 
             cursor.execute(sql, params)
@@ -2435,8 +2414,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             for row in rows:
                 # Get images for each document
                 cursor.execute(
-                    "SELECT image_path FROM images WHERE document_id = ? ORDER BY id", (
-                        row["id"],)
+                    "SELECT image_path FROM images WHERE document_id = ? ORDER BY id", (row["id"],)
                 )
                 images = [img_row[0] for img_row in cursor.fetchall()]
 

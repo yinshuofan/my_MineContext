@@ -151,14 +151,18 @@ class DocumentTextChunker(BaseChunker):
         processed_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.error(f"Error splitting buffer {i}: {result}, falling back to mechanical split")
+                logger.error(
+                    f"Error splitting buffer {i}: {result}, falling back to mechanical split"
+                )
                 processed_results.append(self._split_oversized_element(buffers[i]))
             else:
                 processed_results.append(result)
 
         return processed_results
 
-    def _assemble_chunks(self, buffers_to_split, llm_results, direct_chunks, oversized_elements) -> List[Chunk]:
+    def _assemble_chunks(
+        self, buffers_to_split, llm_results, direct_chunks, oversized_elements
+    ) -> List[Chunk]:
         """
         Phase 3: Assemble final chunks
         """
@@ -252,7 +256,9 @@ class DocumentTextChunker(BaseChunker):
         logger.info(f"Split oversized element in half at position {mid_point}")
         return [text[:mid_point], text[mid_point:]]
 
-    def _global_semantic_chunking(self, full_document: str, document_title: str = None) -> List[Chunk]:
+    def _global_semantic_chunking(
+        self, full_document: str, document_title: str = None
+    ) -> List[Chunk]:
         """
         Global semantic chunking - LLM analyzes and chunks entire document at once
 
@@ -314,7 +320,9 @@ class DocumentTextChunker(BaseChunker):
             return chunks
 
         except Exception as e:
-            logger.error(f"Error in global semantic chunking: {e}, falling back to default strategy")
+            logger.error(
+                f"Error in global semantic chunking: {e}, falling back to default strategy"
+            )
             return self._fallback_chunking([full_document])
 
     def _fallback_chunking(self, texts: List[str]) -> List[Chunk]:
@@ -333,7 +341,9 @@ class DocumentTextChunker(BaseChunker):
             llm_split_results = self._batch_split_with_llm([buf for buf, _ in buffers_to_split])
 
         # Phase 3: Assemble chunks
-        chunks = self._assemble_chunks(buffers_to_split, llm_split_results, direct_chunks, oversized_elements)
+        chunks = self._assemble_chunks(
+            buffers_to_split, llm_split_results, direct_chunks, oversized_elements
+        )
 
         return chunks
 
@@ -343,6 +353,4 @@ class DocumentTextChunker(BaseChunker):
 
         Note: DocumentTextChunker should be used via chunk_text() method
         """
-        raise NotImplementedError(
-            "DocumentTextChunker should be used via chunk_text() method"
-        )
+        raise NotImplementedError("DocumentTextChunker should be used via chunk_text() method")

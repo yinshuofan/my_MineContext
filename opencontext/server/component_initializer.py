@@ -15,11 +15,11 @@ from typing import Any, Dict, Optional
 from opencontext.config.config_manager import ConfigManager
 from opencontext.config.global_config import GlobalConfig
 from opencontext.config.prompt_manager import PromptManager
+from opencontext.context_capture.text_chat import TextChatCapture
 
 # Import capture components
 from opencontext.context_capture.vault_document_monitor import VaultDocumentMonitor
 from opencontext.context_capture.web_link_capture import WebLinkCapture
-from opencontext.context_capture.text_chat import TextChatCapture
 from opencontext.context_processing.processor.processor_factory import ProcessorFactory
 from opencontext.managers.capture_manager import ContextCaptureManager
 from opencontext.managers.processor_manager import ContextProcessorManager
@@ -35,6 +35,7 @@ CAPTURE_COMPONENTS = {
     "web_link_capture": WebLinkCapture,
     "text_chat": TextChatCapture,
 }
+
 
 class ComponentInitializer:
     """Handles initialization of various OpenContext components."""
@@ -166,12 +167,12 @@ class ComponentInitializer:
     ) -> None:
         """
         Initialize the task scheduler for periodic tasks.
-        
+
         The scheduler handles:
         - Memory compression (user_activity triggered)
         - Data cleanup (periodic)
         - Other scheduled tasks
-        
+
         Args:
             processor_manager: Optional processor manager to get the merger instance.
                               If provided and merger is set, it will be reused.
@@ -180,16 +181,16 @@ class ComponentInitializer:
         if not scheduler_config.get("enabled", False):
             logger.info("Task scheduler not enabled in configuration")
             return
-        
+
         try:
-            from opencontext.storage.redis_cache import RedisCache, get_redis_cache
-            from opencontext.scheduler import init_scheduler, get_scheduler
             from opencontext.periodic_task import (
-                create_compression_handler,
                 create_cleanup_handler,
+                create_compression_handler,
                 create_hierarchy_handler,
             )
-            
+            from opencontext.scheduler import get_scheduler, init_scheduler
+            from opencontext.storage.redis_cache import RedisCache, get_redis_cache
+
             # Get Redis cache
             redis_cache = get_redis_cache()
             if not redis_cache:
@@ -202,61 +203,57 @@ class ComponentInitializer:
                         db=redis_config.get("db", 0),
                         password=redis_config.get("password"),
                     )
-            
+
             if not redis_cache:
-                logger.warning(
-                    "Redis cache not available, task scheduler requires Redis"
-                )
+                logger.warning("Redis cache not available, task scheduler requires Redis")
                 return
-            
+
             # Initialize scheduler
             scheduler = init_scheduler(redis_cache, scheduler_config)
-            
+
             # Register task handlers
             tasks_config = scheduler_config.get("tasks", {})
-            
+
             # Memory compression handler
             if tasks_config.get("memory_compression", {}).get("enabled", False):
                 # Try to get merger from processor_manager first
                 merger = None
                 if processor_manager:
                     merger = processor_manager.get_merger()
-                
+
                 # If not available, create a new one
                 if not merger:
                     from opencontext.context_processing.merger.context_merger import ContextMerger
+
                     merger = ContextMerger()
                     logger.info("Created new ContextMerger for compression task")
                 else:
                     logger.info("Reusing merger from processor_manager for compression task")
-                
+
                 compression_handler = create_compression_handler(merger)
                 scheduler.register_handler("memory_compression", compression_handler)
                 logger.info("Registered memory_compression task handler")
-            
+
             # Data cleanup handler
             if tasks_config.get("data_cleanup", {}).get("enabled", False):
                 storage = get_storage()
-                retention_days = tasks_config.get("data_cleanup", {}).get(
-                    "retention_days", 30
-                )
-                
+                retention_days = tasks_config.get("data_cleanup", {}).get("retention_days", 30)
+
                 # Get or create merger for intelligent cleanup
                 cleanup_merger = None
                 if processor_manager:
                     cleanup_merger = processor_manager.get_merger()
-                
+
                 if not cleanup_merger:
                     from opencontext.context_processing.merger.context_merger import ContextMerger
+
                     cleanup_merger = ContextMerger()
                     logger.info("Created new ContextMerger for cleanup task")
                 else:
                     logger.info("Reusing merger from processor_manager for cleanup task")
-                
+
                 cleanup_handler = create_cleanup_handler(
-                    context_merger=cleanup_merger,
-                    storage=storage,
-                    retention_days=retention_days
+                    context_merger=cleanup_merger, storage=storage, retention_days=retention_days
                 )
                 scheduler.register_handler("data_cleanup", cleanup_handler)
                 logger.info("Registered data_cleanup task handler with intelligent cleanup")
@@ -268,7 +265,7 @@ class ComponentInitializer:
                 logger.info("Registered hierarchy_summary task handler")
 
             logger.info("Task scheduler initialized successfully")
-            
+
         except Exception as e:
             logger.exception(f"Failed to initialize task scheduler: {e}")
 
@@ -279,6 +276,7 @@ class ComponentInitializer:
         """
         try:
             from opencontext.scheduler import get_scheduler
+
             scheduler = get_scheduler()
             if scheduler:
                 await scheduler.start()
@@ -292,6 +290,7 @@ class ComponentInitializer:
         """
         try:
             from opencontext.scheduler import get_scheduler
+
             scheduler = get_scheduler()
             if scheduler:
                 scheduler.stop()

@@ -14,6 +14,7 @@ from enum import Enum
 
 class ContextSource(str, Enum):
     """Context source enumeration"""
+
     VAULT = "vault"
     LOCAL_FILE = "local_file"
     WEB_LINK = "web_link"
@@ -66,6 +67,7 @@ STRUCTURED_FILE_TYPES = {
 
 class ContentFormat(str, Enum):
     """Content format enumeration"""
+
     TEXT = "text"
     IMAGE = "image"
     FILE = "file"
@@ -84,8 +86,8 @@ class ContextType(str, Enum):
 class UpdateStrategy(str, Enum):
     """Update strategy enumeration"""
 
-    OVERWRITE = "overwrite"       # profile, entity, document
-    APPEND = "append"             # event (immutable)
+    OVERWRITE = "overwrite"  # profile, entity, document
+    APPEND = "append"  # event (immutable)
     APPEND_MERGE = "append_merge"  # knowledge (deduplicate + merge similar)
 
 
@@ -100,11 +102,11 @@ CONTEXT_UPDATE_STRATEGIES = {
 
 # Type → storage backend mapping (for routing decisions)
 CONTEXT_STORAGE_BACKENDS = {
-    ContextType.PROFILE: "document_db",   # Relational DB
-    ContextType.ENTITY: "document_db",    # Relational DB
-    ContextType.DOCUMENT: "vector_db",    # Vector DB
-    ContextType.EVENT: "vector_db",       # Vector DB
-    ContextType.KNOWLEDGE: "vector_db",   # Vector DB
+    ContextType.PROFILE: "document_db",  # Relational DB
+    ContextType.ENTITY: "document_db",  # Relational DB
+    ContextType.DOCUMENT: "vector_db",  # Vector DB
+    ContextType.EVENT: "vector_db",  # Vector DB
+    ContextType.KNOWLEDGE: "vector_db",  # Vector DB
 }
 
 
@@ -117,27 +119,27 @@ class VaultType(str, Enum):
 
 
 ContextSimpleDescriptions = {
-    ContextType.PROFILE.value: {
+    ContextType.PROFILE: {
         "name": ContextType.PROFILE.value,
         "description": "User profile and preferences management",
         "purpose": "Store and maintain user's personal information, preferences, habits, and communication style. Supports overwrite-based updates.",
     },
-    ContextType.ENTITY.value: {
+    ContextType.ENTITY: {
         "name": ContextType.ENTITY.value,
         "description": "Entity profile information management",
         "purpose": "Record and manage profile information of various entities (people, projects, teams, organizations). Supports alias management and relationship tracking.",
     },
-    ContextType.DOCUMENT.value: {
+    ContextType.DOCUMENT: {
         "name": ContextType.DOCUMENT.value,
         "description": "Document and file content management",
         "purpose": "Store and retrieve content from uploaded documents, files, and web links. Chunks are vector-searchable and overwritten when source is re-uploaded.",
     },
-    ContextType.EVENT.value: {
+    ContextType.EVENT: {
         "name": ContextType.EVENT.value,
         "description": "Event and activity history records",
         "purpose": "Immutable records of behavioral activities, status changes, chat summaries, meetings, and other time-stamped events.",
     },
-    ContextType.KNOWLEDGE.value: {
+    ContextType.KNOWLEDGE: {
         "name": ContextType.KNOWLEDGE.value,
         "description": "Knowledge concepts and operational procedures",
         "purpose": "Reusable knowledge including concepts, technical principles, operation workflows, and learning patterns. Similar entries are merged to avoid duplication.",
@@ -264,13 +266,13 @@ def get_context_type_for_analysis(context_type_str: str) -> "ContextType":
     if validate_context_type(context_type_str):
         return ContextType(context_type_str)
 
-    # Default fallback to event (log warning to catch classification errors)
+    # Default fallback to knowledge (safer: supports merge/dedup, unlike immutable event)
     from opencontext.utils.logging_utils import get_logger
 
     get_logger(__name__).warning(
-        f"Unrecognized context_type '{context_type_str}', falling back to EVENT"
+        f"Unrecognized context_type '{context_type_str}', falling back to KNOWLEDGE"
     )
-    return ContextType.EVENT
+    return ContextType.KNOWLEDGE
 
 
 def get_context_type_choices_for_tools():

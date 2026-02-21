@@ -13,7 +13,7 @@ import datetime
 from typing import Any, Dict, List, Optional
 
 from opencontext.models.context import ProcessedContext, RawContextProperties, Vectorize
-from opencontext.models.enums import ContextSource, ContextType
+from opencontext.models.enums import ContentFormat, ContextSource, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
 

@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 class DocumentProcessor(BaseContextProcessor):
     """
     Stateless Document Processor with async processing support.
-    
+
     All processing is done synchronously or asynchronously on-demand,
     without background threads or local queues.
     Supports high concurrency without blocking.
@@ -89,9 +89,7 @@ class DocumentProcessor(BaseContextProcessor):
         return "document_processor"
 
     def get_description(self) -> str:
-        return (
-            "Stateless document processor with async support: structured (CSV/XLSX), text, and visual (PDF/DOCX/images)"
-        )
+        return "Stateless document processor with async support: structured (CSV/XLSX), text, and visual (PDF/DOCX/images)"
 
     def set_vlm_batch_size(self, vlm_batch_size: int) -> bool:
         if not isinstance(vlm_batch_size, int) or vlm_batch_size < 1:
@@ -190,32 +188,30 @@ class DocumentProcessor(BaseContextProcessor):
             logger.exception(f"Error processing document {context.object_id}: {e}")
             return False
 
-    async def process_async(self, context: RawContextProperties,
-                           user_id: str = "default",
-                           device_id: str = "default") -> List[ProcessedContext]:
+    async def process_async(
+        self, context: RawContextProperties, user_id: str = "default", device_id: str = "default"
+    ) -> List[ProcessedContext]:
         """
         Process single document context asynchronously.
-        
+
         This is the main entry point for async processing.
         Supports concurrent requests without blocking.
-        
+
         Args:
             context: Raw document context
             user_id: User identifier (for future use)
             device_id: Device identifier (for future use)
-            
+
         Returns:
             List of processed contexts
         """
         if not self.can_process(context):
             return []
-        
+
         try:
-                # Run the processing in a thread pool to avoid blocking
+            # Run the processing in a thread pool to avoid blocking
             loop = asyncio.get_running_loop()
-            processed_contexts = await loop.run_in_executor(
-                None, self.real_process, context
-            )
+            processed_contexts = await loop.run_in_executor(None, self.real_process, context)
             return processed_contexts if processed_contexts else []
         except Exception as e:
             logger.exception(f"Error in async document processing: {e}")
@@ -245,40 +241,40 @@ class DocumentProcessor(BaseContextProcessor):
             record_processing_error(error_msg, processor_name=self.get_name(), context_count=1)
             return []
 
-    async def batch_process_async(self, raw_contexts: List[RawContextProperties],
-                                  user_id: str = "default",
-                                  device_id: str = "default") -> List[ProcessedContext]:
+    async def batch_process_async(
+        self,
+        raw_contexts: List[RawContextProperties],
+        user_id: str = "default",
+        device_id: str = "default",
+    ) -> List[ProcessedContext]:
         """
         Batch process multiple documents asynchronously.
-        
+
         Args:
             raw_contexts: List of raw document contexts
             user_id: User identifier
             device_id: Device identifier
-            
+
         Returns:
             List of all processed contexts
         """
         if not raw_contexts:
             return []
-        
+
         logger.info(f"Batch processing {len(raw_contexts)} documents asynchronously")
-        
+
         # Process all documents concurrently
-        tasks = [
-            self.process_async(ctx, user_id, device_id)
-            for ctx in raw_contexts
-        ]
-        
+        tasks = [self.process_async(ctx, user_id, device_id) for ctx in raw_contexts]
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         all_contexts = []
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Document {idx} processing failed: {result}")
             elif result:
                 all_contexts.extend(result)
-        
+
         return all_contexts
 
     def _process_structured_document(
@@ -502,8 +498,11 @@ class DocumentProcessor(BaseContextProcessor):
             loop = asyncio.get_running_loop()
             # If we're already in an async context, create a new thread
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, asyncio.gather(*tasks, return_exceptions=True))
+                future = executor.submit(
+                    asyncio.run, asyncio.gather(*tasks, return_exceptions=True)
+                )
                 return future.result()
         except RuntimeError:
             # No running event loop, create one

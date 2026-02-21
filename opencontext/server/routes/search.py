@@ -64,6 +64,11 @@ async def unified_search(
     """
     start_time = time.monotonic()
 
+    logger.info(
+        f"Search request: strategy={request.strategy.value}, "
+        f"query='{request.query[:50]}', user_id={request.user_id}"
+    )
+
     # Validate and resolve context_types
     context_types = request.context_types or ALL_CONTEXT_TYPES
     context_types = [ct for ct in context_types if ct in ALL_CONTEXT_TYPES]
@@ -104,6 +109,15 @@ async def unified_search(
             + len(results.knowledge)
         )
 
+        # Track actually searched types (profile/entity need user_id)
+        actually_searched = context_types
+        if not request.user_id:
+            actually_searched = [
+                ct
+                for ct in context_types
+                if ct not in (ContextType.PROFILE.value, ContextType.ENTITY.value)
+            ]
+
         return UnifiedSearchResponse(
             success=True,
             results=results,
@@ -112,7 +126,7 @@ async def unified_search(
                 query=request.query,
                 total_results=total,
                 search_time_ms=round(elapsed_ms, 2),
-                types_searched=context_types,
+                types_searched=actually_searched,
             ),
         )
 

@@ -64,9 +64,7 @@ class FastSearchStrategy(BaseSearchStrategy):
             )
 
         if ContextType.ENTITY.value in context_types and user_id:
-            tasks["entity"] = asyncio.to_thread(
-                storage.search_entities, user_id, query, top_k
-            )
+            tasks["entity"] = asyncio.to_thread(storage.search_entities, user_id, query, top_k)
 
         if ContextType.DOCUMENT.value in context_types:
             tasks["document"] = asyncio.to_thread(
@@ -108,9 +106,7 @@ class FastSearchStrategy(BaseSearchStrategy):
 
         # Execute all in parallel
         task_names = list(tasks.keys())
-        raw_results = await asyncio.gather(
-            *tasks.values(), return_exceptions=True
-        )
+        raw_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         results_map = dict(zip(task_names, raw_results))
 
         # Step 4: Assemble TypedResults
@@ -118,7 +114,7 @@ class FastSearchStrategy(BaseSearchStrategy):
 
         # Profile
         profile_data = results_map.get("profile")
-        if profile_data and not isinstance(profile_data, Exception) and profile_data is not None:
+        if profile_data and not isinstance(profile_data, Exception):
             typed.profile = self._to_profile_result(profile_data)
 
         # Entities
@@ -129,16 +125,12 @@ class FastSearchStrategy(BaseSearchStrategy):
         # Documents
         doc_data = results_map.get("document")
         if doc_data and not isinstance(doc_data, Exception):
-            typed.documents = [
-                self._to_vector_result(ctx, score) for ctx, score in doc_data
-            ]
+            typed.documents = [self._to_vector_result(ctx, score) for ctx, score in doc_data]
 
         # Knowledge
         knowledge_data = results_map.get("knowledge")
         if knowledge_data and not isinstance(knowledge_data, Exception):
-            typed.knowledge = [
-                self._to_vector_result(ctx, score) for ctx, score in knowledge_data
-            ]
+            typed.knowledge = [self._to_vector_result(ctx, score) for ctx, score in knowledge_data]
 
         # Events — attach parent summaries
         event_data = results_map.get("event")
@@ -207,17 +199,25 @@ class FastSearchStrategy(BaseSearchStrategy):
 
         create_time = None
         if props.create_time:
-            create_time = props.create_time.isoformat() if hasattr(props.create_time, "isoformat") else str(props.create_time)
+            create_time = (
+                props.create_time.isoformat()
+                if hasattr(props.create_time, "isoformat")
+                else str(props.create_time)
+            )
 
         event_time = None
         if props.event_time:
-            event_time = props.event_time.isoformat() if hasattr(props.event_time, "isoformat") else str(props.event_time)
+            event_time = (
+                props.event_time.isoformat()
+                if hasattr(props.event_time, "isoformat")
+                else str(props.event_time)
+            )
 
         return VectorResult(
             id=ctx.id,
             title=ed.title if ed else None,
             summary=ed.summary if ed else None,
-            content=ctx.get_llm_context_string(),
+            content=ctx.get_llm_context_string() if ctx.extracted_data else None,
             keywords=ed.keywords if ed else [],
             entities=ed.entities if ed else [],
             context_type=ed.context_type.value if ed and ed.context_type else "",

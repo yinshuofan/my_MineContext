@@ -23,7 +23,7 @@ class ContextProcessorManager:
     Context processing manager
 
     Manages and coordinates multiple context processing components, providing unified interface for context processing
-    
+
     Note: Periodic compression tasks are now managed by the task scheduler (opencontext.scheduler),
     not by this manager. The merger is still set here for use by other components.
     """
@@ -77,7 +77,7 @@ class ContextProcessorManager:
     def set_merger(self, merger: IContextProcessor) -> None:
         """
         Set merger component
-        
+
         Note: The merger is set here for use by other components (e.g., Push API triggered compression).
         Periodic compression is now managed by the task scheduler.
         """
@@ -87,7 +87,7 @@ class ContextProcessorManager:
     def get_merger(self) -> Optional[IContextProcessor]:
         """
         Get the merger component
-        
+
         Returns:
             The merger component if set, None otherwise
         """
@@ -164,7 +164,7 @@ class ContextProcessorManager:
     def shutdown(self, graceful: bool = False) -> None:
         """
         Close manager and all processors
-        
+
         Note: Task scheduler shutdown is handled separately by OpenContext.
         """
         logger.info("Shutting down context processing manager...")

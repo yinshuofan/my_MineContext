@@ -172,7 +172,10 @@ class ChromaDBBackend(IVectorStorageBackend):
 
             # Create dedicated todo collection for deduplication only if consumption is enabled
             from opencontext.config.global_config import GlobalConfig
-            consumption_enabled = GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+
+            consumption_enabled = (
+                GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+            )
             if consumption_enabled:
                 todo_collection = self._client.get_or_create_collection(
                     name="todo",
@@ -752,7 +755,7 @@ class ChromaDBBackend(IVectorStorageBackend):
                     # This is a metadata field
                     metadata_dict[key] = val
                 else:
-                    context_dict[key] = val
+                    metadata_dict[key] = val
 
             # logger.info(f"extracted_data_dict: {extracted_data_dict}")
             # Create the nested Pydantic models and add them to the main context dict
@@ -872,6 +875,8 @@ class ChromaDBBackend(IVectorStorageBackend):
 
         result = {}
         for context_type in self._collections.keys():
+            if context_type == "todo":
+                continue
             result[context_type] = self.get_processed_context_count(context_type)
 
         return result
@@ -1151,9 +1156,7 @@ class ChromaDBBackend(IVectorStorageBackend):
             return contexts
 
         except Exception as e:
-            logger.exception(
-                f"Failed to search by hierarchy in {context_type} collection: {e}"
-            )
+            logger.exception(f"Failed to search by hierarchy in {context_type} collection: {e}")
             return []
 
     def get_by_ids(
@@ -1221,9 +1224,7 @@ class ChromaDBBackend(IVectorStorageBackend):
                             remaining_ids.discard(query_result["ids"][i])
 
             except Exception as e:
-                logger.debug(
-                    f"Failed to get IDs from {ct} collection: {e}"
-                )
+                logger.debug(f"Failed to get IDs from {ct} collection: {e}")
                 continue
 
         if remaining_ids:

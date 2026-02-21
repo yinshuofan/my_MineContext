@@ -685,7 +685,6 @@ def record_processing_stage(
     get_monitor().record_processing_stage(stage_name, duration_ms, status, metadata)
 
 
-
 def increment_context_count(context_type: str):
     """Global function: Increment context count by type"""
     get_monitor().increment_data_count("context", context_type=context_type)
@@ -699,6 +698,3 @@ def increment_data_count(
 ):
     """Global function: Increment data count"""
     get_monitor().increment_data_count(data_type, count, context_type, metadata)
-
-
-

@@ -363,7 +363,10 @@ class UnifiedStorage:
         """Check if consumption module is enabled in configuration."""
         try:
             from opencontext.config.global_config import GlobalConfig
-            return GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+
+            return (
+                GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+            )
         except Exception:
             return True  # Default to enabled if config not available
 
@@ -904,9 +907,7 @@ class UnifiedStorage:
             message_id=message_id, content_chunk=content_chunk, token_count=token_count
         )
 
-    def update_message_metadata(
-        self, message_id: int, metadata: Dict[str, Any]
-    ) -> bool:
+    def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
         """Update message metadata"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
@@ -1102,9 +1103,7 @@ class UnifiedStorage:
 
     # ── Document overwrite routing (→ vector DB) ──
 
-    def delete_document_chunks(
-        self, source_file_key: str, user_id: Optional[str] = None
-    ) -> bool:
+    def delete_document_chunks(self, source_file_key: str, user_id: Optional[str] = None) -> bool:
         """Delete all chunks for a document (for overwrite) → vector DB"""
         if not self._initialized or not self._vector_backend:
             logger.error("Storage not initialized")

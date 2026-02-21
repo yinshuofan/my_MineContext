@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, Form, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -37,10 +37,9 @@ router = APIRouter(prefix="/api/push", tags=["push"])
 # Task Scheduler Integration
 # ============================================================================
 
+
 async def _schedule_user_compression(
-    user_id: Optional[str],
-    device_id: Optional[str] = None,
-    agent_id: Optional[str] = None
+    user_id: Optional[str], device_id: Optional[str] = None, agent_id: Optional[str] = None
 ) -> None:
     """
     Schedule a memory compression task for the user (async).
@@ -51,6 +50,7 @@ async def _schedule_user_compression(
 
     try:
         from opencontext.scheduler import get_scheduler
+
         scheduler = get_scheduler()
         if scheduler:
             await scheduler.schedule_user_task(
@@ -68,12 +68,14 @@ async def _schedule_user_compression(
 # Request Models
 # ============================================================================
 
+
 class PushChatMessageRequest(BaseModel):
     """Push a single chat message"""
+
     role: str = Field(..., description="Message role: user, assistant, system")
     content: List[Dict[str, Any]] = Field(
-        ..., 
-        description="Message content (OpenAI format: List of content blocks with type and text)"
+        ...,
+        description="Message content (OpenAI format: List of content blocks with type and text)",
     )
     user_id: Optional[str] = Field(None, description="User identifier")
     device_id: Optional[str] = Field(None, description="Device identifier")
@@ -84,9 +86,9 @@ class PushChatMessageRequest(BaseModel):
 
 class PushChatMessagesRequest(BaseModel):
     """Push multiple chat messages in batch"""
+
     messages: List[Dict[str, Any]] = Field(
-        ..., 
-        description="List of chat messages (OpenAI format: role, content)"
+        ..., description="List of chat messages (OpenAI format: role, content)"
     )
     user_id: Optional[str] = Field(None, description="Default user identifier")
     device_id: Optional[str] = Field(None, description="Default device identifier")
@@ -96,18 +98,19 @@ class PushChatMessagesRequest(BaseModel):
 
 class ProcessChatMessagesRequest(BaseModel):
     """Process chat messages directly (bypass buffer)"""
+
     messages: List[Dict[str, Any]] = Field(
-        ..., 
-        description="List of chat messages (OpenAI format: role, content[type, text] or other format)"
+        ...,
+        description="List of chat messages (OpenAI format: role, content[type, text] or other format)",
     )
     user_id: Optional[str] = Field(None, description="User identifier")
     device_id: Optional[str] = Field(None, description="Device identifier")
     agent_id: Optional[str] = Field(None, description="Agent identifier")
 
 
-
 class PushDocumentRequest(BaseModel):
     """Push a document"""
+
     # Either provide file_path (local) or base64_data (remote upload)
     file_path: Optional[str] = Field(None, description="Local file path")
     base64_data: Optional[str] = Field(None, description="Base64 encoded document data")
@@ -120,6 +123,7 @@ class PushDocumentRequest(BaseModel):
 
 class PushActivityRequest(BaseModel):
     """Push an activity record"""
+
     title: str = Field(..., description="Activity title")
     content: str = Field(..., description="Activity content/description")
     start_time: Optional[str] = Field(None, description="Activity start time (ISO format)")
@@ -132,6 +136,7 @@ class PushActivityRequest(BaseModel):
 
 class PushContextRequest(BaseModel):
     """Push a generic context item"""
+
     source: str = Field(..., description="Context source type: document, chat, activity, etc.")
     content_format: str = Field("text", description="Content format: text, image, markdown, etc.")
     content_text: Optional[str] = Field(None, description="Text content")
@@ -146,6 +151,7 @@ class PushContextRequest(BaseModel):
 
 class FlushBufferRequest(BaseModel):
     """Request to flush chat buffer"""
+
     user_id: Optional[str] = Field(None, description="User identifier")
     device_id: Optional[str] = Field(None, description="Device identifier")
     agent_id: Optional[str] = Field(None, description="Agent identifier")
@@ -155,38 +161,39 @@ class FlushBufferRequest(BaseModel):
 # Helper Functions
 # ============================================================================
 
+
 def _save_base64_to_temp_file(base64_data: str, filename: str, storage_dir: str = None) -> str:
     """
     Save base64 encoded data to a temporary file.
-    
+
     Args:
         base64_data: Base64 encoded data
         filename: Original filename
         storage_dir: Directory to save the file (uses temp dir if None)
-    
+
     Returns:
         Path to the saved file
     """
     try:
         # Decode base64 data
         file_data = base64.b64decode(base64_data)
-        
+
         # Determine storage directory
         if storage_dir is None:
             storage_dir = tempfile.gettempdir()
-        
+
         # Ensure directory exists
         os.makedirs(storage_dir, exist_ok=True)
-        
+
         # Generate unique filename
         ext = os.path.splitext(filename)[1] if filename else ""
         unique_filename = f"{uuid.uuid4().hex}{ext}"
         file_path = os.path.join(storage_dir, unique_filename)
-        
+
         # Write file
         with open(file_path, "wb") as f:
             f.write(file_data)
-        
+
         return file_path
     except Exception as e:
         logger.exception(f"Failed to save base64 data to file: {e}")
@@ -242,6 +249,7 @@ def _get_format_enum(format_str: str) -> ContentFormat:
 # Chat Message Push Endpoints
 # ============================================================================
 
+
 @router.post("/chat/message", response_class=JSONResponse)
 async def push_chat_message(
     request: PushChatMessageRequest,
@@ -257,7 +265,9 @@ async def push_chat_message(
         # Get TextChatCapture component
         text_chat = opencontext.capture_manager.get_component("text_chat")
         if text_chat is None:
-            return convert_resp(code=503, status=503, message="TextChatCapture component not available")
+            return convert_resp(
+                code=503, status=503, message="TextChatCapture component not available"
+            )
 
         # Push message (async - non-blocking)
         await text_chat.push_message(
@@ -294,7 +304,9 @@ async def push_chat_messages(
     try:
         text_chat = opencontext.capture_manager.get_component("text_chat")
         if text_chat is None:
-            return convert_resp(code=503, status=503, message="TextChatCapture component not available")
+            return convert_resp(
+                code=503, status=503, message="TextChatCapture component not available"
+            )
 
         # Push each message (async - non-blocking)
         for msg in request.messages:
@@ -316,7 +328,7 @@ async def push_chat_messages(
 
         return convert_resp(
             message=f"Pushed {len(request.messages)} chat messages successfully",
-            data={"count": len(request.messages)}
+            data={"count": len(request.messages)},
         )
     except Exception as e:
         logger.exception(f"Error pushing chat messages: {e}")
@@ -338,7 +350,9 @@ async def process_chat_messages(
     try:
         message_capturer = opencontext.capture_manager.get_component("text_chat")
         if message_capturer is None:
-            return convert_resp(code=503, status=503, message="TextChatCapture component not available")
+            return convert_resp(
+                code=503, status=503, message="TextChatCapture component not available"
+            )
 
         background_tasks.add_task(
             message_capturer.process_messages_directly,
@@ -362,7 +376,7 @@ async def process_chat_messages(
                 "user_id": request.user_id,
                 "device_id": request.device_id,
                 "agent_id": request.agent_id,
-            }
+            },
         )
     except Exception as e:
         logger.exception(f"Error submitting chat messages: {e}")
@@ -382,7 +396,9 @@ async def flush_chat_buffer(
     try:
         text_chat = opencontext.capture_manager.get_component("text_chat")
         if text_chat is None:
-            return convert_resp(code=503, status=503, message="TextChatCapture component not available")
+            return convert_resp(
+                code=503, status=503, message="TextChatCapture component not available"
+            )
 
         # Flush buffer (async - non-blocking)
         await text_chat.flush_user_buffer(
@@ -397,10 +413,10 @@ async def flush_chat_buffer(
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
 
 
-
 # ============================================================================
 # Document Push Endpoints
 # ============================================================================
+
 
 @router.post("/document", response_class=JSONResponse)
 async def push_document(
@@ -417,19 +433,19 @@ async def push_document(
         if not file_path and request.base64_data:
             # Save base64 data to temp file
             file_path = _save_base64_to_temp_file(
-                request.base64_data,
-                request.filename or "document",
-                "./uploads/documents"
+                request.base64_data, request.filename or "document", "./uploads/documents"
             )
-        
+
         if not file_path:
-            return convert_resp(code=400, status=400, message="Either 'file_path' or 'base64_data' must be provided")
-        
+            return convert_resp(
+                code=400, status=400, message="Either 'file_path' or 'base64_data' must be provided"
+            )
+
         err_msg = opencontext.add_document(file_path=file_path)
-        
+
         if err_msg:
             return convert_resp(code=400, status=400, message=err_msg)
-        
+
         return convert_resp(message="Document pushed successfully", data={"path": file_path})
     except Exception as e:
         logger.exception(f"Error pushing document: {e}")
@@ -451,23 +467,23 @@ async def upload_document_file(
         # Save uploaded file
         upload_dir = "./uploads/documents"
         os.makedirs(upload_dir, exist_ok=True)
-        
+
         ext = os.path.splitext(file.filename)[1] if file.filename else ""
         unique_filename = f"{uuid.uuid4().hex}{ext}"
         file_path = os.path.join(upload_dir, unique_filename)
-        
+
         with open(file_path, "wb") as f:
             content = await file.read()
             f.write(content)
-        
+
         err_msg = opencontext.add_document(file_path=file_path)
-        
+
         if err_msg:
             return convert_resp(code=400, status=400, message=err_msg)
-        
+
         return convert_resp(
             message="Document uploaded and queued successfully",
-            data={"path": file_path, "original_filename": file.filename}
+            data={"path": file_path, "original_filename": file.filename},
         )
     except Exception as e:
         logger.exception(f"Error uploading document: {e}")
@@ -477,6 +493,7 @@ async def upload_document_file(
 # ============================================================================
 # Activity Push Endpoints
 # ============================================================================
+
 
 @router.post("/activity", response_class=JSONResponse)
 async def push_activity(
@@ -491,13 +508,17 @@ async def push_activity(
         storage = opencontext.storage
         if storage is None:
             return convert_resp(code=503, status=503, message="Storage not available")
-        
+
         start_time = _parse_datetime(request.start_time) or datetime.now()
         end_time = _parse_datetime(request.end_time) or datetime.now()
-        
-        resources_json = json.dumps(request.resources, ensure_ascii=False) if request.resources else None
-        metadata_json = json.dumps(request.metadata, ensure_ascii=False) if request.metadata else None
-        
+
+        resources_json = (
+            json.dumps(request.resources, ensure_ascii=False) if request.resources else None
+        )
+        metadata_json = (
+            json.dumps(request.metadata, ensure_ascii=False) if request.metadata else None
+        )
+
         activity_id = storage.insert_activity(
             title=request.title,
             content=request.content,
@@ -506,10 +527,9 @@ async def push_activity(
             start_time=start_time,
             end_time=end_time,
         )
-        
+
         return convert_resp(
-            message="Activity pushed successfully",
-            data={"activity_id": activity_id}
+            message="Activity pushed successfully", data={"activity_id": activity_id}
         )
     except Exception as e:
         logger.exception(f"Error pushing activity: {e}")
@@ -519,6 +539,7 @@ async def push_activity(
 # ============================================================================
 # Generic Context Push Endpoints
 # ============================================================================
+
 
 @router.post("/context", response_class=JSONResponse)
 async def push_context(
@@ -532,7 +553,7 @@ async def push_context(
     """
     try:
         create_time = _parse_datetime(request.create_time) or datetime.now()
-        
+
         # Build RawContextProperties
         raw_context = RawContextProperties(
             source=_get_source_enum(request.source),
@@ -546,10 +567,10 @@ async def push_context(
             additional_info=request.additional_info or {},
             enable_merge=request.enable_merge,
         )
-        
+
         # Process context
         success = opencontext.add_context(raw_context)
-        
+
         if success:
             return convert_resp(message="Context pushed successfully")
         else:
@@ -563,14 +584,19 @@ async def push_context(
 # Batch Push Endpoint
 # ============================================================================
 
+
 class BatchPushItem(BaseModel):
     """A single item in a batch push request"""
+
     type: str = Field(..., description="Item type: chat, document, activity, context")
-    data: Dict[str, Any] = Field(..., description="Item data matching the corresponding push request schema")
+    data: Dict[str, Any] = Field(
+        ..., description="Item data matching the corresponding push request schema"
+    )
 
 
 class BatchPushRequest(BaseModel):
     """Batch push request containing multiple items of different types"""
+
     items: List[BatchPushItem]
     user_id: Optional[str] = Field(None, description="Default user identifier")
     device_id: Optional[str] = Field(None, description="Default device identifier")
@@ -606,7 +632,7 @@ async def push_batch(
                             agent_id=item.data.get("agent_id"),
                         )
                         item_result["success"] = True
-                
+
                 elif item.type == "document":
                     file_path = item.data.get("file_path")
                     if file_path:
@@ -614,32 +640,36 @@ async def push_batch(
                         item_result["success"] = err is None
                         if err:
                             item_result["error"] = err
-                
+
                 elif item.type == "activity":
                     if storage:
                         activity_id = storage.insert_activity(
                             title=item.data.get("title", ""),
                             content=item.data.get("content", ""),
-                            resources=json.dumps(item.data.get("resources")) if item.data.get("resources") else None,
-                            metadata=json.dumps(item.data.get("metadata")) if item.data.get("metadata") else None,
+                            resources=json.dumps(item.data.get("resources"))
+                            if item.data.get("resources")
+                            else None,
+                            metadata=json.dumps(item.data.get("metadata"))
+                            if item.data.get("metadata")
+                            else None,
                             start_time=_parse_datetime(item.data.get("start_time")),
                             end_time=_parse_datetime(item.data.get("end_time")),
                         )
                         item_result["success"] = True
                         item_result["id"] = activity_id
-                
+
                 else:
                     item_result["error"] = f"Unknown item type: {item.type}"
-            
+
             except Exception as e:
                 item_result["error"] = str(e)
-            
+
             results.append(item_result)
-        
+
         success_count = sum(1 for r in results if r.get("success"))
         return convert_resp(
             message=f"Batch push completed: {success_count}/{len(results)} items succeeded",
-            data={"results": results, "success_count": success_count, "total": len(results)}
+            data={"results": results, "success_count": success_count, "total": len(results)},
         )
     except Exception as e:
         logger.exception(f"Error in batch push: {e}")

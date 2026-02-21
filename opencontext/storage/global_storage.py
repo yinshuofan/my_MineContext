@@ -10,9 +10,9 @@ Provides global access to UnifiedStorage instance
 """
 
 import threading
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from opencontext.models.context import ProcessedContext, Vectorize
+from opencontext.models.context import ProcessedContext
 from opencontext.models.enums import ContextType
 from opencontext.storage.unified_storage import UnifiedStorage
 from opencontext.utils.logging_utils import get_logger
@@ -145,42 +145,6 @@ class GlobalStorage:
         if not self._storage:
             raise RuntimeError("Storage not initialized")
         return self._storage.delete_processed_context(doc_id, context_type)
-
-    def list_processed_contexts(
-        self,
-        context_types: Optional[List[ContextType]] = None,
-        limit: int = 100,
-        offset: int = 0,
-        filters: Optional[Dict[str, Any]] = None,
-    ) -> List[ProcessedContext]:
-        """List processed contexts"""
-        if not self._storage:
-            raise RuntimeError("Storage not initialized")
-        return self._storage.list_processed_contexts(context_types, limit, offset, filters)
-
-    def search_contexts(
-        self,
-        query: str,
-        context_types: Optional[List[ContextType]] = None,
-        top_k: int = 10,
-        filters: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
-        """Search contexts"""
-        if not self._storage:
-            raise RuntimeError("Storage not initialized")
-        return self._storage.search_contexts(query, context_types, top_k, filters)
-
-    def get_context_types(self) -> List[str]:
-        """Get all context types"""
-        if not self._storage:
-            raise RuntimeError("Storage not initialized")
-        return self._storage.get_context_types()
-
-    def vectorize(self, vectorize: Vectorize, **kwargs):
-        """Vectorize"""
-        if not self._storage:
-            raise RuntimeError("Storage not initialized")
-        return self._storage.vectorize(vectorize, **kwargs)
 
 
 # Convenience functions

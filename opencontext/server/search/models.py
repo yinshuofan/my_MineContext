@@ -7,7 +7,7 @@ Unified Search API - Request/Response Models
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SearchStrategy(str, Enum):
@@ -22,6 +22,12 @@ class TimeRange(BaseModel):
 
     start: Optional[int] = Field(default=None, description="Start timestamp in Unix epoch seconds")
     end: Optional[int] = Field(default=None, description="End timestamp in Unix epoch seconds")
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "TimeRange":
+        if self.start is not None and self.end is not None and self.start > self.end:
+            raise ValueError(f"start ({self.start}) must be <= end ({self.end})")
+        return self
 
 
 class UnifiedSearchRequest(BaseModel):
@@ -47,9 +53,15 @@ class UnifiedSearchRequest(BaseModel):
         default=None,
         description="Optional time range filter (Unix epoch seconds)",
     )
-    user_id: Optional[str] = Field(default=None, description="User identifier for multi-user filtering")
-    device_id: Optional[str] = Field(default=None, description="Device identifier for multi-user filtering")
-    agent_id: Optional[str] = Field(default=None, description="Agent identifier for multi-user filtering")
+    user_id: Optional[str] = Field(
+        default=None, description="User identifier for multi-user filtering"
+    )
+    device_id: Optional[str] = Field(
+        default=None, description="Device identifier for multi-user filtering"
+    )
+    agent_id: Optional[str] = Field(
+        default=None, description="Agent identifier for multi-user filtering"
+    )
 
 
 # ── Response Models ──

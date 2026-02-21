@@ -57,12 +57,13 @@ class UpdateModelSettingsResponse(BaseModel):
 
 # ==================== Helper Functions ====================
 
+
 def _build_llm_config(
     base_url: str, api_key: str, model: str, provider: str, llm_type: LLMType, **kwargs
 ) -> dict:
     """Build LLM config dict"""
     config = {"base_url": base_url, "api_key": api_key, "model": model, "provider": provider}
-    
+
     # Add optional parameters
     if "timeout" in kwargs:
         config["timeout"] = kwargs["timeout"]
@@ -160,7 +161,7 @@ async def update_model_settings(request: UpdateModelSettingsRequest, _auth: str 
             emb_config_save = _build_llm_config(
                 emb_url, emb_key, cfg.embeddingModelId, emb_provider, LLMType.EMBEDDING
             )
-            
+
             new_settings = {"vlm_model": vlm_config_save, "embedding_model": emb_config_save}
 
             config_mgr = GlobalConfig.get_instance().get_config_manager()
@@ -216,9 +217,7 @@ async def validate_llm_config(request: UpdateModelSettingsRequest, _auth: str = 
         if not cfg.modelId:
             return convert_resp(code=400, status=400, message="VLM model ID cannot be empty")
         if not cfg.embeddingModelId:
-            return convert_resp(
-                code=400, status=400, message="Embedding model ID cannot be empty"
-            )
+            return convert_resp(code=400, status=400, message="Embedding model ID cannot be empty")
 
         # Build configs for validation (without saving)
         vlm_config = _build_llm_config(
@@ -484,5 +483,3 @@ async def reset_settings(_auth: str = auth_dependency):
         except Exception as e:
             logger.exception(f"Failed to reset settings: {e}")
             return convert_resp(code=500, status=500, message=f"Failed to reset settings: {str(e)}")
-
-

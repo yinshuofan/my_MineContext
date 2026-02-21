@@ -25,12 +25,7 @@ from typing import Dict, List, Optional, Tuple
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.llm.global_vlm_client import generate_with_messages
-from opencontext.models.context import (
-    ContextProperties,
-    ExtractedData,
-    ProcessedContext,
-    Vectorize,
-)
+from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
 from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
 from opencontext.scheduler.base import TriggerMode
@@ -108,7 +103,7 @@ class HierarchySummaryTask(BasePeriodicTask):
     def __init__(
         self,
         interval: int = 86400,  # Default: run once per day (24h)
-        timeout: int = 600,     # 10 min timeout for LLM calls
+        timeout: int = 600,  # 10 min timeout for LLM calls
     ):
         """
         Initialize the hierarchy summary task.
@@ -196,9 +191,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                 monthly_result = self._generate_monthly_summary(user_id, month_str)
                 if monthly_result:
                     generated_summaries.append(f"monthly:{month_str}")
-                    logger.info(
-                        f"Monthly summary generated for user={user_id}, month={month_str}"
-                    )
+                    logger.info(f"Monthly summary generated for user={user_id}, month={month_str}")
             except Exception as e:
                 error_msg = f"Failed to generate monthly summary for {month_str}: {e}"
                 logger.exception(error_msg)
@@ -235,9 +228,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     # ── Private methods for each hierarchy level ──
 
-    def _generate_daily_summary(
-        self, user_id: str, date_str: str
-    ) -> Optional[ProcessedContext]:
+    def _generate_daily_summary(self, user_id: str, date_str: str) -> Optional[ProcessedContext]:
         """
         Generate a daily summary (Level 1) from Level 0 raw events.
         从 Level 0 原始事件生成每日摘要 (Level 1)。
@@ -268,22 +259,35 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.info(f"Daily summary already exists for user={user_id}, date={date_str}")
             return None
 
-        # Query Level 0 raw events for the given date
-        # 查询指定日期的 Level 0 原始事件
-        l0_results = storage.search_hierarchy(
-            context_type=ContextType.EVENT.value,
-            hierarchy_level=0,
-            time_bucket_start=date_str,
-            time_bucket_end=date_str,
-            user_id=user_id,
-            top_k=200,
+        # Query Level 0 raw events for the given date using time-range filter
+        # L0 events don't have time_bucket set, so we filter by event_time_ts instead
+        # 使用 event_time_ts 时间范围过滤查询 L0 事件（L0 事件没有 time_bucket）
+        day_date = datetime.date.fromisoformat(date_str)
+        day_start_ts = int(
+            datetime.datetime(
+                day_date.year,
+                day_date.month,
+                day_date.day,
+                tzinfo=datetime.timezone.utc,
+            ).timestamp()
         )
+        day_end_ts = day_start_ts + 86400
 
-        if not l0_results:
+        l0_filters = {
+            "event_time_ts": {"$gte": day_start_ts, "$lte": day_end_ts},
+            "hierarchy_level": 0,
+        }
+        l0_dict = storage.get_all_processed_contexts(
+            context_types=[ContextType.EVENT.value],
+            limit=200,
+            filter=l0_filters,
+            user_id=user_id,
+        )
+        contexts = l0_dict.get(ContextType.EVENT.value, [])
+
+        if not contexts:
             logger.info(f"No L0 events found for user={user_id}, date={date_str}")
             return None
-
-        contexts = [ctx for ctx, _score in l0_results]
         children_ids = [ctx.id for ctx in contexts]
 
         # Generate summary via LLM
@@ -305,9 +309,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             children_ids=children_ids,
         )
 
-    def _generate_weekly_summary(
-        self, user_id: str, week_str: str
-    ) -> Optional[ProcessedContext]:
+    def _generate_weekly_summary(self, user_id: str, week_str: str) -> Optional[ProcessedContext]:
         """
         Generate a weekly summary (Level 2) from Level 1 daily summaries.
         从 Level 1 日摘要生成每周摘要 (Level 2)。
@@ -384,9 +386,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             children_ids=children_ids,
         )
 
-    def _generate_monthly_summary(
-        self, user_id: str, month_str: str
-    ) -> Optional[ProcessedContext]:
+    def _generate_monthly_summary(self, user_id: str, month_str: str) -> Optional[ProcessedContext]:
         """
         Generate a monthly summary (Level 3) from Level 2 weekly summaries.
         从 Level 2 周摘要生成月摘要 (Level 3)。
@@ -453,9 +453,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                 all_weekly_contexts.append(ctx)
 
         if not all_weekly_contexts:
-            logger.info(
-                f"No L2 weekly summaries found for user={user_id}, month={month_str}"
-            )
+            logger.info(f"No L2 weekly summaries found for user={user_id}, month={month_str}")
             return None
 
         children_ids = [ctx.id for ctx in all_weekly_contexts]
@@ -582,7 +580,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             return None
 
         level_name = _LEVEL_NAMES.get(level, "unknown")
-        now = datetime.datetime.now()
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
         summary_id = str(uuid.uuid4())
 
         # Parse a representative event_time from the time_bucket
@@ -596,7 +594,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         # Clean up common prefixes like "1. " or "Title: " from the title
         for prefix in ["1. ", "1.", "Title: ", "Title:", "# "]:
             if title.startswith(prefix):
-                title = title[len(prefix):].strip()
+                title = title[len(prefix) :].strip()
                 break
 
         # Build extracted data
@@ -697,18 +695,42 @@ class HierarchySummaryTask(BasePeriodicTask):
                 # Weekly format: "2026-W08"
                 year_str, week_str = time_bucket.split("-W")
                 dt = datetime.date.fromisocalendar(int(year_str), int(week_str), 1)
-                return datetime.datetime(dt.year, dt.month, dt.day, 12, 0, 0)
+                return datetime.datetime(
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    12,
+                    0,
+                    0,
+                    tzinfo=datetime.timezone.utc,
+                )
             elif len(time_bucket) == 7:
                 # Monthly format: "2026-02"
                 year, month = time_bucket.split("-")
-                return datetime.datetime(int(year), int(month), 1, 12, 0, 0)
+                return datetime.datetime(
+                    int(year),
+                    int(month),
+                    1,
+                    12,
+                    0,
+                    0,
+                    tzinfo=datetime.timezone.utc,
+                )
             else:
                 # Daily format: "2026-02-21"
                 dt = datetime.date.fromisoformat(time_bucket)
-                return datetime.datetime(dt.year, dt.month, dt.day, 12, 0, 0)
+                return datetime.datetime(
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    12,
+                    0,
+                    0,
+                    tzinfo=datetime.timezone.utc,
+                )
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to parse time_bucket '{time_bucket}': {e}, using now()")
-            return datetime.datetime.now()
+            return datetime.datetime.now(tz=datetime.timezone.utc)
 
 
 def create_hierarchy_handler():

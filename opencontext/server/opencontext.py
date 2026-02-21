@@ -65,26 +65,23 @@ class OpenContext:
             GlobalVLMClient.get_instance()
 
             self.storage = GlobalStorage.get_instance().get_storage()
-            
 
             self.context_operations = ContextOperations()
             self.capture_manager.set_callback(self._handle_captured_context)
-            self.component_initializer.initialize_capture_components(
-                self.capture_manager)
+            self.component_initializer.initialize_capture_components(self.capture_manager)
             logger.info("Capture modules initialization completed")
             self.component_initializer.initialize_processors(
                 self.processor_manager, self._handle_processed_context
             )
-            
+
             # Initialize task scheduler after processors (to reuse merger)
             self.component_initializer.initialize_task_scheduler(self.processor_manager)
-            
+
             self._initialize_monitoring()
             logger.info("All components initialization completed successfully")
 
         except Exception as e:
-            logger.error(
-                f"Failed to initialize components: {e}", exc_info=True)
+            logger.error(f"Failed to initialize components: {e}", exc_info=True)
             self.shutdown(graceful=False)
             raise
 
@@ -96,8 +93,7 @@ class OpenContext:
             initialize_monitor()
             logger.info("Monitoring system initialized with storage backend")
         except ImportError:
-            logger.warning(
-                "Monitoring module not available, skipping monitoring initialization")
+            logger.warning("Monitoring module not available, skipping monitoring initialization")
         except Exception as e:
             logger.error(f"Failed to initialize monitoring system: {e}")
 
@@ -164,7 +160,7 @@ class OpenContext:
                 logger.info("Task scheduler stopped")
             except Exception as e:
                 logger.warning(f"Error stopping task scheduler: {e}")
-            
+
             # Shutdown managers
             self.capture_manager.shutdown(graceful=graceful)
             self.processor_manager.shutdown(graceful=graceful)
@@ -253,8 +249,13 @@ class OpenContext:
         if not self.context_operations:
             raise RuntimeError("Context operations not initialized")
         return self.context_operations.search(
-            query, top_k, context_types, filters,
-            user_id=user_id, device_id=device_id, agent_id=agent_id
+            query,
+            top_k,
+            context_types,
+            filters,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
         )
 
     def get_context_types(self) -> List[str]:
@@ -282,12 +283,9 @@ def main():
 
     parser = argparse.ArgumentParser(description="OpenContext Server")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=1733,
-                        help="Port to bind to")
-    parser.add_argument(
-        "--config", help="Configuration file path", default="./config/config.yaml")
-    parser.add_argument("--reload", action="store_true",
-                        help="Enable auto-reload for development")
+    parser.add_argument("--port", type=int, default=1733, help="Port to bind to")
+    parser.add_argument("--config", help="Configuration file path", default="./config/config.yaml")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
 
     args = parser.parse_args()
 

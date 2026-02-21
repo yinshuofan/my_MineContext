@@ -42,7 +42,7 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             import pymysql
             from pymysql.cursors import DictCursor
-            
+
             # Get MySQL configuration
             db_config = config.get("config", {})
             self.db_config = {
@@ -55,7 +55,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 "cursorclass": DictCursor,
                 "autocommit": False,
             }
-            
+
             # Try to connect and create database if not exists
             temp_config = self.db_config.copy()
             temp_config.pop("database")
@@ -69,13 +69,13 @@ class MySQLBackend(IDocumentStorageBackend):
                 temp_conn.commit()
             finally:
                 temp_conn.close()
-            
+
             # Connect to the database
             self.connection = pymysql.connect(**self.db_config)
-            
+
             # Create table structure
             self._create_tables()
-            
+
             self._initialized = True
             logger.info(
                 f"MySQL backend initialized successfully, database: {self.db_config['database']}"
@@ -90,7 +90,7 @@ class MySQLBackend(IDocumentStorageBackend):
         """Get a database connection, reconnect if necessary"""
         import pymysql
         from pymysql.cursors import DictCursor
-        
+
         if self.connection is None or not self.connection.open:
             self.connection = pymysql.connect(**self.db_config)
         return self.connection
@@ -573,7 +573,7 @@ class MySQLBackend(IDocumentStorageBackend):
         """Get todo item list"""
         if not self._initialized:
             return []
-        
+
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
@@ -828,8 +828,16 @@ class MySQLBackend(IDocumentStorageBackend):
                     updated_at = VALUES(updated_at)
                 """,
                 (
-                    user_id, agent_id, content, summary, keywords_json,
-                    entities_json, importance, metadata_json, now, now,
+                    user_id,
+                    agent_id,
+                    content,
+                    summary,
+                    keywords_json,
+                    entities_json,
+                    importance,
+                    metadata_json,
+                    now,
+                    now,
                 ),
             )
             conn.commit()
@@ -934,8 +942,17 @@ class MySQLBackend(IDocumentStorageBackend):
                     updated_at = VALUES(updated_at)
                 """,
                 (
-                    entity_id, user_id, entity_name, entity_type, content, summary,
-                    keywords_json, aliases_json, metadata_json, now, now,
+                    entity_id,
+                    user_id,
+                    entity_name,
+                    entity_type,
+                    content,
+                    summary,
+                    keywords_json,
+                    aliases_json,
+                    metadata_json,
+                    now,
+                    now,
                 ),
             )
             conn.commit()
@@ -1178,13 +1195,13 @@ class MySQLBackend(IDocumentStorageBackend):
 
             if existing:
                 # Update existing record with aggregated stats
-                old_count = existing['count']
-                old_total = existing['total_duration_ms']
-                old_min = existing['min_duration_ms']
-                old_max = existing['max_duration_ms']
-                old_success = existing['success_count']
-                old_error = existing['error_count']
-                
+                old_count = existing["count"]
+                old_total = existing["total_duration_ms"]
+                old_min = existing["min_duration_ms"]
+                old_max = existing["max_duration_ms"]
+                old_success = existing["success_count"]
+                old_error = existing["error_count"]
+
                 new_count = old_count + 1
                 new_total = old_total + duration_ms
                 new_min = min(old_min, duration_ms)
@@ -1335,18 +1352,20 @@ class MySQLBackend(IDocumentStorageBackend):
             rows = cursor.fetchall()
             result = []
             for row in rows:
-                result.append({
-                    "stage_name": row['stage_name'],
-                    "count": row['count'],
-                    "total_duration": row['total_duration_ms'],
-                    "min_duration": row['min_duration_ms'],
-                    "max_duration": row['max_duration_ms'],
-                    "duration_ms": row['avg_duration_ms'],
-                    "success_count": row['success_count'],
-                    "error_count": row['error_count'],
-                    "status": "success" if row['success_count'] > 0 else "error",
-                    "time_bucket": row['time_bucket'],
-                })
+                result.append(
+                    {
+                        "stage_name": row["stage_name"],
+                        "count": row["count"],
+                        "total_duration": row["total_duration_ms"],
+                        "min_duration": row["min_duration_ms"],
+                        "max_duration": row["max_duration_ms"],
+                        "duration_ms": row["avg_duration_ms"],
+                        "success_count": row["success_count"],
+                        "error_count": row["error_count"],
+                        "status": "success" if row["success_count"] > 0 else "error",
+                        "time_bucket": row["time_bucket"],
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Failed to query stage timing: {e}")
@@ -1374,11 +1393,13 @@ class MySQLBackend(IDocumentStorageBackend):
             rows = cursor.fetchall()
             result = []
             for row in rows:
-                result.append({
-                    "data_type": row['data_type'],
-                    "count": row['total_count'],
-                    "context_type": row['context_type'],
-                })
+                result.append(
+                    {
+                        "data_type": row["data_type"],
+                        "count": row["total_count"],
+                        "context_type": row["context_type"],
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Failed to query data stats: {e}")
@@ -1409,11 +1430,13 @@ class MySQLBackend(IDocumentStorageBackend):
             rows = cursor.fetchall()
             result = []
             for row in rows:
-                result.append({
-                    "data_type": row['data_type'],
-                    "count": row['total_count'],
-                    "context_type": row['context_type'],
-                })
+                result.append(
+                    {
+                        "data_type": row["data_type"],
+                        "count": row["total_count"],
+                        "context_type": row["context_type"],
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Failed to query data stats by range: {e}")
@@ -1449,12 +1472,14 @@ class MySQLBackend(IDocumentStorageBackend):
             rows = cursor.fetchall()
             result = []
             for row in rows:
-                result.append({
-                    "timestamp": row['time_bucket'],
-                    "data_type": row['data_type'],
-                    "count": row['total_count'],
-                    "context_type": row['context_type'],
-                })
+                result.append(
+                    {
+                        "timestamp": row["time_bucket"],
+                        "data_type": row["data_type"],
+                        "count": row["total_count"],
+                        "context_type": row["context_type"],
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Failed to query data stats trend: {e}")
@@ -1665,13 +1690,13 @@ class MySQLBackend(IDocumentStorageBackend):
 
     def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
         """Mark a conversation as deleted"""
-        updated_convo = self.update_conversation(
-            conversation_id=conversation_id, status="deleted"
-        )
+        updated_convo = self.update_conversation(conversation_id=conversation_id, status="deleted")
         success = updated_convo is not None
         return {"success": success, "id": conversation_id}
 
-    def get_message(self, message_id: int, include_thinking: bool = True) -> Optional[Dict[str, Any]]:
+    def get_message(
+        self, message_id: int, include_thinking: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """Get a single message by its ID"""
         if not self._initialized:
             return None
@@ -1689,7 +1714,7 @@ class MySQLBackend(IDocumentStorageBackend):
             if row:
                 message = dict(row)
                 if include_thinking:
-                    message['thinking'] = self.get_message_thinking(message_id)
+                    message["thinking"] = self.get_message_thinking(message_id)
                 return message
             return None
         except Exception as e:
@@ -1876,11 +1901,7 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to append message content: {e}")
             return False
 
-    def update_message_metadata(
-        self,
-        message_id: int,
-        metadata: Dict[str, Any]
-    ) -> bool:
+    def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
         """Update message metadata"""
         if not self._initialized:
             return False
@@ -1909,10 +1930,7 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
     def mark_message_finished(
-        self,
-        message_id: int,
-        status: str = "completed",
-        error_message: Optional[str] = None
+        self, message_id: int, status: str = "completed", error_message: Optional[str] = None
     ) -> bool:
         """Mark a message as finished"""
         if not self._initialized:
@@ -1941,11 +1959,9 @@ class MySQLBackend(IDocumentStorageBackend):
 
             success = cursor.rowcount > 0
             if not success:
-                cursor.execute(
-                    "SELECT status FROM messages WHERE id = %s", (message_id,)
-                )
+                cursor.execute("SELECT status FROM messages WHERE id = %s", (message_id,))
                 row = cursor.fetchone()
-                if row and row['status'] == status:
+                if row and row["status"] == status:
                     success = True
                 else:
                     logger.warning(
@@ -1971,9 +1987,7 @@ class MySQLBackend(IDocumentStorageBackend):
     def interrupt_message(self, message_id: int) -> bool:
         """Interrupt a streaming message"""
         return self.mark_message_finished(
-            message_id=message_id,
-            status="cancelled",
-            error_message="Message interrupted by user."
+            message_id=message_id, status="cancelled", error_message="Message interrupted by user."
         )
 
     def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
@@ -1996,7 +2010,7 @@ class MySQLBackend(IDocumentStorageBackend):
             messages = []
             for row in rows:
                 message = dict(row)
-                message['thinking'] = self.get_message_thinking(message['id'])
+                message["thinking"] = self.get_message_thinking(message["id"])
                 messages.append(message)
             return messages
         except Exception as e:
@@ -2012,10 +2026,7 @@ class MySQLBackend(IDocumentStorageBackend):
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                "DELETE FROM messages WHERE id = %s",
-                (message_id,)
-            )
+            cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
             conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
@@ -2045,10 +2056,10 @@ class MySQLBackend(IDocumentStorageBackend):
             if sequence is None:
                 cursor.execute(
                     "SELECT COALESCE(MAX(sequence), -1) + 1 as next_seq FROM message_thinking WHERE message_id = %s",
-                    (message_id,)
+                    (message_id,),
                 )
                 result = cursor.fetchone()
-                sequence = result['next_seq'] if result else 0
+                sequence = result["next_seq"] if result else 0
 
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
@@ -2084,7 +2095,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 WHERE message_id = %s
                 ORDER BY sequence ASC, created_at ASC
                 """,
-                (message_id,)
+                (message_id,),
             )
             rows = cursor.fetchall()
             return list(rows)
@@ -2100,10 +2111,7 @@ class MySQLBackend(IDocumentStorageBackend):
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                "DELETE FROM message_thinking WHERE message_id = %s",
-                (message_id,)
-            )
+            cursor.execute("DELETE FROM message_thinking WHERE message_id = %s", (message_id,))
             conn.commit()
             return True
         except Exception as e:

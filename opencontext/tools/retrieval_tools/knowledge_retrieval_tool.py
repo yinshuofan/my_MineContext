@@ -186,9 +186,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             # Step 2: Search L0 EVENT contexts (only when a query is provided)
             event_results: List[Tuple[ProcessedContext, float]] = []
             if query:
-                event_results = self._search_l0_events(
-                    query=query, filters=filters, top_k=top_k
-                )
+                event_results = self._search_l0_events(query=query, filters=filters, top_k=top_k)
 
             # Step 3: Merge and deduplicate by context ID, keeping higher scores
             merged: Dict[str, Tuple[ProcessedContext, float]] = {}
@@ -213,10 +211,4 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
 
         except Exception as e:
             logger.error(f"KnowledgeRetrievalTool execute exception: {e}")
-            return [
-                {
-                    "error": (
-                        f"Error occurred during knowledge retrieval: {str(e)}"
-                    )
-                }
-            ]
+            return [{"error": (f"Error occurred during knowledge retrieval: {str(e)}")}]

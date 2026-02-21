@@ -25,8 +25,17 @@ class ProfileEntityTool(BaseTool):
 
     def __init__(self, user_id: str = "default"):
         super().__init__()
-        self.storage = get_storage()
+        self._storage = None
         self.user_id = user_id
+
+    @property
+    def storage(self):
+        """Lazy storage access — avoids init-order issues."""
+        if self._storage is None:
+            self._storage = get_storage()
+            if self._storage is None:
+                raise RuntimeError("Storage not initialized")
+        return self._storage
 
     @classmethod
     def get_name(cls) -> str:
@@ -70,13 +79,26 @@ class ProfileEntityTool(BaseTool):
                     "type": "string",
                     "description": "Entity type filter (person, project, team, organization, other)",
                 },
-                "entity1": {"type": "string", "description": "First entity in relationship check"},
-                "entity2": {"type": "string", "description": "Second entity in relationship check"},
-                "query": {"type": "string", "description": "Search query text for fuzzy matching"},
+                "entity1": {
+                    "type": "string",
+                    "description": "First entity in relationship check",
+                },
+                "entity2": {
+                    "type": "string",
+                    "description": "Second entity in relationship check",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Search query text for fuzzy matching",
+                },
                 "top_k": {
                     "type": "integer",
                     "description": "Maximum number of results to return",
                     "default": 10,
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "User identifier for multi-user filtering",
                 },
             },
             "required": ["operation"],
@@ -86,6 +108,7 @@ class ProfileEntityTool(BaseTool):
     def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute entity operation"""
         operation = kwargs.get("operation")
+        user_id = kwargs.get("user_id", self.user_id)
 
         operation_handlers = {
             "find_exact_entity": self._handle_find_exact,
@@ -103,12 +126,12 @@ class ProfileEntityTool(BaseTool):
             }
 
         try:
-            return handler(kwargs)
+            return handler(kwargs, user_id)
         except Exception as e:
             logger.error(f"Failed to execute entity operation - {operation}: {e}", exc_info=True)
             return {"success": False, "error": str(e), "operation": operation}
 
-    def _handle_find_exact(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_find_exact(self, params: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """Handle exact search operation — queries relational DB"""
         entity_name = params.get("entity_name", "")
         if not entity_name:
@@ -117,12 +140,12 @@ class ProfileEntityTool(BaseTool):
                 "error": "entity_name is required for find_exact_entity operation",
             }
 
-        result = self.storage.get_entity(self.user_id, entity_name)
+        result = self.storage.get_entity(user_id, entity_name)
         if not result:
             return {"success": False, "error": f"Entity '{entity_name}' not found"}
         return {"success": True, "entity_info": result, "entity_name": entity_name}
 
-    def _handle_find_similar(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_find_similar(self, params: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """Handle similar/fuzzy search operation — uses relational DB text search"""
         query = params.get("query") or params.get("entity_name", "")
         if not query:
@@ -132,19 +155,19 @@ class ProfileEntityTool(BaseTool):
             }
 
         top_k = min(max(params.get("top_k", 10), 1), 100)
-        results = self.storage.search_entities(self.user_id, query, limit=top_k)
+        results = self.storage.search_entities(user_id, query, limit=top_k)
         if not results:
             return {"success": False, "error": f"No entities found matching '{query}'"}
         return {"success": True, "entities": results}
 
-    def _handle_list_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_list_entities(self, params: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """Handle list entities operation"""
         entity_type = params.get("entity_type")
         top_k = min(max(params.get("top_k", 100), 1), 1000)
-        results = self.storage.list_entities(self.user_id, entity_type=entity_type, limit=top_k)
+        results = self.storage.list_entities(user_id, entity_type=entity_type, limit=top_k)
         return {"success": True, "entities": results, "count": len(results)}
 
-    def _handle_check_relationships(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_check_relationships(self, params: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """Handle relationship checking between two entities"""
         entity1_name = params.get("entity1", "")
         entity2_name = params.get("entity2", "")
@@ -152,11 +175,15 @@ class ProfileEntityTool(BaseTool):
         if not entity1_name or not entity2_name:
             return {"success": False, "error": "Both entity1 and entity2 are required"}
 
-        entity1 = self.storage.get_entity(self.user_id, entity1_name)
-        entity2 = self.storage.get_entity(self.user_id, entity2_name)
+        entity1 = self.storage.get_entity(user_id, entity1_name)
+        entity2 = self.storage.get_entity(user_id, entity2_name)
 
         if not entity1 or not entity2:
-            return {"success": False, "related": False, "error": "One or both entities not found"}
+            return {
+                "success": False,
+                "related": False,
+                "error": "One or both entities not found",
+            }
 
         # Check metadata for relationship info
         meta1 = entity1.get("metadata", {}) or {}
@@ -188,20 +215,32 @@ class ProfileEntityTool(BaseTool):
         return {"success": True, "related": False}
 
     def match_entity(
-        self, entity_name: str, entity_type: str = None, top_k: int = 3,
+        self,
+        entity_name: str,
+        entity_type: str = None,
+        top_k: int = 3,
+        user_id: Optional[str] = None,
     ) -> Tuple[Optional[str], Optional[Dict]]:
         """Intelligent entity matching — exact first, then fuzzy search.
+
+        Args:
+            entity_name: Name to match
+            entity_type: Optional type filter
+            top_k: Max fuzzy results
+            user_id: User identifier (falls back to self.user_id if None)
 
         Returns:
             Tuple[Optional[str], Optional[Dict]]: (matched entity name, entity dict)
         """
+        uid = user_id if user_id is not None else self.user_id
+
         # 1. Try exact match
-        result = self.storage.get_entity(self.user_id, entity_name)
+        result = self.storage.get_entity(uid, entity_name)
         if result:
             return result.get("entity_name", entity_name), result
 
         # 2. Search by text
-        similar = self.storage.search_entities(self.user_id, entity_name, limit=top_k)
+        similar = self.storage.search_entities(uid, entity_name, limit=top_k)
         if similar:
             # Return the first match
             best = similar[0]

@@ -13,8 +13,8 @@ from typing import Any, Dict, List
 from openai import APIError, AsyncOpenAI, OpenAI
 
 from opencontext.models.context import Vectorize
-from opencontext.utils.logging_utils import get_logger
 from opencontext.monitoring import record_processing_stage
+from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
@@ -292,7 +292,7 @@ class LLMClient:
         except APIError as e:
             logger.error(f"OpenAI API error during embedding: {e}")
             raise
-          
+
     async def _openai_embedding_async(self, text: str, **kwargs) -> List[float]:
         try:
             response = await self.async_client.embeddings.create(model=self.model, input=[text])
@@ -326,20 +326,19 @@ class LLMClient:
             logger.error(f"OpenAI API error during embedding: {e}")
             raise
 
-
-
     def vectorize(self, vectorize: Vectorize, **kwargs):
         if vectorize.vector:
             return
         vectorize.vector = self.generate_embedding(vectorize.get_vectorize_content(), **kwargs)
         return
-      
+
     async def vectorize_async(self, vectorize: Vectorize, **kwargs):
         if vectorize.vector:
             return
-        vectorize.vector = await self.generate_embedding_async(vectorize.get_vectorize_content(), **kwargs)
+        vectorize.vector = await self.generate_embedding_async(
+            vectorize.get_vectorize_content(), **kwargs
+        )
         return
-      
 
     def validate(self) -> tuple[bool, str]:
         """
@@ -369,7 +368,7 @@ class LLMClient:
                 "ServiceUnavailable": "Service unavailable.",
                 "MethodNotAllowed": "Method not allowed. Check your configuration.",
             }
-            
+
             for code, msg in volcengine_errors.items():
                 if code in error_msg:
                     return msg

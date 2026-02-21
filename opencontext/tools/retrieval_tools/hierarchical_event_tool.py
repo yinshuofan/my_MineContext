@@ -19,6 +19,7 @@ fine-grained L0 details.  A parallel direct L0 semantic search acts as a
 fallback so that recent events not yet rolled up are still discoverable.
 """
 
+from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.models.context import ProcessedContext, Vectorize
@@ -211,6 +212,7 @@ class HierarchicalEventTool(BaseTool):
     def _drill_down_children(
         self,
         parent_contexts: List[Tuple[ProcessedContext, float]],
+        user_id: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float, int]]:
         """
         Recursively drill down through children_ids of matched summaries
@@ -219,8 +221,9 @@ class HierarchicalEventTool(BaseTool):
         Returns a list of (context, blended_score, hierarchy_level) triples.
         The blended score is computed as:
             score = 0.5 * child_score + 0.5 * parent_score
-        where child_score defaults to 1.0 for direct children lookups and
-        parent_score is the match score of the summary that led us here.
+        where child_score defaults to 0.3 for direct children lookups (lower
+        baseline so semantic search results rank higher) and parent_score is
+        the match score of the summary that led us here.
         """
         results: List[Tuple[ProcessedContext, float, int]] = []
 
@@ -228,12 +231,12 @@ class HierarchicalEventTool(BaseTool):
         for ctx, score in parent_contexts:
             results.append((ctx, score, ctx.properties.hierarchy_level))
 
-        # BFS through children
-        queue: List[Tuple[ProcessedContext, float]] = list(parent_contexts)
+        # BFS through children (deque for O(1) popleft)
+        queue: deque = deque(parent_contexts)
         visited_ids: set = {ctx.id for ctx, _ in parent_contexts}
 
         while queue:
-            parent_ctx, parent_score = queue.pop(0)
+            parent_ctx, parent_score = queue.popleft()
             children_ids = getattr(parent_ctx.properties, "children_ids", None) or []
             if not children_ids:
                 continue
@@ -253,8 +256,13 @@ class HierarchicalEventTool(BaseTool):
                     continue
                 visited_ids.add(child.id)
 
-                # Child's intrinsic score is 1.0 (fetched by ID, not by similarity)
-                child_intrinsic_score = 1.0
+                # Filter by user_id if provided (H4)
+                child_user_id = getattr(child.properties, "user_id", None)
+                if user_id and child_user_id and child_user_id != user_id:
+                    continue
+
+                # Lower baseline score (0.3) so semantic search results rank higher (H3)
+                child_intrinsic_score = 0.3
                 blended_score = 0.5 * child_intrinsic_score + 0.5 * parent_score
                 child_level = child.properties.hierarchy_level
 
@@ -392,7 +400,7 @@ class HierarchicalEventTool(BaseTool):
             # Drill down from summaries to L0 events
             drilldown_results: List[Tuple[ProcessedContext, float, int]] = []
             if all_summary_hits:
-                drilldown_results = self._drill_down_children(all_summary_hits)
+                drilldown_results = self._drill_down_children(all_summary_hits, user_id=user_id)
 
             # ── Path 2: Direct L0 semantic search (fallback) ─────────
             direct_l0_results = self._direct_l0_search(
@@ -423,9 +431,7 @@ class HierarchicalEventTool(BaseTool):
             top_results = sorted_results[:top_k]
 
             # ── Format output ────────────────────────────────────────
-            return [
-                self._format_result(ctx, score, level) for ctx, score, level in top_results
-            ]
+            return [self._format_result(ctx, score, level) for ctx, score, level in top_results]
 
         except Exception as e:
             logger.error(f"HierarchicalEventTool execute exception: {e}")

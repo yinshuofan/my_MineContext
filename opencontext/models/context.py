@@ -25,6 +25,7 @@ class Chunk(BaseModel):
     """
     Represents a chunk split from a document or text
     """
+
     text: Optional[str] = None
     image: Optional[bytes] = None
     chunk_index: int = 0
@@ -99,9 +100,9 @@ class ContextProperties(BaseModel):
     duration_count: int = 1  # context duration count
     enable_merge: bool = False
     is_happend: bool = False  # whether occurred
-    last_call_time: Optional[datetime.datetime] = (
-        None  # last call time, updated during online service calls
-    )
+    last_call_time: Optional[
+        datetime.datetime
+    ] = None  # last call time, updated during online service calls
     # position: Optional[Dict[str, Any]] = None # context position in original data
 
     # Document tracking fields
@@ -371,15 +372,21 @@ class ProfileData(BaseModel):
     """User profile — stored in relational DB"""
 
     user_id: str  # Composite primary key part 1
-    agent_id: str = "default"  # Composite primary key part 2 (different agents can have different profiles)
+    agent_id: str = (
+        "default"  # Composite primary key part 2 (different agents can have different profiles)
+    )
     content: str  # Full profile text (LLM-merged result)
     summary: Optional[str] = None
     keywords: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
     importance: int = 0
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
-    updated_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -404,8 +411,12 @@ class EntityData(BaseModel):
     aliases: List[str] = Field(default_factory=list)
     relationships: Dict[str, List[str]] = Field(default_factory=dict)
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
-    updated_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -419,6 +430,7 @@ class EntityData(BaseModel):
 
 class KnowledgeContextMetadata(BaseModel):
     """Knowledge context additional information"""
+
     knowledge_source: str = ""
     knowledge_file_path: str = ""
     knowledge_title: str = ""

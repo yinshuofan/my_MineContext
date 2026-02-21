@@ -124,9 +124,7 @@ class ProfileRetrievalTool(BaseTool):
         try:
             return handler(kwargs)
         except Exception as e:
-            logger.error(
-                f"ProfileRetrievalTool failed - operation={operation}: {e}", exc_info=True
-            )
+            logger.error(f"ProfileRetrievalTool failed - operation={operation}: {e}", exc_info=True)
             return {"success": False, "error": str(e), "operation": operation}
 
     def _get_storage(self):

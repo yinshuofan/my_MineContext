@@ -182,7 +182,6 @@ class ContextMerger(BaseContextProcessor):
     def _find_similarity_merge_target(
         self, context: ProcessedContext
     ) -> tuple[Optional[ProcessedContext], float]:
-
         try:
             backend = self.storage._get_or_create_backend(context.extracted_data.context_type.value)
             similar_results = backend.query(
@@ -585,9 +584,7 @@ class ContextMerger(BaseContextProcessor):
 
             logger.info(f"Periodic memory compression finished for user={user_id}.")
         except Exception as e:
-            logger.exception(
-                f"Error during periodic memory compression for user={user_id}: {e}"
-            )
+            logger.exception(f"Error during periodic memory compression for user={user_id}: {e}")
 
     def _group_contexts_by_similarity(
         self, contexts: List[ProcessedContext], threshold: float

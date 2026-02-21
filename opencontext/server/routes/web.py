@@ -58,6 +58,7 @@ async def read_contexts(
         # Convert naive datetime to aware (assume UTC if naive)
         if dt.tzinfo is None:
             import datetime as dt_module
+
             dt = dt.replace(tzinfo=dt_module.timezone.utc)
         return dt
 

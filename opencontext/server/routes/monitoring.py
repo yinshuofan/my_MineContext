@@ -151,9 +151,7 @@ async def get_data_stats_by_range(
     try:
         # Validate time range
         if start_time >= end_time:
-            raise HTTPException(
-                status_code=400, detail="start_time must be earlier than end_time"
-            )
+            raise HTTPException(status_code=400, detail="start_time must be earlier than end_time")
 
         monitor = get_monitor()
         stats = monitor.get_data_stats_by_range(start_time=start_time, end_time=end_time)
@@ -213,5 +211,3 @@ async def get_processing_errors(
         return {"success": True, "data": errors}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get processing errors: {str(e)}")
-
-

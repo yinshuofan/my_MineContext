@@ -8,13 +8,13 @@ Storage module - responsible for data storage and retrieval
 """
 
 from opencontext.storage.redis_cache import (
+    InMemoryCache,
     RedisCache,
     RedisCacheConfig,
-    InMemoryCache,
-    get_redis_cache,
-    init_redis_cache,
     close_redis_cache,
     get_cache,
+    get_redis_cache,
+    init_redis_cache,
 )
 
 __all__ = [

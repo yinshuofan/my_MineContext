@@ -50,11 +50,7 @@ class RedisTaskScheduler(ITaskScheduler):
     LOCK_PREFIX = "scheduler:lock:"
     PERIODIC_PREFIX = "scheduler:periodic:"
 
-    def __init__(
-        self,
-        redis_cache: RedisCache,
-        config: Optional[Dict[str, Any]] = None
-    ):
+    def __init__(self, redis_cache: RedisCache, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the Redis Task Scheduler.
 
@@ -67,9 +63,7 @@ class RedisTaskScheduler(ITaskScheduler):
         self._check_interval = self._config.get("check_interval", 10)
 
         # Initialize user key builder
-        user_key_config = UserKeyConfig.from_dict(
-            self._config.get("user_key_config", {})
-        )
+        user_key_config = UserKeyConfig.from_dict(self._config.get("user_key_config", {}))
         self._user_key_builder = UserKeyBuilder(user_key_config)
 
         # Task handlers registry (in-memory, each instance has its own)
@@ -91,9 +85,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 config = TaskConfig(
                     name=task_name,
                     enabled=True,
-                    trigger_mode=TriggerMode(
-                        task_config.get("trigger_mode", "user_activity")
-                    ),
+                    trigger_mode=TriggerMode(task_config.get("trigger_mode", "user_activity")),
                     interval=task_config.get("interval", 1800),
                     timeout=task_config.get("timeout", 300),
                     task_ttl=task_config.get("task_ttl", 7200),
@@ -124,11 +116,7 @@ class RedisTaskScheduler(ITaskScheduler):
             logger.error(f"Failed to register task type {config.name}: {e}")
             return False
 
-    def register_handler(
-        self,
-        task_type: str,
-        handler: TaskHandler
-    ) -> bool:
+    def register_handler(self, task_type: str, handler: TaskHandler) -> bool:
         """Register a handler function for a task type"""
         self._task_handlers[task_type] = handler
         logger.info(f"Registered handler for task type: {task_type}")
@@ -139,7 +127,7 @@ class RedisTaskScheduler(ITaskScheduler):
         task_type: str,
         user_id: str,
         device_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
     ) -> bool:
         """
         Schedule a task for a specific user (async).
@@ -225,8 +213,7 @@ class RedisTaskScheduler(ITaskScheduler):
         await self._redis.zadd(queue_key, {user_key: scheduled_at})
 
         logger.info(
-            f"Scheduled {task_type} task for {user_key}, "
-            f"will execute at {scheduled_at}"
+            f"Scheduled {task_type} task for {user_key}, " f"will execute at {scheduled_at}"
         )
         return True
 
@@ -253,11 +240,7 @@ class RedisTaskScheduler(ITaskScheduler):
         for user_key in tasks:
             # Try to acquire distributed lock
             lock_key = f"{self.LOCK_PREFIX}{task_type}:{user_key}"
-            lock_token = await self._redis.acquire_lock(
-                lock_key,
-                timeout=timeout,
-                blocking=False
-            )
+            lock_token = await self._redis.acquire_lock(lock_key, timeout=timeout, blocking=False)
 
             if not lock_token:
                 # Another instance is processing, skip
@@ -288,11 +271,7 @@ class RedisTaskScheduler(ITaskScheduler):
         return None
 
     async def complete_task(
-        self,
-        task_type: str,
-        user_key: str,
-        lock_token: str,
-        success: bool = True
+        self, task_type: str, user_key: str, lock_token: str, success: bool = True
     ) -> None:
         """Mark a task as completed and release the lock (async)"""
         task_key = f"{self.TASK_PREFIX}{task_type}:{user_key}"
@@ -311,10 +290,7 @@ class RedisTaskScheduler(ITaskScheduler):
         # Release lock
         await self._redis.release_lock(lock_key, lock_token)
 
-        logger.info(
-            f"Task {task_type} for {user_key} "
-            f"{'completed' if success else 'failed'}"
-        )
+        logger.info(f"Task {task_type} for {user_key} " f"{'completed' if success else 'failed'}")
 
     async def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
         """Get configuration for a task type (async)"""
@@ -334,9 +310,7 @@ class RedisTaskScheduler(ITaskScheduler):
         await self.init_task_types()
 
         self._running = True
-        logger.info(
-            f"Starting task scheduler, check interval: {self._check_interval}s"
-        )
+        logger.info(f"Starting task scheduler, check interval: {self._check_interval}s")
 
         self._executor_task = asyncio.create_task(self._executor_loop())
 
@@ -373,28 +347,16 @@ class RedisTaskScheduler(ITaskScheduler):
             # Execute in thread pool to avoid blocking event loop
             loop = asyncio.get_event_loop()
             success = await loop.run_in_executor(
-                None,
-                handler,
-                task_info.user_id,
-                task_info.device_id,
-                task_info.agent_id
+                None, handler, task_info.user_id, task_info.device_id, task_info.agent_id
             )
 
             await self.complete_task(
-                task_type,
-                task_info.user_key,
-                task_info.lock_token or "",
-                success
+                task_type, task_info.user_key, task_info.lock_token or "", success
             )
         except Exception as e:
-            logger.exception(
-                f"Task {task_type} failed for {task_info.user_key}: {e}"
-            )
+            logger.exception(f"Task {task_type} failed for {task_info.user_key}: {e}")
             await self.complete_task(
-                task_type,
-                task_info.user_key,
-                task_info.lock_token or "",
-                False
+                task_type, task_info.user_key, task_info.lock_token or "", False
             )
 
     async def _process_periodic_tasks(self) -> None:
@@ -425,22 +387,17 @@ class RedisTaskScheduler(ITaskScheduler):
 
             # Try to acquire lock
             timeout = task_config.get("timeout", 300)
-            lock_token = await self._redis.acquire_lock(
-                lock_key,
-                timeout=timeout,
-                blocking=False
-            )
+            lock_token = await self._redis.acquire_lock(lock_key, timeout=timeout, blocking=False)
             if not lock_token:
                 continue
 
             try:
                 # Update state
                 interval = task_config.get("interval", 3600)
-                await self._redis.hmset(periodic_key, {
-                    "last_run": str(now),
-                    "next_run": str(now + interval),
-                    "status": "running"
-                })
+                await self._redis.hmset(
+                    periodic_key,
+                    {"last_run": str(now), "next_run": str(now + interval), "status": "running"},
+                )
 
                 # Execute task
                 logger.info(f"Executing periodic task: {task_type}")
@@ -483,8 +440,7 @@ def set_scheduler(scheduler: RedisTaskScheduler) -> None:
 
 
 def init_scheduler(
-    redis_cache: RedisCache,
-    config: Optional[Dict[str, Any]] = None
+    redis_cache: RedisCache, config: Optional[Dict[str, Any]] = None
 ) -> RedisTaskScheduler:
     """
     Initialize and set the global scheduler instance.

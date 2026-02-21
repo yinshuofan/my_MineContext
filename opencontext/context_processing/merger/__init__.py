@@ -10,11 +10,7 @@ Contains merge-related functionality — only knowledge merge strategy remains.
 """
 
 from .context_merger import ContextMerger
-from .merge_strategies import (
-    ContextTypeAwareStrategy,
-    KnowledgeMergeStrategy,
-    StrategyFactory,
-)
+from .merge_strategies import ContextTypeAwareStrategy, KnowledgeMergeStrategy, StrategyFactory
 
 __all__ = [
     "ContextMerger",
