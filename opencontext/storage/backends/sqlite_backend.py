@@ -239,7 +239,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         )
 
-        # Data statistics tracking - images/screenshots and documents
+        # Data statistics tracking - contexts and documents
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS monitoring_data_stats (

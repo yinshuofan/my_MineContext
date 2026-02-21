@@ -11,13 +11,10 @@ Entities are now stored in the relational DB (entities table) via UnifiedStorage
 not in the vector DB. This tool provides entity lookup, search, and relationship queries.
 """
 
-import json
 from typing import Any, Dict, List, Optional, Tuple
 
-from opencontext.models.context import EntityData
 from opencontext.storage.global_storage import get_storage
 from opencontext.tools.base import BaseTool
-from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -191,7 +188,7 @@ class ProfileEntityTool(BaseTool):
         return {"success": True, "related": False}
 
     def match_entity(
-        self, entity_name: str, entity_type: str = None, top_k: int = 3, judge: bool = True
+        self, entity_name: str, entity_type: str = None, top_k: int = 3,
     ) -> Tuple[Optional[str], Optional[Dict]]:
         """Intelligent entity matching — exact first, then fuzzy search.
 

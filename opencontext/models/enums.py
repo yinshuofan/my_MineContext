@@ -254,7 +254,8 @@ def validate_context_type(context_type: str) -> bool:
 
 def get_context_type_for_analysis(context_type_str: str) -> "ContextType":
     """
-    Get the context type for analysis, with fault tolerance
+    Get the context type for analysis, with fault tolerance.
+    Falls back to EVENT if the type string is not recognized.
     """
     # Normalize input
     context_type_str = context_type_str.lower().strip()
@@ -263,7 +264,12 @@ def get_context_type_for_analysis(context_type_str: str) -> "ContextType":
     if validate_context_type(context_type_str):
         return ContextType(context_type_str)
 
-    # Default fallback to event
+    # Default fallback to event (log warning to catch classification errors)
+    from opencontext.utils.logging_utils import get_logger
+
+    get_logger(__name__).warning(
+        f"Unrecognized context_type '{context_type_str}', falling back to EVENT"
+    )
     return ContextType.EVENT
 
 

@@ -166,7 +166,7 @@ class HierarchicalEventTool(BaseTool):
         """Convert a Unix timestamp (seconds) to a daily time-bucket string."""
         import datetime
 
-        dt = datetime.datetime.utcfromtimestamp(ts)
+        dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
         return dt.strftime("%Y-%m-%d")
 
     @staticmethod
@@ -174,7 +174,7 @@ class HierarchicalEventTool(BaseTool):
         """Convert a Unix timestamp (seconds) to an ISO-week time-bucket string."""
         import datetime
 
-        dt = datetime.datetime.utcfromtimestamp(ts)
+        dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
         iso_year, iso_week, _ = dt.isocalendar()
         return f"{iso_year}-W{iso_week:02d}"
 
@@ -183,7 +183,7 @@ class HierarchicalEventTool(BaseTool):
         """Convert a Unix timestamp (seconds) to a monthly time-bucket string."""
         import datetime
 
-        dt = datetime.datetime.utcfromtimestamp(ts)
+        dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
         return dt.strftime("%Y-%m")
 
     def _search_summaries(

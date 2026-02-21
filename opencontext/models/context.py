@@ -283,6 +283,7 @@ class ProcessedContextModel(BaseModel):
     importance: int
     is_processed: bool
     call_count: int
+    enable_merge: bool = False
     merge_count: int  # merge count
     last_call_time: Optional[str] = None
     create_time: str
@@ -299,6 +300,8 @@ class ProcessedContextModel(BaseModel):
     agent_id: Optional[str] = None  # Agent identifier
     # Hierarchy fields
     hierarchy_level: int = 0
+    parent_id: Optional[str] = None
+    children_ids: List[str] = Field(default_factory=list)
     time_bucket: Optional[str] = None
     # Document source tracking
     source_file_key: Optional[str] = None
@@ -351,6 +354,8 @@ class ProcessedContextModel(BaseModel):
             agent_id=pc.properties.agent_id,
             # Hierarchy fields
             hierarchy_level=pc.properties.hierarchy_level,
+            parent_id=pc.properties.parent_id,
+            children_ids=pc.properties.children_ids,
             time_bucket=pc.properties.time_bucket,
             # Document source tracking
             source_file_key=pc.properties.source_file_key,

@@ -5,8 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Document upload API routes
-Follows the architecture of screenshots.py, managed through OpenContext class
+Document upload API routes, managed through OpenContext class
 """
 
 from typing import Optional

@@ -132,7 +132,6 @@ async def serve_file(file_path: str, _auth: str = auth_dependency):
 
     # Only allow access to specific safe directories
     allowed_prefixes = [
-        "screenshots/",
         "static/",
         "uploads/",
         "public/",

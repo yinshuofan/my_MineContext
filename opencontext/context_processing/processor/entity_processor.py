@@ -10,14 +10,11 @@ Entity processing module — adapted for relational DB storage.
 Entities are now stored in the relational DB (profiles/entities tables)
 via UnifiedStorage.upsert_entity(), not in the vector DB.
 """
-import asyncio
 import datetime
-import json
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 from opencontext.models.context import EntityData
 from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.json_parser import parse_json_from_response
 
 logger = get_logger(__name__)
 
@@ -66,9 +63,9 @@ async def refresh_entities(
     Returns:
         List of processed entity names
     """
-    from opencontext.storage.global_storage import get_global_storage
+    from opencontext.storage.global_storage import get_storage
 
-    storage = get_global_storage()
+    storage = get_storage()
     processed_names = []
 
     for entity_name, entity_data in entities_info.items():

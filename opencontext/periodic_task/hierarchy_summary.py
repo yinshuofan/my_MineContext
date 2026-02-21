@@ -22,8 +22,6 @@ import time
 import uuid
 from typing import Dict, List, Optional, Tuple
 
-from loguru import logger
-
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.llm.global_vlm_client import generate_with_messages

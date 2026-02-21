@@ -256,7 +256,7 @@ class MySQLBackend(IDocumentStorageBackend):
         """
         )
 
-        # Data statistics tracking - images/screenshots and documents
+        # Data statistics tracking - contexts and documents
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS monitoring_data_stats (
@@ -940,15 +940,14 @@ class MySQLBackend(IDocumentStorageBackend):
             )
             conn.commit()
 
-            # If it was an update (ON DUPLICATE KEY), retrieve the existing ID
-            if cursor.lastrowid == 0:
-                cursor.execute(
-                    "SELECT id FROM entities WHERE user_id = %s AND entity_name = %s",
-                    (user_id, entity_name),
-                )
-                row = cursor.fetchone()
-                if row:
-                    entity_id = row["id"]
+            # Retrieve the actual persisted ID (may differ from generated one on update)
+            cursor.execute(
+                "SELECT id FROM entities WHERE user_id = %s AND entity_name = %s",
+                (user_id, entity_name),
+            )
+            row = cursor.fetchone()
+            if row:
+                entity_id = row["id"]
 
             logger.info(f"Entity upserted: {entity_name} for user_id={user_id}")
             return entity_id

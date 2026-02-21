@@ -788,22 +788,6 @@ class QdrantBackend(IVectorStorageBackend):
             )
         ]
 
-        if time_bucket_start is not None:
-            must_conditions.append(
-                models.FieldCondition(
-                    key="time_bucket",
-                    range=models.Range(gte=time_bucket_start),
-                )
-            )
-
-        if time_bucket_end is not None:
-            must_conditions.append(
-                models.FieldCondition(
-                    key="time_bucket",
-                    range=models.Range(lte=time_bucket_end),
-                )
-            )
-
         if user_id:
             must_conditions.append(
                 models.FieldCondition(
@@ -814,20 +798,35 @@ class QdrantBackend(IVectorStorageBackend):
 
         filter_condition = models.Filter(must=must_conditions)
 
+        # Fetch more results to allow for in-code time_bucket filtering
+        fetch_limit = top_k * 3 if (time_bucket_start or time_bucket_end) else top_k
+
         try:
             records, _ = self._client.scroll(
                 collection_name=collection_name,
                 scroll_filter=filter_condition,
-                limit=top_k,
+                limit=fetch_limit,
                 with_payload=True,
                 with_vectors=False,
             )
 
             results = []
             for point in records:
+                # In-code string comparison filtering for time_bucket
+                # (Qdrant Range filter does not support string fields)
+                if time_bucket_start or time_bucket_end:
+                    payload = point.payload or {}
+                    tb = payload.get("time_bucket", "")
+                    if time_bucket_start and tb < time_bucket_start:
+                        continue
+                    if time_bucket_end and tb > time_bucket_end:
+                        continue
+
                 context = self._qdrant_result_to_context(point, need_vector=False)
                 if context:
                     results.append((context, 1.0))
+                    if len(results) >= top_k:
+                        break
 
             return results
 
