@@ -105,25 +105,6 @@ class ProcessChatMessagesRequest(BaseModel):
     agent_id: Optional[str] = Field(None, description="Agent identifier")
 
 
-class PushScreenshotRequest(BaseModel):
-    """Push a screenshot"""
-    # Either provide path (local file) or base64_data (remote upload)
-    path: Optional[str] = Field(None, description="Local file path to screenshot")
-    base64_data: Optional[str] = Field(None, description="Base64 encoded image data")
-    filename: Optional[str] = Field(None, description="Filename for base64 uploads")
-    window_title: str = Field("", description="Window title when screenshot was taken")
-    app_name: str = Field("unknown", description="Application name")
-    create_time: Optional[str] = Field(None, description="Screenshot creation time (ISO format)")
-    user_id: Optional[str] = Field(None, description="User identifier")
-    device_id: Optional[str] = Field(None, description="Device identifier")
-    agent_id: Optional[str] = Field(None, description="Agent identifier")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
-
-
-class PushScreenshotsRequest(BaseModel):
-    """Push multiple screenshots in batch"""
-    screenshots: List[PushScreenshotRequest]
-
 
 class PushDocumentRequest(BaseModel):
     """Push a document"""
@@ -151,7 +132,7 @@ class PushActivityRequest(BaseModel):
 
 class PushContextRequest(BaseModel):
     """Push a generic context item"""
-    source: str = Field(..., description="Context source type: screenshot, document, chat, activity, etc.")
+    source: str = Field(..., description="Context source type: document, chat, activity, etc.")
     content_format: str = Field("text", description="Content format: text, image, markdown, etc.")
     content_text: Optional[str] = Field(None, description="Text content")
     content_images: Optional[List[str]] = Field(None, description="Image paths or base64 data")
@@ -161,24 +142,6 @@ class PushContextRequest(BaseModel):
     agent_id: Optional[str] = Field(None, description="Agent identifier")
     additional_info: Optional[Dict[str, Any]] = Field(None, description="Additional context info")
     enable_merge: bool = Field(True, description="Whether to enable context merging")
-
-
-class PushTodoRequest(BaseModel):
-    """Push a todo item"""
-    content: str = Field(..., description="Todo content")
-    start_time: Optional[str] = Field(None, description="Start time (ISO format)")
-    end_time: Optional[str] = Field(None, description="End time (ISO format)")
-    status: int = Field(0, description="Status: 0=pending, 1=completed")
-    urgency: int = Field(0, description="Urgency level: 0-3")
-    assignee: Optional[str] = Field(None, description="Assignee")
-    reason: Optional[str] = Field(None, description="Reason/notes")
-    user_id: Optional[str] = Field(None, description="User identifier")
-
-
-class PushTipRequest(BaseModel):
-    """Push a tip"""
-    content: str = Field(..., description="Tip content")
-    user_id: Optional[str] = Field(None, description="User identifier")
 
 
 class FlushBufferRequest(BaseModel):
@@ -434,113 +397,6 @@ async def flush_chat_buffer(
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
 
 
-# ============================================================================
-# Screenshot Push Endpoints
-# ============================================================================
-
-@router.post("/screenshot", response_class=JSONResponse)
-async def push_screenshot(
-    request: PushScreenshotRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push a screenshot to the context capture system.
-    Supports both local file path and base64 encoded data.
-    """
-    try:
-        # Determine file path
-        file_path = request.path
-        if not file_path and request.base64_data:
-            # Save base64 data to temp file
-            from opencontext.config.global_config import GlobalConfig
-            config = GlobalConfig.get_instance().get_config()
-            storage_path = config.get("capture", {}).get("screenshot", {}).get("storage_path", "./screenshots")
-            file_path = _save_base64_to_temp_file(
-                request.base64_data,
-                request.filename or "screenshot.png",
-                storage_path
-            )
-        
-        if not file_path:
-            return convert_resp(code=400, status=400, message="Either 'path' or 'base64_data' must be provided")
-        
-        # Use create_time or current time
-        create_time = request.create_time or datetime.now().isoformat()
-        
-        # Add screenshot via OpenContext
-        err_msg = opencontext.add_screenshot(
-            path=file_path,
-            window=request.window_title,
-            create_time=create_time,
-            app=request.app_name,
-        )
-        
-        if err_msg:
-            return convert_resp(code=400, status=400, message=err_msg)
-
-        # Schedule compression task for the user
-        await _schedule_user_compression(
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-        )
-
-        return convert_resp(message="Screenshot pushed successfully", data={"path": file_path})
-    except Exception as e:
-        logger.exception(f"Error pushing screenshot: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-
-@router.post("/screenshots", response_class=JSONResponse)
-async def push_screenshots(
-    request: PushScreenshotsRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push multiple screenshots in batch.
-    """
-    try:
-        results = []
-        for screenshot in request.screenshots:
-            file_path = screenshot.path
-            if not file_path and screenshot.base64_data:
-                from opencontext.config.global_config import GlobalConfig
-                config = GlobalConfig.get_instance().get_config()
-                storage_path = config.get("capture", {}).get("screenshot", {}).get("storage_path", "./screenshots")
-                file_path = _save_base64_to_temp_file(
-                    screenshot.base64_data,
-                    screenshot.filename or "screenshot.png",
-                    storage_path
-                )
-            
-            if not file_path:
-                results.append({"success": False, "error": "No path or base64_data provided"})
-                continue
-            
-            create_time = screenshot.create_time or datetime.now().isoformat()
-            err_msg = opencontext.add_screenshot(
-                path=file_path,
-                window=screenshot.window_title,
-                create_time=create_time,
-                app=screenshot.app_name,
-            )
-            
-            if err_msg:
-                results.append({"success": False, "path": file_path, "error": err_msg})
-            else:
-                results.append({"success": True, "path": file_path})
-        
-        success_count = sum(1 for r in results if r.get("success"))
-        return convert_resp(
-            message=f"Pushed {success_count}/{len(results)} screenshots successfully",
-            data={"results": results, "success_count": success_count, "total": len(results)}
-        )
-    except Exception as e:
-        logger.exception(f"Error pushing screenshots: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
 
 # ============================================================================
 # Document Push Endpoints
@@ -661,75 +517,6 @@ async def push_activity(
 
 
 # ============================================================================
-# Todo Push Endpoints
-# ============================================================================
-
-@router.post("/todo", response_class=JSONResponse)
-async def push_todo(
-    request: PushTodoRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push a todo item to the storage.
-    """
-    try:
-        storage = opencontext.storage
-        if storage is None:
-            return convert_resp(code=503, status=503, message="Storage not available")
-        
-        start_time = _parse_datetime(request.start_time)
-        end_time = _parse_datetime(request.end_time)
-        
-        todo_id = storage.insert_todo(
-            content=request.content,
-            start_time=start_time,
-            end_time=end_time,
-            status=request.status,
-            urgency=request.urgency,
-            assignee=request.assignee,
-            reason=request.reason,
-        )
-        
-        return convert_resp(
-            message="Todo pushed successfully",
-            data={"todo_id": todo_id}
-        )
-    except Exception as e:
-        logger.exception(f"Error pushing todo: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-
-# ============================================================================
-# Tip Push Endpoints
-# ============================================================================
-
-@router.post("/tip", response_class=JSONResponse)
-async def push_tip(
-    request: PushTipRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push a tip to the storage.
-    """
-    try:
-        storage = opencontext.storage
-        if storage is None:
-            return convert_resp(code=503, status=503, message="Storage not available")
-        
-        tip_id = storage.insert_tip(content=request.content)
-        
-        return convert_resp(
-            message="Tip pushed successfully",
-            data={"tip_id": tip_id}
-        )
-    except Exception as e:
-        logger.exception(f"Error pushing tip: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-
-# ============================================================================
 # Generic Context Push Endpoints
 # ============================================================================
 
@@ -778,7 +565,7 @@ async def push_context(
 
 class BatchPushItem(BaseModel):
     """A single item in a batch push request"""
-    type: str = Field(..., description="Item type: chat, screenshot, document, activity, todo, tip, context")
+    type: str = Field(..., description="Item type: chat, document, activity, context")
     data: Dict[str, Any] = Field(..., description="Item data matching the corresponding push request schema")
 
 
@@ -820,19 +607,6 @@ async def push_batch(
                         )
                         item_result["success"] = True
                 
-                elif item.type == "screenshot":
-                    path = item.data.get("path")
-                    if path:
-                        err = opencontext.add_screenshot(
-                            path=path,
-                            window=item.data.get("window_title", ""),
-                            create_time=item.data.get("create_time", datetime.now().isoformat()),
-                            app=item.data.get("app_name", "unknown"),
-                        )
-                        item_result["success"] = err is None
-                        if err:
-                            item_result["error"] = err
-                
                 elif item.type == "document":
                     file_path = item.data.get("file_path")
                     if file_path:
@@ -853,26 +627,6 @@ async def push_batch(
                         )
                         item_result["success"] = True
                         item_result["id"] = activity_id
-                
-                elif item.type == "todo":
-                    if storage:
-                        todo_id = storage.insert_todo(
-                            content=item.data.get("content", ""),
-                            start_time=_parse_datetime(item.data.get("start_time")),
-                            end_time=_parse_datetime(item.data.get("end_time")),
-                            status=item.data.get("status", 0),
-                            urgency=item.data.get("urgency", 0),
-                            assignee=item.data.get("assignee"),
-                            reason=item.data.get("reason"),
-                        )
-                        item_result["success"] = True
-                        item_result["id"] = todo_id
-                
-                elif item.type == "tip":
-                    if storage:
-                        tip_id = storage.insert_tip(content=item.data.get("content", ""))
-                        item_result["success"] = True
-                        item_result["id"] = tip_id
                 
                 else:
                     item_result["error"] = f"Unknown item type: {item.type}"

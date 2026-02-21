@@ -110,11 +110,6 @@ def _setup_static_files() -> None:
     else:
         print(f"Static path does not exist: {static_path}")
 
-    # Mount screenshots directory
-    screenshots_path = Path("./screenshots").resolve()
-    if screenshots_path.exists():
-        app.mount("/screenshots",
-                  StaticFiles(directory=screenshots_path), name="screenshots")
 
 
 _setup_static_files()

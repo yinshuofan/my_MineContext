@@ -24,13 +24,14 @@ from opencontext.scheduler.base import TaskConfig, TriggerMode
 class DataCleanupTask(BasePeriodicTask):
     """
     Data Cleanup Task
-    
-    Cleans up expired data from storage periodically using intelligent
-    cleanup strategies based on forgetting curves and importance scores.
-    
+
+    Cleans up expired data from vector DB storage periodically for context types
+    that accumulate over time: knowledge contexts, event hierarchy levels, and
+    document chunks. Profile and entity contexts reside in relational DB and have
+    their own retention policies managed outside this task.
+
     This task delegates to ContextMerger.intelligent_memory_cleanup() which
-    uses type-specific strategies from merge_strategies.py to determine
-    which contexts should be cleaned up.
+    applies type-specific cleanup strategies from merge_strategies.py.
     """
     
     def __init__(
@@ -75,17 +76,17 @@ class DataCleanupTask(BasePeriodicTask):
     def execute(self, context: TaskContext) -> TaskResult:
         """
         Execute data cleanup.
-        
+
         This task uses ContextMerger's intelligent_memory_cleanup() method
-        which applies type-specific cleanup strategies based on:
-        - Forgetting curves
-        - Importance scores
-        - Access frequency
-        - Retention periods per context type
-        
+        which applies type-specific retention policies:
+        - event L0: shorter retention (raw events absorbed into daily summaries)
+        - event L1/L2/L3: longer retention (summaries kept progressively longer)
+        - knowledge: normal retention period based on importance/access frequency
+        - document chunks: retained until the source document is re-uploaded
+
         Args:
             context: Task execution context
-            
+
         Returns:
             TaskResult indicating success or failure
         """
