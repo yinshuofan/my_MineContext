@@ -266,6 +266,7 @@ class ComponentInitializer:
             from opencontext.periodic_task import (
                 create_compression_handler,
                 create_cleanup_handler,
+                create_hierarchy_handler,
             )
             
             # Get Redis cache
@@ -338,7 +339,13 @@ class ComponentInitializer:
                 )
                 scheduler.register_handler("data_cleanup", cleanup_handler)
                 logger.info("Registered data_cleanup task handler with intelligent cleanup")
-            
+
+            # Hierarchy summary handler (event L0→L1→L2→L3 summaries)
+            if tasks_config.get("hierarchy_summary", {}).get("enabled", False):
+                hierarchy_handler = create_hierarchy_handler()
+                scheduler.register_handler("hierarchy_summary", hierarchy_handler)
+                logger.info("Registered hierarchy_summary task handler")
+
             logger.info("Task scheduler initialized successfully")
             
         except Exception as e:

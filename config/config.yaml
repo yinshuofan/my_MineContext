@@ -353,6 +353,16 @@ scheduler:
       interval: 60       # Run every 5 minutes
       retention_days: 30    # Keep data for 30 days
 
+    # Hierarchy summary task (generates daily/weekly/monthly event summaries)
+    hierarchy_summary:
+      enabled: "${HIERARCHY_SUMMARY_ENABLED:false}"
+      trigger_mode: "periodic"
+      interval: 86400         # Run once per day (24 hours)
+      # Summaries generated:
+      # - Daily summary: generated every run for yesterday's events
+      # - Weekly summary: generated on Mondays for last week
+      # - Monthly summary: generated on 1st of month for last month
+
 # Intelligent completion service configuration
 completion:
   enabled: false
