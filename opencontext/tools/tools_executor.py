@@ -15,19 +15,18 @@ from opencontext.tools.retrieval_tools import *
 class ToolsExecutor:
     def __init__(self):
         self._tools_map: Dict[str, Union[BaseTool]] = {
-            # Context retrieval tools
-            ActivityContextTool.get_name(): ActivityContextTool(),
-            IntentContextTool.get_name(): IntentContextTool(),
-            SemanticContextTool.get_name(): SemanticContextTool(),
-            ProceduralContextTool.get_name(): ProceduralContextTool(),
-            StateContextTool.get_name(): StateContextTool(),
-            # Document retrieval tools
+            # Context retrieval tools (vector DB)
+            DocumentRetrievalTool.get_name(): DocumentRetrievalTool(),
+            KnowledgeRetrievalTool.get_name(): KnowledgeRetrievalTool(),
+            HierarchicalEventTool.get_name(): HierarchicalEventTool(),
+            # Profile retrieval tools (relational DB)
+            ProfileRetrievalTool.get_name(): ProfileRetrievalTool(),
+            ProfileEntityTool.get_name(): ProfileEntityTool(),
+            # Document retrieval tools (SQLite-based)
             GetDailyReportsTool.get_name(): GetDailyReportsTool(),
             GetActivitiesTool.get_name(): GetActivitiesTool(),
             GetTipsTool.get_name(): GetTipsTool(),
             GetTodosTool.get_name(): GetTodosTool(),
-            # Profile tools
-            ProfileEntityTool.get_name(): ProfileEntityTool(),
             # Operation tools
             WebSearchTool.get_name(): WebSearchTool(),
         }

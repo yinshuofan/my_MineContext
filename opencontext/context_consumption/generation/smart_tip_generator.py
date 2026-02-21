@@ -199,12 +199,9 @@ class SmartTipGenerator:
 
             # Get multiple types of context for comprehensive analysis
             context_types = [
-                ContextType.ACTIVITY_CONTEXT.value,
-                ContextType.SEMANTIC_CONTEXT.value,
-                ContextType.INTENT_CONTEXT.value,
-                ContextType.ENTITY_CONTEXT.value,
-                ContextType.PROCEDURAL_CONTEXT.value,
-                ContextType.STATE_CONTEXT.value,
+                ContextType.EVENT.value,
+                ContextType.KNOWLEDGE.value,
+                ContextType.DOCUMENT.value,
             ]
 
             all_contexts = get_storage().get_all_processed_contexts(

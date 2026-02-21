@@ -183,10 +183,8 @@ class SmartTodoManager:
         """Get context data relevant to the task."""
         try:
             context_types = [
-                ContextType.ACTIVITY_CONTEXT.value,
-                ContextType.SEMANTIC_CONTEXT.value,
-                ContextType.INTENT_CONTEXT.value,
-                ContextType.ENTITY_CONTEXT.value,
+                ContextType.EVENT.value,
+                ContextType.KNOWLEDGE.value,
             ]
             filters = {"update_time_ts": {"$gte": start_time, "$lte": end_time}}
             all_contexts = []

@@ -119,8 +119,11 @@ class ReportGenerator:
             if chunk_end:
                 filters["create_time_ts"]["$lte"] = chunk_end
 
-        context_types = [ContextType.ACTIVITY_CONTEXT.value, ContextType.SEMANTIC_CONTEXT.value, ContextType.ENTITY_CONTEXT.value, ContextType.INTENT_CONTEXT.value,
-                         ContextType.PROCEDURAL_CONTEXT.value, ContextType.ACTIVITY_CONTEXT.value]
+        context_types = [
+            ContextType.EVENT.value,
+            ContextType.KNOWLEDGE.value,
+            ContextType.DOCUMENT.value,
+        ]
         all_contexts = get_storage().get_all_processed_contexts(
             context_types=context_types, limit=1000, offset=0, filter=filters
         )

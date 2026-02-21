@@ -20,7 +20,7 @@ from opencontext.context_consumption.completion.completion_cache import get_comp
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.enums import CompletionType
 from opencontext.storage.global_storage import get_storage
-from opencontext.tools.retrieval_tools.semantic_context_tool import SemanticContextTool
+from opencontext.tools.retrieval_tools.knowledge_retrieval_tool import KnowledgeRetrievalTool
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -62,7 +62,7 @@ class CompletionService:
         self.chat_client = None
         self.cache = get_completion_cache()  # Use a dedicated cache manager
         self.prompt_manager = None  # Prompt manager
-        self.semantic_search_tool = None  # SemanticContextTool instance
+        self.semantic_search_tool = None  # KnowledgeRetrievalTool instance
 
         # Completion configuration
         self.max_context_length = 500  # Maximum context length
@@ -80,8 +80,8 @@ class CompletionService:
 
             self.prompt_manager = get_prompt_manager()
 
-            # Initialize SemanticContextTool
-            self.semantic_search_tool = SemanticContextTool()
+            # Initialize KnowledgeRetrievalTool
+            self.semantic_search_tool = KnowledgeRetrievalTool()
 
             logger.info("CompletionService initialized successfully")
 
@@ -362,7 +362,7 @@ class CompletionService:
             if len(search_text) < 10:
                 return suggestions
 
-            # Use SemanticContextTool for semantic search
+            # Use KnowledgeRetrievalTool for semantic search
             search_results = self.semantic_search_tool.execute(query=search_text, top_k=5)
 
             # Process search results

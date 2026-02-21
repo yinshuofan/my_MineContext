@@ -138,8 +138,7 @@ class RealtimeActivityMonitor:
         try:
             filters = {"update_time_ts": {"$gte": start_time, "$lte": end_time}}
             context_types = [
-                ContextType.ACTIVITY_CONTEXT.value,
-                ContextType.INTENT_CONTEXT.value,
+                ContextType.EVENT.value,
             ]
             all_contexts = get_storage().get_all_processed_contexts(
                 context_types=context_types, limit=10000, offset=0, filter=filters
@@ -302,7 +301,7 @@ class RealtimeActivityMonitor:
         for context in contexts:
             if context.id in recommended_ids:
                 continue
-            if context.extracted_data.context_type != ContextType.ACTIVITY_CONTEXT:
+            if context.extracted_data.context_type != ContextType.EVENT:
                 continue
             if context.properties.raw_properties:
                 for prop in context.properties.raw_properties:

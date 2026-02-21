@@ -5,37 +5,38 @@
 
 """
 OpenContext retrieval_tools module initialization
-重构后的基于 context_type 的专门化检索工具
+Retrieval tools for different context types and storage backends.
 """
-
-# Context retrieval tools (ChromaDB-based)
-from .activity_context_tool import ActivityContextTool
 
 # Base classes
 from .base_context_retrieval_tool import BaseContextRetrievalTool
 from .base_document_retrieval_tool import BaseDocumentRetrievalTool
-from .get_activities_tool import GetActivitiesTool
 
-# Document retrieval tools (SQLite-based)
+# Context retrieval tools (vector DB)
+from .document_retrieval_tool import DocumentRetrievalTool
+from .hierarchical_event_tool import HierarchicalEventTool
+from .knowledge_retrieval_tool import KnowledgeRetrievalTool
+
+# Profile retrieval tool (relational DB)
+from .profile_retrieval_tool import ProfileRetrievalTool
+
+# Document retrieval tools (SQLite-based operation tools)
 from .get_daily_reports_tool import GetDailyReportsTool
+from .get_activities_tool import GetActivitiesTool
 from .get_tips_tool import GetTipsTool
 from .get_todos_tool import GetTodosTool
-from .intent_context_tool import IntentContextTool
-from .procedural_context_tool import ProceduralContextTool
-from .semantic_context_tool import SemanticContextTool
-from .state_context_tool import StateContextTool
 
 __all__ = [
     # Base classes
     "BaseContextRetrievalTool",
     "BaseDocumentRetrievalTool",
-    # Context retrieval tools
-    "ActivityContextTool",
-    "IntentContextTool",
-    "SemanticContextTool",
-    "ProceduralContextTool",
-    "StateContextTool",
-    # Document retrieval tools
+    # Context retrieval tools (vector DB)
+    "DocumentRetrievalTool",
+    "KnowledgeRetrievalTool",
+    "HierarchicalEventTool",
+    # Profile retrieval tool (relational DB)
+    "ProfileRetrievalTool",
+    # Document retrieval tools (SQLite-based)
     "GetDailyReportsTool",
     "GetActivitiesTool",
     "GetTipsTool",
