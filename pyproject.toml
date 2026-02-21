@@ -45,7 +45,6 @@ dependencies = [
     "playwright",
     "pymysql",
     "redis>=4.0.0",
-    "dashvector",
     "aiohttp>=3.8.0",
     "cryptography>=46.0.3",
     "apscheduler>=3.10.0",

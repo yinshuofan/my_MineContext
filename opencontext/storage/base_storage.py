@@ -215,6 +215,54 @@ class IVectorStorageBackend(IStorageBackend):
     def get_all_processed_context_counts(self) -> Dict[str, int]:
         """Get record counts for all context_types"""
 
+    @abstractmethod
+    def delete_by_source_file(self, source_file_key: str, user_id: Optional[str] = None) -> bool:
+        """Delete all chunks belonging to a source file (for document overwrite)
+
+        Args:
+            source_file_key: Source file key (format: "user_id:file_path")
+            user_id: Optional user identifier for additional filtering
+
+        Returns:
+            True if successful, False otherwise
+        """
+
+    @abstractmethod
+    def search_by_hierarchy(
+        self,
+        context_type: str,
+        hierarchy_level: int,
+        time_bucket_start: Optional[str] = None,
+        time_bucket_end: Optional[str] = None,
+        user_id: Optional[str] = None,
+        top_k: int = 20,
+    ) -> List[Tuple[ProcessedContext, float]]:
+        """Search contexts by hierarchy level and time bucket range
+
+        Args:
+            context_type: Context type to search
+            hierarchy_level: Hierarchy level to search (0=original, 1=daily, 2=weekly, 3=monthly)
+            time_bucket_start: Start of time bucket range (inclusive)
+            time_bucket_end: End of time bucket range (inclusive)
+            user_id: User identifier for multi-user filtering
+            top_k: Maximum number of results
+
+        Returns:
+            List of (context, score) tuples
+        """
+
+    @abstractmethod
+    def get_by_ids(self, ids: List[str], context_type: Optional[str] = None) -> List[ProcessedContext]:
+        """Get contexts by their IDs
+
+        Args:
+            ids: List of context IDs to retrieve
+            context_type: Optional context type for routing to correct collection
+
+        Returns:
+            List of ProcessedContext objects
+        """
+
 
 class IDocumentStorageBackend(IStorageBackend):
     """Document storage backend interface"""
@@ -331,3 +379,149 @@ class IDocumentStorageBackend(IStorageBackend):
     @abstractmethod
     def update_todo_status(self, todo_id: int, status: int, end_time: datetime = None) -> bool:
         """Update todo item status"""
+
+    # ── Profile CRUD ──
+
+    @abstractmethod
+    def upsert_profile(
+        self,
+        user_id: str,
+        agent_id: str,
+        content: str,
+        summary: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        entities: Optional[List[str]] = None,
+        importance: int = 0,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Insert or update user profile (composite key: user_id + agent_id)
+
+        Args:
+            user_id: User identifier
+            agent_id: Agent identifier (same user can have different profiles per agent)
+            content: Full profile text (LLM-merged result)
+            summary: Profile summary
+            keywords: Keywords list
+            entities: Entities list
+            importance: Importance score
+            metadata: Additional metadata
+
+        Returns:
+            True if successful, False otherwise
+        """
+
+    @abstractmethod
+    def get_profile(self, user_id: str, agent_id: str = "default") -> Optional[Dict]:
+        """Get user profile by composite key
+
+        Args:
+            user_id: User identifier
+            agent_id: Agent identifier
+
+        Returns:
+            Profile dict or None if not found
+        """
+
+    @abstractmethod
+    def delete_profile(self, user_id: str, agent_id: str = "default") -> bool:
+        """Delete user profile
+
+        Args:
+            user_id: User identifier
+            agent_id: Agent identifier
+
+        Returns:
+            True if successful, False otherwise
+        """
+
+    # ── Entity CRUD ──
+
+    @abstractmethod
+    def upsert_entity(
+        self,
+        user_id: str,
+        entity_name: str,
+        content: str,
+        entity_type: Optional[str] = None,
+        summary: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        aliases: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Insert or update entity (unique key: user_id + entity_name)
+
+        Args:
+            user_id: Owner user identifier
+            entity_name: Entity name (unique per user)
+            content: Entity description (LLM-merged result)
+            entity_type: Entity type (person/project/team/org/other)
+            summary: Entity summary
+            keywords: Keywords list
+            aliases: Alias names list
+            metadata: Additional metadata
+
+        Returns:
+            Entity ID string
+        """
+
+    @abstractmethod
+    def get_entity(self, user_id: str, entity_name: str) -> Optional[Dict]:
+        """Get entity by user_id + entity_name
+
+        Args:
+            user_id: Owner user identifier
+            entity_name: Entity name
+
+        Returns:
+            Entity dict or None if not found
+        """
+
+    @abstractmethod
+    def list_entities(
+        self,
+        user_id: str,
+        entity_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """List entities for a user
+
+        Args:
+            user_id: Owner user identifier
+            entity_type: Optional filter by entity type
+            limit: Maximum number of results
+            offset: Offset for pagination
+
+        Returns:
+            List of entity dicts
+        """
+
+    @abstractmethod
+    def search_entities(
+        self,
+        user_id: str,
+        query_text: str,
+        limit: int = 20,
+    ) -> List[Dict]:
+        """Search entities by text (name, content, aliases)
+
+        Args:
+            user_id: Owner user identifier
+            query_text: Search text
+            limit: Maximum number of results
+
+        Returns:
+            List of matching entity dicts
+        """
+
+    @abstractmethod
+    def delete_entity(self, user_id: str, entity_name: str) -> bool:
+        """Delete entity
+
+        Args:
+            user_id: Owner user identifier
+            entity_name: Entity name
+
+        Returns:
+            True if successful, False otherwise
+        """

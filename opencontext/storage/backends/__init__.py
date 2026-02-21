@@ -27,13 +27,6 @@ try:
 except ImportError:
     pass
 
-# DashVector backend is optional, import only if dashvector is available
-try:
-    from .dashvector_backend import DashVectorBackend
-    __all__.append("DashVectorBackend")
-except ImportError:
-    pass
-
 # VikingDB backend is optional
 try:
     from .vikingdb_backend import VikingDBBackend

@@ -98,6 +98,13 @@ FIELD_FILE_PATH = "file_path"
 FIELD_RAW_TYPE = "raw_type"
 FIELD_RAW_ID = "raw_id"
 
+# Hierarchy and document overwrite fields
+FIELD_HIERARCHY_LEVEL = "hierarchy_level"
+FIELD_PARENT_ID = "parent_id"
+FIELD_TIME_BUCKET = "time_bucket"
+FIELD_SOURCE_FILE_KEY = "source_file_key"
+FIELD_CHILDREN_IDS = "children_ids"
+
 # Data type field (to distinguish between context and todo)
 FIELD_DATA_TYPE = "data_type"
 DATA_TYPE_CONTEXT = "context"
@@ -721,6 +728,12 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_FILE_PATH, "FieldType": "string"},
             {"FieldName": FIELD_RAW_TYPE, "FieldType": "string"},
             {"FieldName": FIELD_RAW_ID, "FieldType": "string"},
+            # Hierarchy and document overwrite fields
+            {"FieldName": FIELD_HIERARCHY_LEVEL, "FieldType": "float32"},
+            {"FieldName": FIELD_PARENT_ID, "FieldType": "string"},
+            {"FieldName": FIELD_TIME_BUCKET, "FieldType": "string"},
+            {"FieldName": FIELD_SOURCE_FILE_KEY, "FieldType": "string"},
+            {"FieldName": FIELD_CHILDREN_IDS, "FieldType": "string"},
             # Document content
             {"FieldName": FIELD_DOCUMENT, "FieldType": "string"},
             # Todo fields
@@ -790,6 +803,10 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_RAW_ID,
                 FIELD_ORIGINAL_ID,
                 FIELD_TODO_ID,
+                # Hierarchy and document overwrite fields
+                FIELD_SOURCE_FILE_KEY,
+                FIELD_TIME_BUCKET,
+                FIELD_PARENT_ID,
                 # Boolean fields (bool - enumeration filtering)
                 FIELD_IS_PROCESSED,
                 FIELD_HAS_COMPRESSION,
@@ -807,6 +824,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_CALL_COUNT,
                 FIELD_MERGE_COUNT,
                 FIELD_DURATION_COUNT,
+                FIELD_HIERARCHY_LEVEL,
             ],
             "Description": f"Index for {self._collection_name}",
         }
@@ -1537,6 +1555,7 @@ class VikingDBBackend(IVectorStorageBackend):
             FIELD_CALL_COUNT,
             FIELD_MERGE_COUNT,
             FIELD_DURATION_COUNT,
+            FIELD_HIERARCHY_LEVEL,
         }
         
         # Add data type filter using "must" operator
@@ -1764,6 +1783,320 @@ class VikingDBBackend(IVectorStorageBackend):
             counts[ct.value] = self.get_processed_context_count(ct.value)
         return counts
     
+    def delete_by_source_file(self, source_file_key: str, user_id: Optional[str] = None) -> bool:
+        """
+        Delete all chunks belonging to a source file (for document overwrite).
+
+        This method searches for all records matching the source_file_key
+        (and optionally user_id), then deletes them.
+
+        Args:
+            source_file_key: Source file key (format: "user_id:file_path")
+            user_id: Optional user identifier for additional filtering
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._initialized:
+            return False
+
+        try:
+            # Build filter to find all chunks with this source_file_key
+            conditions = [
+                {
+                    "op": "must",
+                    "field": FIELD_SOURCE_FILE_KEY,
+                    "conds": [source_file_key],
+                },
+                {
+                    "op": "must",
+                    "field": FIELD_DATA_TYPE,
+                    "conds": [DATA_TYPE_CONTEXT],
+                },
+            ]
+
+            if user_id:
+                conditions.append({
+                    "op": "must",
+                    "field": FIELD_USER_ID,
+                    "conds": [user_id],
+                })
+
+            if len(conditions) == 1:
+                filter_dict = conditions[0]
+            else:
+                filter_dict = {
+                    "op": "and",
+                    "conds": conditions,
+                }
+
+            # Search for all matching records to get their IDs
+            # Use scalar search to find records by source_file_key
+            data = {
+                "collection_name": self._collection_name,
+                "index_name": self._index_name,
+                "limit": 10000,  # Large limit to get all chunks of the document
+                "field": FIELD_CREATED_AT_TS,
+                "order": "desc",
+                "filter": filter_dict,
+            }
+
+            result = self._client.data_request(
+                path="/api/vikingdb/data/search/scalar",
+                data=data,
+            )
+
+            if result.get("code") != "Success":
+                logger.error(
+                    f"Failed to search for source_file_key '{source_file_key}': "
+                    f"{result.get('message')}"
+                )
+                return False
+
+            output = result.get("result", {}).get("data", [])
+            if not output:
+                logger.debug(
+                    f"No records found for source_file_key '{source_file_key}'"
+                )
+                return True  # Nothing to delete
+
+            # Collect all IDs to delete
+            ids_to_delete = [item.get("id") for item in output if item.get("id")]
+
+            if not ids_to_delete:
+                return True
+
+            # Delete all matching records
+            delete_result = self._client.data_request(
+                path="/api/vikingdb/data/delete",
+                data={
+                    "collection_name": self._collection_name,
+                    "ids": ids_to_delete,
+                },
+            )
+
+            if delete_result.get("code") == "Success":
+                logger.info(
+                    f"Deleted {len(ids_to_delete)} records for "
+                    f"source_file_key '{source_file_key}'"
+                )
+                return True
+            else:
+                logger.error(
+                    f"Failed to delete records for source_file_key "
+                    f"'{source_file_key}': {delete_result.get('message')}"
+                )
+                return False
+
+        except Exception as e:
+            logger.exception(
+                f"Failed to delete by source_file_key '{source_file_key}': {e}"
+            )
+            return False
+
+    def search_by_hierarchy(
+        self,
+        context_type: str,
+        hierarchy_level: int,
+        time_bucket_start: Optional[str] = None,
+        time_bucket_end: Optional[str] = None,
+        user_id: Optional[str] = None,
+        top_k: int = 20,
+    ) -> List[Tuple[ProcessedContext, float]]:
+        """
+        Search contexts by hierarchy level and time bucket range.
+
+        Used for event hierarchical retrieval. Searches for records matching
+        the given context_type and hierarchy_level, optionally filtering by
+        a time bucket range.
+
+        Args:
+            context_type: Context type to search
+            hierarchy_level: Hierarchy level (0=original, 1=daily, 2=weekly, 3=monthly)
+            time_bucket_start: Start of time bucket range (inclusive), e.g. "2026-02-01"
+            time_bucket_end: End of time bucket range (inclusive), e.g. "2026-02-28"
+            user_id: User identifier for multi-user filtering
+            top_k: Maximum number of results
+
+        Returns:
+            List of (context, score) tuples, sorted by time bucket
+        """
+        if not self._initialized:
+            return []
+
+        try:
+            # Build filter conditions
+            conditions = [
+                {
+                    "op": "must",
+                    "field": FIELD_DATA_TYPE,
+                    "conds": [DATA_TYPE_CONTEXT],
+                },
+                {
+                    "op": "must",
+                    "field": FIELD_CONTEXT_TYPE,
+                    "conds": [context_type],
+                },
+                {
+                    "op": "range",
+                    "field": FIELD_HIERARCHY_LEVEL,
+                    "gte": float(hierarchy_level),
+                    "lte": float(hierarchy_level),
+                },
+            ]
+
+            if user_id:
+                conditions.append({
+                    "op": "must",
+                    "field": FIELD_USER_ID,
+                    "conds": [user_id],
+                })
+
+            # For time bucket filtering, VikingDB string fields support enumeration
+            # but not range. We use "must" with the time_bucket field if only one
+            # boundary is specified. For a range, we need to fetch and filter in code
+            # since string range filtering is not supported.
+            # However, if both start and end are specified, we fetch a large set and
+            # filter in Python.
+            time_bucket_filter_start = time_bucket_start
+            time_bucket_filter_end = time_bucket_end
+
+            if time_bucket_start and not time_bucket_end:
+                # Only start specified - we'll filter in Python after fetch
+                pass
+            elif time_bucket_end and not time_bucket_start:
+                # Only end specified - we'll filter in Python after fetch
+                pass
+            elif time_bucket_start and time_bucket_end and time_bucket_start == time_bucket_end:
+                # Exact match
+                conditions.append({
+                    "op": "must",
+                    "field": FIELD_TIME_BUCKET,
+                    "conds": [time_bucket_start],
+                })
+                # Clear range filters since exact match is handled
+                time_bucket_filter_start = None
+                time_bucket_filter_end = None
+
+            if len(conditions) == 1:
+                filter_dict = conditions[0]
+            else:
+                filter_dict = {
+                    "op": "and",
+                    "conds": conditions,
+                }
+
+            # Use scalar search to find matching records
+            # Fetch more than top_k if we need to do in-code time bucket filtering
+            fetch_limit = top_k
+            if time_bucket_filter_start or time_bucket_filter_end:
+                fetch_limit = max(top_k * 5, 100)  # Over-fetch for in-code filtering
+
+            data = {
+                "collection_name": self._collection_name,
+                "index_name": self._index_name,
+                "limit": fetch_limit,
+                "field": FIELD_CREATED_AT_TS,
+                "order": "desc",
+                "filter": filter_dict,
+            }
+
+            result = self._client.data_request(
+                path="/api/vikingdb/data/search/scalar",
+                data=data,
+            )
+
+            if result.get("code") != "Success":
+                logger.error(
+                    f"Failed to search by hierarchy: {result.get('message')}"
+                )
+                return []
+
+            output = result.get("result", {}).get("data", [])
+
+            results = []
+            for item in output:
+                doc = {"id": item.get("id")}
+                doc.update(item.get("fields", {}))
+
+                # Apply in-code time bucket range filtering if needed
+                if time_bucket_filter_start or time_bucket_filter_end:
+                    item_time_bucket = doc.get(FIELD_TIME_BUCKET, "")
+                    if not item_time_bucket:
+                        continue
+                    if time_bucket_filter_start and item_time_bucket < time_bucket_filter_start:
+                        continue
+                    if time_bucket_filter_end and item_time_bucket > time_bucket_filter_end:
+                        continue
+
+                context = self._doc_to_context(doc, need_vector=False)
+                if context:
+                    # Use 1.0 as default score for scalar search results
+                    results.append((context, 1.0))
+
+            # Limit to top_k
+            return results[:top_k]
+
+        except Exception as e:
+            logger.exception(f"Failed to search by hierarchy: {e}")
+            return []
+
+    def get_by_ids(
+        self, ids: List[str], context_type: Optional[str] = None
+    ) -> List[ProcessedContext]:
+        """
+        Get contexts by their IDs.
+
+        Used for drill-down from hierarchy summaries to retrieve specific
+        child records.
+
+        Args:
+            ids: List of context IDs to retrieve
+            context_type: Optional context type for additional validation
+
+        Returns:
+            List of ProcessedContext objects
+        """
+        if not self._initialized:
+            return []
+
+        if not ids:
+            return []
+
+        try:
+            # Fetch data by IDs via data plane API
+            result = self._client.data_request(
+                path="/api/vikingdb/data/fetch_in_collection",
+                data={
+                    "collection_name": self._collection_name,
+                    "ids": ids,
+                },
+            )
+
+            if result.get("code") != "Success":
+                logger.error(f"Failed to fetch by IDs: {result.get('message')}")
+                return []
+
+            fetch_result = result.get("result", {}).get("fetch", [])
+            contexts = []
+            for item in fetch_result:
+                doc = {"id": item.get("id")}
+                doc.update(item.get("fields", {}))
+
+                # Optionally validate context_type
+                if context_type and doc.get(FIELD_CONTEXT_TYPE) != context_type:
+                    continue
+
+                context = self._doc_to_context(doc, need_vector=False)
+                if context:
+                    contexts.append(context)
+
+            return contexts
+
+        except Exception as e:
+            logger.exception(f"Failed to get contexts by IDs: {e}")
+            return []
+
     # Todo-related methods
     def upsert_todo_embedding(
         self,

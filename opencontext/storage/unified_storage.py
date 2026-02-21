@@ -35,7 +35,6 @@ class StorageBackendFactory:
             StorageType.VECTOR_DB: {
                 "chromadb": self._create_chromadb_backend,
                 "qdrant": self._create_qdrant_backend,
-                "dashvector": self._create_dashvector_backend,
                 "vikingdb": self._create_vikingdb_backend,
             },
             StorageType.DOCUMENT_DB: {
@@ -93,11 +92,6 @@ class StorageBackendFactory:
         from opencontext.storage.backends.mysql_backend import MySQLBackend
 
         return MySQLBackend()
-
-    def _create_dashvector_backend(self, config: Dict[str, Any]):
-        from opencontext.storage.backends.dashvector_backend import DashVectorBackend
-
-        return DashVectorBackend()
 
     def _create_vikingdb_backend(self, config: Dict[str, Any]):
         from opencontext.storage.backends.vikingdb_backend import VikingDBBackend
@@ -996,3 +990,156 @@ class UnifiedStorage:
             logger.error("Storage not initialized")
             return False
         return self._document_backend.clear_message_thinking(message_id)
+
+    # ── Profile routing (→ relational DB) ──
+
+    def upsert_profile(
+        self,
+        user_id: str,
+        agent_id: str,
+        content: str,
+        summary: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        entities: Optional[List[str]] = None,
+        importance: int = 0,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Store/update user profile → relational DB"""
+        if not self._initialized or not self._document_backend:
+            logger.error("Storage not initialized")
+            return False
+        return self._document_backend.upsert_profile(
+            user_id=user_id,
+            agent_id=agent_id,
+            content=content,
+            summary=summary,
+            keywords=keywords,
+            entities=entities,
+            importance=importance,
+            metadata=metadata,
+        )
+
+    def get_profile(self, user_id: str, agent_id: str = "default") -> Optional[Dict]:
+        """Get user profile → relational DB"""
+        if not self._initialized or not self._document_backend:
+            logger.error("Storage not initialized")
+            return None
+        return self._document_backend.get_profile(user_id, agent_id)
+
+    def delete_profile(self, user_id: str, agent_id: str = "default") -> bool:
+        """Delete user profile → relational DB"""
+        if not self._initialized or not self._document_backend:
+            logger.error("Storage not initialized")
+            return False
+        return self._document_backend.delete_profile(user_id, agent_id)
+
+    # ── Entity routing (→ relational DB) ──
+
+    def upsert_entity(
+        self,
+        user_id: str,
+        entity_name: str,
+        content: str,
+        entity_type: Optional[str] = None,
+        summary: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        aliases: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Store/update entity → relational DB"""
+        if not self._initialized or not self._document_backend:
+            logger.error("Storage not initialized")
+            return ""
+        return self._document_backend.upsert_entity(
+            user_id=user_id,
+            entity_name=entity_name,
+            content=content,
+            entity_type=entity_type,
+            summary=summary,
+            keywords=keywords,
+            aliases=aliases,
+            metadata=metadata,
+        )
+
+    def get_entity(self, user_id: str, entity_name: str) -> Optional[Dict]:
+        """Get entity → relational DB"""
+        if not self._initialized or not self._document_backend:
+            logger.error("Storage not initialized")
+            return None
+        return self._document_backend.get_entity(user_id, entity_name)
+
+    def list_entities(
+        self,
+        user_id: str,
+        entity_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """List entities for a user → relational DB"""
+        if not self._initialized or not self._document_backend:
+            logger.error("Storage not initialized")
+            return []
+        return self._document_backend.list_entities(user_id, entity_type, limit, offset)
+
+    def search_entities(
+        self,
+        user_id: str,
+        query_text: str,
+        limit: int = 20,
+    ) -> List[Dict]:
+        """Search entities by text → relational DB"""
+        if not self._initialized or not self._document_backend:
+            logger.error("Storage not initialized")
+            return []
+        return self._document_backend.search_entities(user_id, query_text, limit)
+
+    def delete_entity(self, user_id: str, entity_name: str) -> bool:
+        """Delete entity → relational DB"""
+        if not self._initialized or not self._document_backend:
+            logger.error("Storage not initialized")
+            return False
+        return self._document_backend.delete_entity(user_id, entity_name)
+
+    # ── Document overwrite routing (→ vector DB) ──
+
+    def delete_document_chunks(
+        self, source_file_key: str, user_id: Optional[str] = None
+    ) -> bool:
+        """Delete all chunks for a document (for overwrite) → vector DB"""
+        if not self._initialized or not self._vector_backend:
+            logger.error("Storage not initialized")
+            return False
+        return self._vector_backend.delete_by_source_file(source_file_key, user_id)
+
+    # ── Hierarchy routing (→ vector DB) ──
+
+    def search_hierarchy(
+        self,
+        context_type: str,
+        hierarchy_level: int,
+        time_bucket_start: Optional[str] = None,
+        time_bucket_end: Optional[str] = None,
+        user_id: Optional[str] = None,
+        top_k: int = 20,
+    ) -> List[Tuple[ProcessedContext, float]]:
+        """Search by hierarchy level and time bucket → vector DB"""
+        if not self._initialized or not self._vector_backend:
+            logger.error("Storage not initialized")
+            return []
+        return self._vector_backend.search_by_hierarchy(
+            context_type=context_type,
+            hierarchy_level=hierarchy_level,
+            time_bucket_start=time_bucket_start,
+            time_bucket_end=time_bucket_end,
+            user_id=user_id,
+            top_k=top_k,
+        )
+
+    def get_contexts_by_ids(
+        self, ids: List[str], context_type: Optional[str] = None
+    ) -> List[ProcessedContext]:
+        """Get contexts by IDs → vector DB"""
+        if not self._initialized or not self._vector_backend:
+            logger.error("Storage not initialized")
+            return []
+        return self._vector_backend.get_by_ids(ids, context_type)

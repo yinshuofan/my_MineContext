@@ -162,6 +162,45 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         )
 
+        # Profiles table - user profiles (composite key: user_id + agent_id)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS profiles (
+                user_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL DEFAULT 'default',
+                content TEXT NOT NULL,
+                summary TEXT,
+                keywords JSON,
+                entities JSON,
+                importance INTEGER DEFAULT 0,
+                metadata JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, agent_id)
+            )
+        """
+        )
+
+        # Entities table - entity profiles (unique key: user_id + entity_name)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entities (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                entity_name TEXT NOT NULL,
+                entity_type TEXT,
+                content TEXT NOT NULL,
+                summary TEXT,
+                keywords JSON,
+                aliases JSON,
+                metadata JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (user_id, entity_name)
+            )
+        """
+        )
+
         # Monitoring tables
         # Token usage tracking - keep 7 days of data
         cursor.execute(
@@ -308,6 +347,12 @@ class SQLiteBackend(IDocumentStorageBackend):
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_conversations_user_page ON conversations(user_id, page_name)"
         )
+
+        # Entity indexes
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_user ON entities (user_id)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_type ON entities (entity_type)")
 
         # Message thinking table (stores thinking process for messages)
         cursor.execute(
@@ -899,6 +944,309 @@ class SQLiteBackend(IDocumentStorageBackend):
         except Exception as e:
             logger.exception(f"Failed to get tip list: {e}")
             return []
+
+    # ── Profile CRUD ──
+
+    def upsert_profile(
+        self,
+        user_id: str,
+        agent_id: str,
+        content: str,
+        summary: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        entities: Optional[List[str]] = None,
+        importance: int = 0,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Insert or update user profile (composite key: user_id + agent_id)"""
+        if not self._initialized:
+            return False
+
+        cursor = self.connection.cursor()
+        try:
+            now = datetime.now()
+            keywords_json = json.dumps(keywords or [], ensure_ascii=False)
+            entities_json = json.dumps(entities or [], ensure_ascii=False)
+            metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
+
+            cursor.execute(
+                """
+                INSERT INTO profiles (user_id, agent_id, content, summary, keywords, entities,
+                                      importance, metadata, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, agent_id) DO UPDATE SET
+                    content = excluded.content,
+                    summary = excluded.summary,
+                    keywords = excluded.keywords,
+                    entities = excluded.entities,
+                    importance = excluded.importance,
+                    metadata = excluded.metadata,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    user_id, agent_id, content, summary, keywords_json,
+                    entities_json, importance, metadata_json, now, now,
+                ),
+            )
+            self.connection.commit()
+            logger.info(f"Profile upserted for user_id={user_id}, agent_id={agent_id}")
+            return True
+        except Exception as e:
+            self.connection.rollback()
+            logger.exception(f"Failed to upsert profile: {e}")
+            return False
+
+    def get_profile(self, user_id: str, agent_id: str = "default") -> Optional[Dict]:
+        """Get user profile by composite key"""
+        if not self._initialized:
+            return None
+
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT user_id, agent_id, content, summary, keywords, entities,
+                       importance, metadata, created_at, updated_at
+                FROM profiles
+                WHERE user_id = ? AND agent_id = ?
+                """,
+                (user_id, agent_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                if isinstance(result.get("keywords"), str):
+                    result["keywords"] = json.loads(result["keywords"])
+                if isinstance(result.get("entities"), str):
+                    result["entities"] = json.loads(result["entities"])
+                if isinstance(result.get("metadata"), str):
+                    result["metadata"] = json.loads(result["metadata"])
+                return result
+            return None
+        except Exception as e:
+            logger.exception(f"Failed to get profile: {e}")
+            return None
+
+    def delete_profile(self, user_id: str, agent_id: str = "default") -> bool:
+        """Delete user profile"""
+        if not self._initialized:
+            return False
+
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM profiles WHERE user_id = ? AND agent_id = ?",
+                (user_id, agent_id),
+            )
+            self.connection.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            self.connection.rollback()
+            logger.exception(f"Failed to delete profile: {e}")
+            return False
+
+    # ── Entity CRUD ──
+
+    def upsert_entity(
+        self,
+        user_id: str,
+        entity_name: str,
+        content: str,
+        entity_type: Optional[str] = None,
+        summary: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        aliases: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Insert or update entity (unique key: user_id + entity_name)"""
+        if not self._initialized:
+            raise RuntimeError("SQLite backend not initialized")
+
+        import uuid
+
+        cursor = self.connection.cursor()
+        try:
+            now = datetime.now()
+            entity_id = str(uuid.uuid4())
+            keywords_json = json.dumps(keywords or [], ensure_ascii=False)
+            aliases_json = json.dumps(aliases or [], ensure_ascii=False)
+            metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
+
+            # Check if entity already exists to preserve its ID
+            cursor.execute(
+                "SELECT id FROM entities WHERE user_id = ? AND entity_name = ?",
+                (user_id, entity_name),
+            )
+            existing = cursor.fetchone()
+            if existing:
+                entity_id = existing["id"] if isinstance(existing, dict) else existing[0]
+
+            cursor.execute(
+                """
+                INSERT INTO entities (id, user_id, entity_name, entity_type, content, summary,
+                                      keywords, aliases, metadata, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, entity_name) DO UPDATE SET
+                    entity_type = excluded.entity_type,
+                    content = excluded.content,
+                    summary = excluded.summary,
+                    keywords = excluded.keywords,
+                    aliases = excluded.aliases,
+                    metadata = excluded.metadata,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    entity_id, user_id, entity_name, entity_type, content, summary,
+                    keywords_json, aliases_json, metadata_json, now, now,
+                ),
+            )
+            self.connection.commit()
+            logger.info(f"Entity upserted: {entity_name} for user_id={user_id}")
+            return entity_id
+        except Exception as e:
+            self.connection.rollback()
+            logger.exception(f"Failed to upsert entity: {e}")
+            raise
+
+    def get_entity(self, user_id: str, entity_name: str) -> Optional[Dict]:
+        """Get entity by user_id + entity_name"""
+        if not self._initialized:
+            return None
+
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, user_id, entity_name, entity_type, content, summary,
+                       keywords, aliases, metadata, created_at, updated_at
+                FROM entities
+                WHERE user_id = ? AND entity_name = ?
+                """,
+                (user_id, entity_name),
+            )
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                if isinstance(result.get("keywords"), str):
+                    result["keywords"] = json.loads(result["keywords"])
+                if isinstance(result.get("aliases"), str):
+                    result["aliases"] = json.loads(result["aliases"])
+                if isinstance(result.get("metadata"), str):
+                    result["metadata"] = json.loads(result["metadata"])
+                return result
+            return None
+        except Exception as e:
+            logger.exception(f"Failed to get entity: {e}")
+            return None
+
+    def list_entities(
+        self,
+        user_id: str,
+        entity_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """List entities for a user"""
+        if not self._initialized:
+            return []
+
+        cursor = self.connection.cursor()
+        try:
+            where_clauses = ["user_id = ?"]
+            params: list = [user_id]
+
+            if entity_type:
+                where_clauses.append("entity_type = ?")
+                params.append(entity_type)
+
+            params.extend([limit, offset])
+            where_sql = " AND ".join(where_clauses)
+
+            cursor.execute(
+                f"""
+                SELECT id, user_id, entity_name, entity_type, content, summary,
+                       keywords, aliases, metadata, created_at, updated_at
+                FROM entities
+                WHERE {where_sql}
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                result = dict(row)
+                if isinstance(result.get("keywords"), str):
+                    result["keywords"] = json.loads(result["keywords"])
+                if isinstance(result.get("aliases"), str):
+                    result["aliases"] = json.loads(result["aliases"])
+                if isinstance(result.get("metadata"), str):
+                    result["metadata"] = json.loads(result["metadata"])
+                results.append(result)
+            return results
+        except Exception as e:
+            logger.exception(f"Failed to list entities: {e}")
+            return []
+
+    def search_entities(
+        self,
+        user_id: str,
+        query_text: str,
+        limit: int = 20,
+    ) -> List[Dict]:
+        """Search entities by text (name, content, aliases)"""
+        if not self._initialized:
+            return []
+
+        cursor = self.connection.cursor()
+        try:
+            like_pattern = f"%{query_text}%"
+            cursor.execute(
+                """
+                SELECT id, user_id, entity_name, entity_type, content, summary,
+                       keywords, aliases, metadata, created_at, updated_at
+                FROM entities
+                WHERE user_id = ?
+                  AND (entity_name LIKE ? OR content LIKE ? OR aliases LIKE ?)
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (user_id, like_pattern, like_pattern, like_pattern, limit),
+            )
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                result = dict(row)
+                if isinstance(result.get("keywords"), str):
+                    result["keywords"] = json.loads(result["keywords"])
+                if isinstance(result.get("aliases"), str):
+                    result["aliases"] = json.loads(result["aliases"])
+                if isinstance(result.get("metadata"), str):
+                    result["metadata"] = json.loads(result["metadata"])
+                results.append(result)
+            return results
+        except Exception as e:
+            logger.exception(f"Failed to search entities: {e}")
+            return []
+
+    def delete_entity(self, user_id: str, entity_name: str) -> bool:
+        """Delete entity"""
+        if not self._initialized:
+            return False
+
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM entities WHERE user_id = ? AND entity_name = ?",
+                (user_id, entity_name),
+            )
+            self.connection.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            self.connection.rollback()
+            logger.exception(f"Failed to delete entity: {e}")
+            return False
 
     def get_name(self) -> str:
         return "sqlite"

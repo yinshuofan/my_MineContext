@@ -693,3 +693,205 @@ class QdrantBackend(IVectorStorageBackend):
         except Exception as e:
             logger.error(f"Failed to delete todo embedding (id={todo_id}): {e}")
             return False
+
+    def delete_by_source_file(self, source_file_key: str, user_id: Optional[str] = None) -> bool:
+        """Delete all points matching source_file_key (and optionally user_id) in payload.
+
+        Used for document overwrite: when a document is re-uploaded, all old chunks
+        belonging to that source file are deleted before new chunks are inserted.
+
+        Args:
+            source_file_key: Source file key (format: "user_id:file_path")
+            user_id: Optional user identifier for additional filtering
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._initialized:
+            return False
+
+        must_conditions = [
+            models.FieldCondition(
+                key="source_file_key",
+                match=models.MatchValue(value=source_file_key),
+            )
+        ]
+
+        if user_id:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="user_id",
+                    match=models.MatchValue(value=user_id),
+                )
+            )
+
+        filter_condition = models.Filter(must=must_conditions)
+
+        success = True
+        for context_type, collection_name in self._collections.items():
+            if context_type == TODO_COLLECTION:
+                continue
+            try:
+                self._client.delete(
+                    collection_name=collection_name,
+                    points_selector=models.FilterSelector(filter=filter_condition),
+                )
+                logger.debug(
+                    f"Deleted points with source_file_key='{source_file_key}' "
+                    f"from collection '{collection_name}'"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to delete by source_file_key='{source_file_key}' "
+                    f"from collection '{collection_name}': {e}"
+                )
+                success = False
+
+        return success
+
+    def search_by_hierarchy(
+        self,
+        context_type: str,
+        hierarchy_level: int,
+        time_bucket_start: Optional[str] = None,
+        time_bucket_end: Optional[str] = None,
+        user_id: Optional[str] = None,
+        top_k: int = 20,
+    ) -> List[Tuple[ProcessedContext, float]]:
+        """Search contexts by hierarchy level and time bucket range using payload filtering.
+
+        Used for event hierarchical retrieval: find daily/weekly/monthly summaries
+        within a time range.
+
+        Args:
+            context_type: Context type to search (determines which collection)
+            hierarchy_level: Hierarchy level (0=original, 1=daily, 2=weekly, 3=monthly)
+            time_bucket_start: Start of time bucket range (inclusive), e.g. "2026-02-01"
+            time_bucket_end: End of time bucket range (inclusive), e.g. "2026-02-28"
+            user_id: User identifier for multi-user filtering
+            top_k: Maximum number of results
+
+        Returns:
+            List of (context, score) tuples, score is 1.0 for non-vector searches
+        """
+        if not self._initialized:
+            return []
+
+        if context_type not in self._collections:
+            logger.warning(f"Collection not found for context_type: {context_type}")
+            return []
+
+        collection_name = self._collections[context_type]
+
+        must_conditions = [
+            models.FieldCondition(
+                key="hierarchy_level",
+                match=models.MatchValue(value=hierarchy_level),
+            )
+        ]
+
+        if time_bucket_start is not None:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="time_bucket",
+                    range=models.Range(gte=time_bucket_start),
+                )
+            )
+
+        if time_bucket_end is not None:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="time_bucket",
+                    range=models.Range(lte=time_bucket_end),
+                )
+            )
+
+        if user_id:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="user_id",
+                    match=models.MatchValue(value=user_id),
+                )
+            )
+
+        filter_condition = models.Filter(must=must_conditions)
+
+        try:
+            records, _ = self._client.scroll(
+                collection_name=collection_name,
+                scroll_filter=filter_condition,
+                limit=top_k,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            results = []
+            for point in records:
+                context = self._qdrant_result_to_context(point, need_vector=False)
+                if context:
+                    results.append((context, 1.0))
+
+            return results
+
+        except Exception as e:
+            logger.exception(
+                f"search_by_hierarchy failed for context_type={context_type}, "
+                f"hierarchy_level={hierarchy_level}: {e}"
+            )
+            return []
+
+    def get_by_ids(
+        self, ids: List[str], context_type: Optional[str] = None
+    ) -> List[ProcessedContext]:
+        """Get points by their IDs.
+
+        Used for drill-down from hierarchy summaries to retrieve specific contexts
+        by their IDs.
+
+        Args:
+            ids: List of context IDs to retrieve
+            context_type: Optional context type for routing to the correct collection.
+                          If None, searches all non-todo collections.
+
+        Returns:
+            List of ProcessedContext objects
+        """
+        if not self._initialized:
+            return []
+
+        if not ids:
+            return []
+
+        uuid_ids = [self._string_to_uuid(id) for id in ids]
+
+        target_collections = {}
+        if context_type and context_type in self._collections:
+            target_collections[context_type] = self._collections[context_type]
+        else:
+            target_collections = {
+                k: v for k, v in self._collections.items() if k != TODO_COLLECTION
+            }
+
+        results = []
+
+        for ct, collection_name in target_collections.items():
+            try:
+                points = self._client.retrieve(
+                    collection_name=collection_name,
+                    ids=uuid_ids,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+
+                for point in points:
+                    context = self._qdrant_result_to_context(point, need_vector=False)
+                    if context:
+                        results.append(context)
+
+            except Exception as e:
+                logger.debug(
+                    f"Failed to retrieve IDs from collection '{collection_name}': {e}"
+                )
+                continue
+
+        return results
