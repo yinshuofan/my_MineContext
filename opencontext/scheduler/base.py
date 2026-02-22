@@ -16,32 +16,35 @@ from typing import Any, Callable, Dict, List, Optional
 
 class TriggerMode(str, Enum):
     """Task trigger mode"""
+
     USER_ACTIVITY = "user_activity"  # Triggered by user activity, delayed execution
-    PERIODIC = "periodic"            # Fixed interval execution
-    CRON = "cron"                    # Cron expression based scheduling
+    PERIODIC = "periodic"  # Fixed interval execution
+    CRON = "cron"  # Cron expression based scheduling
 
 
 class TaskStatus(str, Enum):
     """Task execution status"""
-    PENDING = "pending"      # Waiting to be executed
-    RUNNING = "running"      # Currently executing
+
+    PENDING = "pending"  # Waiting to be executed
+    RUNNING = "running"  # Currently executing
     COMPLETED = "completed"  # Successfully completed
-    FAILED = "failed"        # Execution failed
+    FAILED = "failed"  # Execution failed
     CANCELLED = "cancelled"  # Cancelled
 
 
 @dataclass
 class TaskConfig:
     """Configuration for a task type"""
+
     name: str
     enabled: bool = True
     trigger_mode: TriggerMode = TriggerMode.USER_ACTIVITY
-    interval: int = 1800          # Execution interval in seconds
-    timeout: int = 300            # Execution timeout in seconds
-    task_ttl: int = 7200          # Task state TTL in seconds
-    max_retries: int = 3          # Maximum retry attempts
+    interval: int = 1800  # Execution interval in seconds
+    timeout: int = 300  # Execution timeout in seconds
+    task_ttl: int = 7200  # Task state TTL in seconds
+    max_retries: int = 3  # Maximum retry attempts
     description: str = ""
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
@@ -53,7 +56,7 @@ class TaskConfig:
             "max_retries": str(self.max_retries),
             "description": self.description,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TaskConfig":
         return cls(
@@ -71,6 +74,7 @@ class TaskConfig:
 @dataclass
 class TaskInfo:
     """Information about a scheduled task instance"""
+
     task_type: str
     user_key: str
     user_id: str
@@ -82,7 +86,7 @@ class TaskInfo:
     last_activity: int = field(default_factory=lambda: int(time.time()))
     retry_count: int = 0
     lock_token: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, str]:
         return {
             "task_type": self.task_type,
@@ -96,7 +100,7 @@ class TaskInfo:
             "last_activity": str(self.last_activity),
             "retry_count": str(self.retry_count),
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, str]) -> "TaskInfo":
         return cls(
@@ -116,12 +120,13 @@ class TaskInfo:
 @dataclass
 class UserKeyConfig:
     """Configuration for user key dimensions"""
-    use_user_id: bool = True       # Must be True
-    use_device_id: bool = True     # Whether to use device_id
-    use_agent_id: bool = True      # Whether to use agent_id
+
+    use_user_id: bool = True  # Must be True
+    use_device_id: bool = True  # Whether to use device_id
+    use_agent_id: bool = True  # Whether to use agent_id
     default_device_id: str = "default"
     default_agent_id: str = "default"
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "UserKeyConfig":
         return cls(
@@ -135,45 +140,42 @@ class UserKeyConfig:
 
 class IUserKeyBuilder(abc.ABC):
     """Interface for building user identification keys"""
-    
+
     @abc.abstractmethod
     def build_key(
-        self,
-        user_id: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        self, user_id: str, device_id: Optional[str] = None, agent_id: Optional[str] = None
     ) -> str:
         """
         Build a user key from the given dimensions.
-        
+
         Args:
             user_id: User identifier (required)
             device_id: Device identifier (optional)
             agent_id: Agent identifier (optional)
-            
+
         Returns:
             A string key combining the specified dimensions
         """
         pass
-    
+
     @abc.abstractmethod
     def parse_key(self, user_key: str) -> Dict[str, Optional[str]]:
         """
         Parse a user key back into its dimensions.
-        
+
         Args:
             user_key: The combined user key string
-            
+
         Returns:
             Dictionary with user_id, device_id, agent_id
         """
         pass
-    
+
     @abc.abstractmethod
     def get_key_dimensions(self) -> List[str]:
         """
         Get the list of dimensions currently in use.
-        
+
         Returns:
             List of dimension names (e.g., ["user_id", "device_id", "agent_id"])
         """
@@ -198,9 +200,7 @@ class ITaskScheduler(abc.ABC):
 
     @abc.abstractmethod
     def register_handler(
-        self,
-        task_type: str,
-        handler: Callable[[str, Optional[str], Optional[str]], bool]
+        self, task_type: str, handler: Callable[[str, Optional[str], Optional[str]], bool]
     ) -> bool:
         """
         Register a handler function for a task type.
@@ -220,7 +220,7 @@ class ITaskScheduler(abc.ABC):
         task_type: str,
         user_id: str,
         device_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
     ) -> bool:
         """
         Schedule a task for a specific user (async).
@@ -256,11 +256,7 @@ class ITaskScheduler(abc.ABC):
 
     @abc.abstractmethod
     async def complete_task(
-        self,
-        task_type: str,
-        user_key: str,
-        lock_token: str,
-        success: bool = True
+        self, task_type: str, user_key: str, lock_token: str, success: bool = True
     ) -> None:
         """
         Mark a task as completed and release the lock (async).

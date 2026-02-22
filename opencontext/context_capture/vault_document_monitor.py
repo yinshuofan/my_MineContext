@@ -33,7 +33,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
         super().__init__(
             name="VaultDocumentMonitor",
             description="Monitor document changes in vaults table",
-            source_type=ContextSource.TEXT,
+            source_type=ContextSource.INPUT,
         )
         self._storage = None
         self._monitor_interval = 5  # Monitor interval (seconds)

@@ -329,7 +329,7 @@ async def trigger_document_processing(
 
         # Create RawContextProperties
         context_data = RawContextProperties(
-            source=ContextSource.TEXT,
+            source=ContextSource.INPUT,
             content_format=ContentFormat.TEXT,
             content_text=document_data.get("content", ""),
             create_time=datetime.now(),

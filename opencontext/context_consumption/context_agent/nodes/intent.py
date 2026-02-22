@@ -235,9 +235,7 @@ class IntentNode(BaseNode):
                 {"role": "user", "content": prompt_template["user"].format(text=query)},
             ]
 
-            response = await generate_with_messages_async(
-                messages, thinking="disabled"
-            )
+            response = await generate_with_messages_async(messages, thinking="disabled")
 
             result = parse_json_from_response(response.strip())
             entities = []

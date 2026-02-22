@@ -137,9 +137,11 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                     conversation_id=request.conversation_id,
                     role="user",
                     content=request.query,
-                    is_complete=True
+                    is_complete=True,
                 )
-                logger.info(f"Created user message {user_message_id} in conversation {request.conversation_id}")
+                logger.info(
+                    f"Created user message {user_message_id} in conversation {request.conversation_id}"
+                )
 
                 # Update conversation title with user's question only if not already set
                 if request.query and request.query.strip():
@@ -147,16 +149,16 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                     if conversation and not conversation.get("title"):
                         title = request.query[:50].strip()
                         storage.update_conversation(
-                            conversation_id=request.conversation_id,
-                            title=title
+                            conversation_id=request.conversation_id, title=title
                         )
-                        logger.info(f"Set conversation {request.conversation_id} title from user query: {title}")
+                        logger.info(
+                            f"Set conversation {request.conversation_id} title from user query: {title}"
+                        )
 
             # Create streaming assistant message if conversation_id is provided
             if request.conversation_id:
                 assistant_message_id = storage.create_streaming_message(
-                    conversation_id=request.conversation_id,
-                    role="assistant"
+                    conversation_id=request.conversation_id, role="assistant"
                 )
                 logger.info(f"Created assistant streaming message {assistant_message_id}")
                 # Register this message as an active stream
@@ -196,31 +198,41 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                             message_id=assistant_message_id,
                             content=event.content,
                             stage=event.stage.value if event.stage else None,
-                            progress=event.progress if hasattr(event, 'progress') else 0.0,
-                            metadata=event.metadata if hasattr(event, 'metadata') else None
+                            progress=event.progress if hasattr(event, "progress") else 0.0,
+                            metadata=event.metadata if hasattr(event, "metadata") else None,
                         )
-                        logger.debug(f"Saved thinking to message {assistant_message_id}: stage={event.stage.value if event.stage else 'unknown'}, content_len={len(event.content)}")
+                        logger.debug(
+                            f"Saved thinking to message {assistant_message_id}: stage={event.stage.value if event.stage else 'unknown'}, content_len={len(event.content)}"
+                        )
                     elif event.type == EventType.STREAM_CHUNK:
                         # Only stream_chunk content goes to message.content
                         accumulated_content += event.content
                         storage.append_message_content(
                             message_id=assistant_message_id,
                             content_chunk=event.content,
-                            token_count=1  # Approximate token count
+                            token_count=1,  # Approximate token count
                         )
-                        logger.debug(f"Appended stream_chunk to message {assistant_message_id}: content_len={len(event.content)}")
+                        logger.debug(
+                            f"Appended stream_chunk to message {assistant_message_id}: content_len={len(event.content)}"
+                        )
                     else:
                         # Other event types (running, done, etc.) go to metadata as lists
                         event_type_key = event.type.value
                         if event_type_key not in event_metadata:
                             event_metadata[event_type_key] = []
-                        event_metadata[event_type_key].append({
-                            "content": event.content,
-                            "timestamp": event.timestamp.isoformat() if hasattr(event, 'timestamp') else None,
-                            "stage": event.stage.value if event.stage else None,
-                            "progress": event.progress if hasattr(event, 'progress') else None,
-                        })
-                        logger.debug(f"Added {event_type_key} event to metadata for message {assistant_message_id}")
+                        event_metadata[event_type_key].append(
+                            {
+                                "content": event.content,
+                                "timestamp": event.timestamp.isoformat()
+                                if hasattr(event, "timestamp")
+                                else None,
+                                "stage": event.stage.value if event.stage else None,
+                                "progress": event.progress if hasattr(event, "progress") else None,
+                            }
+                        )
+                        logger.debug(
+                            f"Added {event_type_key} event to metadata for message {assistant_message_id}"
+                        )
 
                 yield f"data: {json.dumps(converted_event, ensure_ascii=False)}\n\n"
 
@@ -228,10 +240,11 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                     # Update metadata with collected events before finishing
                     if assistant_message_id and event_metadata:
                         storage.update_message_metadata(
-                            message_id=assistant_message_id,
-                            metadata=event_metadata
+                            message_id=assistant_message_id, metadata=event_metadata
                         )
-                        logger.info(f"Updated message {assistant_message_id} metadata with {len(event_metadata)} event types")
+                        logger.info(
+                            f"Updated message {assistant_message_id} metadata with {len(event_metadata)} event types"
+                        )
 
                     # Mark assistant message as finished
                     if assistant_message_id:
@@ -239,7 +252,9 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                         storage.mark_message_finished(
                             message_id=assistant_message_id,
                             status=status,
-                            error_message=event.metadata.get("error") if status == "failed" else None
+                            error_message=event.metadata.get("error")
+                            if status == "failed"
+                            else None,
                         )
                         logger.info(f"Marked assistant message {assistant_message_id} as {status}")
                     break
@@ -249,13 +264,16 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                 # Update metadata with collected events
                 if event_metadata:
                     storage.update_message_metadata(
-                        message_id=assistant_message_id,
-                        metadata=event_metadata
+                        message_id=assistant_message_id, metadata=event_metadata
                     )
-                    logger.info(f"Updated interrupted message {assistant_message_id} metadata with {len(event_metadata)} event types")
+                    logger.info(
+                        f"Updated interrupted message {assistant_message_id} metadata with {len(event_metadata)} event types"
+                    )
 
                 # Mark message as cancelled (status already set by interrupt endpoint)
-                logger.info(f"Message {assistant_message_id} interrupted with {len(accumulated_content)} characters saved")
+                logger.info(
+                    f"Message {assistant_message_id} interrupted with {len(accumulated_content)} characters saved"
+                )
 
         except Exception as e:
             logger.exception(f"Stream chat failed: {e}")
@@ -264,9 +282,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
             if assistant_message_id and storage:
                 try:
                     storage.mark_message_finished(
-                        message_id=assistant_message_id,
-                        status="failed",
-                        error_message=str(e)
+                        message_id=assistant_message_id, status="failed", error_message=str(e)
                     )
                 except Exception as mark_error:
                     logger.exception(f"Failed to mark message as failed: {mark_error}")

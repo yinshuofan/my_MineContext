@@ -16,19 +16,20 @@ from opencontext.periodic_task.base import (
     TaskPriority,
     TaskResult,
 )
-from opencontext.periodic_task.registry import (
-    PeriodicTaskRegistry,
-    get_registry,
-    register_task,
-    get_task,
+from opencontext.periodic_task.data_cleanup import DataCleanupTask, create_cleanup_handler
+from opencontext.periodic_task.hierarchy_summary import (
+    HierarchySummaryTask,
+    create_hierarchy_handler,
 )
 from opencontext.periodic_task.memory_compression import (
     MemoryCompressionTask,
     create_compression_handler,
 )
-from opencontext.periodic_task.data_cleanup import (
-    DataCleanupTask,
-    create_cleanup_handler,
+from opencontext.periodic_task.registry import (
+    PeriodicTaskRegistry,
+    get_registry,
+    get_task,
+    register_task,
 )
 
 __all__ = [
@@ -50,7 +51,9 @@ __all__ = [
     # Task implementations
     "MemoryCompressionTask",
     "DataCleanupTask",
+    "HierarchySummaryTask",
     # Handler factories
     "create_compression_handler",
     "create_cleanup_handler",
+    "create_hierarchy_handler",
 ]

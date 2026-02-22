@@ -27,8 +27,10 @@ router = APIRouter(prefix="/api/agent/chat", tags=["agent_chat"])
 # This will be initialized when agent_chat module is loaded
 try:
     from opencontext.server.routes import agent_chat
+
     def get_active_streams():
         return agent_chat.active_streams
+
 except ImportError:
     # Fallback if agent_chat is not loaded yet
     def get_active_streams():
@@ -38,8 +40,10 @@ except ImportError:
 # --- Pydantic Models ---
 # Based on API spec 4.2.2 - 4.2.7
 
+
 class CreateMessageParams(BaseModel):
     """Request model for 4.2.2 Create Message"""
+
     conversation_id: int
     role: str
     content: str
@@ -49,6 +53,7 @@ class CreateMessageParams(BaseModel):
 
 class CreateStreamingMessageParams(BaseModel):
     """Request model for 4.2.3 Create Streaming Message"""
+
     conversation_id: int
     role: str
 
@@ -58,6 +63,7 @@ class UpdateMessageContentParams(BaseModel):
     Request model for 4.2.4 Update Message.
     Note: message_id is in the body per spec, though redundant with URL.
     """
+
     message_id: int
     new_content: str
     is_complete: Optional[bool] = False
@@ -69,6 +75,7 @@ class AppendMessageContentParams(BaseModel):
     Request model for 4.2.5 Append Message Content.
     Note: message_id is in the body per spec, though redundant with URL.
     """
+
     message_id: int
     content_chunk: str
     token_count: Optional[int] = None
@@ -76,6 +83,7 @@ class AppendMessageContentParams(BaseModel):
 
 class ConversationMessage(BaseModel):
     """Response model for a single message in a list (4.2.7)"""
+
     id: int
     conversation_id: int
     parent_message_id: Optional[str] = None
@@ -94,10 +102,12 @@ class ConversationMessage(BaseModel):
 
 class MessageInterruptResponse(BaseModel):
     """Response model for Interrupt Message"""
+
     message_id: str
 
 
 # --- API Endpoints ---
+
 
 @router.post("/message/{mid}/create", response_model=int)
 async def create_message(
@@ -123,8 +133,7 @@ async def create_message(
         )
 
         if not message_id:
-            raise HTTPException(
-                status_code=500, detail="Failed to create message")
+            raise HTTPException(status_code=500, detail="Failed to create message")
 
         return message_id
 
@@ -154,8 +163,7 @@ async def create_streaming_message(
         )
 
         if not message_id:
-            raise HTTPException(
-                status_code=500, detail="Failed to create streaming message")
+            raise HTTPException(status_code=500, detail="Failed to create streaming message")
 
         return message_id
 
@@ -182,12 +190,11 @@ async def update_message(
             message_id=mid,
             new_content=request.new_content,
             is_complete=request.is_complete,
-            token_count=request.token_count
+            token_count=request.token_count,
         )
 
         if not result:
-            raise HTTPException(
-                status_code=404, detail="Message not found or update failed")
+            raise HTTPException(status_code=404, detail="Message not found or update failed")
 
         return True
 
@@ -213,12 +220,11 @@ async def append_message(
         success = storage.append_message_content(
             message_id=mid,
             content_chunk=request.content_chunk,
-            token_count=request.token_count or 0
+            token_count=request.token_count or 0,
         )
 
         if not success:
-            raise HTTPException(
-                status_code=404, detail="Message not found or append failed")
+            raise HTTPException(status_code=404, detail="Message not found or append failed")
 
         return success
 
@@ -239,14 +245,10 @@ async def mark_message_finished_route(
         storage = get_storage()
 
         # Use mark_message_finished method
-        success = storage.mark_message_finished(
-            message_id=mid,
-            status='completed'
-        )
+        success = storage.mark_message_finished(message_id=mid, status="completed")
 
         if not success:
-            raise HTTPException(
-                status_code=404, detail="Message not found or update failed")
+            raise HTTPException(status_code=404, detail="Message not found or update failed")
 
         return success
 
@@ -299,14 +301,10 @@ async def interrupt_message_generation(
             logger.info(f"Set interrupt flag for active message {message_id}")
 
         # Also update database status
-        success = storage.mark_message_finished(
-            message_id=message_id,
-            status='cancelled'
-        )
+        success = storage.mark_message_finished(message_id=message_id, status="cancelled")
 
         if not success:
-            raise HTTPException(
-                status_code=404, detail="Message not found or interrupt failed")
+            raise HTTPException(status_code=404, detail="Message not found or interrupt failed")
 
         return MessageInterruptResponse(message_id=mid)
 

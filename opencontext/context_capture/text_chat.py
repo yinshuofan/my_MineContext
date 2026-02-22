@@ -1,6 +1,6 @@
 import asyncio
-import json
 import datetime
+import json
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -50,7 +50,7 @@ class TextChatCapture(BaseCaptureComponent):
         redis_config = config.get("redis", {})
 
         try:
-            from opencontext.storage.redis_cache import get_redis_cache, RedisCacheConfig
+            from opencontext.storage.redis_cache import RedisCacheConfig, get_redis_cache
 
             redis_cfg = RedisCacheConfig(
                 host=redis_config.get("host", "localhost"),
@@ -79,9 +79,13 @@ class TextChatCapture(BaseCaptureComponent):
     async def _ensure_redis(self):
         """确保 Redis 连接可用 (async)"""
         if not self._redis_cache:
-            raise RuntimeError("Redis cache not configured. TextChatCapture requires Redis in stateless mode.")
+            raise RuntimeError(
+                "Redis cache not configured. TextChatCapture requires Redis in stateless mode."
+            )
         if not await self._redis_cache.is_connected():
-            raise RuntimeError("Redis connection not available. TextChatCapture requires Redis in stateless mode.")
+            raise RuntimeError(
+                "Redis connection not available. TextChatCapture requires Redis in stateless mode."
+            )
 
     def _start_impl(self) -> bool:
         logger.info("TextChatCapture started (stateless mode).")
@@ -108,7 +112,9 @@ class TextChatCapture(BaseCaptureComponent):
         # 对于被动组件，此方法可能不常被主动调用，主要靠 push_message 触发
         return []
 
-    def _make_buffer_key(self, user_id: Optional[str], device_id: Optional[str], agent_id: Optional[str]) -> str:
+    def _make_buffer_key(
+        self, user_id: Optional[str], device_id: Optional[str], agent_id: Optional[str]
+    ) -> str:
         """生成缓冲区的 key"""
         # 使用 : 作为分隔符，处理 None 值
         parts = [
@@ -121,7 +127,7 @@ class TextChatCapture(BaseCaptureComponent):
     def _parse_buffer_key(self, key: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """解析缓冲区 key 为 (user_id, device_id, agent_id)"""
         if key.startswith(self.BUFFER_KEY_PREFIX):
-            key = key[len(self.BUFFER_KEY_PREFIX):]
+            key = key[len(self.BUFFER_KEY_PREFIX) :]
         parts = key.split(":")
         if len(parts) >= 3:
             return (
@@ -136,7 +142,7 @@ class TextChatCapture(BaseCaptureComponent):
         messages: List[Dict[str, Any]],
         user_id: Optional[str],
         device_id: Optional[str],
-        agent_id: Optional[str]
+        agent_id: Optional[str],
     ):
         """创建 RawContext 并发送到处理管道"""
         if not messages:
@@ -153,7 +159,7 @@ class TextChatCapture(BaseCaptureComponent):
             content_text=chat_content_str,
             additional_info={
                 "message_count": len(messages),
-                "roles": list(set(m["role"] for m in messages))
+                "roles": list(set(m["role"] for m in messages)),
             },
             # 多用户支持字段
             user_id=user_id,
@@ -170,7 +176,7 @@ class TextChatCapture(BaseCaptureComponent):
         messages: List[Dict[str, Any]],
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
     ):
         """
         直接处理聊天消息，跳过 Redis 缓冲区，立即发送到处理管道。
@@ -201,18 +207,19 @@ class TextChatCapture(BaseCaptureComponent):
                 try:
                     # 使用异步 Redis 操作刷新缓冲区
                     lock_token = await self._redis_cache.acquire_lock(
-                        f"flush:{key}",
-                        timeout=30,
-                        blocking=True,
-                        blocking_timeout=5.0
+                        f"flush:{key}", timeout=30, blocking=True, blocking_timeout=5.0
                     )
                     if lock_token:
                         try:
                             messages = await self._redis_cache.lrange_json(key, 0, -1)
                             if messages:
-                                self._create_and_send_context(messages, user_id, device_id, agent_id)
+                                self._create_and_send_context(
+                                    messages, user_id, device_id, agent_id
+                                )
                                 await self._redis_cache.delete(key)
-                                logger.info(f"Flushed {len(messages)} chat messages for {key} to pipeline.")
+                                logger.info(
+                                    f"Flushed {len(messages)} chat messages for {key} to pipeline."
+                                )
                         finally:
                             await self._redis_cache.release_lock(f"flush:{key}", lock_token)
                 except Exception as e:
@@ -257,7 +264,7 @@ class TextChatCapture(BaseCaptureComponent):
         content: str,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
     ):
         """
         供外部聊天机器人调用的接口，推入新消息。
@@ -275,7 +282,7 @@ class TextChatCapture(BaseCaptureComponent):
         message = {
             "role": role,
             "content": content,
-            "timestamp": datetime.datetime.now().isoformat()
+            "timestamp": datetime.datetime.now().isoformat(),
         }
 
         buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
@@ -291,7 +298,9 @@ class TextChatCapture(BaseCaptureComponent):
             buffer_len = await self._redis_cache.llen(buffer_key)
 
             if buffer_len >= self._buffer_size:
-                logger.info(f"Buffer size reached {self._buffer_size} for {buffer_key}, flushing messages.")
+                logger.info(
+                    f"Buffer size reached {self._buffer_size} for {buffer_key}, flushing messages."
+                )
                 await self._flush_buffer(buffer_key, user_id, device_id, agent_id)
 
         except Exception as e:
@@ -303,7 +312,7 @@ class TextChatCapture(BaseCaptureComponent):
         buffer_key: str,
         user_id: Optional[str],
         device_id: Optional[str],
-        agent_id: Optional[str]
+        agent_id: Optional[str],
     ):
         """刷新 Redis 中的缓冲区，使用非阻塞的异步锁"""
         await self._ensure_redis()
@@ -311,10 +320,7 @@ class TextChatCapture(BaseCaptureComponent):
         try:
             # 使用异步分布式锁确保原子操作（不会阻塞事件循环）
             lock_token = await self._redis_cache.acquire_lock(
-                f"flush:{buffer_key}",
-                timeout=30,
-                blocking=True,
-                blocking_timeout=5.0
+                f"flush:{buffer_key}", timeout=30, blocking=True, blocking_timeout=5.0
             )
 
             if not lock_token:
@@ -348,7 +354,7 @@ class TextChatCapture(BaseCaptureComponent):
         self,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
     ):
         """
         手动刷新指定用户的缓冲区。
@@ -372,7 +378,7 @@ class TextChatCapture(BaseCaptureComponent):
         self,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
     ) -> int:
         """
         获取指定用户缓冲区中的消息数量。

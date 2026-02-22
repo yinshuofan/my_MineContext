@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MineContext is a **memory backend** system that captures, processes, stores, and retrieves context/memory from multiple sources (chat logs, documents, screenshots, web links). It uses vector embeddings and LLM-powered analysis to organize information into typed memory contexts. Originally derived from a desktop office assistant (OpenContext), it now serves as a standalone memory processing service.
+MineContext is a **memory backend service** that captures, processes, stores, and retrieves context/memory from multiple sources (chat logs, documents, web links). It uses vector embeddings and LLM-powered analysis to organize information into 5 typed memory contexts with type-specific update strategies and storage routing.
 
 ## Common Commands
 
@@ -27,45 +27,132 @@ pre-commit run --all-files
 docker-compose up
 ```
 
-There is no test suite in this project currently.
+There is no test suite in this project currently. To verify changes compile-check with:
+```bash
+python -m py_compile opencontext/path/to/file.py
+```
 
 ## Architecture
 
-### Data Pipeline: Capture → Process → Store → Consume
+### 5-Type Context System
 
-The system follows a 4-stage pipeline:
+All data flows through a unified `ProcessedContext` model, but each type has its own update strategy and storage destination. This is the central design decision — understand it before modifying any storage, processing, or retrieval code.
 
-1. **Capture** (`opencontext/context_capture/`): Collects raw data from sources (screenshots, chat logs, documents, web links, folder monitoring). Each capture component implements `ICaptureComponent` and produces `RawContextProperties`.
+| Type | Update Strategy | Storage | Description |
+|------|----------------|---------|-------------|
+| `profile` | OVERWRITE | Relational DB | User's own preferences, habits, communication style. Key: `(user_id, agent_id)` |
+| `entity` | OVERWRITE | Relational DB | Other people, projects, teams, organizations. Key: `(user_id, entity_name)` |
+| `document` | OVERWRITE | Vector DB | Uploaded files and web links. Overwrite = delete old chunks + insert new. Tracked by `source_file_key` |
+| `event` | APPEND | Vector DB | Immutable activity records, meetings, status changes. Never modified after creation |
+| `knowledge` | APPEND_MERGE | Vector DB | Reusable concepts, procedures, patterns. Similar entries merged to avoid duplication |
 
-2. **Process** (`opencontext/context_processing/`): Transforms raw data into structured `ProcessedContext`. The `ProcessorFactory` routes by `ContextSource`:
-   - `SCREENSHOT` → `ScreenshotProcessor`
+Defined in `opencontext/models/enums.py`:
+- `ContextType` enum — the 5 types
+- `UpdateStrategy` enum — OVERWRITE, APPEND, APPEND_MERGE
+- `CONTEXT_UPDATE_STRATEGIES` dict — type → strategy mapping
+- `CONTEXT_STORAGE_BACKENDS` dict — type → `"document_db"` or `"vector_db"`
+- `ContextDescriptions` dict — rich descriptions with `key_indicators`, `examples`, `classification_priority` (used by LLM prompts for classification)
+
+### Data Pipeline
+
+```
+Input → Processor → ProcessedContext → _handle_processed_context (routes by type) → Storage
+```
+
+1. **Process** (`opencontext/context_processing/`): `ProcessorFactory` routes by `ContextSource`:
    - `LOCAL_FILE`, `VAULT`, `WEB_LINK` → `DocumentProcessor`
    - `CHAT_LOG`, `INPUT` → `TextChatProcessor`
+   - Entity extraction → `EntityProcessor`
 
-   Processing includes chunking, entity/keyword extraction via LLM, and embedding vectorization. The context merger handles deduplication and similarity-based merging.
+2. **Route** (`opencontext/server/opencontext.py` → `_handle_processed_context()`): The central routing point. Reads `CONTEXT_STORAGE_BACKENDS` to decide per context:
+   - profile → `storage.upsert_profile()` → relational DB
+   - entity → `storage.upsert_entity()` → relational DB
+   - document/event/knowledge → `storage.batch_upsert_processed_context()` → vector DB
 
-3. **Store** (`opencontext/storage/`): `UnifiedStorage` abstracts over dual backends:
-   - **Document DB** (MySQL or SQLite) for structured context data
-   - **Vector DB** (VikingDB, DashVector, Qdrant, or ChromaDB) for semantic search
+3. **Store** (`opencontext/storage/`): `UnifiedStorage` wraps dual backends:
+   - **Document DB** (MySQL or SQLite) — profiles table, entities table, plus context metadata
+   - **Vector DB** (VikingDB, ChromaDB, or Qdrant) — document/event/knowledge embeddings
 
-   Access via `GlobalStorage.get_instance()`.
+### Hierarchical Event Indexing
 
-4. **Consume** (`opencontext/context_consumption/`): Agent-based chat with workflow stages (Intent → Context Retrieval → Execution → Reflection), smart completions, and content generation (tips, todos, reports).
+Events support a 4-level time-based hierarchy for efficient historical retrieval:
+- **L0** — raw individual events
+- **L1** — daily summaries (`time_bucket: "2026-02-21"`)
+- **L2** — weekly summaries (`time_bucket: "2026-W08"`)
+- **L3** — monthly summaries (`time_bucket: "2026-02"`)
+
+Key fields on `ContextProperties`: `hierarchy_level`, `parent_id`, `children_ids`, `time_bucket`.
+
+`HierarchicalEventTool` retrieval algorithm: search L1-L3 summaries top-down → drill through `children_ids` to L0 → merge with direct L0 semantic search as fallback → deduplicate by ID keeping higher score.
+
+Periodic task `hierarchy_summary.py` generates summaries on schedule (daily/weekly/monthly).
+
+### Retrieval Tools
+
+4 type-aligned tools registered in `opencontext/tools/tool_definitions.py`:
+
+| Tool | Types Searched | Backend | Strategy |
+|------|---------------|---------|----------|
+| `ProfileEntityTool` | profile, entity | Relational DB | Exact name lookup + text search |
+| `DocumentRetrievalTool` | document | Vector DB | Semantic similarity search |
+| `KnowledgeRetrievalTool` | knowledge, event (L0) | Vector DB | Semantic similarity search |
+| `HierarchicalEventTool` | event (all levels) | Vector DB | Summary drill-down + L0 fallback |
+
+### Unified Search API (`POST /api/search`)
+
+Two strategies available via `opencontext/server/search/`:
+
+- **Fast** (`fast_strategy.py`): Zero LLM calls. Single embedding generation shared across all parallel storage queries via `asyncio.to_thread()`. Events filtered to L0 only, with parent summaries batch-attached.
+- **Intelligent** (`intelligent_strategy.py`): LLM-driven agentic search. Uses `LLMContextStrategy` to select and execute retrieval tools. More accurate but slower.
+
+Both return `TypedResults` with `profile`, `entities`, `documents`, `events`, `knowledge` fields.
+
+Search results are automatically tracked as "recently accessed" via fire-and-forget `asyncio.create_task()` in the search route (see Memory Cache below).
+
+### Memory Cache (`GET /api/memory-cache`)
+
+Provides a single-call snapshot of a user's complete memory state, designed for downstream services that need quick access without running full searches. Located in `opencontext/server/cache/`.
+
+**Three sections returned:**
+1. **Profile + Entities** — from relational DB (cached in snapshot)
+2. **Recently Accessed** — memories returned in past searches; stored in Redis Hash, always read real-time (not part of snapshot)
+3. **Recent Memories** — hierarchical: today's L0 events + past N days' L1 daily summaries + recent documents/knowledge (cached in snapshot)
+
+**Caching architecture (snapshot vs accessed are separate):**
+
+| Data | Storage | Update Trigger | Read Mode |
+|------|---------|---------------|-----------|
+| Snapshot (profile + entities + recent memories) | Redis JSON String, 5-min TTL | Invalidated on push/write | Cache hit → return; miss → rebuild from DB |
+| Recently Accessed | Redis Hash, 7-day TTL | Updated on every search | Always real-time from Redis |
+
+**Key design decisions:**
+- **Stampede prevention**: Distributed lock (`RedisCache.acquire_lock()`) + double-check pattern in `get_user_memory_cache()`. Lock timeout falls back to building without caching (duplicate build OK, better than failing).
+- **Auto-invalidation**: `_invalidate_user_cache()` in `opencontext.py` fires after profile/entity/vector writes. Uses `asyncio.run_coroutine_threadsafe()` to bridge sync→async (see pitfall below).
+- **Parallel snapshot build**: 6 concurrent `asyncio.to_thread()` queries via `asyncio.gather()`.
+- **Singleton manager**: `get_memory_cache_manager()` in `memory_cache_manager.py`. All callers (route, search hook, opencontext.py invalidation) use the same instance.
+
+Config section in `config/config.yaml`: `memory_cache` (snapshot_ttl, recent_days, max_recently_accessed, etc.).
+
+### Storage Access
+
+**Always use `get_storage()` from `opencontext/storage/global_storage.py`** to get the `UnifiedStorage` instance. This returns the object with all profile/entity/hierarchy methods.
+
+Do NOT use `GlobalStorage.get_instance()` or `get_global_storage()` — these return the raw `GlobalStorage` wrapper which lacks `upsert_profile()`, `get_entity()`, `search_hierarchy()`, etc.
 
 ### Server Layer
 
-- **Entry point**: `opencontext/cli.py` → `opencontext start` command
+- **Entry point**: `opencontext/cli.py` → `opencontext start`
 - **Framework**: FastAPI on Uvicorn, port 1733
-- **Main class**: `opencontext/server/opencontext.py` → `OpenContext` orchestrates all components
-- **Routes**: `opencontext/server/routes/` — context CRUD, agent chat, completions, documents, conversations, messages, push API, etc.
-- **Auth**: API key via `X-API-Key` header (`opencontext/server/middleware/auth.py`), disabled by default
+- **Orchestrator**: `opencontext/server/opencontext.py` → `OpenContext`
+- **Auth**: API key via `X-API-Key` header, disabled by default
 
-### Key Data Models (`opencontext/models/`)
+### Key Data Models (`opencontext/models/context.py`)
 
-- **`RawContextProperties`**: Raw input with `source`, `content_format`, `content_text/content_path`, multi-user fields (`user_id`, `device_id`, `agent_id`)
-- **`ProcessedContext`**: Stored context with `ContextProperties`, `ExtractedData` (title, summary, keywords, entities, importance, confidence), `Vectorize` (embedding text + vector)
-- **`ContextType` enum**: `entity_context`, `activity_context`, `intent_context`, `semantic_context`, `procedural_context`, `state_context`, `knowledge_context`
-- **`ContextSource` enum**: `screenshot`, `vault`, `local_file`, `web_link`, `input`, `chat_log`
+- `ProcessedContext` — the universal intermediate format all processors produce
+- `ContextProperties` — includes `hierarchy_level`, `parent_id`, `children_ids`, `time_bucket`, `source_file_key`, `enable_merge`
+- `ProfileData` — relational DB model for user profiles (PK: `user_id + agent_id`)
+- `EntityData` — relational DB model for entities (PK: `user_id + entity_name`)
+- `ProcessedContextModel` — API response model, must mirror all fields from `ContextProperties` that should be exposed
 
 ### LLM Integration (`opencontext/llm/`)
 
@@ -76,22 +163,22 @@ Three global singletons accessed via `get_instance()`:
 
 All use OpenAI-compatible API format.
 
-### Singletons Pattern
+### Prompts (`config/prompts_en.yaml`, `config/prompts_zh.yaml`)
 
-Core components use singleton pattern with `get_instance()`:
-- `GlobalConfig` — configuration from YAML + env vars
-- `GlobalStorage` — unified storage access
-- `GlobalEmbeddingClient`, `GlobalVLMClient` — LLM clients
+LLM prompts for extraction, classification, merging, and hierarchy summarization. Loaded by `PromptManager`. When modifying the type system, all prompts referencing context types must be updated in both language files.
 
-### Scheduling (`opencontext/scheduler/`, `opencontext/periodic_task/`)
+### Scheduling (`opencontext/periodic_task/`)
 
-APScheduler with Redis backend for distributed task scheduling. Tasks include `MemoryCompression` (deduplication) and `DataCleanup`. Multi-user support via `UserKeyBuilder` composite keys.
+APScheduler with Redis backend. Registered tasks:
+- `MemoryCompressionTask` — deduplicates similar contexts (knowledge type only)
+- `DataCleanupTask` — retention-based cleanup
+- `HierarchySummaryTask` — generates L1/L2/L3 event summaries
 
 ## Configuration
 
 - Main config: `config/config.yaml` — YAML with `${ENV_VAR:default}` syntax
 - Environment variables: copy `.env.example` to `.env`
-- Key env vars: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `MYSQL_HOST`, `MYSQL_PASSWORD`, `REDIS_HOST`, `VIKINGDB_ACCESS_KEY_ID`
+- Key env vars: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `MYSQL_HOST`, `MYSQL_PASSWORD`, `REDIS_HOST`
 - Service mode (`service_mode.enabled: true`): stateless deployment requiring external Redis + MySQL/vector DB
 
 ## Code Style
@@ -101,8 +188,49 @@ APScheduler with Redis backend for distributed task scheduling. Tasks include `M
 - Logging: `loguru` via `from opencontext.utils.logging_utils import get_logger`
 - Pre-commit hooks auto-format on commit
 
+## Pitfalls and Lessons Learned
+
+These are real bugs encountered during development. Check for them when modifying related code.
+
+### Storage singleton confusion
+`get_storage()` returns `UnifiedStorage` (has profile/entity/hierarchy methods). `GlobalStorage.get_instance()` and `get_global_storage()` return `GlobalStorage` (lacks those methods). Always use `get_storage()` from `opencontext.storage.global_storage`.
+
+### Qdrant Range filter only supports numeric/datetime
+Qdrant's `models.Range(gte=..., lte=...)` does NOT work on string fields like `time_bucket`. Use in-code string comparison filtering instead (over-fetch with `top_k * 3`, then filter). See `qdrant_backend.py` `search_by_hierarchy()` for the pattern.
+
+### ProcessedContextModel must declare all exposed fields
+If you add a field to `ContextProperties` and want it in API responses, you must also declare it on `ProcessedContextModel` and update `from_processed_context()`. Missing declarations cause silent Pydantic field drops.
+
+### MySQL lastrowid is 0 for VARCHAR primary keys
+`cursor.lastrowid` only returns meaningful values for auto-increment integer PKs. For UUID/VARCHAR PKs (like the entities table), always SELECT back the persisted ID instead of relying on lastrowid.
+
+### Use timezone-aware datetime everywhere
+`datetime.utcfromtimestamp()` is deprecated in Python 3.12+. Use `datetime.fromtimestamp(ts, tz=datetime.timezone.utc)` instead. The same applies to `datetime.utcnow()` — use `datetime.now(tz=datetime.timezone.utc)`.
+
+### Context merger only handles knowledge type
+The merger (`context_merger.py`) now only processes `knowledge` contexts. Profile/entity use relational DB overwrite, document uses delete+insert, event is immutable append. Do not route non-knowledge types through the merger.
+
+### Prompt files must stay in sync
+`config/prompts_en.yaml` and `config/prompts_zh.yaml` must have identical keys. When adding/removing context types or changing classification logic, update both files and all `ContextDescriptions` in `enums.py`.
+
+### EntityData.relationships stored in metadata JSON
+The `relationships` field on `EntityData` is not a separate DB column — it's serialized inside the `metadata` JSON column. Keep this in mind when querying relationships.
+
+### MySQL connections are not thread-safe
+`pymysql` connections cannot be shared across threads. When using `asyncio.to_thread()` for parallel queries (e.g., in `FastSearchStrategy`), each thread needs its own connection. `MySQLBackend` uses `threading.local()` for per-thread connections. Never revert to a single shared `self.connection`.
+
+### VikingDB hierarchy_level filter requires range format
+VikingDB stores `hierarchy_level` as float32. Equality checks like `"hierarchy_level": 0` don't work. Use range format: `{"$gte": 0, "$lte": 0}`. This applies to all numeric filters in VikingDB.
+
+### Context type routing must match CONTEXT_STORAGE_BACKENDS
+`_handle_processed_context()` in `opencontext.py` routes profile/entity to MySQL and others to VikingDB. If you bypass this (e.g., calling `batch_upsert_processed_context()` for all types), profile/entity data will be stored in VikingDB instead of MySQL, making it unretrievable by the profile/entity search paths.
+
+### Use `run_coroutine_threadsafe` not `create_task` from sync blocking code
+When sync code runs inside the event loop thread (e.g., `_handle_processed_context` via `asyncio.to_thread`), `loop.create_task()` schedules the coroutine but never reliably wakes the event loop to execute it. Use `asyncio.run_coroutine_threadsafe(coro, loop)` instead — it calls `loop.call_soon_threadsafe()` internally, which writes to the event loop's self-pipe to wake it. The `_capture_loop()` pattern stores the loop reference from async entry points so sync callers can access it later.
+
 ## Extending the System
 
-- **New capture source**: Implement `ICaptureComponent` from `opencontext/interfaces/capture_interface.py`, return `List[RawContextProperties]`
-- **New processor**: Extend `BaseContextProcessor` from `opencontext/context_processing/processor/base_processor.py`, implement `can_process()` and `process()`
-- **New storage backend**: Add to `opencontext/storage/backends/`, register in factory
+- **New context type**: Add to `ContextType` enum, `UpdateStrategy`, both mapping dicts, `ContextDescriptions`, `ContextSimpleDescriptions`, and update all prompt files
+- **New processor**: Extend `BaseContextProcessor`, implement `can_process()` and `process()`, register in `ProcessorFactory`
+- **New storage backend**: Implement `IVectorStorageBackend` or `IDocumentStorageBackend` from `base_storage.py`, register in factory
+- **New retrieval tool**: Extend `BaseTool`, register in `tool_definitions.py` and `tools_executor.py`

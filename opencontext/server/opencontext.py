@@ -17,9 +17,9 @@ from opencontext.config.global_config import GlobalConfig
 from opencontext.llm.global_embedding_client import GlobalEmbeddingClient
 from opencontext.llm.global_vlm_client import GlobalVLMClient
 from opencontext.managers.capture_manager import ContextCaptureManager
-from opencontext.managers.consumption_manager import ConsumptionManager
 from opencontext.managers.processor_manager import ContextProcessorManager
 from opencontext.models.context import ProcessedContext, RawContextProperties
+from opencontext.models.enums import CONTEXT_STORAGE_BACKENDS, ContextType
 from opencontext.server.component_initializer import ComponentInitializer
 from opencontext.server.context_operations import ContextOperations
 from opencontext.storage.global_storage import GlobalStorage
@@ -42,10 +42,6 @@ class OpenContext:
         # Initialize core components
         self.capture_manager = ContextCaptureManager()
         self.processor_manager = ContextProcessorManager()
-
-        self.consumption_manager: Optional[ConsumptionManager] = None
-        self.workflow_engine = None  # New Agent-based workflow engine
-        self.completion_service = None  # Smart completion service
 
         # Helper classes
         self.component_initializer = ComponentInitializer()
@@ -70,36 +66,23 @@ class OpenContext:
             GlobalVLMClient.get_instance()
 
             self.storage = GlobalStorage.get_instance().get_storage()
-            
 
             self.context_operations = ContextOperations()
             self.capture_manager.set_callback(self._handle_captured_context)
-            self.component_initializer.initialize_capture_components(
-                self.capture_manager)
+            self.component_initializer.initialize_capture_components(self.capture_manager)
             logger.info("Capture modules initialization completed")
             self.component_initializer.initialize_processors(
                 self.processor_manager, self._handle_processed_context
             )
-            
+
             # Initialize task scheduler after processors (to reuse merger)
             self.component_initializer.initialize_task_scheduler(self.processor_manager)
-            
-            # Initialize consumption components only if enabled
-            consumption_config = GlobalConfig.get_instance().get_config().get("consumption", {})
-            if consumption_config.get("enabled", True):
-                self.consumption_manager = (
-                    self.component_initializer.initialize_consumption_components()
-                )
-                self.completion_service = self.component_initializer.initialize_completion_service()
-                logger.info("Consumption components initialized")
-            else:
-                logger.info("Consumption components disabled by configuration")
+
             self._initialize_monitoring()
             logger.info("All components initialization completed successfully")
 
         except Exception as e:
-            logger.error(
-                f"Failed to initialize components: {e}", exc_info=True)
+            logger.error(f"Failed to initialize components: {e}", exc_info=True)
             self.shutdown(graceful=False)
             raise
 
@@ -111,8 +94,7 @@ class OpenContext:
             initialize_monitor()
             logger.info("Monitoring system initialized with storage backend")
         except ImportError:
-            logger.warning(
-                "Monitoring module not available, skipping monitoring initialization")
+            logger.warning("Monitoring module not available, skipping monitoring initialization")
         except Exception as e:
             logger.error(f"Failed to initialize monitoring system: {e}")
 
@@ -133,26 +115,116 @@ class OpenContext:
 
     def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool:
         """
-        Store processed contexts.
+        Store processed contexts, routing by type per CONTEXT_STORAGE_BACKENDS.
 
-        Args:
-            contexts: List of processed contexts to store
-
-        Returns:
-            True if storage was successful, False otherwise
+        - profile/entity → relational DB (MySQL)
+        - document/event/knowledge → vector DB (VikingDB)
         """
         if not contexts:
             return False
 
-        if self.storage:
-            try:
-                return self.storage.batch_upsert_processed_context(contexts)
-            except Exception as e:
-                logger.error(f"Error storing processed contexts: {e}")
-                return False
-        else:
+        if not self.storage:
             logger.warning("Storage is not initialized.")
             return False
+
+        try:
+            vector_contexts = []
+            for ctx in contexts:
+                ctx_type = ctx.extracted_data.context_type
+                backend = CONTEXT_STORAGE_BACKENDS.get(ctx_type, "vector_db")
+
+                if backend == "document_db":
+                    if ctx_type == ContextType.PROFILE:
+                        self._store_profile(ctx)
+                    elif ctx_type == ContextType.ENTITY:
+                        self._store_entities(ctx)
+                else:
+                    vector_contexts.append(ctx)
+
+            success = True
+            if vector_contexts:
+                success = self.storage.batch_upsert_processed_context(vector_contexts)
+                # Invalidate memory cache for affected users
+                user_ids_seen = set()
+                for ctx in vector_contexts:
+                    uid = ctx.properties.user_id
+                    if uid and uid not in user_ids_seen:
+                        user_ids_seen.add(uid)
+                        self._invalidate_user_cache(uid, ctx.properties.agent_id)
+            return success
+        except Exception as e:
+            logger.error(f"Error storing processed contexts: {e}")
+            return False
+
+    def _store_profile(self, ctx: ProcessedContext) -> None:
+        """Store a profile context to relational DB."""
+        ed = ctx.extracted_data
+        props = ctx.properties
+        self.storage.upsert_profile(
+            user_id=props.user_id or "default",
+            agent_id=props.agent_id or "default",
+            content=ed.summary or "",
+            summary=ed.summary,
+            keywords=ed.keywords,
+            entities=ed.entities,
+            importance=ed.importance,
+            metadata=ctx.metadata,
+        )
+        logger.info(f"Profile stored for user={props.user_id}, agent={props.agent_id}")
+        self._invalidate_user_cache(props.user_id, props.agent_id)
+
+    def _store_entities(self, ctx: ProcessedContext) -> None:
+        """Store entity contexts to relational DB."""
+        ed = ctx.extracted_data
+        props = ctx.properties
+        for entity_name in ed.entities:
+            self.storage.upsert_entity(
+                user_id=props.user_id or "default",
+                entity_name=entity_name,
+                content=ed.summary or "",
+                entity_type=None,
+                summary=ed.summary,
+                keywords=ed.keywords,
+                metadata=ctx.metadata,
+            )
+            logger.info(f"Entity '{entity_name}' stored for user={props.user_id}")
+        self._invalidate_user_cache(props.user_id, props.agent_id)
+
+    def _invalidate_user_cache(
+        self, user_id: Optional[str], agent_id: Optional[str] = None
+    ) -> None:
+        """Fire-and-forget cache invalidation. Uses thread-safe submission if no event loop."""
+        if not user_id:
+            return
+        try:
+            import asyncio
+
+            from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
+
+            manager = get_memory_cache_manager()
+            aid = agent_id or "default"
+
+            # Always use run_coroutine_threadsafe — works from both event loop
+            # and background threads. Preferred over create_task which may not
+            # execute from sync call contexts.
+            loop = manager._loop
+            if not loop:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    manager.invalidate_snapshot(user_id, aid), loop
+                )
+                logger.debug(f"Cache invalidation submitted for user={user_id}")
+            else:
+                logger.debug(
+                    f"Cache invalidation skipped (no event loop) for user={user_id}"
+                )
+        except Exception as e:
+            logger.debug(f"Cache invalidation failed for user={user_id}: {e}")
 
     def start_capture(self) -> None:
         """Start all capture components."""
@@ -173,22 +245,13 @@ class OpenContext:
         logger.info("Shutting down all components...")
 
         try:
-            # Stop content generation scheduled tasks
-            if self.consumption_manager:
-                try:
-                    self.consumption_manager.stop_scheduled_tasks()
-                    logger.info("Content generation scheduled tasks stopped")
-                except Exception as e:
-                    logger.warning(
-                        f"Error stopping content generation scheduled tasks: {e}")
-
             # Stop task scheduler
             try:
                 self.component_initializer.stop_task_scheduler()
                 logger.info("Task scheduler stopped")
             except Exception as e:
                 logger.warning(f"Error stopping task scheduler: {e}")
-            
+
             # Shutdown managers
             self.capture_manager.shutdown(graceful=graceful)
             self.processor_manager.shutdown(graceful=graceful)
@@ -246,15 +309,6 @@ class OpenContext:
             return False
         return self.context_operations.delete_context(doc_id, context_type)
 
-    def add_screenshot(self, path: str, window: str, create_time: str, app: str) -> Optional[str]:
-        """Add a screenshot to the system."""
-        if not self.context_operations:
-            logger.warning("Context operations not initialized.")
-            return "Context operations not initialized"
-        return self.context_operations.add_screenshot(
-            path, window, create_time, app, self.add_context
-        )
-
     def add_document(self, file_path: str) -> Optional[str]:
         """Add a document to the system."""
         if not self.context_operations:
@@ -286,8 +340,13 @@ class OpenContext:
         if not self.context_operations:
             raise RuntimeError("Context operations not initialized")
         return self.context_operations.search(
-            query, top_k, context_types, filters,
-            user_id=user_id, device_id=device_id, agent_id=agent_id
+            query,
+            top_k,
+            context_types,
+            filters,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
         )
 
     def get_context_types(self) -> List[str]:
@@ -304,7 +363,6 @@ class OpenContext:
             "llm": GlobalEmbeddingClient.get_instance().is_initialized()
             and GlobalVLMClient.get_instance().is_initialized(),
             "capture": bool(self.capture_manager),
-            "consumption": bool(self.consumption_manager),
         }
 
 
@@ -316,12 +374,9 @@ def main():
 
     parser = argparse.ArgumentParser(description="OpenContext Server")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=1733,
-                        help="Port to bind to")
-    parser.add_argument(
-        "--config", help="Configuration file path", default="./config/config.yaml")
-    parser.add_argument("--reload", action="store_true",
-                        help="Enable auto-reload for development")
+    parser.add_argument("--port", type=int, default=1733, help="Port to bind to")
+    parser.add_argument("--config", help="Configuration file path", default="./config/config.yaml")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
 
     args = parser.parse_args()
 

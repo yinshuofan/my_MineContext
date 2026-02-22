@@ -9,8 +9,10 @@
 
 from opencontext.models.context import (
     ContextProperties,
+    EntityData,
     ExtractedData,
     ProcessedContext,
+    ProfileData,
     RawContextProperties,
 )
 from opencontext.models.enums import ContentFormat, ContextSource
@@ -20,6 +22,8 @@ __all__ = [
     "ProcessedContext",
     "ExtractedData",
     "ContextProperties",
+    "ProfileData",
+    "EntityData",
     "ContextSource",
     "ContentFormat",
 ]

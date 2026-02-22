@@ -78,23 +78,18 @@ class BaseContextRetrievalTool(BaseTool):
             if filters.time_range.end:
                 build_filter[time_type]["$lte"] = filters.time_range.end
 
-        # Entity filter with normalization
+        # Entity filter with normalization via match_entity()
         if filters.entities is not None and filters.entities:
-            # Use Profile entity tool to handle entity unification
-            unify_result = self.profile_entity_tool.execute(
-                entities=filters.entities, operation="match_entities", context_info=""
-            )
-            if unify_result.get("success"):
-                # Extract matched standardized entity names
-                matches = unify_result.get("matches", [])
-                unified_entities = [
-                    match.get("entity_canonical_name", match["input_entity"]) for match in matches
-                ]
-                if not unified_entities:
-                    unified_entities = filters.entities
-                build_filter["entities"] = unified_entities
-            else:
-                build_filter["entities"] = filters.entities
+            unified_entities = []
+            for entity_name in filters.entities:
+                try:
+                    matched_name, _ = self.profile_entity_tool.match_entity(
+                        entity_name, user_id=filters.user_id
+                    )
+                    unified_entities.append(matched_name if matched_name else entity_name)
+                except Exception:
+                    unified_entities.append(entity_name)
+            build_filter["entities"] = unified_entities
 
         return build_filter
 
@@ -158,7 +153,7 @@ class BaseContextRetrievalTool(BaseTool):
         }
 
         # Add context type description
-        context_desc = ContextSimpleDescriptions.get(self.CONTEXT_TYPE.value, {})
+        context_desc = ContextSimpleDescriptions.get(self.CONTEXT_TYPE, {})
         if context_desc:
             result["context_description"] = context_desc.get("description", "")
 
@@ -186,7 +181,7 @@ class BaseContextRetrievalTool(BaseTool):
         Get tool parameter definitions
         Subclasses can override to customize parameters
         """
-        context_desc = ContextSimpleDescriptions.get(cls.CONTEXT_TYPE.value, {})
+        context_desc = ContextSimpleDescriptions.get(cls.CONTEXT_TYPE, {})
 
         return {
             "type": "object",

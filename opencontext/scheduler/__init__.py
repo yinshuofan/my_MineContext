@@ -18,13 +18,13 @@ from opencontext.scheduler.base import (
     TriggerMode,
     UserKeyConfig,
 )
-from opencontext.scheduler.user_key_builder import UserKeyBuilder
 from opencontext.scheduler.redis_scheduler import (
     RedisTaskScheduler,
     get_scheduler,
-    set_scheduler,
     init_scheduler,
+    set_scheduler,
 )
+from opencontext.scheduler.user_key_builder import UserKeyBuilder
 
 __all__ = [
     # Interfaces

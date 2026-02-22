@@ -10,6 +10,7 @@ MySQL document note storage backend implementation
 
 import json
 import os
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
@@ -33,7 +34,7 @@ class MySQLBackend(IDocumentStorageBackend):
 
     def __init__(self):
         self.db_config: Optional[Dict[str, Any]] = None
-        self.connection = None
+        self._local = threading.local()  # per-thread connections
         self._initialized = False
         self._pool = None
 
@@ -42,7 +43,7 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             import pymysql
             from pymysql.cursors import DictCursor
-            
+
             # Get MySQL configuration
             db_config = config.get("config", {})
             self.db_config = {
@@ -55,7 +56,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 "cursorclass": DictCursor,
                 "autocommit": False,
             }
-            
+
             # Try to connect and create database if not exists
             temp_config = self.db_config.copy()
             temp_config.pop("database")
@@ -69,13 +70,13 @@ class MySQLBackend(IDocumentStorageBackend):
                 temp_conn.commit()
             finally:
                 temp_conn.close()
-            
-            # Connect to the database
-            self.connection = pymysql.connect(**self.db_config)
-            
+
+            # Connect to the database (store in thread-local for the init thread)
+            self._local.connection = pymysql.connect(**self.db_config)
+
             # Create table structure
             self._create_tables()
-            
+
             self._initialized = True
             logger.info(
                 f"MySQL backend initialized successfully, database: {self.db_config['database']}"
@@ -87,13 +88,15 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
     def _get_connection(self):
-        """Get a database connection, reconnect if necessary"""
+        """Get a database connection for the current thread, creating one if needed."""
         import pymysql
         from pymysql.cursors import DictCursor
-        
-        if self.connection is None or not self.connection.open:
-            self.connection = pymysql.connect(**self.db_config)
-        return self.connection
+
+        conn = getattr(self._local, "connection", None)
+        if conn is None or not conn.open:
+            conn = pymysql.connect(**self.db_config)
+            self._local.connection = conn
+        return conn
 
     def _create_tables(self):
         """Create database table structure"""
@@ -173,6 +176,47 @@ class MySQLBackend(IDocumentStorageBackend):
         """
         )
 
+        # Profiles table - user profiles (composite key: user_id + agent_id)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS profiles (
+                user_id VARCHAR(255) NOT NULL,
+                agent_id VARCHAR(255) NOT NULL DEFAULT 'default',
+                content LONGTEXT NOT NULL,
+                summary TEXT,
+                keywords JSON,
+                entities JSON,
+                importance INT DEFAULT 0,
+                metadata JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, agent_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """
+        )
+
+        # Entities table - entity profiles (unique key: user_id + entity_name)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entities (
+                id VARCHAR(255) PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                entity_name VARCHAR(500) NOT NULL,
+                entity_type VARCHAR(50),
+                content LONGTEXT NOT NULL,
+                summary TEXT,
+                keywords JSON,
+                aliases JSON,
+                metadata JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uk_user_entity (user_id, entity_name),
+                INDEX idx_entity_user (user_id),
+                INDEX idx_entity_type (entity_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """
+        )
+
         # Monitoring tables
         # Token usage tracking - keep 7 days of data
         cursor.execute(
@@ -215,7 +259,7 @@ class MySQLBackend(IDocumentStorageBackend):
         """
         )
 
-        # Data statistics tracking - images/screenshots and documents
+        # Data statistics tracking - contexts and documents
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS monitoring_data_stats (
@@ -532,7 +576,7 @@ class MySQLBackend(IDocumentStorageBackend):
         """Get todo item list"""
         if not self._initialized:
             return []
-        
+
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
@@ -747,6 +791,336 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get tip list: {e}")
             return []
 
+    # ── Profile CRUD ──
+
+    def upsert_profile(
+        self,
+        user_id: str,
+        agent_id: str,
+        content: str,
+        summary: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        entities: Optional[List[str]] = None,
+        importance: int = 0,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Insert or update user profile (composite key: user_id + agent_id)"""
+        if not self._initialized:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            now = datetime.now()
+            keywords_json = json.dumps(keywords or [], ensure_ascii=False)
+            entities_json = json.dumps(entities or [], ensure_ascii=False)
+            metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
+
+            cursor.execute(
+                """
+                INSERT INTO profiles (user_id, agent_id, content, summary, keywords, entities,
+                                      importance, metadata, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    content = VALUES(content),
+                    summary = VALUES(summary),
+                    keywords = VALUES(keywords),
+                    entities = VALUES(entities),
+                    importance = VALUES(importance),
+                    metadata = VALUES(metadata),
+                    updated_at = VALUES(updated_at)
+                """,
+                (
+                    user_id,
+                    agent_id,
+                    content,
+                    summary,
+                    keywords_json,
+                    entities_json,
+                    importance,
+                    metadata_json,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+            logger.info(f"Profile upserted for user_id={user_id}, agent_id={agent_id}")
+            return True
+        except Exception as e:
+            conn.rollback()
+            logger.exception(f"Failed to upsert profile: {e}")
+            return False
+
+    def get_profile(self, user_id: str, agent_id: str = "default") -> Optional[Dict]:
+        """Get user profile by composite key"""
+        if not self._initialized:
+            return None
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT user_id, agent_id, content, summary, keywords, entities,
+                       importance, metadata, created_at, updated_at
+                FROM profiles
+                WHERE user_id = %s AND agent_id = %s
+                """,
+                (user_id, agent_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                if isinstance(result.get("keywords"), str):
+                    result["keywords"] = json.loads(result["keywords"])
+                if isinstance(result.get("entities"), str):
+                    result["entities"] = json.loads(result["entities"])
+                if isinstance(result.get("metadata"), str):
+                    result["metadata"] = json.loads(result["metadata"])
+                return result
+            return None
+        except Exception as e:
+            logger.exception(f"Failed to get profile: {e}")
+            return None
+
+    def delete_profile(self, user_id: str, agent_id: str = "default") -> bool:
+        """Delete user profile"""
+        if not self._initialized:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM profiles WHERE user_id = %s AND agent_id = %s",
+                (user_id, agent_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            logger.exception(f"Failed to delete profile: {e}")
+            return False
+
+    # ── Entity CRUD ──
+
+    def upsert_entity(
+        self,
+        user_id: str,
+        entity_name: str,
+        content: str,
+        entity_type: Optional[str] = None,
+        summary: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        aliases: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Insert or update entity (unique key: user_id + entity_name)"""
+        if not self._initialized:
+            raise RuntimeError("MySQL backend not initialized")
+
+        import uuid
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            now = datetime.now()
+            entity_id = str(uuid.uuid4())
+            keywords_json = json.dumps(keywords or [], ensure_ascii=False)
+            aliases_json = json.dumps(aliases or [], ensure_ascii=False)
+            metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
+
+            cursor.execute(
+                """
+                INSERT INTO entities (id, user_id, entity_name, entity_type, content, summary,
+                                      keywords, aliases, metadata, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    entity_type = VALUES(entity_type),
+                    content = VALUES(content),
+                    summary = VALUES(summary),
+                    keywords = VALUES(keywords),
+                    aliases = VALUES(aliases),
+                    metadata = VALUES(metadata),
+                    updated_at = VALUES(updated_at)
+                """,
+                (
+                    entity_id,
+                    user_id,
+                    entity_name,
+                    entity_type,
+                    content,
+                    summary,
+                    keywords_json,
+                    aliases_json,
+                    metadata_json,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+
+            # Retrieve the actual persisted ID (may differ from generated one on update)
+            cursor.execute(
+                "SELECT id FROM entities WHERE user_id = %s AND entity_name = %s",
+                (user_id, entity_name),
+            )
+            row = cursor.fetchone()
+            if row:
+                entity_id = row["id"]
+
+            logger.info(f"Entity upserted: {entity_name} for user_id={user_id}")
+            return entity_id
+        except Exception as e:
+            conn.rollback()
+            logger.exception(f"Failed to upsert entity: {e}")
+            raise
+
+    def get_entity(self, user_id: str, entity_name: str) -> Optional[Dict]:
+        """Get entity by user_id + entity_name"""
+        if not self._initialized:
+            return None
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, user_id, entity_name, entity_type, content, summary,
+                       keywords, aliases, metadata, created_at, updated_at
+                FROM entities
+                WHERE user_id = %s AND entity_name = %s
+                """,
+                (user_id, entity_name),
+            )
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                if isinstance(result.get("keywords"), str):
+                    result["keywords"] = json.loads(result["keywords"])
+                if isinstance(result.get("aliases"), str):
+                    result["aliases"] = json.loads(result["aliases"])
+                if isinstance(result.get("metadata"), str):
+                    result["metadata"] = json.loads(result["metadata"])
+                return result
+            return None
+        except Exception as e:
+            logger.exception(f"Failed to get entity: {e}")
+            return None
+
+    def list_entities(
+        self,
+        user_id: str,
+        entity_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """List entities for a user"""
+        if not self._initialized:
+            return []
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            where_clauses = ["user_id = %s"]
+            params: list = [user_id]
+
+            if entity_type:
+                where_clauses.append("entity_type = %s")
+                params.append(entity_type)
+
+            params.extend([limit, offset])
+            where_sql = " AND ".join(where_clauses)
+
+            cursor.execute(
+                f"""
+                SELECT id, user_id, entity_name, entity_type, content, summary,
+                       keywords, aliases, metadata, created_at, updated_at
+                FROM entities
+                WHERE {where_sql}
+                ORDER BY updated_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                result = dict(row)
+                if isinstance(result.get("keywords"), str):
+                    result["keywords"] = json.loads(result["keywords"])
+                if isinstance(result.get("aliases"), str):
+                    result["aliases"] = json.loads(result["aliases"])
+                if isinstance(result.get("metadata"), str):
+                    result["metadata"] = json.loads(result["metadata"])
+                results.append(result)
+            return results
+        except Exception as e:
+            logger.exception(f"Failed to list entities: {e}")
+            return []
+
+    def search_entities(
+        self,
+        user_id: str,
+        query_text: str,
+        limit: int = 20,
+    ) -> List[Dict]:
+        """Search entities by text (name, content, aliases)"""
+        if not self._initialized:
+            return []
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            like_pattern = f"%{query_text}%"
+            cursor.execute(
+                """
+                SELECT id, user_id, entity_name, entity_type, content, summary,
+                       keywords, aliases, metadata, created_at, updated_at
+                FROM entities
+                WHERE user_id = %s
+                  AND (entity_name LIKE %s OR content LIKE %s
+                       OR JSON_SEARCH(aliases, 'one', %s) IS NOT NULL)
+                ORDER BY updated_at DESC
+                LIMIT %s
+                """,
+                (user_id, like_pattern, like_pattern, like_pattern, limit),
+            )
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                result = dict(row)
+                if isinstance(result.get("keywords"), str):
+                    result["keywords"] = json.loads(result["keywords"])
+                if isinstance(result.get("aliases"), str):
+                    result["aliases"] = json.loads(result["aliases"])
+                if isinstance(result.get("metadata"), str):
+                    result["metadata"] = json.loads(result["metadata"])
+                results.append(result)
+            return results
+        except Exception as e:
+            logger.exception(f"Failed to search entities: {e}")
+            return []
+
+    def delete_entity(self, user_id: str, entity_name: str) -> bool:
+        """Delete entity"""
+        if not self._initialized:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM entities WHERE user_id = %s AND entity_name = %s",
+                (user_id, entity_name),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            logger.exception(f"Failed to delete entity: {e}")
+            return False
+
     def get_name(self) -> str:
         return "mysql"
 
@@ -824,13 +1198,13 @@ class MySQLBackend(IDocumentStorageBackend):
 
             if existing:
                 # Update existing record with aggregated stats
-                old_count = existing['count']
-                old_total = existing['total_duration_ms']
-                old_min = existing['min_duration_ms']
-                old_max = existing['max_duration_ms']
-                old_success = existing['success_count']
-                old_error = existing['error_count']
-                
+                old_count = existing["count"]
+                old_total = existing["total_duration_ms"]
+                old_min = existing["min_duration_ms"]
+                old_max = existing["max_duration_ms"]
+                old_success = existing["success_count"]
+                old_error = existing["error_count"]
+
                 new_count = old_count + 1
                 new_total = old_total + duration_ms
                 new_min = min(old_min, duration_ms)
@@ -981,18 +1355,20 @@ class MySQLBackend(IDocumentStorageBackend):
             rows = cursor.fetchall()
             result = []
             for row in rows:
-                result.append({
-                    "stage_name": row['stage_name'],
-                    "count": row['count'],
-                    "total_duration": row['total_duration_ms'],
-                    "min_duration": row['min_duration_ms'],
-                    "max_duration": row['max_duration_ms'],
-                    "duration_ms": row['avg_duration_ms'],
-                    "success_count": row['success_count'],
-                    "error_count": row['error_count'],
-                    "status": "success" if row['success_count'] > 0 else "error",
-                    "time_bucket": row['time_bucket'],
-                })
+                result.append(
+                    {
+                        "stage_name": row["stage_name"],
+                        "count": row["count"],
+                        "total_duration": row["total_duration_ms"],
+                        "min_duration": row["min_duration_ms"],
+                        "max_duration": row["max_duration_ms"],
+                        "duration_ms": row["avg_duration_ms"],
+                        "success_count": row["success_count"],
+                        "error_count": row["error_count"],
+                        "status": "success" if row["success_count"] > 0 else "error",
+                        "time_bucket": row["time_bucket"],
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Failed to query stage timing: {e}")
@@ -1020,11 +1396,13 @@ class MySQLBackend(IDocumentStorageBackend):
             rows = cursor.fetchall()
             result = []
             for row in rows:
-                result.append({
-                    "data_type": row['data_type'],
-                    "count": row['total_count'],
-                    "context_type": row['context_type'],
-                })
+                result.append(
+                    {
+                        "data_type": row["data_type"],
+                        "count": row["total_count"],
+                        "context_type": row["context_type"],
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Failed to query data stats: {e}")
@@ -1055,11 +1433,13 @@ class MySQLBackend(IDocumentStorageBackend):
             rows = cursor.fetchall()
             result = []
             for row in rows:
-                result.append({
-                    "data_type": row['data_type'],
-                    "count": row['total_count'],
-                    "context_type": row['context_type'],
-                })
+                result.append(
+                    {
+                        "data_type": row["data_type"],
+                        "count": row["total_count"],
+                        "context_type": row["context_type"],
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Failed to query data stats by range: {e}")
@@ -1095,12 +1475,14 @@ class MySQLBackend(IDocumentStorageBackend):
             rows = cursor.fetchall()
             result = []
             for row in rows:
-                result.append({
-                    "timestamp": row['time_bucket'],
-                    "data_type": row['data_type'],
-                    "count": row['total_count'],
-                    "context_type": row['context_type'],
-                })
+                result.append(
+                    {
+                        "timestamp": row["time_bucket"],
+                        "data_type": row["data_type"],
+                        "count": row["total_count"],
+                        "context_type": row["context_type"],
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"Failed to query data stats trend: {e}")
@@ -1311,13 +1693,13 @@ class MySQLBackend(IDocumentStorageBackend):
 
     def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
         """Mark a conversation as deleted"""
-        updated_convo = self.update_conversation(
-            conversation_id=conversation_id, status="deleted"
-        )
+        updated_convo = self.update_conversation(conversation_id=conversation_id, status="deleted")
         success = updated_convo is not None
         return {"success": success, "id": conversation_id}
 
-    def get_message(self, message_id: int, include_thinking: bool = True) -> Optional[Dict[str, Any]]:
+    def get_message(
+        self, message_id: int, include_thinking: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """Get a single message by its ID"""
         if not self._initialized:
             return None
@@ -1335,7 +1717,7 @@ class MySQLBackend(IDocumentStorageBackend):
             if row:
                 message = dict(row)
                 if include_thinking:
-                    message['thinking'] = self.get_message_thinking(message_id)
+                    message["thinking"] = self.get_message_thinking(message_id)
                 return message
             return None
         except Exception as e:
@@ -1522,11 +1904,7 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to append message content: {e}")
             return False
 
-    def update_message_metadata(
-        self,
-        message_id: int,
-        metadata: Dict[str, Any]
-    ) -> bool:
+    def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
         """Update message metadata"""
         if not self._initialized:
             return False
@@ -1555,10 +1933,7 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
     def mark_message_finished(
-        self,
-        message_id: int,
-        status: str = "completed",
-        error_message: Optional[str] = None
+        self, message_id: int, status: str = "completed", error_message: Optional[str] = None
     ) -> bool:
         """Mark a message as finished"""
         if not self._initialized:
@@ -1587,11 +1962,9 @@ class MySQLBackend(IDocumentStorageBackend):
 
             success = cursor.rowcount > 0
             if not success:
-                cursor.execute(
-                    "SELECT status FROM messages WHERE id = %s", (message_id,)
-                )
+                cursor.execute("SELECT status FROM messages WHERE id = %s", (message_id,))
                 row = cursor.fetchone()
-                if row and row['status'] == status:
+                if row and row["status"] == status:
                     success = True
                 else:
                     logger.warning(
@@ -1617,9 +1990,7 @@ class MySQLBackend(IDocumentStorageBackend):
     def interrupt_message(self, message_id: int) -> bool:
         """Interrupt a streaming message"""
         return self.mark_message_finished(
-            message_id=message_id,
-            status="cancelled",
-            error_message="Message interrupted by user."
+            message_id=message_id, status="cancelled", error_message="Message interrupted by user."
         )
 
     def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
@@ -1642,7 +2013,7 @@ class MySQLBackend(IDocumentStorageBackend):
             messages = []
             for row in rows:
                 message = dict(row)
-                message['thinking'] = self.get_message_thinking(message['id'])
+                message["thinking"] = self.get_message_thinking(message["id"])
                 messages.append(message)
             return messages
         except Exception as e:
@@ -1658,10 +2029,7 @@ class MySQLBackend(IDocumentStorageBackend):
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                "DELETE FROM messages WHERE id = %s",
-                (message_id,)
-            )
+            cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
             conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
@@ -1691,10 +2059,10 @@ class MySQLBackend(IDocumentStorageBackend):
             if sequence is None:
                 cursor.execute(
                     "SELECT COALESCE(MAX(sequence), -1) + 1 as next_seq FROM message_thinking WHERE message_id = %s",
-                    (message_id,)
+                    (message_id,),
                 )
                 result = cursor.fetchone()
-                sequence = result['next_seq'] if result else 0
+                sequence = result["next_seq"] if result else 0
 
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
@@ -1730,7 +2098,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 WHERE message_id = %s
                 ORDER BY sequence ASC, created_at ASC
                 """,
-                (message_id,)
+                (message_id,),
             )
             rows = cursor.fetchall()
             return list(rows)
@@ -1746,10 +2114,7 @@ class MySQLBackend(IDocumentStorageBackend):
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                "DELETE FROM message_thinking WHERE message_id = %s",
-                (message_id,)
-            )
+            cursor.execute("DELETE FROM message_thinking WHERE message_id = %s", (message_id,))
             conn.commit()
             return True
         except Exception as e:
@@ -1771,9 +2136,10 @@ class MySQLBackend(IDocumentStorageBackend):
         return QueryResult(documents=[], total_count=0)
 
     def close(self):
-        """Close the database connection"""
-        if self.connection:
-            self.connection.close()
-            self.connection = None
-            self._initialized = False
-            logger.info("MySQL database connection closed")
+        """Close the database connection for the current thread."""
+        conn = getattr(self._local, "connection", None)
+        if conn:
+            conn.close()
+            self._local.connection = None
+        self._initialized = False
+        logger.info("MySQL database connection closed")

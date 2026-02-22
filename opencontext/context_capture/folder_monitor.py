@@ -255,7 +255,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
         try:
             # Find contexts by file_path
             contexts_dict = self._storage.get_all_processed_contexts(
-                context_types=[ContextType.KNOWLEDGE_CONTEXT],
+                context_types=[ContextType.DOCUMENT],
                 filter={
                     "knowledge_file_path": file_path,
                 },
@@ -267,7 +267,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             # Iterate over context types and their context lists
             for context_type, contexts in contexts_dict.items():
                 # 二次校验
-                if context_type != ContextType.KNOWLEDGE_CONTEXT:
+                if context_type != ContextType.DOCUMENT:
                     continue
                 for ctx in contexts:
                     # Get ID from ProcessedContext object (or dict if applicable)

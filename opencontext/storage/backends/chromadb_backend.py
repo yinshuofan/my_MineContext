@@ -172,7 +172,10 @@ class ChromaDBBackend(IVectorStorageBackend):
 
             # Create dedicated todo collection for deduplication only if consumption is enabled
             from opencontext.config.global_config import GlobalConfig
-            consumption_enabled = GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+
+            consumption_enabled = (
+                GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
+            )
             if consumption_enabled:
                 todo_collection = self._client.get_or_create_collection(
                     name="todo",
@@ -725,15 +728,8 @@ class ChromaDBBackend(IVectorStorageBackend):
             metadata_field_names = set()
             context_type_value = metadata.get("context_type")
 
-            if context_type_value == ContextType.ENTITY_CONTEXT.value:
-                # Import ProfileContextMetadata to get its field names
-                from opencontext.models.context import ProfileContextMetadata
-
-                metadata_field_names = set(ProfileContextMetadata.model_fields.keys())
-            # Other context_types can add corresponding metadata models here
-            # elif context_type_value == ContextType.ACTIVITY_CONTEXT.value:
-            #     from opencontext.models.context import ActivityContextMetadata
-            #     metadata_field_names = set(ActivityContextMetadata.model_fields.keys())
+            # Entity type is now stored in relational DB, not vector DB.
+            # No special metadata field handling needed for vector-stored types.
 
             # Reconstruct objects from flattened fields
             for key, value in metadata.items():
@@ -759,7 +755,7 @@ class ChromaDBBackend(IVectorStorageBackend):
                     # This is a metadata field
                     metadata_dict[key] = val
                 else:
-                    context_dict[key] = val
+                    metadata_dict[key] = val
 
             # logger.info(f"extracted_data_dict: {extracted_data_dict}")
             # Create the nested Pydantic models and add them to the main context dict
@@ -879,6 +875,8 @@ class ChromaDBBackend(IVectorStorageBackend):
 
         result = {}
         for context_type in self._collections.keys():
+            if context_type == "todo":
+                continue
             result[context_type] = self.get_processed_context_count(context_type)
 
         return result
@@ -1006,3 +1004,230 @@ class ChromaDBBackend(IVectorStorageBackend):
         except Exception as e:
             logger.error(f"Failed to delete todo embedding (id={todo_id}): {e}")
             return False
+
+    def delete_by_source_file(self, source_file_key: str, user_id: Optional[str] = None) -> bool:
+        """Delete all chunks belonging to a source file (for document overwrite)
+
+        Args:
+            source_file_key: Source file key (format: "user_id:file_path")
+            user_id: Optional user identifier for additional filtering
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._initialized:
+            logger.warning("ChromaDB not initialized, cannot delete by source file")
+            return False
+
+        if not self._ensure_connection():
+            logger.error("ChromaDB connection not available")
+            return False
+
+        try:
+            deleted_count = 0
+
+            for context_type, collection in self._collections.items():
+                # Skip non-context collections like "todo"
+                if context_type == "todo":
+                    continue
+
+                try:
+                    # Build where filter
+                    where_conditions = [{"source_file_key": source_file_key}]
+                    if user_id:
+                        where_conditions.append({"user_id": user_id})
+
+                    if len(where_conditions) == 1:
+                        where_clause = where_conditions[0]
+                    else:
+                        where_clause = {"$and": where_conditions}
+
+                    # First, find matching document IDs
+                    with self._write_lock:
+                        results = collection.get(
+                            where=where_clause,
+                            include=[],  # Only need IDs
+                        )
+
+                    if results and results["ids"]:
+                        ids_to_delete = results["ids"]
+                        with self._write_lock:
+                            collection.delete(ids=ids_to_delete)
+                        deleted_count += len(ids_to_delete)
+                        logger.info(
+                            f"Deleted {len(ids_to_delete)} chunks from {context_type} "
+                            f"collection for source_file_key='{source_file_key}'"
+                        )
+
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to delete from {context_type} collection "
+                        f"for source_file_key='{source_file_key}': {e}"
+                    )
+                    continue
+
+            logger.info(
+                f"Deleted total {deleted_count} chunks for source_file_key='{source_file_key}'"
+            )
+            return True
+
+        except Exception as e:
+            logger.exception(f"Failed to delete by source file key '{source_file_key}': {e}")
+            return False
+
+    def search_by_hierarchy(
+        self,
+        context_type: str,
+        hierarchy_level: int,
+        time_bucket_start: Optional[str] = None,
+        time_bucket_end: Optional[str] = None,
+        user_id: Optional[str] = None,
+        top_k: int = 20,
+    ) -> List[Tuple[ProcessedContext, float]]:
+        """Search contexts by hierarchy level and time bucket range
+
+        Args:
+            context_type: Context type to search
+            hierarchy_level: Hierarchy level (0=original, 1=daily, 2=weekly, 3=monthly)
+            time_bucket_start: Start of time bucket range (inclusive)
+            time_bucket_end: End of time bucket range (inclusive)
+            user_id: User identifier for multi-user filtering
+            top_k: Maximum number of results
+
+        Returns:
+            List of (context, score) tuples
+        """
+        if not self._initialized:
+            logger.warning("ChromaDB not initialized, cannot search by hierarchy")
+            return []
+
+        if not self._ensure_connection():
+            logger.error("ChromaDB connection not available")
+            return []
+
+        collection = self._collections.get(context_type)
+        if not collection:
+            logger.warning(f"No collection found for context_type '{context_type}'")
+            return []
+
+        try:
+            # Check if collection is empty
+            with self._write_lock:
+                count = collection.count()
+            if count == 0:
+                return []
+
+            # Build where filter
+            where_conditions = [{"hierarchy_level": hierarchy_level}]
+
+            if time_bucket_start:
+                where_conditions.append({"time_bucket": {"$gte": time_bucket_start}})
+            if time_bucket_end:
+                where_conditions.append({"time_bucket": {"$lte": time_bucket_end}})
+            if user_id:
+                where_conditions.append({"user_id": user_id})
+
+            if len(where_conditions) == 1:
+                where_clause = where_conditions[0]
+            else:
+                where_clause = {"$and": where_conditions}
+
+            # Use get (not query) since this is a metadata-based search, not vector search
+            with self._write_lock:
+                results = collection.get(
+                    where=where_clause,
+                    limit=top_k,
+                    include=["metadatas", "documents"],
+                )
+
+            contexts = []
+            if results and results["ids"]:
+                for i in range(len(results["ids"])):
+                    doc = {
+                        "id": results["ids"][i],
+                        "document": results["documents"][i],
+                        "metadata": results["metadatas"][i],
+                    }
+                    context = self._chroma_result_to_context(doc, need_vector=False)
+                    if context:
+                        # Score is 1.0 since this is a metadata-based search, not vector similarity
+                        contexts.append((context, 1.0))
+
+            return contexts
+
+        except Exception as e:
+            logger.exception(f"Failed to search by hierarchy in {context_type} collection: {e}")
+            return []
+
+    def get_by_ids(
+        self, ids: List[str], context_type: Optional[str] = None
+    ) -> List[ProcessedContext]:
+        """Get contexts by their IDs
+
+        Args:
+            ids: List of context IDs to retrieve
+            context_type: Optional context type for routing to correct collection
+
+        Returns:
+            List of ProcessedContext objects
+        """
+        if not self._initialized:
+            logger.warning("ChromaDB not initialized, cannot get by IDs")
+            return []
+
+        if not ids:
+            return []
+
+        if not self._ensure_connection():
+            logger.error("ChromaDB connection not available")
+            return []
+
+        results = []
+
+        if context_type:
+            # Search in the specified collection only
+            collections_to_search = {}
+            if context_type in self._collections:
+                collections_to_search[context_type] = self._collections[context_type]
+            else:
+                logger.warning(f"No collection found for context_type '{context_type}'")
+                return []
+        else:
+            # Search across all context collections (exclude "todo")
+            collections_to_search = {
+                ct: col for ct, col in self._collections.items() if ct != "todo"
+            }
+
+        remaining_ids = set(ids)
+
+        for ct, collection in collections_to_search.items():
+            if not remaining_ids:
+                break
+
+            try:
+                with self._write_lock:
+                    query_result = collection.get(
+                        ids=list(remaining_ids),
+                        include=["metadatas", "documents"],
+                    )
+
+                if query_result and query_result["ids"]:
+                    for i in range(len(query_result["ids"])):
+                        doc = {
+                            "id": query_result["ids"][i],
+                            "document": query_result["documents"][i],
+                            "metadata": query_result["metadatas"][i],
+                        }
+                        context = self._chroma_result_to_context(doc, need_vector=False)
+                        if context:
+                            results.append(context)
+                            remaining_ids.discard(query_result["ids"][i])
+
+            except Exception as e:
+                logger.debug(f"Failed to get IDs from {ct} collection: {e}")
+                continue
+
+        if remaining_ids:
+            logger.debug(f"Could not find {len(remaining_ids)} IDs: {remaining_ids}")
+
+        return results

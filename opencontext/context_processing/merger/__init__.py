@@ -6,31 +6,15 @@
 
 """
 Merger module for context processing.
-Contains merge-related functionality including context merging, strategies, and cross-type relationships.
+Contains merge-related functionality — only knowledge merge strategy remains.
 """
 
 from .context_merger import ContextMerger
-from .cross_type_relationships import CrossTypeRelationshipManager
-from .merge_strategies import (
-    ActivityContextStrategy,
-    ContextTypeAwareStrategy,
-    IntentContextStrategy,
-    ProceduralContextStrategy,
-    ProfileContextStrategy,
-    SemanticContextStrategy,
-    StateContextStrategy,
-    StrategyFactory,
-)
+from .merge_strategies import ContextTypeAwareStrategy, KnowledgeMergeStrategy, StrategyFactory
 
 __all__ = [
     "ContextMerger",
     "ContextTypeAwareStrategy",
-    "ProfileContextStrategy",
-    "ActivityContextStrategy",
-    "StateContextStrategy",
-    "IntentContextStrategy",
-    "SemanticContextStrategy",
-    "ProceduralContextStrategy",
+    "KnowledgeMergeStrategy",
     "StrategyFactory",
-    "CrossTypeRelationshipManager",
 ]

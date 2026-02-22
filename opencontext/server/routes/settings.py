@@ -57,12 +57,13 @@ class UpdateModelSettingsResponse(BaseModel):
 
 # ==================== Helper Functions ====================
 
+
 def _build_llm_config(
     base_url: str, api_key: str, model: str, provider: str, llm_type: LLMType, **kwargs
 ) -> dict:
     """Build LLM config dict"""
     config = {"base_url": base_url, "api_key": api_key, "model": model, "provider": provider}
-    
+
     # Add optional parameters
     if "timeout" in kwargs:
         config["timeout"] = kwargs["timeout"]
@@ -160,7 +161,7 @@ async def update_model_settings(request: UpdateModelSettingsRequest, _auth: str 
             emb_config_save = _build_llm_config(
                 emb_url, emb_key, cfg.embeddingModelId, emb_provider, LLMType.EMBEDDING
             )
-            
+
             new_settings = {"vlm_model": vlm_config_save, "embedding_model": emb_config_save}
 
             config_mgr = GlobalConfig.get_instance().get_config_manager()
@@ -216,9 +217,7 @@ async def validate_llm_config(request: UpdateModelSettingsRequest, _auth: str = 
         if not cfg.modelId:
             return convert_resp(code=400, status=400, message="VLM model ID cannot be empty")
         if not cfg.embeddingModelId:
-            return convert_resp(
-                code=400, status=400, message="Embedding model ID cannot be empty"
-            )
+            return convert_resp(code=400, status=400, message="Embedding model ID cannot be empty")
 
         # Build configs for validation (without saving)
         vlm_config = _build_llm_config(
@@ -260,15 +259,12 @@ class GeneralSettingsRequest(BaseModel):
     capture: dict | None = None
     processing: dict | None = None
     logging: dict | None = None
-    content_generation: dict | None = None
 
 
 @router.get("/api/settings/general")
 async def get_general_settings(_auth: str = auth_dependency):
     """Get general system settings"""
     try:
-        import os
-
         config = GlobalConfig.get_instance().get_config()
         if not config:
             return convert_resp(code=500, status=500, message="Configuration not initialized")
@@ -277,21 +273,7 @@ async def get_general_settings(_auth: str = auth_dependency):
             "capture": config.get("capture", {}),
             "processing": config.get("processing", {}),
             "logging": config.get("logging", {}),
-            "content_generation": config.get("content_generation", {}),
         }
-
-        # Resolve environment variables in debug output path for display
-        if "content_generation" in settings and "debug" in settings["content_generation"]:
-            debug_config = settings["content_generation"]["debug"]
-            if "output_path" in debug_config:
-                output_path = debug_config["output_path"]
-                # Resolve environment variables
-                if "${CONTEXT_PATH" in output_path:
-                    context_path = os.getenv("CONTEXT_PATH", ".")
-                    resolved_path = output_path.replace("${CONTEXT_PATH:.}", context_path)
-                    resolved_path = resolved_path.replace("${CONTEXT_PATH}", context_path)
-                    # Add resolved path as a separate field for display
-                    debug_config["output_path_resolved"] = resolved_path
 
         return convert_resp(data=settings)
 
@@ -319,8 +301,6 @@ async def update_general_settings(request: GeneralSettingsRequest, _auth: str = 
                 settings["processing"] = request.processing
             if request.logging is not None:
                 settings["logging"] = request.logging
-            if request.content_generation is not None:
-                settings["content_generation"] = request.content_generation
 
             if not settings:
                 return convert_resp(code=400, status=400, message="No settings provided")
@@ -503,263 +483,3 @@ async def reset_settings(_auth: str = auth_dependency):
         except Exception as e:
             logger.exception(f"Failed to reset settings: {e}")
             return convert_resp(code=500, status=500, message=f"Failed to reset settings: {str(e)}")
-
-
-# ==================== Prompts History & Debug ====================
-
-
-@router.get("/api/settings/prompts/history/{category}")
-async def get_prompts_history(category: str, _auth: str = auth_dependency):
-    """
-    Get debug history files for a prompt category
-
-    Args:
-        category: Prompt category (smart_tip_generation, todo_extraction, generation_report, realtime_activity_monitor)
-
-    Returns:
-        List of history files with metadata
-    """
-    try:
-        import os
-        from pathlib import Path
-
-        # Map category names to directory names
-        category_map = {
-            "smart_tip_generation": "tips",
-            "todo_extraction": "todo",
-            "generation_report": "report",
-            "realtime_activity_monitor": "activity",
-        }
-
-        if category not in category_map:
-            return convert_resp(code=400, status=400, message=f"Invalid category: {category}")
-
-        dir_name = category_map[category]
-
-        # Get debug output path from config
-        config = GlobalConfig.get_instance().get_config()
-        if not config:
-            return convert_resp(code=500, status=500, message="Configuration not initialized")
-
-        debug_config = config.get("content_generation", {}).get("debug", {})
-        if not debug_config.get("enabled", False):
-            return convert_resp(code=400, status=400, message="Debug mode is not enabled")
-
-        base_path = debug_config.get("output_path", "${CONTEXT_PATH:.}/debug/generation")
-
-        # Resolve environment variables
-        if "${CONTEXT_PATH" in base_path:
-            context_path = os.getenv("CONTEXT_PATH", ".")
-            base_path = base_path.replace("${CONTEXT_PATH:.}", context_path)
-            base_path = base_path.replace("${CONTEXT_PATH}", context_path)
-
-        # Get directory path
-        history_dir = Path(base_path) / dir_name
-
-        if not history_dir.exists():
-            return convert_resp(data=[])
-
-        # List all JSON files
-        history_files = []
-        for filepath in sorted(history_dir.glob("*.json"), reverse=True):  # Most recent first
-            try:
-                # Read file to check if it has response
-                import json
-
-                with open(filepath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-
-                has_result = bool(data.get("response"))
-                timestamp_str = data.get("timestamp", "")
-
-                history_files.append(
-                    {
-                        "filename": filepath.name,
-                        "timestamp": timestamp_str,
-                        "has_result": has_result,
-                    }
-                )
-            except Exception as e:
-                logger.warning(f"Failed to read history file {filepath}: {e}")
-                continue
-
-        return convert_resp(data=history_files)
-
-    except Exception as e:
-        logger.exception(f"Failed to get prompts history for {category}: {e}")
-        return convert_resp(code=500, status=500, message=f"Failed to get history: {str(e)}")
-
-
-@router.get("/api/settings/prompts/history/{category}/{filename}")
-async def get_prompts_history_detail(category: str, filename: str, _auth: str = auth_dependency):
-    """
-    Get detailed content of a specific debug history file
-
-    Args:
-        category: Prompt category
-        filename: History file name
-
-    Returns:
-        Debug file content with messages and response
-    """
-    try:
-        import json
-        import os
-        from pathlib import Path
-
-        # Map category names to directory names
-        category_map = {
-            "smart_tip_generation": "tips",
-            "todo_extraction": "todo",
-            "generation_report": "report",
-            "realtime_activity_monitor": "activity",
-        }
-
-        if category not in category_map:
-            return convert_resp(code=400, status=400, message=f"Invalid category: {category}")
-
-        dir_name = category_map[category]
-
-        # Get debug output path from config
-        config = GlobalConfig.get_instance().get_config()
-        if not config:
-            return convert_resp(code=500, status=500, message="Configuration not initialized")
-
-        debug_config = config.get("content_generation", {}).get("debug", {})
-        base_path = debug_config.get("output_path", "${CONTEXT_PATH:.}/debug/generation")
-
-        # Resolve environment variables
-        if "${CONTEXT_PATH" in base_path:
-            context_path = os.getenv("CONTEXT_PATH", ".")
-            base_path = base_path.replace("${CONTEXT_PATH:.}", context_path)
-            base_path = base_path.replace("${CONTEXT_PATH}", context_path)
-
-        # Get file path (validate filename to prevent directory traversal)
-        if ".." in filename or "/" in filename or "\\" in filename:
-            return convert_resp(code=400, status=400, message="Invalid filename")
-
-        filepath = Path(base_path) / dir_name / filename
-
-        if not filepath.exists():
-            return convert_resp(code=404, status=404, message="History file not found")
-
-        # Read and return file content
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        return convert_resp(data=data)
-
-    except Exception as e:
-        logger.exception(f"Failed to get history detail for {category}/{filename}: {e}")
-        return convert_resp(code=500, status=500, message=f"Failed to get history detail: {str(e)}")
-
-
-class RegenerateRequest(BaseModel):
-    """Regenerate request with custom prompts"""
-
-    category: str
-    history_file: str
-    custom_prompts: dict = Field(
-        default_factory=dict, description="Custom prompts with system and user keys"
-    )
-
-
-@router.post("/api/settings/prompts/regenerate")
-async def regenerate_with_custom_prompts(request: RegenerateRequest, _auth: str = auth_dependency):
-    """
-    Regenerate content using custom prompts and compare with original result
-
-    Args:
-        request: Regenerate request with category, history_file, and custom_prompts
-
-    Returns:
-        Comparison data with original and new results
-    """
-    try:
-        import json
-        import os
-        from pathlib import Path
-
-        # Map category names to directory names
-        category_map = {
-            "smart_tip_generation": "tips",
-            "todo_extraction": "todo",
-            "generation_report": "report",
-            "realtime_activity_monitor": "activity",
-        }
-
-        if request.category not in category_map:
-            return convert_resp(
-                code=400, status=400, message=f"Invalid category: {request.category}"
-            )
-
-        dir_name = category_map[request.category]
-
-        # Get debug output path from config
-        config = GlobalConfig.get_instance().get_config()
-        if not config:
-            return convert_resp(code=500, status=500, message="Configuration not initialized")
-
-        debug_config = config.get("content_generation", {}).get("debug", {})
-        base_path = debug_config.get("output_path", "${CONTEXT_PATH:.}/debug/generation")
-
-        # Resolve environment variables
-        if "${CONTEXT_PATH" in base_path:
-            context_path = os.getenv("CONTEXT_PATH", ".")
-            base_path = base_path.replace("${CONTEXT_PATH:.}", context_path)
-            base_path = base_path.replace("${CONTEXT_PATH}", context_path)
-
-        # Validate and read history file
-        if (
-            ".." in request.history_file
-            or "/" in request.history_file
-            or "\\" in request.history_file
-        ):
-            return convert_resp(code=400, status=400, message="Invalid filename")
-
-        filepath = Path(base_path) / dir_name / request.history_file
-
-        if not filepath.exists():
-            return convert_resp(code=404, status=404, message="History file not found")
-
-        # Read original debug data
-        with open(filepath, "r", encoding="utf-8") as f:
-            original_data = json.load(f)
-
-        original_messages = original_data.get("messages", [])
-        original_response = original_data.get("response", "")
-
-        if not original_messages:
-            return convert_resp(code=400, status=400, message="No messages found in history file")
-
-        # Replace prompts with custom ones
-        new_messages = []
-        for msg in original_messages:
-            if msg.get("role") == "system" and request.custom_prompts.get("system"):
-                new_messages.append({"role": "system", "content": request.custom_prompts["system"]})
-            elif msg.get("role") == "user" and request.custom_prompts.get("user"):
-                # For user messages, we might want to keep the data but replace the template
-                # This is tricky as user messages contain actual data, not just template
-                # For now, we'll keep the original user message as it contains real data
-                new_messages.append(msg)
-            else:
-                new_messages.append(msg)
-
-        # Generate new response
-        from opencontext.llm.global_vlm_client import generate_with_messages
-
-        response = generate_with_messages(new_messages)
-        # Return comparison data
-        comparison_data = {
-            "original_result": original_response,
-            "new_result": response,
-            "custom_prompts": request.custom_prompts,
-            "timestamp": original_data.get("timestamp", ""),
-            "category": request.category,
-        }
-
-        return convert_resp(data=comparison_data)
-
-    except Exception as e:
-        logger.exception(f"Failed to regenerate with custom prompts: {e}")
-        return convert_resp(code=500, status=500, message=f"Failed to regenerate: {str(e)}")

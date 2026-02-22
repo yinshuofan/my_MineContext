@@ -181,6 +181,17 @@ redis:
   socket_connect_timeout: 5.0
   retry_on_timeout: true
 
+# User Memory Cache
+memory_cache:
+  snapshot_ttl: 300           # Snapshot cache TTL in seconds (default: 5 min)
+  recent_days: 7              # Recent memories time window in days (default: 7)
+  max_recently_accessed: 50   # Max items tracked in accessed hash
+  max_today_events: 30        # Max today L0 events in cache
+  max_recent_documents: 10    # Max recent documents in cache
+  max_recent_knowledge: 10    # Max recent knowledge in cache
+  accessed_ttl: 604800        # Accessed tracking hash TTL in seconds (default: 7 days)
+  max_entities: 20            # Max entities in cache response
+
 # Context storage module
 storage:
   enabled: true
@@ -194,19 +205,6 @@ storage:
     #     mode: "local" # Options: "local", "server"
     #     path: "${CONTEXT_PATH:.}/persist/chromadb"
     #     collection_prefix: "opencontext"
-
-    # DashVector vector database configuration
-    # - name: "default_vector"
-    #   storage_type: "vector_db"
-    #   backend: "dashvector"
-    #   default: true
-    #   config:
-    #     api_key: "${DASHVECTOR_API_KEY:sk-OLJlNZyVdupgdON2m3Zw1P19S8vbx4CA4A2D8E17011F09C79F29B46C37D1D}"
-    #     endpoint: "${DASHVECTOR_ENDPOINT:vrs-cn-qzm4l025w0001s.dashvector.cn-beijing.aliyuncs.com}"
-    #     vector_size: 2048
-    #     timeout: 30.0
-    #     max_connections: 100           # 最大连接数
-    #     max_connections_per_host: 20   # 每主机最大连接数
 
     # VikingDB database configuration
     - name: "default_vector"
@@ -365,6 +363,16 @@ scheduler:
       # interval: 86400       # Run every 24 hours
       interval: 60       # Run every 5 minutes
       retention_days: 30    # Keep data for 30 days
+
+    # Hierarchy summary task (generates daily/weekly/monthly event summaries)
+    hierarchy_summary:
+      enabled: "${HIERARCHY_SUMMARY_ENABLED:false}"
+      trigger_mode: "periodic"
+      interval: 86400         # Run once per day (24 hours)
+      # Summaries generated:
+      # - Daily summary: generated every run for yesterday's events
+      # - Weekly summary: generated on Mondays for last week
+      # - Monthly summary: generated on 1st of month for last month
 
 # Intelligent completion service configuration
 completion:

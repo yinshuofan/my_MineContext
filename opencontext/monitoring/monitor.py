@@ -8,7 +8,6 @@ System Monitor - Collects and manages various system metrics
 """
 
 import threading
-import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -74,18 +73,6 @@ class ProcessingError:
     timestamp: datetime = field(default_factory=datetime.now)
 
 
-@dataclass
-class RecordingSessionStats:
-    """Recording session statistics"""
-
-    processed_screenshots: int = 0
-    failed_screenshots: int = 0
-    generated_activities: int = 0
-    last_activity_time: Optional[datetime] = None
-    session_start_time: datetime = field(default_factory=datetime.now)
-    recent_screenshot_paths: deque = field(default_factory=lambda: deque(maxlen=5))
-
-
 class Monitor:
     """System Monitor"""
 
@@ -110,9 +97,6 @@ class Monitor:
 
         # Processing error records (keep last 50 records)
         self._processing_errors: deque = deque(maxlen=50)
-
-        # Recording session statistics
-        self._recording_stats = RecordingSessionStats()
 
         # Start time
         self._start_time = datetime.now()
@@ -490,9 +474,8 @@ class Monitor:
             rows = get_storage().query_monitoring_data_stats_trend(hours)
 
             # Organize data by data_type for easy frontend consumption
-            # Structure: { 'screenshot': [{timestamp, count}, ...], 'document': [...], 'context': [...] }
+            # Structure: { 'document': [{timestamp, count}, ...], 'context': [...] }
             trend_data = {
-                "screenshot": [],
                 "document": [],
                 "context": [],
             }
@@ -505,7 +488,7 @@ class Monitor:
                 count = row["count"]
 
                 if timestamp not in time_buckets:
-                    time_buckets[timestamp] = {"screenshot": 0, "document": 0, "context": 0}
+                    time_buckets[timestamp] = {"document": 0, "context": 0}
 
                 if data_type in time_buckets[timestamp]:
                     time_buckets[timestamp][data_type] += count
@@ -513,7 +496,7 @@ class Monitor:
             # Convert to sorted time series
             sorted_timestamps = sorted(time_buckets.keys())
             for ts in sorted_timestamps:
-                for data_type in ["screenshot", "document", "context"]:
+                for data_type in ["document", "context"]:
                     trend_data[data_type].append(
                         {"timestamp": ts, "count": time_buckets[ts][data_type]}
                     )
@@ -525,7 +508,7 @@ class Monitor:
 
         except Exception as e:
             logger.error(f"Failed to get data stats trend: {e}")
-            return {"trend": {"screenshot": [], "document": [], "context": []}, "timestamps": []}
+            return {"trend": {"document": [], "context": []}, "timestamps": []}
 
     def record_processing_error(
         self,
@@ -622,86 +605,6 @@ class Monitor:
 
             return summary
 
-    def increment_recording_stat(self, stat_type: str, count: int = 1):
-        """Increment recording session statistics"""
-        with self._lock:
-            if stat_type == "processed":
-                self._recording_stats.processed_screenshots += count
-            elif stat_type == "failed":
-                self._recording_stats.failed_screenshots += count
-            elif stat_type == "activity":
-                self._recording_stats.generated_activities += count
-                self._recording_stats.last_activity_time = datetime.now()
-
-    def record_screenshot_path(self, screenshot_path: str):
-        """Record a screenshot path to recent screenshots list"""
-        with self._lock:
-            self._recording_stats.recent_screenshot_paths.append(screenshot_path)
-
-    def get_recording_stats(self) -> Dict[str, Any]:
-        """Get current recording session statistics"""
-        with self._lock:
-            stats = {
-                "processed_screenshots": self._recording_stats.processed_screenshots,
-                "failed_screenshots": self._recording_stats.failed_screenshots,
-                "generated_activities": self._recording_stats.generated_activities,
-                "last_activity_time": (
-                    self._recording_stats.last_activity_time.isoformat()
-                    if self._recording_stats.last_activity_time
-                    else None
-                ),
-                "session_start_time": self._recording_stats.session_start_time.isoformat(),
-            }
-
-            # Calculate next activity ETA
-            # Get activity generation interval from config (default 900 seconds = 15 minutes)
-            try:
-                from opencontext.config.global_config import GlobalConfig
-
-                config = GlobalConfig.get_instance().get_config()
-                activity_interval = (
-                    config.get("content_generation", {}).get("activity", {}).get("interval", 900)
-                )
-            except Exception:
-                activity_interval = 900
-
-            if self._recording_stats.last_activity_time:
-                elapsed = (
-                    datetime.now() - self._recording_stats.last_activity_time
-                ).total_seconds()
-                remaining = max(0, activity_interval - elapsed)
-                stats["next_activity_eta_seconds"] = int(remaining)
-            else:
-                elapsed = (
-                    datetime.now() - self._recording_stats.session_start_time
-                ).total_seconds()
-                remaining = max(0, activity_interval - elapsed)
-                stats["next_activity_eta_seconds"] = int(remaining)
-
-            # Get recent errors from this session
-            session_start = self._recording_stats.session_start_time
-            recent_errors = [
-                {
-                    "error_message": e.error_message,
-                    "processor_name": e.processor_name,
-                    "timestamp": e.timestamp.isoformat(),
-                }
-                for e in self._processing_errors
-                if e.timestamp >= session_start and e.processor_name == "screenshot_processor"
-            ]
-            stats["recent_errors"] = recent_errors[-5:]  # Last 5 errors
-
-            # Get recent screenshots (最多5张)
-            stats["recent_screenshots"] = list(self._recording_stats.recent_screenshot_paths)
-
-            return stats
-
-    def reset_recording_stats(self):
-        """Reset recording session statistics"""
-        with self._lock:
-            logger.info("Resetting recording session statistics")
-            self._recording_stats = RecordingSessionStats()
-
     def get_system_overview(self) -> Dict[str, Any]:
         """Get system overview"""
         uptime = datetime.now() - self._start_time
@@ -782,11 +685,6 @@ def record_processing_stage(
     get_monitor().record_processing_stage(stage_name, duration_ms, status, metadata)
 
 
-def increment_screenshot_count():
-    """Global function: Increment screenshot count"""
-    get_monitor().increment_data_count("screenshot")
-
-
 def increment_context_count(context_type: str):
     """Global function: Increment context count by type"""
     get_monitor().increment_data_count("context", context_type=context_type)
@@ -800,23 +698,3 @@ def increment_data_count(
 ):
     """Global function: Increment data count"""
     get_monitor().increment_data_count(data_type, count, context_type, metadata)
-
-
-def increment_recording_stat(stat_type: str, count: int = 1):
-    """Global function: Increment recording session statistics"""
-    get_monitor().increment_recording_stat(stat_type, count)
-
-
-def get_recording_stats() -> Dict[str, Any]:
-    """Global function: Get current recording session statistics"""
-    return get_monitor().get_recording_stats()
-
-
-def reset_recording_stats():
-    """Global function: Reset recording session statistics"""
-    get_monitor().reset_recording_stats()
-
-
-def record_screenshot_path(screenshot_path: str):
-    """Global function: Record a screenshot path"""
-    get_monitor().record_screenshot_path(screenshot_path)

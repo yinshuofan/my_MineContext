@@ -25,6 +25,7 @@ class Chunk(BaseModel):
     """
     Represents a chunk split from a document or text
     """
+
     text: Optional[str] = None
     image: Optional[bytes] = None
     chunk_index: int = 0
@@ -99,9 +100,9 @@ class ContextProperties(BaseModel):
     duration_count: int = 1  # context duration count
     enable_merge: bool = False
     is_happend: bool = False  # whether occurred
-    last_call_time: Optional[datetime.datetime] = (
-        None  # last call time, updated during online service calls
-    )
+    last_call_time: Optional[
+        datetime.datetime
+    ] = None  # last call time, updated during online service calls
     # position: Optional[Dict[str, Any]] = None # context position in original data
 
     # Document tracking fields
@@ -113,6 +114,15 @@ class ContextProperties(BaseModel):
     user_id: Optional[str] = None  # User identifier
     device_id: Optional[str] = None  # Device identifier
     agent_id: Optional[str] = None  # Agent identifier
+
+    # Hierarchy indexing fields (event type only, for time-based hierarchical summaries)
+    hierarchy_level: int = 0  # 0=original, 1=daily summary, 2=weekly summary, 3=monthly summary
+    parent_id: Optional[str] = None  # Parent summary ID
+    children_ids: List[str] = Field(default_factory=list)  # Child record IDs
+    time_bucket: Optional[str] = None  # Time bucket: "2026-02-21" / "2026-W08" / "2026-02"
+
+    # Document overwrite identifier (document type only)
+    source_file_key: Optional[str] = None  # Format: "user_id:file_path", identifies same document
 
 
 class Vectorize(BaseModel):
@@ -189,6 +199,16 @@ class ProcessedContext(BaseModel):
         duration_count = self.properties.duration_count
         parts.append(f"duration count: {duration_count}")
 
+        # Hierarchy info (for event summaries)
+        if self.properties.hierarchy_level > 0:
+            parts.append(f"hierarchy level: {self.properties.hierarchy_level}")
+        if self.properties.time_bucket:
+            parts.append(f"time bucket: {self.properties.time_bucket}")
+
+        # Document source info
+        if self.properties.source_file_key:
+            parts.append(f"source file key: {self.properties.source_file_key}")
+
         return "\n".join(parts)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -264,6 +284,7 @@ class ProcessedContextModel(BaseModel):
     importance: int
     is_processed: bool
     call_count: int
+    enable_merge: bool = False
     merge_count: int  # merge count
     last_call_time: Optional[str] = None
     create_time: str
@@ -278,6 +299,13 @@ class ProcessedContextModel(BaseModel):
     user_id: Optional[str] = None  # User identifier
     device_id: Optional[str] = None  # Device identifier
     agent_id: Optional[str] = None  # Agent identifier
+    # Hierarchy fields
+    hierarchy_level: int = 0
+    parent_id: Optional[str] = None
+    children_ids: List[str] = Field(default_factory=list)
+    time_bucket: Optional[str] = None
+    # Document source tracking
+    source_file_key: Optional[str] = None
 
     @classmethod
     def from_processed_context(
@@ -325,6 +353,13 @@ class ProcessedContextModel(BaseModel):
             user_id=pc.properties.user_id,
             device_id=pc.properties.device_id,
             agent_id=pc.properties.agent_id,
+            # Hierarchy fields
+            hierarchy_level=pc.properties.hierarchy_level,
+            parent_id=pc.properties.parent_id,
+            children_ids=pc.properties.children_ids,
+            time_bucket=pc.properties.time_bucket,
+            # Document source tracking
+            source_file_key=pc.properties.source_file_key,
         )
 
     @classmethod
@@ -333,27 +368,69 @@ class ProcessedContextModel(BaseModel):
         return cls.model_validate(data)
 
 
-class ProfileContextMetadata(BaseModel):
-    """Profile context additional information"""
+class ProfileData(BaseModel):
+    """User profile — stored in relational DB"""
 
-    entity_type: str = ""
-    entity_canonical_name: str = ""
-    entity_aliases: List[str] = []
-    entity_metadata: Dict[str, Any] = {}
-    entity_relationships: Dict[str, List[Any]] = {}
-    entity_description: str = ""
+    user_id: str  # Composite primary key part 1
+    agent_id: str = (
+        "default"  # Composite primary key part 2 (different agents can have different profiles)
+    )
+    content: str  # Full profile text (LLM-merged result)
+    summary: Optional[str] = None
+    keywords: List[str] = Field(default_factory=list)
+    entities: List[str] = Field(default_factory=list)
+    importance: int = 0
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return self.model_dump(exclude_none=True)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProfileContextMetadata":
+    def from_dict(cls, data: Dict[str, Any]) -> "ProfileData":
         """Create model from dictionary"""
         return cls.model_validate(data)
 
+
+class EntityData(BaseModel):
+    """Entity profile — stored in relational DB"""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str  # Owner user
+    entity_name: str  # Unique key = user_id + entity_name
+    entity_type: Optional[str] = None  # person / project / team / org / other
+    content: str  # Entity description (LLM-merged result)
+    summary: Optional[str] = None
+    keywords: List[str] = Field(default_factory=list)
+    aliases: List[str] = Field(default_factory=list)
+    relationships: Dict[str, List[str]] = Field(default_factory=dict)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return self.model_dump(exclude_none=True)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EntityData":
+        """Create model from dictionary"""
+        return cls.model_validate(data)
+
+
 class KnowledgeContextMetadata(BaseModel):
     """Knowledge context additional information"""
+
     knowledge_source: str = ""
     knowledge_file_path: str = ""
     knowledge_title: str = ""

@@ -8,7 +8,6 @@ Server component: monitoring routes - Monitoring API endpoints
 """
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -112,7 +111,7 @@ async def get_data_stats(
     _auth: str = auth_dependency,
 ):
     """
-    Get data statistics (screenshots, documents, contexts)
+    Get data statistics (documents, contexts)
     """
     try:
         monitor = get_monitor()
@@ -128,7 +127,7 @@ async def get_data_stats_trend(
     _auth: str = auth_dependency,
 ):
     """
-    Get data statistics trend with time series (screenshots, documents, contexts over time)
+    Get data statistics trend with time series (documents, contexts over time)
     """
     try:
         monitor = get_monitor()
@@ -147,14 +146,12 @@ async def get_data_stats_by_range(
     _auth: str = auth_dependency,
 ):
     """
-    Get data statistics by custom time range (screenshots, documents, contexts)
+    Get data statistics by custom time range (documents, contexts)
     """
     try:
         # Validate time range
         if start_time >= end_time:
-            raise HTTPException(
-                status_code=400, detail="start_time must be earlier than end_time"
-            )
+            raise HTTPException(status_code=400, detail="start_time must be earlier than end_time")
 
         monitor = get_monitor()
         stats = monitor.get_data_stats_by_range(start_time=start_time, end_time=end_time)
@@ -214,31 +211,3 @@ async def get_processing_errors(
         return {"success": True, "data": errors}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get processing errors: {str(e)}")
-
-
-@router.get("/recording-stats")
-async def get_recording_stats(_auth: str = auth_dependency):
-    """
-    Get current recording session statistics
-    """
-    try:
-        monitor = get_monitor()
-        stats = monitor.get_recording_stats()
-        return {"success": True, "data": stats}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get recording statistics: {str(e)}")
-
-
-@router.post("/recording-stats/reset")
-async def reset_recording_stats(_auth: str = auth_dependency):
-    """
-    Reset recording session statistics
-    """
-    try:
-        monitor = get_monitor()
-        monitor.reset_recording_stats()
-        return {"success": True, "message": "Recording statistics reset successfully"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to reset recording statistics: {str(e)}"
-        )
