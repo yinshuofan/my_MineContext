@@ -71,6 +71,7 @@ class ProfileResult(BaseModel):
     """Profile search result from relational DB"""
 
     user_id: str
+    device_id: str = "default"
     agent_id: str
     content: str
     summary: Optional[str] = None
@@ -82,6 +83,9 @@ class EntityResult(BaseModel):
     """Entity search result from relational DB"""
 
     id: str
+    user_id: str = ""
+    device_id: str = "default"
+    agent_id: str = "default"
     entity_name: str
     entity_type: Optional[str] = None
     content: str

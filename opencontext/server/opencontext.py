@@ -150,7 +150,9 @@ class OpenContext:
                     uid = ctx.properties.user_id
                     if uid and uid not in user_ids_seen:
                         user_ids_seen.add(uid)
-                        self._invalidate_user_cache(uid, ctx.properties.agent_id)
+                        self._invalidate_user_cache(
+                            uid, ctx.properties.device_id, ctx.properties.agent_id
+                        )
             return success
         except Exception as e:
             logger.error(f"Error storing processed contexts: {e}")
@@ -162,6 +164,7 @@ class OpenContext:
         props = ctx.properties
         self.storage.upsert_profile(
             user_id=props.user_id or "default",
+            device_id=props.device_id or "default",
             agent_id=props.agent_id or "default",
             content=ed.summary or "",
             summary=ed.summary,
@@ -170,8 +173,10 @@ class OpenContext:
             importance=ed.importance,
             metadata=ctx.metadata,
         )
-        logger.info(f"Profile stored for user={props.user_id}, agent={props.agent_id}")
-        self._invalidate_user_cache(props.user_id, props.agent_id)
+        logger.info(
+            f"Profile stored for user={props.user_id}, device={props.device_id}, agent={props.agent_id}"
+        )
+        self._invalidate_user_cache(props.user_id, props.device_id, props.agent_id)
 
     def _store_entities(self, ctx: ProcessedContext) -> None:
         """Store entity contexts to relational DB."""
@@ -180,6 +185,8 @@ class OpenContext:
         for entity_name in ed.entities:
             self.storage.upsert_entity(
                 user_id=props.user_id or "default",
+                device_id=props.device_id or "default",
+                agent_id=props.agent_id or "default",
                 entity_name=entity_name,
                 content=ed.summary or "",
                 entity_type=None,
@@ -188,10 +195,13 @@ class OpenContext:
                 metadata=ctx.metadata,
             )
             logger.info(f"Entity '{entity_name}' stored for user={props.user_id}")
-        self._invalidate_user_cache(props.user_id, props.agent_id)
+        self._invalidate_user_cache(props.user_id, props.device_id, props.agent_id)
 
     def _invalidate_user_cache(
-        self, user_id: Optional[str], agent_id: Optional[str] = None
+        self,
+        user_id: Optional[str],
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> None:
         """Fire-and-forget cache invalidation. Uses thread-safe submission if no event loop."""
         if not user_id:
@@ -202,6 +212,7 @@ class OpenContext:
             from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
 
             manager = get_memory_cache_manager()
+            did = device_id or "default"
             aid = agent_id or "default"
 
             # Always use run_coroutine_threadsafe — works from both event loop
@@ -216,7 +227,7 @@ class OpenContext:
 
             if loop and loop.is_running():
                 asyncio.run_coroutine_threadsafe(
-                    manager.invalidate_snapshot(user_id, aid), loop
+                    manager.invalidate_snapshot(user_id, did, aid), loop
                 )
                 logger.debug(f"Cache invalidation submitted for user={user_id}")
             else:

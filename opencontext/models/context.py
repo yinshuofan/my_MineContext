@@ -369,11 +369,12 @@ class ProcessedContextModel(BaseModel):
 
 
 class ProfileData(BaseModel):
-    """User profile — stored in relational DB"""
+    """User profile — stored in relational DB (composite key: user_id + device_id + agent_id)"""
 
     user_id: str  # Composite primary key part 1
+    device_id: str = "default"  # Composite primary key part 2
     agent_id: str = (
-        "default"  # Composite primary key part 2 (different agents can have different profiles)
+        "default"  # Composite primary key part 3 (different agents can have different profiles)
     )
     content: str  # Full profile text (LLM-merged result)
     summary: Optional[str] = None
@@ -399,11 +400,13 @@ class ProfileData(BaseModel):
 
 
 class EntityData(BaseModel):
-    """Entity profile — stored in relational DB"""
+    """Entity profile — stored in relational DB (unique key: user_id + device_id + agent_id + entity_name)"""
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str  # Owner user
-    entity_name: str  # Unique key = user_id + entity_name
+    device_id: str = "default"  # Device identifier
+    agent_id: str = "default"  # Agent identifier
+    entity_name: str  # Unique key = user_id + device_id + agent_id + entity_name
     entity_type: Optional[str] = None  # person / project / team / org / other
     content: str  # Entity description (LLM-merged result)
     summary: Optional[str] = None

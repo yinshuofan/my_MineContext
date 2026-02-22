@@ -62,6 +62,7 @@ class UserMemoryCacheResponse(BaseModel):
 
     success: bool
     user_id: str
+    device_id: str = "default"
     agent_id: str
     profile: Optional[ProfileResult] = None
     entities: List[EntityResult] = Field(default_factory=list)

@@ -628,7 +628,12 @@ class ScreenshotProcessor(BaseContextProcessor):
         """Parse a single context item."""
         entities_info = validate_and_clean_entities(entities)
         vectorize_task = do_vectorize_async(item.vectorize)
-        entities_task = refresh_entities(entities_info, item.vectorize.text)
+        entities_task = refresh_entities(
+            entities_info, item.vectorize.text,
+            user_id=item.properties.user_id or "default",
+            device_id=item.properties.device_id or "default",
+            agent_id=item.properties.agent_id or "default",
+        )
         _, entities_results = await asyncio.gather(vectorize_task, entities_task)
         item.extracted_data.entities = entities_results
         return item

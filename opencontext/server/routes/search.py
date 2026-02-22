@@ -122,7 +122,14 @@ async def unified_search(
 
         # Fire-and-forget: track accessed items for memory cache
         if request.user_id and total > 0:
-            asyncio.create_task(_track_accessed_safe(request.user_id, results))
+            asyncio.create_task(
+                _track_accessed_safe(
+                    request.user_id,
+                    results,
+                    device_id=request.device_id or "default",
+                    agent_id=request.agent_id or "default",
+                )
+            )
 
         return UnifiedSearchResponse(
             success=True,
@@ -153,7 +160,12 @@ async def unified_search(
         )
 
 
-async def _track_accessed_safe(user_id: str, results: TypedResults) -> None:
+async def _track_accessed_safe(
+    user_id: str,
+    results: TypedResults,
+    device_id: str = "default",
+    agent_id: str = "default",
+) -> None:
     """Fire-and-forget: record accessed context IDs in Redis for memory cache."""
     try:
         items: List[dict] = []
@@ -173,6 +185,8 @@ async def _track_accessed_safe(user_id: str, results: TypedResults) -> None:
         if items:
             from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
 
-            await get_memory_cache_manager().track_accessed(user_id, items)
+            await get_memory_cache_manager().track_accessed(
+                user_id, items, device_id=device_id, agent_id=agent_id
+            )
     except Exception as e:
         logger.debug(f"Access tracking failed (non-critical): {e}")

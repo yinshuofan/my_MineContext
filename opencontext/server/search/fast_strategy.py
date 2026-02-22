@@ -64,11 +64,14 @@ class FastSearchStrategy(BaseSearchStrategy):
 
         if ContextType.PROFILE.value in context_types and user_id:
             tasks["profile"] = asyncio.to_thread(
-                storage.get_profile, user_id, agent_id or "default"
+                storage.get_profile, user_id, device_id or "default", agent_id or "default"
             )
 
         if ContextType.ENTITY.value in context_types and user_id:
-            tasks["entity"] = asyncio.to_thread(storage.search_entities, user_id, query, top_k)
+            tasks["entity"] = asyncio.to_thread(
+                storage.search_entities, user_id, device_id or "default",
+                agent_id or "default", query, top_k,
+            )
 
         if ContextType.DOCUMENT.value in context_types:
             tasks["document"] = asyncio.to_thread(
@@ -249,6 +252,7 @@ class FastSearchStrategy(BaseSearchStrategy):
         """Convert profile dict from storage to ProfileResult"""
         return ProfileResult(
             user_id=data.get("user_id", ""),
+            device_id=data.get("device_id", "default"),
             agent_id=data.get("agent_id", "default"),
             content=data.get("content", ""),
             summary=data.get("summary"),
@@ -261,6 +265,9 @@ class FastSearchStrategy(BaseSearchStrategy):
         """Convert entity dict from storage to EntityResult"""
         return EntityResult(
             id=data.get("id", ""),
+            user_id=data.get("user_id", ""),
+            device_id=data.get("device_id", "default"),
+            agent_id=data.get("agent_id", "default"),
             entity_name=data.get("entity_name", ""),
             entity_type=data.get("entity_type"),
             content=data.get("content", ""),

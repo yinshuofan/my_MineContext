@@ -64,12 +64,14 @@ class UserMemoryCacheManager:
     # ─── Key helpers ───
 
     @staticmethod
-    def _accessed_key(user_id: str) -> str:
-        return f"memory_cache:accessed:{user_id}"
+    def _accessed_key(
+        user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> str:
+        return f"memory_cache:accessed:{user_id}:{device_id}:{agent_id}"
 
     @staticmethod
-    def _snapshot_key(user_id: str, agent_id: str) -> str:
-        return f"memory_cache:snapshot:{user_id}:{agent_id}"
+    def _snapshot_key(user_id: str, device_id: str, agent_id: str) -> str:
+        return f"memory_cache:snapshot:{user_id}:{device_id}:{agent_id}"
 
     # ─── Access Tracking (called after every search) ───
 
@@ -77,6 +79,8 @@ class UserMemoryCacheManager:
         self,
         user_id: str,
         items: List[Dict[str, Any]],
+        device_id: str = "default",
+        agent_id: str = "default",
     ) -> None:
         """Record context IDs returned in search results for a user.
 
@@ -88,7 +92,7 @@ class UserMemoryCacheManager:
 
         self._capture_loop()
         cache = await get_cache()
-        key = self._accessed_key(user_id)
+        key = self._accessed_key(user_id, device_id, agent_id)
         now = time.time()
 
         # Build mapping: {context_type}:{id} → metadata JSON
@@ -141,18 +145,24 @@ class UserMemoryCacheManager:
 
     # ─── Snapshot Invalidation ───
 
-    async def invalidate_snapshot(self, user_id: str, agent_id: str = "default") -> None:
+    async def invalidate_snapshot(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> None:
         """Invalidate the cached snapshot for a user."""
         cache = await get_cache()
-        key = self._snapshot_key(user_id, agent_id)
+        key = self._snapshot_key(user_id, device_id, agent_id)
         await cache.delete(key)
-        logger.debug(f"Invalidated memory cache snapshot for user={user_id}, agent={agent_id}")
+        logger.debug(
+            f"Invalidated memory cache snapshot for user={user_id}, "
+            f"device={device_id}, agent={agent_id}"
+        )
 
     # ─── Main Entry Point ───
 
     async def get_user_memory_cache(
         self,
         user_id: str,
+        device_id: str = "default",
         agent_id: str = "default",
         recent_days: Optional[int] = None,
         max_recent_events_today: Optional[int] = None,
@@ -162,10 +172,12 @@ class UserMemoryCacheManager:
         """Get the user's memory cache with stampede prevention."""
         self._capture_loop()
         cache = await get_cache()
-        snapshot_key = self._snapshot_key(user_id, agent_id)
+        snapshot_key = self._snapshot_key(user_id, device_id, agent_id)
 
         # 1. Recently accessed — always real-time from Redis
-        accessed = await self._get_recently_accessed(cache, user_id, max_accessed)
+        accessed = await self._get_recently_accessed(
+            cache, user_id, max_accessed, device_id, agent_id
+        )
 
         # 2. Try cached snapshot
         if not force_refresh:
@@ -177,7 +189,7 @@ class UserMemoryCacheManager:
                 )
 
         # 3. Cache miss — acquire distributed lock to prevent stampede
-        lock_key = f"memory_cache:build:{user_id}:{agent_id}"
+        lock_key = f"memory_cache:build:{user_id}:{device_id}:{agent_id}"
         lock_token = await cache.acquire_lock(
             lock_key, timeout=30, blocking=True, blocking_timeout=5
         )
@@ -194,7 +206,7 @@ class UserMemoryCacheManager:
 
                 # Actually build snapshot
                 snapshot_data = await self._build_snapshot(
-                    user_id, agent_id, recent_days, max_recent_events_today
+                    user_id, device_id, agent_id, recent_days, max_recent_events_today
                 )
                 ttl = self._config["snapshot_ttl"]
                 await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
@@ -213,7 +225,7 @@ class UserMemoryCacheManager:
                 )
             # Last resort: build without lock (duplicate build OK, better than failing)
             snapshot_data = await self._build_snapshot(
-                user_id, agent_id, recent_days, max_recent_events_today
+                user_id, device_id, agent_id, recent_days, max_recent_events_today
             )
             return self._merge_response(
                 snapshot_data, accessed, cache_hit=False, ttl_remaining=0
@@ -222,10 +234,15 @@ class UserMemoryCacheManager:
     # ─── Recently Accessed (real-time from Redis) ───
 
     async def _get_recently_accessed(
-        self, cache, user_id: str, max_items: int
+        self,
+        cache,
+        user_id: str,
+        max_items: int,
+        device_id: str = "default",
+        agent_id: str = "default",
     ) -> List[RecentlyAccessedItem]:
         """Read recently-accessed items from Redis hash, sorted by accessed_ts desc."""
-        key = self._accessed_key(user_id)
+        key = self._accessed_key(user_id, device_id, agent_id)
         all_data = await cache.hgetall(key)
         if not all_data:
             return []
@@ -261,6 +278,7 @@ class UserMemoryCacheManager:
     async def _build_snapshot(
         self,
         user_id: str,
+        device_id: str,
         agent_id: str,
         recent_days: Optional[int],
         max_today_events: Optional[int],
@@ -282,9 +300,12 @@ class UserMemoryCacheManager:
 
         # Parallel queries
         tasks = {
-            "profile": asyncio.to_thread(storage.get_profile, user_id, agent_id),
+            "profile": asyncio.to_thread(
+                storage.get_profile, user_id, device_id, agent_id
+            ),
             "entities": asyncio.to_thread(
-                storage.list_entities, user_id, None, self._config["max_entities"], 0
+                storage.list_entities, user_id, device_id, agent_id,
+                None, self._config["max_entities"], 0,
             ),
             "today_events": asyncio.to_thread(
                 storage.get_all_processed_contexts,
@@ -344,6 +365,7 @@ class UserMemoryCacheManager:
         # Assemble snapshot
         snapshot: Dict[str, Any] = {
             "user_id": user_id,
+            "device_id": device_id,
             "agent_id": agent_id,
             "built_at": now.isoformat(),
             "recent_days": days,
@@ -354,6 +376,7 @@ class UserMemoryCacheManager:
         if profile_data and not isinstance(profile_data, Exception):
             snapshot["profile"] = {
                 "user_id": profile_data.get("user_id", user_id),
+                "device_id": profile_data.get("device_id", device_id),
                 "agent_id": profile_data.get("agent_id", agent_id),
                 "content": profile_data.get("content", ""),
                 "summary": profile_data.get("summary"),
@@ -517,6 +540,7 @@ class UserMemoryCacheManager:
         return UserMemoryCacheResponse(
             success=True,
             user_id=snapshot_data.get("user_id", ""),
+            device_id=snapshot_data.get("device_id", "default"),
             agent_id=snapshot_data.get("agent_id", "default"),
             profile=profile,
             entities=entities,

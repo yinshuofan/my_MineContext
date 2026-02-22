@@ -76,6 +76,7 @@ class MySQLBackend(IDocumentStorageBackend):
 
             # Create table structure
             self._create_tables()
+            self._migrate_schema_v2()
 
             self._initialized = True
             logger.info(
@@ -176,11 +177,12 @@ class MySQLBackend(IDocumentStorageBackend):
         """
         )
 
-        # Profiles table - user profiles (composite key: user_id + agent_id)
+        # Profiles table - user profiles (composite key: user_id + device_id + agent_id)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id VARCHAR(255) NOT NULL,
+                device_id VARCHAR(255) NOT NULL DEFAULT 'default',
                 agent_id VARCHAR(255) NOT NULL DEFAULT 'default',
                 content LONGTEXT NOT NULL,
                 summary TEXT,
@@ -190,17 +192,19 @@ class MySQLBackend(IDocumentStorageBackend):
                 metadata JSON,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, agent_id)
+                PRIMARY KEY (user_id, device_id, agent_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """
         )
 
-        # Entities table - entity profiles (unique key: user_id + entity_name)
+        # Entities table - entity profiles (unique key: user_id + device_id + agent_id + entity_name)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS entities (
                 id VARCHAR(255) PRIMARY KEY,
                 user_id VARCHAR(255) NOT NULL,
+                device_id VARCHAR(255) NOT NULL DEFAULT 'default',
+                agent_id VARCHAR(255) NOT NULL DEFAULT 'default',
                 entity_name VARCHAR(500) NOT NULL,
                 entity_type VARCHAR(50),
                 content LONGTEXT NOT NULL,
@@ -210,7 +214,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 metadata JSON,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE KEY uk_user_entity (user_id, entity_name),
+                UNIQUE KEY uk_user_entity (user_id, device_id, agent_id, entity_name),
                 INDEX idx_entity_user (user_id),
                 INDEX idx_entity_type (entity_type)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -339,6 +343,59 @@ class MySQLBackend(IDocumentStorageBackend):
         )
 
         conn.commit()
+
+    def _migrate_schema_v2(self):
+        """Add device_id to profiles and device_id+agent_id to entities tables (idempotent)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # --- Profiles table: add device_id ---
+        try:
+            cursor.execute(
+                "ALTER TABLE profiles ADD COLUMN device_id VARCHAR(255) NOT NULL DEFAULT 'default' AFTER user_id"
+            )
+            conn.commit()
+            logger.info("Migration: added device_id column to profiles table")
+        except Exception:
+            conn.rollback()  # Column already exists
+
+        try:
+            cursor.execute(
+                "ALTER TABLE profiles DROP PRIMARY KEY, ADD PRIMARY KEY (user_id, device_id, agent_id)"
+            )
+            conn.commit()
+            logger.info("Migration: updated profiles primary key to (user_id, device_id, agent_id)")
+        except Exception:
+            conn.rollback()  # PK already updated
+
+        # --- Entities table: add device_id and agent_id ---
+        try:
+            cursor.execute(
+                "ALTER TABLE entities ADD COLUMN device_id VARCHAR(255) NOT NULL DEFAULT 'default' AFTER user_id"
+            )
+            conn.commit()
+            logger.info("Migration: added device_id column to entities table")
+        except Exception:
+            conn.rollback()
+
+        try:
+            cursor.execute(
+                "ALTER TABLE entities ADD COLUMN agent_id VARCHAR(255) NOT NULL DEFAULT 'default' AFTER device_id"
+            )
+            conn.commit()
+            logger.info("Migration: added agent_id column to entities table")
+        except Exception:
+            conn.rollback()
+
+        try:
+            cursor.execute(
+                "ALTER TABLE entities DROP INDEX uk_user_entity, "
+                "ADD UNIQUE KEY uk_user_entity (user_id, device_id, agent_id, entity_name)"
+            )
+            conn.commit()
+            logger.info("Migration: updated entities unique key")
+        except Exception:
+            conn.rollback()
 
     # Report table operations
     def insert_vaults(
@@ -796,15 +853,16 @@ class MySQLBackend(IDocumentStorageBackend):
     def upsert_profile(
         self,
         user_id: str,
-        agent_id: str,
-        content: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        content: str = "",
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """Insert or update user profile (composite key: user_id + agent_id)"""
+        """Insert or update user profile (composite key: user_id + device_id + agent_id)"""
         if not self._initialized:
             return False
 
@@ -818,9 +876,9 @@ class MySQLBackend(IDocumentStorageBackend):
 
             cursor.execute(
                 """
-                INSERT INTO profiles (user_id, agent_id, content, summary, keywords, entities,
+                INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords, entities,
                                       importance, metadata, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     content = VALUES(content),
                     summary = VALUES(summary),
@@ -832,6 +890,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 """,
                 (
                     user_id,
+                    device_id,
                     agent_id,
                     content,
                     summary,
@@ -844,14 +903,14 @@ class MySQLBackend(IDocumentStorageBackend):
                 ),
             )
             conn.commit()
-            logger.info(f"Profile upserted for user_id={user_id}, agent_id={agent_id}")
+            logger.info(f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}")
             return True
         except Exception as e:
             conn.rollback()
             logger.exception(f"Failed to upsert profile: {e}")
             return False
 
-    def get_profile(self, user_id: str, agent_id: str = "default") -> Optional[Dict]:
+    def get_profile(self, user_id: str, device_id: str = "default", agent_id: str = "default") -> Optional[Dict]:
         """Get user profile by composite key"""
         if not self._initialized:
             return None
@@ -861,12 +920,12 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             cursor.execute(
                 """
-                SELECT user_id, agent_id, content, summary, keywords, entities,
+                SELECT user_id, device_id, agent_id, content, summary, keywords, entities,
                        importance, metadata, created_at, updated_at
                 FROM profiles
-                WHERE user_id = %s AND agent_id = %s
+                WHERE user_id = %s AND device_id = %s AND agent_id = %s
                 """,
-                (user_id, agent_id),
+                (user_id, device_id, agent_id),
             )
             row = cursor.fetchone()
             if row:
@@ -883,7 +942,7 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get profile: {e}")
             return None
 
-    def delete_profile(self, user_id: str, agent_id: str = "default") -> bool:
+    def delete_profile(self, user_id: str, device_id: str = "default", agent_id: str = "default") -> bool:
         """Delete user profile"""
         if not self._initialized:
             return False
@@ -892,8 +951,8 @@ class MySQLBackend(IDocumentStorageBackend):
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "DELETE FROM profiles WHERE user_id = %s AND agent_id = %s",
-                (user_id, agent_id),
+                "DELETE FROM profiles WHERE user_id = %s AND device_id = %s AND agent_id = %s",
+                (user_id, device_id, agent_id),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -907,15 +966,17 @@ class MySQLBackend(IDocumentStorageBackend):
     def upsert_entity(
         self,
         user_id: str,
-        entity_name: str,
-        content: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        entity_name: str = "",
+        content: str = "",
         entity_type: Optional[str] = None,
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         aliases: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Insert or update entity (unique key: user_id + entity_name)"""
+        """Insert or update entity (unique key: user_id + device_id + agent_id + entity_name)"""
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
 
@@ -932,9 +993,9 @@ class MySQLBackend(IDocumentStorageBackend):
 
             cursor.execute(
                 """
-                INSERT INTO entities (id, user_id, entity_name, entity_type, content, summary,
+                INSERT INTO entities (id, user_id, device_id, agent_id, entity_name, entity_type, content, summary,
                                       keywords, aliases, metadata, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     entity_type = VALUES(entity_type),
                     content = VALUES(content),
@@ -947,6 +1008,8 @@ class MySQLBackend(IDocumentStorageBackend):
                 (
                     entity_id,
                     user_id,
+                    device_id,
+                    agent_id,
                     entity_name,
                     entity_type,
                     content,
@@ -962,8 +1025,8 @@ class MySQLBackend(IDocumentStorageBackend):
 
             # Retrieve the actual persisted ID (may differ from generated one on update)
             cursor.execute(
-                "SELECT id FROM entities WHERE user_id = %s AND entity_name = %s",
-                (user_id, entity_name),
+                "SELECT id FROM entities WHERE user_id = %s AND device_id = %s AND agent_id = %s AND entity_name = %s",
+                (user_id, device_id, agent_id, entity_name),
             )
             row = cursor.fetchone()
             if row:
@@ -976,8 +1039,8 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to upsert entity: {e}")
             raise
 
-    def get_entity(self, user_id: str, entity_name: str) -> Optional[Dict]:
-        """Get entity by user_id + entity_name"""
+    def get_entity(self, user_id: str, device_id: str = "default", agent_id: str = "default", entity_name: str = "") -> Optional[Dict]:
+        """Get entity by user_id + device_id + agent_id + entity_name"""
         if not self._initialized:
             return None
 
@@ -986,12 +1049,12 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             cursor.execute(
                 """
-                SELECT id, user_id, entity_name, entity_type, content, summary,
+                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content, summary,
                        keywords, aliases, metadata, created_at, updated_at
                 FROM entities
-                WHERE user_id = %s AND entity_name = %s
+                WHERE user_id = %s AND device_id = %s AND agent_id = %s AND entity_name = %s
                 """,
-                (user_id, entity_name),
+                (user_id, device_id, agent_id, entity_name),
             )
             row = cursor.fetchone()
             if row:
@@ -1011,6 +1074,8 @@ class MySQLBackend(IDocumentStorageBackend):
     def list_entities(
         self,
         user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
         entity_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
@@ -1022,8 +1087,8 @@ class MySQLBackend(IDocumentStorageBackend):
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            where_clauses = ["user_id = %s"]
-            params: list = [user_id]
+            where_clauses = ["user_id = %s", "device_id = %s", "agent_id = %s"]
+            params: list = [user_id, device_id, agent_id]
 
             if entity_type:
                 where_clauses.append("entity_type = %s")
@@ -1034,7 +1099,7 @@ class MySQLBackend(IDocumentStorageBackend):
 
             cursor.execute(
                 f"""
-                SELECT id, user_id, entity_name, entity_type, content, summary,
+                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content, summary,
                        keywords, aliases, metadata, created_at, updated_at
                 FROM entities
                 WHERE {where_sql}
@@ -1062,7 +1127,9 @@ class MySQLBackend(IDocumentStorageBackend):
     def search_entities(
         self,
         user_id: str,
-        query_text: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        query_text: str = "",
         limit: int = 20,
     ) -> List[Dict]:
         """Search entities by text (name, content, aliases)"""
@@ -1075,16 +1142,15 @@ class MySQLBackend(IDocumentStorageBackend):
             like_pattern = f"%{query_text}%"
             cursor.execute(
                 """
-                SELECT id, user_id, entity_name, entity_type, content, summary,
+                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content, summary,
                        keywords, aliases, metadata, created_at, updated_at
                 FROM entities
-                WHERE user_id = %s
-                  AND (entity_name LIKE %s OR content LIKE %s
-                       OR JSON_SEARCH(aliases, 'one', %s) IS NOT NULL)
+                WHERE user_id = %s AND device_id = %s AND agent_id = %s
+                  AND (entity_name LIKE %s OR content LIKE %s OR aliases LIKE %s)
                 ORDER BY updated_at DESC
                 LIMIT %s
                 """,
-                (user_id, like_pattern, like_pattern, like_pattern, limit),
+                (user_id, device_id, agent_id, like_pattern, like_pattern, like_pattern, limit),
             )
             rows = cursor.fetchall()
             results = []
@@ -1102,7 +1168,7 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to search entities: {e}")
             return []
 
-    def delete_entity(self, user_id: str, entity_name: str) -> bool:
+    def delete_entity(self, user_id: str, device_id: str = "default", agent_id: str = "default", entity_name: str = "") -> bool:
         """Delete entity"""
         if not self._initialized:
             return False
@@ -1111,8 +1177,8 @@ class MySQLBackend(IDocumentStorageBackend):
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "DELETE FROM entities WHERE user_id = %s AND entity_name = %s",
-                (user_id, entity_name),
+                "DELETE FROM entities WHERE user_id = %s AND device_id = %s AND agent_id = %s AND entity_name = %s",
+                (user_id, device_id, agent_id, entity_name),
             )
             conn.commit()
             return cursor.rowcount > 0

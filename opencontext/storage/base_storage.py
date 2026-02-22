@@ -385,18 +385,20 @@ class IDocumentStorageBackend(IStorageBackend):
     def upsert_profile(
         self,
         user_id: str,
-        agent_id: str,
-        content: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        content: str = "",
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """Insert or update user profile (composite key: user_id + agent_id)
+        """Insert or update user profile (composite key: user_id + device_id + agent_id)
 
         Args:
             user_id: User identifier
+            device_id: Device identifier
             agent_id: Agent identifier (same user can have different profiles per agent)
             content: Full profile text (LLM-merged result)
             summary: Profile summary
@@ -410,11 +412,14 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def get_profile(self, user_id: str, agent_id: str = "default") -> Optional[Dict]:
+    def get_profile(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> Optional[Dict]:
         """Get user profile by composite key
 
         Args:
             user_id: User identifier
+            device_id: Device identifier
             agent_id: Agent identifier
 
         Returns:
@@ -422,11 +427,14 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def delete_profile(self, user_id: str, agent_id: str = "default") -> bool:
+    def delete_profile(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> bool:
         """Delete user profile
 
         Args:
             user_id: User identifier
+            device_id: Device identifier
             agent_id: Agent identifier
 
         Returns:
@@ -439,19 +447,23 @@ class IDocumentStorageBackend(IStorageBackend):
     def upsert_entity(
         self,
         user_id: str,
-        entity_name: str,
-        content: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        entity_name: str = "",
+        content: str = "",
         entity_type: Optional[str] = None,
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         aliases: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Insert or update entity (unique key: user_id + entity_name)
+        """Insert or update entity (unique key: user_id + device_id + agent_id + entity_name)
 
         Args:
             user_id: Owner user identifier
-            entity_name: Entity name (unique per user)
+            device_id: Device identifier
+            agent_id: Agent identifier
+            entity_name: Entity name (unique per user+device+agent)
             content: Entity description (LLM-merged result)
             entity_type: Entity type (person/project/team/org/other)
             summary: Entity summary
@@ -464,11 +476,16 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def get_entity(self, user_id: str, entity_name: str) -> Optional[Dict]:
-        """Get entity by user_id + entity_name
+    def get_entity(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default",
+        entity_name: str = "",
+    ) -> Optional[Dict]:
+        """Get entity by user_id + device_id + agent_id + entity_name
 
         Args:
             user_id: Owner user identifier
+            device_id: Device identifier
+            agent_id: Agent identifier
             entity_name: Entity name
 
         Returns:
@@ -479,6 +496,8 @@ class IDocumentStorageBackend(IStorageBackend):
     def list_entities(
         self,
         user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
         entity_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
@@ -487,6 +506,8 @@ class IDocumentStorageBackend(IStorageBackend):
 
         Args:
             user_id: Owner user identifier
+            device_id: Device identifier
+            agent_id: Agent identifier
             entity_type: Optional filter by entity type
             limit: Maximum number of results
             offset: Offset for pagination
@@ -499,13 +520,17 @@ class IDocumentStorageBackend(IStorageBackend):
     def search_entities(
         self,
         user_id: str,
-        query_text: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        query_text: str = "",
         limit: int = 20,
     ) -> List[Dict]:
         """Search entities by text (name, content, aliases)
 
         Args:
             user_id: Owner user identifier
+            device_id: Device identifier
+            agent_id: Agent identifier
             query_text: Search text
             limit: Maximum number of results
 
@@ -514,11 +539,16 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def delete_entity(self, user_id: str, entity_name: str) -> bool:
+    def delete_entity(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default",
+        entity_name: str = "",
+    ) -> bool:
         """Delete entity
 
         Args:
             user_id: Owner user identifier
+            device_id: Device identifier
+            agent_id: Agent identifier
             entity_name: Entity name
 
         Returns:

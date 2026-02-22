@@ -211,6 +211,8 @@ class TextChatProcessor(BaseContextProcessor):
                     entities_info=entities_info,
                     context_text=raw_context.content_text or "",
                     user_id=raw_context.user_id or "default",
+                    device_id=raw_context.device_id or "default",
+                    agent_id=raw_context.agent_id or "default",
                 )
                 logger.debug(f"Persisted {len(entities_info)} entities from chat analysis")
         except Exception as e:

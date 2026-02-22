@@ -51,6 +51,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             # Create table structure
             self._create_tables()
+            self._migrate_schema_v2()
 
             self._initialized = True
             logger.info(f"SQLite backend initialized successfully, database path: {self.db_path}")
@@ -159,11 +160,12 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         )
 
-        # Profiles table - user profiles (composite key: user_id + agent_id)
+        # Profiles table - user profiles (composite key: user_id + device_id + agent_id)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id TEXT NOT NULL,
+                device_id TEXT NOT NULL DEFAULT 'default',
                 agent_id TEXT NOT NULL DEFAULT 'default',
                 content TEXT NOT NULL,
                 summary TEXT,
@@ -173,17 +175,19 @@ class SQLiteBackend(IDocumentStorageBackend):
                 metadata JSON,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, agent_id)
+                PRIMARY KEY (user_id, device_id, agent_id)
             )
         """
         )
 
-        # Entities table - entity profiles (unique key: user_id + entity_name)
+        # Entities table - entity profiles (unique key: user_id + device_id + agent_id + entity_name)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS entities (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
+                device_id TEXT NOT NULL DEFAULT 'default',
+                agent_id TEXT NOT NULL DEFAULT 'default',
                 entity_name TEXT NOT NULL,
                 entity_type TEXT,
                 content TEXT NOT NULL,
@@ -193,7 +197,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 metadata JSON,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (user_id, entity_name)
+                UNIQUE (user_id, device_id, agent_id, entity_name)
             )
         """
         )
@@ -371,6 +375,94 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         # Add default Quick Start document (only on first initialization)
         self._insert_default_vault_document()
+
+    def _migrate_schema_v2(self):
+        """Add device_id to profiles and device_id+agent_id to entities tables (idempotent)."""
+        cursor = self.connection.cursor()
+
+        # Check if device_id exists in profiles
+        cursor.execute("PRAGMA table_info(profiles)")
+        profile_columns = [col[1] for col in cursor.fetchall()]
+
+        if "device_id" not in profile_columns:
+            try:
+                cursor.execute("ALTER TABLE profiles RENAME TO profiles_old")
+                cursor.execute(
+                    """
+                    CREATE TABLE profiles (
+                        user_id TEXT NOT NULL,
+                        device_id TEXT NOT NULL DEFAULT 'default',
+                        agent_id TEXT NOT NULL DEFAULT 'default',
+                        content TEXT NOT NULL,
+                        summary TEXT,
+                        keywords TEXT,
+                        entities TEXT,
+                        importance INTEGER DEFAULT 0,
+                        metadata TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (user_id, device_id, agent_id)
+                    )
+                """
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords,
+                                          entities, importance, metadata, created_at, updated_at)
+                    SELECT user_id, 'default', agent_id, content, summary, keywords,
+                           entities, importance, metadata, created_at, updated_at
+                    FROM profiles_old
+                """
+                )
+                cursor.execute("DROP TABLE profiles_old")
+                self.connection.commit()
+                logger.info("Migration: rebuilt profiles table with device_id")
+            except Exception as e:
+                self.connection.rollback()
+                logger.error(f"Migration failed for profiles: {e}")
+
+        # Check if device_id exists in entities
+        cursor.execute("PRAGMA table_info(entities)")
+        entity_columns = [col[1] for col in cursor.fetchall()]
+
+        if "device_id" not in entity_columns or "agent_id" not in entity_columns:
+            try:
+                cursor.execute("ALTER TABLE entities RENAME TO entities_old")
+                cursor.execute(
+                    """
+                    CREATE TABLE entities (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        device_id TEXT NOT NULL DEFAULT 'default',
+                        agent_id TEXT NOT NULL DEFAULT 'default',
+                        entity_name TEXT NOT NULL,
+                        entity_type TEXT,
+                        content TEXT NOT NULL,
+                        summary TEXT,
+                        keywords TEXT,
+                        aliases TEXT,
+                        metadata TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (user_id, device_id, agent_id, entity_name)
+                    )
+                """
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO entities (id, user_id, device_id, agent_id, entity_name, entity_type,
+                                          content, summary, keywords, aliases, metadata, created_at, updated_at)
+                    SELECT id, user_id, 'default', 'default', entity_name, entity_type,
+                           content, summary, keywords, aliases, metadata, created_at, updated_at
+                    FROM entities_old
+                """
+                )
+                cursor.execute("DROP TABLE entities_old")
+                self.connection.commit()
+                logger.info("Migration: rebuilt entities table with device_id and agent_id")
+            except Exception as e:
+                self.connection.rollback()
+                logger.error(f"Migration failed for entities: {e}")
 
     def _insert_default_vault_document(self):
         """Insert default Quick Start document"""
@@ -928,15 +1020,16 @@ class SQLiteBackend(IDocumentStorageBackend):
     def upsert_profile(
         self,
         user_id: str,
-        agent_id: str,
-        content: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        content: str = "",
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """Insert or update user profile (composite key: user_id + agent_id)"""
+        """Insert or update user profile (composite key: user_id + device_id + agent_id)"""
         if not self._initialized:
             return False
 
@@ -949,10 +1042,10 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             cursor.execute(
                 """
-                INSERT INTO profiles (user_id, agent_id, content, summary, keywords, entities,
-                                      importance, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, agent_id) DO UPDATE SET
+                INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords,
+                                      entities, importance, metadata, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, device_id, agent_id) DO UPDATE SET
                     content = excluded.content,
                     summary = excluded.summary,
                     keywords = excluded.keywords,
@@ -963,6 +1056,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (
                     user_id,
+                    device_id,
                     agent_id,
                     content,
                     summary,
@@ -975,14 +1069,18 @@ class SQLiteBackend(IDocumentStorageBackend):
                 ),
             )
             self.connection.commit()
-            logger.info(f"Profile upserted for user_id={user_id}, agent_id={agent_id}")
+            logger.info(
+                f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}"
+            )
             return True
         except Exception as e:
             self.connection.rollback()
             logger.exception(f"Failed to upsert profile: {e}")
             return False
 
-    def get_profile(self, user_id: str, agent_id: str = "default") -> Optional[Dict]:
+    def get_profile(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> Optional[Dict]:
         """Get user profile by composite key"""
         if not self._initialized:
             return None
@@ -991,12 +1089,12 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor.execute(
                 """
-                SELECT user_id, agent_id, content, summary, keywords, entities,
+                SELECT user_id, device_id, agent_id, content, summary, keywords, entities,
                        importance, metadata, created_at, updated_at
                 FROM profiles
-                WHERE user_id = ? AND agent_id = ?
+                WHERE user_id = ? AND device_id = ? AND agent_id = ?
                 """,
-                (user_id, agent_id),
+                (user_id, device_id, agent_id),
             )
             row = cursor.fetchone()
             if row:
@@ -1013,7 +1111,9 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get profile: {e}")
             return None
 
-    def delete_profile(self, user_id: str, agent_id: str = "default") -> bool:
+    def delete_profile(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> bool:
         """Delete user profile"""
         if not self._initialized:
             return False
@@ -1021,8 +1121,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         cursor = self.connection.cursor()
         try:
             cursor.execute(
-                "DELETE FROM profiles WHERE user_id = ? AND agent_id = ?",
-                (user_id, agent_id),
+                "DELETE FROM profiles WHERE user_id = ? AND device_id = ? AND agent_id = ?",
+                (user_id, device_id, agent_id),
             )
             self.connection.commit()
             return cursor.rowcount > 0
@@ -1036,15 +1136,17 @@ class SQLiteBackend(IDocumentStorageBackend):
     def upsert_entity(
         self,
         user_id: str,
-        entity_name: str,
-        content: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        entity_name: str = "",
+        content: str = "",
         entity_type: Optional[str] = None,
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         aliases: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Insert or update entity (unique key: user_id + entity_name)"""
+        """Insert or update entity (unique key: user_id + device_id + agent_id + entity_name)"""
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
@@ -1060,8 +1162,8 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             # Check if entity already exists to preserve its ID
             cursor.execute(
-                "SELECT id FROM entities WHERE user_id = ? AND entity_name = ?",
-                (user_id, entity_name),
+                "SELECT id FROM entities WHERE user_id = ? AND device_id = ? AND agent_id = ? AND entity_name = ?",
+                (user_id, device_id, agent_id, entity_name),
             )
             existing = cursor.fetchone()
             if existing:
@@ -1069,10 +1171,11 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             cursor.execute(
                 """
-                INSERT INTO entities (id, user_id, entity_name, entity_type, content, summary,
-                                      keywords, aliases, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, entity_name) DO UPDATE SET
+                INSERT INTO entities (id, user_id, device_id, agent_id, entity_name, entity_type,
+                                      content, summary, keywords, aliases, metadata,
+                                      created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, device_id, agent_id, entity_name) DO UPDATE SET
                     entity_type = excluded.entity_type,
                     content = excluded.content,
                     summary = excluded.summary,
@@ -1084,6 +1187,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (
                     entity_id,
                     user_id,
+                    device_id,
+                    agent_id,
                     entity_name,
                     entity_type,
                     content,
@@ -1103,8 +1208,14 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to upsert entity: {e}")
             raise
 
-    def get_entity(self, user_id: str, entity_name: str) -> Optional[Dict]:
-        """Get entity by user_id + entity_name"""
+    def get_entity(
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        entity_name: str = "",
+    ) -> Optional[Dict]:
+        """Get entity by user_id + device_id + agent_id + entity_name"""
         if not self._initialized:
             return None
 
@@ -1112,12 +1223,12 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor.execute(
                 """
-                SELECT id, user_id, entity_name, entity_type, content, summary,
-                       keywords, aliases, metadata, created_at, updated_at
+                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
+                       summary, keywords, aliases, metadata, created_at, updated_at
                 FROM entities
-                WHERE user_id = ? AND entity_name = ?
+                WHERE user_id = ? AND device_id = ? AND agent_id = ? AND entity_name = ?
                 """,
-                (user_id, entity_name),
+                (user_id, device_id, agent_id, entity_name),
             )
             row = cursor.fetchone()
             if row:
@@ -1137,6 +1248,8 @@ class SQLiteBackend(IDocumentStorageBackend):
     def list_entities(
         self,
         user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
         entity_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
@@ -1147,8 +1260,8 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         cursor = self.connection.cursor()
         try:
-            where_clauses = ["user_id = ?"]
-            params: list = [user_id]
+            where_clauses = ["user_id = ?", "device_id = ?", "agent_id = ?"]
+            params: list = [user_id, device_id, agent_id]
 
             if entity_type:
                 where_clauses.append("entity_type = ?")
@@ -1159,8 +1272,8 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             cursor.execute(
                 f"""
-                SELECT id, user_id, entity_name, entity_type, content, summary,
-                       keywords, aliases, metadata, created_at, updated_at
+                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
+                       summary, keywords, aliases, metadata, created_at, updated_at
                 FROM entities
                 WHERE {where_sql}
                 ORDER BY updated_at DESC
@@ -1187,7 +1300,9 @@ class SQLiteBackend(IDocumentStorageBackend):
     def search_entities(
         self,
         user_id: str,
-        query_text: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        query_text: str = "",
         limit: int = 20,
     ) -> List[Dict]:
         """Search entities by text (name, content, aliases)"""
@@ -1199,15 +1314,15 @@ class SQLiteBackend(IDocumentStorageBackend):
             like_pattern = f"%{query_text}%"
             cursor.execute(
                 """
-                SELECT id, user_id, entity_name, entity_type, content, summary,
-                       keywords, aliases, metadata, created_at, updated_at
+                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
+                       summary, keywords, aliases, metadata, created_at, updated_at
                 FROM entities
-                WHERE user_id = ?
+                WHERE user_id = ? AND device_id = ? AND agent_id = ?
                   AND (entity_name LIKE ? OR content LIKE ? OR aliases LIKE ?)
                 ORDER BY updated_at DESC
                 LIMIT ?
                 """,
-                (user_id, like_pattern, like_pattern, like_pattern, limit),
+                (user_id, device_id, agent_id, like_pattern, like_pattern, like_pattern, limit),
             )
             rows = cursor.fetchall()
             results = []
@@ -1225,7 +1340,13 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to search entities: {e}")
             return []
 
-    def delete_entity(self, user_id: str, entity_name: str) -> bool:
+    def delete_entity(
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        entity_name: str = "",
+    ) -> bool:
         """Delete entity"""
         if not self._initialized:
             return False
@@ -1233,8 +1354,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         cursor = self.connection.cursor()
         try:
             cursor.execute(
-                "DELETE FROM entities WHERE user_id = ? AND entity_name = ?",
-                (user_id, entity_name),
+                "DELETE FROM entities WHERE user_id = ? AND device_id = ? AND agent_id = ? AND entity_name = ?",
+                (user_id, device_id, agent_id, entity_name),
             )
             self.connection.commit()
             return cursor.rowcount > 0

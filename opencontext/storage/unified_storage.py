@@ -997,8 +997,9 @@ class UnifiedStorage:
     def upsert_profile(
         self,
         user_id: str,
-        agent_id: str,
-        content: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        content: str = "",
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
@@ -1011,6 +1012,7 @@ class UnifiedStorage:
             return False
         return self._document_backend.upsert_profile(
             user_id=user_id,
+            device_id=device_id,
             agent_id=agent_id,
             content=content,
             summary=summary,
@@ -1020,27 +1022,33 @@ class UnifiedStorage:
             metadata=metadata,
         )
 
-    def get_profile(self, user_id: str, agent_id: str = "default") -> Optional[Dict]:
+    def get_profile(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> Optional[Dict]:
         """Get user profile → relational DB"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        return self._document_backend.get_profile(user_id, agent_id)
+        return self._document_backend.get_profile(user_id, device_id, agent_id)
 
-    def delete_profile(self, user_id: str, agent_id: str = "default") -> bool:
+    def delete_profile(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> bool:
         """Delete user profile → relational DB"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.delete_profile(user_id, agent_id)
+        return self._document_backend.delete_profile(user_id, device_id, agent_id)
 
     # ── Entity routing (→ relational DB) ──
 
     def upsert_entity(
         self,
         user_id: str,
-        entity_name: str,
-        content: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        entity_name: str = "",
+        content: str = "",
         entity_type: Optional[str] = None,
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
@@ -1053,6 +1061,8 @@ class UnifiedStorage:
             return ""
         return self._document_backend.upsert_entity(
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
             entity_name=entity_name,
             content=content,
             entity_type=entity_type,
@@ -1062,16 +1072,21 @@ class UnifiedStorage:
             metadata=metadata,
         )
 
-    def get_entity(self, user_id: str, entity_name: str) -> Optional[Dict]:
+    def get_entity(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default",
+        entity_name: str = "",
+    ) -> Optional[Dict]:
         """Get entity → relational DB"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        return self._document_backend.get_entity(user_id, entity_name)
+        return self._document_backend.get_entity(user_id, device_id, agent_id, entity_name)
 
     def list_entities(
         self,
         user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
         entity_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
@@ -1080,26 +1095,35 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return []
-        return self._document_backend.list_entities(user_id, entity_type, limit, offset)
+        return self._document_backend.list_entities(
+            user_id, device_id, agent_id, entity_type, limit, offset
+        )
 
     def search_entities(
         self,
         user_id: str,
-        query_text: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        query_text: str = "",
         limit: int = 20,
     ) -> List[Dict]:
         """Search entities by text → relational DB"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return []
-        return self._document_backend.search_entities(user_id, query_text, limit)
+        return self._document_backend.search_entities(
+            user_id, device_id, agent_id, query_text, limit
+        )
 
-    def delete_entity(self, user_id: str, entity_name: str) -> bool:
+    def delete_entity(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default",
+        entity_name: str = "",
+    ) -> bool:
         """Delete entity → relational DB"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.delete_entity(user_id, entity_name)
+        return self._document_backend.delete_entity(user_id, device_id, agent_id, entity_name)
 
     # ── Document overwrite routing (→ vector DB) ──
 

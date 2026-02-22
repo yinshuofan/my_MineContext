@@ -66,9 +66,14 @@ class ProfileRetrievalTool(BaseTool):
                     "type": "string",
                     "description": "User ID (required for all operations)",
                 },
+                "device_id": {
+                    "type": "string",
+                    "description": "Device ID (defaults to 'default')",
+                    "default": "default",
+                },
                 "agent_id": {
                     "type": "string",
-                    "description": "Agent ID for get_profile operation (defaults to 'default')",
+                    "description": "Agent ID (defaults to 'default')",
                     "default": "default",
                 },
                 "entity_name": {
@@ -137,17 +142,18 @@ class ProfileRetrievalTool(BaseTool):
     def _handle_get_profile(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Fetch user profile from relational DB."""
         user_id = params["user_id"]
+        device_id = params.get("device_id", "default")
         agent_id = params.get("agent_id", "default")
 
         storage = self._get_storage()
-        profile = storage.get_profile(user_id, agent_id)
+        profile = storage.get_profile(user_id, device_id, agent_id)
 
         if not profile:
             return {
                 "success": False,
                 "data": None,
                 "operation": "get_profile",
-                "error": f"No profile found for user_id='{user_id}', agent_id='{agent_id}'",
+                "error": f"No profile found for user_id='{user_id}', device_id='{device_id}', agent_id='{agent_id}'",
             }
 
         return {"success": True, "data": profile, "operation": "get_profile"}
@@ -155,6 +161,8 @@ class ProfileRetrievalTool(BaseTool):
     def _handle_find_entity(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Look up a specific entity by exact name."""
         user_id = params["user_id"]
+        device_id = params.get("device_id", "default")
+        agent_id = params.get("agent_id", "default")
         entity_name = params.get("entity_name", "")
 
         if not entity_name:
@@ -166,7 +174,10 @@ class ProfileRetrievalTool(BaseTool):
             }
 
         storage = self._get_storage()
-        entity = storage.get_entity(user_id, entity_name)
+        entity = storage.get_entity(
+            user_id=user_id, device_id=device_id, agent_id=agent_id,
+            entity_name=entity_name,
+        )
 
         if not entity:
             return {
@@ -181,6 +192,8 @@ class ProfileRetrievalTool(BaseTool):
     def _handle_search_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Search entities by text query with fuzzy matching."""
         user_id = params["user_id"]
+        device_id = params.get("device_id", "default")
+        agent_id = params.get("agent_id", "default")
         query = params.get("query", "")
 
         if not query:
@@ -194,7 +207,10 @@ class ProfileRetrievalTool(BaseTool):
         top_k = min(max(params.get("top_k", 20), 1), 100)
 
         storage = self._get_storage()
-        results = storage.search_entities(user_id, query, limit=top_k)
+        results = storage.search_entities(
+            user_id=user_id, device_id=device_id, agent_id=agent_id,
+            query_text=query, limit=top_k,
+        )
 
         return {
             "success": True,
@@ -206,11 +222,16 @@ class ProfileRetrievalTool(BaseTool):
     def _handle_list_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """List entities with optional type filtering."""
         user_id = params["user_id"]
+        device_id = params.get("device_id", "default")
+        agent_id = params.get("agent_id", "default")
         entity_type = params.get("entity_type")
         top_k = min(max(params.get("top_k", 20), 1), 100)
 
         storage = self._get_storage()
-        results = storage.list_entities(user_id, entity_type=entity_type, limit=top_k)
+        results = storage.list_entities(
+            user_id=user_id, device_id=device_id, agent_id=agent_id,
+            entity_type=entity_type, limit=top_k,
+        )
 
         return {
             "success": True,

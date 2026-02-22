@@ -51,6 +51,8 @@ async def refresh_entities(
     entities_info: Dict[str, EntityData],
     context_text: str,
     user_id: str = "default",
+    device_id: str = "default",
+    agent_id: str = "default",
 ) -> List[str]:
     """
     Entity processing main workflow — upserts entities to relational DB.
@@ -59,6 +61,8 @@ async def refresh_entities(
         entities_info: Dict of entity_name -> EntityData
         context_text: The source context text (for LLM merge if needed)
         user_id: User ID for storage
+        device_id: Device ID for storage
+        agent_id: Agent ID for storage
 
     Returns:
         List of processed entity names
@@ -71,9 +75,14 @@ async def refresh_entities(
     for entity_name, entity_data in entities_info.items():
         try:
             entity_data.user_id = user_id
+            entity_data.device_id = device_id
+            entity_data.agent_id = agent_id
 
             # Check if entity already exists
-            existing = storage.get_entity(user_id, entity_name)
+            existing = storage.get_entity(
+                user_id=user_id, device_id=device_id, agent_id=agent_id,
+                entity_name=entity_name,
+            )
             if existing:
                 # Merge: combine old content with new description
                 old_content = existing.get("content", "")
@@ -93,6 +102,8 @@ async def refresh_entities(
 
                 storage.upsert_entity(
                     user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
                     entity_name=entity_name,
                     content=merged_content,
                     entity_type=entity_data.entity_type or existing.get("entity_type"),
@@ -105,6 +116,8 @@ async def refresh_entities(
                 # Create new entity
                 storage.upsert_entity(
                     user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
                     entity_name=entity_name,
                     content=entity_data.content,
                     entity_type=entity_data.entity_type,

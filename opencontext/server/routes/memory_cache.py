@@ -24,6 +24,7 @@ router = APIRouter(prefix="/api", tags=["memory-cache"])
 @router.get("/memory-cache")
 async def get_user_memory_cache(
     user_id: str = Query(..., description="User identifier (required)"),
+    device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
     recent_days: int = Query(default=None, description="Recent memory window in days"),
     max_recent_events_today: int = Query(
@@ -48,6 +49,7 @@ async def get_user_memory_cache(
     try:
         response = await manager.get_user_memory_cache(
             user_id=user_id,
+            device_id=device_id,
             agent_id=agent_id,
             recent_days=recent_days,
             max_recent_events_today=max_recent_events_today,
@@ -68,10 +70,14 @@ async def get_user_memory_cache(
 @router.delete("/memory-cache")
 async def invalidate_user_memory_cache(
     user_id: str = Query(..., description="User identifier"),
+    device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
     _auth: str = auth_dependency,
 ):
     """Manually invalidate a user's memory cache snapshot."""
     manager = get_memory_cache_manager()
-    await manager.invalidate_snapshot(user_id, agent_id)
-    return {"success": True, "message": f"Cache invalidated for user={user_id}, agent={agent_id}"}
+    await manager.invalidate_snapshot(user_id, device_id, agent_id)
+    return {
+        "success": True,
+        "message": f"Cache invalidated for user={user_id}, device={device_id}, agent={agent_id}",
+    }
