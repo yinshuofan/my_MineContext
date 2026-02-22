@@ -56,7 +56,7 @@ Defined in `opencontext/models/enums.py`:
 ### Data Pipeline
 
 ```
-Input → Processor → ProcessedContext → context_operations (routes by type) → Storage
+Input → Processor → ProcessedContext → _handle_processed_context (routes by type) → Storage
 ```
 
 1. **Process** (`opencontext/context_processing/`): `ProcessorFactory` routes by `ContextSource`:
@@ -64,11 +64,10 @@ Input → Processor → ProcessedContext → context_operations (routes by type)
    - `CHAT_LOG`, `INPUT` → `TextChatProcessor`
    - Entity extraction → `EntityProcessor`
 
-2. **Route** (`opencontext/server/context_operations.py`): The central routing point. Reads `CONTEXT_UPDATE_STRATEGIES` and `CONTEXT_STORAGE_BACKENDS` to decide:
-   - profile/entity → convert to `ProfileData`/`EntityData` → relational DB upsert
-   - document → delete old chunks by `source_file_key` → insert new chunks to vector DB
-   - event → append to vector DB (immutable)
-   - knowledge → run through `ContextMerger` (similarity-based deduplication)
+2. **Route** (`opencontext/server/opencontext.py` → `_handle_processed_context()`): The central routing point. Reads `CONTEXT_STORAGE_BACKENDS` to decide per context:
+   - profile → `storage.upsert_profile()` → relational DB
+   - entity → `storage.upsert_entity()` → relational DB
+   - document/event/knowledge → `storage.batch_upsert_processed_context()` → vector DB
 
 3. **Store** (`opencontext/storage/`): `UnifiedStorage` wraps dual backends:
    - **Document DB** (MySQL or SQLite) — profiles table, entities table, plus context metadata
@@ -98,6 +97,15 @@ Periodic task `hierarchy_summary.py` generates summaries on schedule (daily/week
 | `DocumentRetrievalTool` | document | Vector DB | Semantic similarity search |
 | `KnowledgeRetrievalTool` | knowledge, event (L0) | Vector DB | Semantic similarity search |
 | `HierarchicalEventTool` | event (all levels) | Vector DB | Summary drill-down + L0 fallback |
+
+### Unified Search API (`POST /api/search`)
+
+Two strategies available via `opencontext/server/search/`:
+
+- **Fast** (`fast_strategy.py`): Zero LLM calls. Single embedding generation shared across all parallel storage queries via `asyncio.to_thread()`. Events filtered to L0 only, with parent summaries batch-attached.
+- **Intelligent** (`intelligent_strategy.py`): LLM-driven agentic search. Uses `LLMContextStrategy` to select and execute retrieval tools. More accurate but slower.
+
+Both return `TypedResults` with `profile`, `entities`, `documents`, `events`, `knowledge` fields.
 
 ### Storage Access
 
@@ -181,6 +189,15 @@ The merger (`context_merger.py`) now only processes `knowledge` contexts. Profil
 
 ### EntityData.relationships stored in metadata JSON
 The `relationships` field on `EntityData` is not a separate DB column — it's serialized inside the `metadata` JSON column. Keep this in mind when querying relationships.
+
+### MySQL connections are not thread-safe
+`pymysql` connections cannot be shared across threads. When using `asyncio.to_thread()` for parallel queries (e.g., in `FastSearchStrategy`), each thread needs its own connection. `MySQLBackend` uses `threading.local()` for per-thread connections. Never revert to a single shared `self.connection`.
+
+### VikingDB hierarchy_level filter requires range format
+VikingDB stores `hierarchy_level` as float32. Equality checks like `"hierarchy_level": 0` don't work. Use range format: `{"$gte": 0, "$lte": 0}`. This applies to all numeric filters in VikingDB.
+
+### Context type routing must match CONTEXT_STORAGE_BACKENDS
+`_handle_processed_context()` in `opencontext.py` routes profile/entity to MySQL and others to VikingDB. If you bypass this (e.g., calling `batch_upsert_processed_context()` for all types), profile/entity data will be stored in VikingDB instead of MySQL, making it unretrievable by the profile/entity search paths.
 
 ## Extending the System
 

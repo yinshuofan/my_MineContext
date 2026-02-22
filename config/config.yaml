@@ -181,6 +181,17 @@ redis:
   socket_connect_timeout: 5.0
   retry_on_timeout: true
 
+# User Memory Cache
+memory_cache:
+  snapshot_ttl: 300           # Snapshot cache TTL in seconds (default: 5 min)
+  recent_days: 7              # Recent memories time window in days (default: 7)
+  max_recently_accessed: 50   # Max items tracked in accessed hash
+  max_today_events: 30        # Max today L0 events in cache
+  max_recent_documents: 10    # Max recent documents in cache
+  max_recent_knowledge: 10    # Max recent knowledge in cache
+  accessed_ttl: 604800        # Accessed tracking hash TTL in seconds (default: 7 days)
+  max_entities: 20            # Max entities in cache response
+
 # Context storage module
 storage:
   enabled: true

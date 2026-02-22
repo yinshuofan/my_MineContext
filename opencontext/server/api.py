@@ -21,6 +21,7 @@ from .routes import (
     documents,
     events,
     health,
+    memory_cache,
     messages,
     monitoring,
     push,
@@ -51,3 +52,4 @@ router.include_router(messages.router)
 router.include_router(documents.router)
 router.include_router(push.router)
 router.include_router(search.router)
+router.include_router(memory_cache.router)

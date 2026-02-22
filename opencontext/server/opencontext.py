@@ -144,6 +144,13 @@ class OpenContext:
             success = True
             if vector_contexts:
                 success = self.storage.batch_upsert_processed_context(vector_contexts)
+                # Invalidate memory cache for affected users
+                user_ids_seen = set()
+                for ctx in vector_contexts:
+                    uid = ctx.properties.user_id
+                    if uid and uid not in user_ids_seen:
+                        user_ids_seen.add(uid)
+                        self._invalidate_user_cache(uid, ctx.properties.agent_id)
             return success
         except Exception as e:
             logger.error(f"Error storing processed contexts: {e}")
@@ -164,6 +171,7 @@ class OpenContext:
             metadata=ctx.metadata,
         )
         logger.info(f"Profile stored for user={props.user_id}, agent={props.agent_id}")
+        self._invalidate_user_cache(props.user_id, props.agent_id)
 
     def _store_entities(self, ctx: ProcessedContext) -> None:
         """Store entity contexts to relational DB."""
@@ -180,6 +188,43 @@ class OpenContext:
                 metadata=ctx.metadata,
             )
             logger.info(f"Entity '{entity_name}' stored for user={props.user_id}")
+        self._invalidate_user_cache(props.user_id, props.agent_id)
+
+    def _invalidate_user_cache(
+        self, user_id: Optional[str], agent_id: Optional[str] = None
+    ) -> None:
+        """Fire-and-forget cache invalidation. Uses thread-safe submission if no event loop."""
+        if not user_id:
+            return
+        try:
+            import asyncio
+
+            from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
+
+            manager = get_memory_cache_manager()
+            aid = agent_id or "default"
+
+            # Always use run_coroutine_threadsafe — works from both event loop
+            # and background threads. Preferred over create_task which may not
+            # execute from sync call contexts.
+            loop = manager._loop
+            if not loop:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    manager.invalidate_snapshot(user_id, aid), loop
+                )
+                logger.debug(f"Cache invalidation submitted for user={user_id}")
+            else:
+                logger.debug(
+                    f"Cache invalidation skipped (no event loop) for user={user_id}"
+                )
+        except Exception as e:
+            logger.debug(f"Cache invalidation failed for user={user_id}: {e}")
 
     def start_capture(self) -> None:
         """Start all capture components."""

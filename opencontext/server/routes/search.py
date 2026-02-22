@@ -6,7 +6,9 @@ Unified Search API Route
 POST /api/search — Single endpoint with fast and intelligent search strategies.
 """
 
+import asyncio
 import time
+from typing import List
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -118,6 +120,10 @@ async def unified_search(
                 if ct not in (ContextType.PROFILE.value, ContextType.ENTITY.value)
             ]
 
+        # Fire-and-forget: track accessed items for memory cache
+        if request.user_id and total > 0:
+            asyncio.create_task(_track_accessed_safe(request.user_id, results))
+
         return UnifiedSearchResponse(
             success=True,
             results=results,
@@ -145,3 +151,28 @@ async def unified_search(
                 types_searched=context_types,
             ),
         )
+
+
+async def _track_accessed_safe(user_id: str, results: TypedResults) -> None:
+    """Fire-and-forget: record accessed context IDs in Redis for memory cache."""
+    try:
+        items: List[dict] = []
+        for vr in results.documents + results.events + results.knowledge:
+            items.append(
+                {
+                    "id": vr.id,
+                    "context_type": vr.context_type,
+                    "title": vr.title,
+                    "summary": vr.summary,
+                    "keywords": vr.keywords,
+                    "score": vr.score,
+                    "event_time": vr.event_time,
+                    "create_time": vr.create_time,
+                }
+            )
+        if items:
+            from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
+
+            await get_memory_cache_manager().track_accessed(user_id, items)
+    except Exception as e:
+        logger.debug(f"Access tracking failed (non-critical): {e}")
