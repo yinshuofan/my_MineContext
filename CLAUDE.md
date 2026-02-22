@@ -40,8 +40,8 @@ All data flows through a unified `ProcessedContext` model, but each type has its
 
 | Type | Update Strategy | Storage | Description |
 |------|----------------|---------|-------------|
-| `profile` | OVERWRITE | Relational DB | User's own preferences, habits, communication style. Key: `(user_id, agent_id)` |
-| `entity` | OVERWRITE | Relational DB | Other people, projects, teams, organizations. Key: `(user_id, entity_name)` |
+| `profile` | OVERWRITE | Relational DB | User's own preferences, habits, communication style. Key: `(user_id, device_id, agent_id)` |
+| `entity` | OVERWRITE | Relational DB | Other people, projects, teams, organizations. Key: `(user_id, device_id, agent_id, entity_name)` |
 | `document` | OVERWRITE | Vector DB | Uploaded files and web links. Overwrite = delete old chunks + insert new. Tracked by `source_file_key` |
 | `event` | APPEND | Vector DB | Immutable activity records, meetings, status changes. Never modified after creation |
 | `knowledge` | APPEND_MERGE | Vector DB | Reusable concepts, procedures, patterns. Similar entries merged to avoid duplication |
@@ -154,8 +154,8 @@ Do NOT use `GlobalStorage.get_instance()` or `get_global_storage()` — these re
 
 - `ProcessedContext` — the universal intermediate format all processors produce
 - `ContextProperties` — includes `hierarchy_level`, `parent_id`, `children_ids`, `time_bucket`, `source_file_key`, `enable_merge`
-- `ProfileData` — relational DB model for user profiles (PK: `user_id + agent_id`)
-- `EntityData` — relational DB model for entities (PK: `user_id + entity_name`)
+- `ProfileData` — relational DB model for user profiles (PK: `user_id + device_id + agent_id`)
+- `EntityData` — relational DB model for entities (unique key: `user_id + device_id + agent_id + entity_name`)
 - `ProcessedContextModel` — API response model, must mirror all fields from `ContextProperties` that should be exposed
 
 ### LLM Integration (`opencontext/llm/`)
@@ -204,6 +204,9 @@ Push endpoints that schedule hierarchy summary: `push_chat_message`, `process_ch
 ## Pitfalls and Lessons Learned
 
 These are real bugs encountered during development. Check for them when modifying related code.
+
+### All profile/entity operations require the 3-key identifier `(user_id, device_id, agent_id)`
+Every storage method for profiles and entities (`upsert_profile`, `get_profile`, `get_entity`, `search_entities`, `list_entities`, etc.) requires all three identifiers. `device_id` and `agent_id` default to `"default"` for backward compatibility. When adding new code that calls these methods, always pass all three — omitting `device_id` or `agent_id` causes positional argument mismatches (e.g., `entity_name` gets interpreted as `device_id`). The same applies to `ProfileEntityTool`, `ProfileRetrievalTool`, memory cache manager, and search strategies. Redis cache keys also use all three: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
 
 ### Storage singleton confusion
 `get_storage()` returns `UnifiedStorage` (has profile/entity/hierarchy methods). `GlobalStorage.get_instance()` and `get_global_storage()` return `GlobalStorage` (lacks those methods). Always use `get_storage()` from `opencontext.storage.global_storage`.
