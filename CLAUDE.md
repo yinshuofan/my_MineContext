@@ -107,6 +107,32 @@ Two strategies available via `opencontext/server/search/`:
 
 Both return `TypedResults` with `profile`, `entities`, `documents`, `events`, `knowledge` fields.
 
+Search results are automatically tracked as "recently accessed" via fire-and-forget `asyncio.create_task()` in the search route (see Memory Cache below).
+
+### Memory Cache (`GET /api/memory-cache`)
+
+Provides a single-call snapshot of a user's complete memory state, designed for downstream services that need quick access without running full searches. Located in `opencontext/server/cache/`.
+
+**Three sections returned:**
+1. **Profile + Entities** — from relational DB (cached in snapshot)
+2. **Recently Accessed** — memories returned in past searches; stored in Redis Hash, always read real-time (not part of snapshot)
+3. **Recent Memories** — hierarchical: today's L0 events + past N days' L1 daily summaries + recent documents/knowledge (cached in snapshot)
+
+**Caching architecture (snapshot vs accessed are separate):**
+
+| Data | Storage | Update Trigger | Read Mode |
+|------|---------|---------------|-----------|
+| Snapshot (profile + entities + recent memories) | Redis JSON String, 5-min TTL | Invalidated on push/write | Cache hit → return; miss → rebuild from DB |
+| Recently Accessed | Redis Hash, 7-day TTL | Updated on every search | Always real-time from Redis |
+
+**Key design decisions:**
+- **Stampede prevention**: Distributed lock (`RedisCache.acquire_lock()`) + double-check pattern in `get_user_memory_cache()`. Lock timeout falls back to building without caching (duplicate build OK, better than failing).
+- **Auto-invalidation**: `_invalidate_user_cache()` in `opencontext.py` fires after profile/entity/vector writes. Uses `asyncio.run_coroutine_threadsafe()` to bridge sync→async (see pitfall below).
+- **Parallel snapshot build**: 6 concurrent `asyncio.to_thread()` queries via `asyncio.gather()`.
+- **Singleton manager**: `get_memory_cache_manager()` in `memory_cache_manager.py`. All callers (route, search hook, opencontext.py invalidation) use the same instance.
+
+Config section in `config/config.yaml`: `memory_cache` (snapshot_ttl, recent_days, max_recently_accessed, etc.).
+
 ### Storage Access
 
 **Always use `get_storage()` from `opencontext/storage/global_storage.py`** to get the `UnifiedStorage` instance. This returns the object with all profile/entity/hierarchy methods.
@@ -198,6 +224,9 @@ VikingDB stores `hierarchy_level` as float32. Equality checks like `"hierarchy_l
 
 ### Context type routing must match CONTEXT_STORAGE_BACKENDS
 `_handle_processed_context()` in `opencontext.py` routes profile/entity to MySQL and others to VikingDB. If you bypass this (e.g., calling `batch_upsert_processed_context()` for all types), profile/entity data will be stored in VikingDB instead of MySQL, making it unretrievable by the profile/entity search paths.
+
+### Use `run_coroutine_threadsafe` not `create_task` from sync blocking code
+When sync code runs inside the event loop thread (e.g., `_handle_processed_context` via `asyncio.to_thread`), `loop.create_task()` schedules the coroutine but never reliably wakes the event loop to execute it. Use `asyncio.run_coroutine_threadsafe(coro, loop)` instead — it calls `loop.call_soon_threadsafe()` internally, which writes to the event loop's self-pipe to wake it. The `_capture_loop()` pattern stores the loop reference from async entry points so sync callers can access it later.
 
 ## Extending the System
 
