@@ -18,9 +18,9 @@ uv run opencontext start --config config/config.yaml
 uv run opencontext start --port 1733 --host 0.0.0.0
 uv run opencontext start --workers 4   # multi-process mode
 
-# Code formatting
-black opencontext --line-length 100
-isort opencontext
+# Code formatting (must use uv run — black/isort are dev deps, not globally installed)
+uv run black opencontext --line-length 100
+uv run isort opencontext
 pre-commit run --all-files
 
 # Docker
@@ -143,12 +143,42 @@ Config section in `config/config.yaml`: `memory_cache` (snapshot_ttl, recent_day
 
 Do NOT use `GlobalStorage.get_instance()` or `get_global_storage()` — these return the raw `GlobalStorage` wrapper which lacks `upsert_profile()`, `get_entity()`, `search_hierarchy()`, etc.
 
+### Concurrency and Connection Management
+
+The server is async-first (FastAPI + uvicorn) but many storage operations are synchronous. Key patterns:
+
+- **ThreadPoolExecutor**: `lifespan()` in `cli.py` sets a 50-worker executor as the default for `asyncio.to_thread()`. The executor is stored and `shutdown(wait=False)` on lifespan exit.
+- **MySQL**: SQLAlchemy `QueuePool` (pool_size=20, max_overflow=10). `_get_connection()` is a `@contextmanager` that auto-returns connections. Health-check ping on checkout via SQLAlchemy event listener.
+- **SQLite**: `threading.local()` for per-thread connections. `_get_connection()` lazily creates a new connection per thread with WAL journal mode. **All method-level DB access must go through `self._get_connection()`** — only `initialize()` and `close()` may use `self.connection` directly.
+- **Async timeout**: Push/search endpoints wrap processing in `asyncio.wait_for(..., timeout=60.0)`.
+
+### Request Tracing
+
+`RequestIDMiddleware` (`opencontext/server/middleware/request_id.py`) generates an 8-char UUID per request (or accepts `X-Request-ID` header). Stored in `contextvars.ContextVar`, injected into all loguru log records via a patcher. Use `from opencontext.server.middleware.request_id import request_id_var` to access in any code path.
+
 ### Server Layer
 
 - **Entry point**: `opencontext/cli.py` → `opencontext start`
 - **Framework**: FastAPI on Uvicorn, port 1733
 - **Orchestrator**: `opencontext/server/opencontext.py` → `OpenContext`
 - **Auth**: API key via `X-API-Key` header, disabled by default
+- **Health check**: `check_components_health()` checks config, storage, llm, document_db, redis. MySQL uses context manager `with backend._get_connection()`, SQLite executes `SELECT 1`.
+
+### Key API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Health check with component status |
+| `/api/push/chat/message` | POST | Push single chat message (buffered) |
+| `/api/push/chat/messages` | POST | Push batch messages (buffered) |
+| `/api/push/chat/process` | POST | Process messages directly (bypass buffer) |
+| `/api/push/activity` | POST | Push activity/event record |
+| `/api/push/context` | POST | Push generic context |
+| `/api/push/document` | POST | Push document (file_path or base64) |
+| `/api/search` | POST | Unified search (`strategy: "fast"` or `"intelligent"`) |
+| `/api/memory-cache` | GET | User memory snapshot |
+
+Request body uses OpenAI message format: `messages: [{role, content: [{type: "text", text: "..."}]}]`. The 3-key identifier `(user_id, device_id, agent_id)` is optional on all push endpoints, defaulting to `"default"`. Pydantic Field constraints (`min_length`, `max_length`) match DB column sizes (user_id: 255, device_id/agent_id: 100).
 
 ### Key Data Models (`opencontext/models/context.py`)
 
@@ -232,8 +262,8 @@ The merger (`context_merger.py`) now only processes `knowledge` contexts. Profil
 ### EntityData.relationships stored in metadata JSON
 The `relationships` field on `EntityData` is not a separate DB column — it's serialized inside the `metadata` JSON column. Keep this in mind when querying relationships.
 
-### MySQL connections are not thread-safe
-`pymysql` connections cannot be shared across threads. When using `asyncio.to_thread()` for parallel queries (e.g., in `FastSearchStrategy`), each thread needs its own connection. `MySQLBackend` uses `threading.local()` for per-thread connections. Never revert to a single shared `self.connection`.
+### Database connections are not thread-safe — use `_get_connection()` everywhere
+Both MySQL and SQLite backends use `threading.local()` for per-thread connections. `_get_connection()` is the only safe way to access connections from method-level code. In SQLite, `self.connection` is only for `initialize()` (setup) and `close()` (teardown) — all other methods must call `self._get_connection()` for cursor/commit/rollback. This was a major bug: 102 call sites originally used `self.connection` directly, causing thread-safety issues under `asyncio.to_thread()`.
 
 ### VikingDB hierarchy_level filter requires range format
 VikingDB stores `hierarchy_level` as float32. Equality checks like `"hierarchy_level": 0` don't work. Use range format: `{"$gte": 0, "$lte": 0}`. This applies to all numeric filters in VikingDB.
@@ -249,6 +279,9 @@ When sync code runs inside the event loop thread (e.g., `_handle_processed_conte
 
 ### Scheduler task type must be registered (enabled) or `schedule_user_task` silently fails
 `schedule_user_task()` calls `get_task_config()` which looks up the task type in Redis. If the task's `enabled` flag is `false` in config, `_collect_task_types()` skips registration, and `get_task_config()` returns `None`, causing `schedule_user_task()` to log a warning and return `False`. The push endpoint continues normally — no error is raised. Always set `HIERARCHY_SUMMARY_ENABLED=true` in production to enable the task.
+
+### MySQL InnoDB composite key length limit
+InnoDB with utf8mb4 has a max key length of 3072 bytes. Each `VARCHAR(N)` uses `N*4` bytes in a key. Composite unique keys must keep total VARCHAR length under 768 chars. Current column sizes: `user_id VARCHAR(255)`, `device_id VARCHAR(100)`, `agent_id VARCHAR(100)`, `entity_name VARCHAR(255)` — total 710, just under the limit.
 
 ### Hierarchy summary weekly/monthly generation is idempotent, not day-gated
 `execute()` always tries to generate summaries for the most recent completed week and month (not just on Mondays/1st of month). The existing dedup check (`search_hierarchy` for existing summaries) prevents regeneration. This design allows `user_activity` triggered tasks to generate weekly/monthly summaries whenever the user next becomes active, rather than requiring execution on a specific day.
