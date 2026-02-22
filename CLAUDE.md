@@ -85,7 +85,11 @@ Key fields on `ContextProperties`: `hierarchy_level`, `parent_id`, `children_ids
 
 `HierarchicalEventTool` retrieval algorithm: search L1-L3 summaries top-down → drill through `children_ids` to L0 → merge with direct L0 semantic search as fallback → deduplicate by ID keeping higher score.
 
-Periodic task `hierarchy_summary.py` generates summaries on schedule (daily/weekly/monthly).
+**Summary generation** (`hierarchy_summary.py`) uses `user_activity` trigger mode — summaries are scheduled per-user when data is pushed (via `_schedule_user_hierarchy_summary()` in `push.py`), not generated globally on a fixed schedule. This ensures:
+- Only active users get summaries (no wasted LLM calls for inactive users)
+- Tasks are processed sequentially by the scheduler (one per 10s cycle), providing natural rate limiting
+- Each execution tries to generate the most recent completed daily/weekly/monthly summary, with idempotent dedup checks preventing regeneration
+- Requires `HIERARCHY_SUMMARY_ENABLED=true` env var to activate
 
 ### Retrieval Tools
 
@@ -167,18 +171,27 @@ All use OpenAI-compatible API format.
 
 LLM prompts for extraction, classification, merging, and hierarchy summarization. Loaded by `PromptManager`. When modifying the type system, all prompts referencing context types must be updated in both language files.
 
-### Scheduling (`opencontext/periodic_task/`)
+### Scheduling (`opencontext/periodic_task/`, `opencontext/scheduler/`)
 
-APScheduler with Redis backend. Registered tasks:
-- `MemoryCompressionTask` — deduplicates similar contexts (knowledge type only)
-- `DataCleanupTask` — retention-based cleanup
-- `HierarchySummaryTask` — generates L1/L2/L3 event summaries
+`RedisTaskScheduler` (async, stateless, Redis-backed) supports two trigger modes:
+
+| Mode | Trigger | Use Case |
+|------|---------|----------|
+| `user_activity` | Scheduled per-user on data push, with configurable delay (`interval`) and dedup (`last_exec` check) | Tasks that should only run for active users |
+| `periodic` | Global timer, runs at fixed intervals regardless of user activity | System-wide maintenance tasks |
+
+Registered tasks:
+- `MemoryCompressionTask` (`user_activity`) — deduplicates similar contexts (knowledge type only)
+- `DataCleanupTask` (`periodic`) — retention-based cleanup
+- `HierarchySummaryTask` (`user_activity`) — generates L1/L2/L3 event summaries, scheduled from push endpoints via `_schedule_user_hierarchy_summary()` in `push.py`
+
+Push endpoints that schedule hierarchy summary: `push_chat_message`, `process_chat_messages`, `push_activity`, `push_context`.
 
 ## Configuration
 
 - Main config: `config/config.yaml` — YAML with `${ENV_VAR:default}` syntax
 - Environment variables: copy `.env.example` to `.env`
-- Key env vars: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `MYSQL_HOST`, `MYSQL_PASSWORD`, `REDIS_HOST`
+- Key env vars: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `MYSQL_HOST`, `MYSQL_PASSWORD`, `REDIS_HOST`, `HIERARCHY_SUMMARY_ENABLED`
 - Service mode (`service_mode.enabled: true`): stateless deployment requiring external Redis + MySQL/vector DB
 
 ## Code Style
@@ -227,6 +240,15 @@ VikingDB stores `hierarchy_level` as float32. Equality checks like `"hierarchy_l
 
 ### Use `run_coroutine_threadsafe` not `create_task` from sync blocking code
 When sync code runs inside the event loop thread (e.g., `_handle_processed_context` via `asyncio.to_thread`), `loop.create_task()` schedules the coroutine but never reliably wakes the event loop to execute it. Use `asyncio.run_coroutine_threadsafe(coro, loop)` instead — it calls `loop.call_soon_threadsafe()` internally, which writes to the event loop's self-pipe to wake it. The `_capture_loop()` pattern stores the loop reference from async entry points so sync callers can access it later.
+
+### Scheduler `periodic` mode passes `user_id=None` — not for per-user tasks
+`RedisTaskScheduler._process_periodic_tasks()` calls handlers with `(None, None, None)`. Any task whose `validate_context()` requires a non-null `user_id` will silently fail. Use `user_activity` trigger mode for per-user tasks; `periodic` is only for global system tasks (like `DataCleanupTask`). This was the root cause of `HierarchySummaryTask` never executing — it was configured as `periodic` but required `user_id`.
+
+### Scheduler task type must be registered (enabled) or `schedule_user_task` silently fails
+`schedule_user_task()` calls `get_task_config()` which looks up the task type in Redis. If the task's `enabled` flag is `false` in config, `_collect_task_types()` skips registration, and `get_task_config()` returns `None`, causing `schedule_user_task()` to log a warning and return `False`. The push endpoint continues normally — no error is raised. Always set `HIERARCHY_SUMMARY_ENABLED=true` in production to enable the task.
+
+### Hierarchy summary weekly/monthly generation is idempotent, not day-gated
+`execute()` always tries to generate summaries for the most recent completed week and month (not just on Mondays/1st of month). The existing dedup check (`search_hierarchy` for existing summaries) prevents regeneration. This design allows `user_activity` triggered tasks to generate weekly/monthly summaries whenever the user next becomes active, rather than requiring execution on a specific day.
 
 ## Extending the System
 
