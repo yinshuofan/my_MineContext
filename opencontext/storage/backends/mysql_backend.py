@@ -182,8 +182,8 @@ class MySQLBackend(IDocumentStorageBackend):
             """
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id VARCHAR(255) NOT NULL,
-                device_id VARCHAR(255) NOT NULL DEFAULT 'default',
-                agent_id VARCHAR(255) NOT NULL DEFAULT 'default',
+                device_id VARCHAR(100) NOT NULL DEFAULT 'default',
+                agent_id VARCHAR(100) NOT NULL DEFAULT 'default',
                 content LONGTEXT NOT NULL,
                 summary TEXT,
                 keywords JSON,
@@ -203,9 +203,9 @@ class MySQLBackend(IDocumentStorageBackend):
             CREATE TABLE IF NOT EXISTS entities (
                 id VARCHAR(255) PRIMARY KEY,
                 user_id VARCHAR(255) NOT NULL,
-                device_id VARCHAR(255) NOT NULL DEFAULT 'default',
-                agent_id VARCHAR(255) NOT NULL DEFAULT 'default',
-                entity_name VARCHAR(500) NOT NULL,
+                device_id VARCHAR(100) NOT NULL DEFAULT 'default',
+                agent_id VARCHAR(100) NOT NULL DEFAULT 'default',
+                entity_name VARCHAR(255) NOT NULL,
                 entity_type VARCHAR(50),
                 content LONGTEXT NOT NULL,
                 summary TEXT,
@@ -352,7 +352,7 @@ class MySQLBackend(IDocumentStorageBackend):
         # --- Profiles table: add device_id ---
         try:
             cursor.execute(
-                "ALTER TABLE profiles ADD COLUMN device_id VARCHAR(255) NOT NULL DEFAULT 'default' AFTER user_id"
+                "ALTER TABLE profiles ADD COLUMN device_id VARCHAR(100) NOT NULL DEFAULT 'default' AFTER user_id"
             )
             conn.commit()
             logger.info("Migration: added device_id column to profiles table")
@@ -371,7 +371,7 @@ class MySQLBackend(IDocumentStorageBackend):
         # --- Entities table: add device_id and agent_id ---
         try:
             cursor.execute(
-                "ALTER TABLE entities ADD COLUMN device_id VARCHAR(255) NOT NULL DEFAULT 'default' AFTER user_id"
+                "ALTER TABLE entities ADD COLUMN device_id VARCHAR(100) NOT NULL DEFAULT 'default' AFTER user_id"
             )
             conn.commit()
             logger.info("Migration: added device_id column to entities table")
@@ -380,10 +380,20 @@ class MySQLBackend(IDocumentStorageBackend):
 
         try:
             cursor.execute(
-                "ALTER TABLE entities ADD COLUMN agent_id VARCHAR(255) NOT NULL DEFAULT 'default' AFTER device_id"
+                "ALTER TABLE entities ADD COLUMN agent_id VARCHAR(100) NOT NULL DEFAULT 'default' AFTER device_id"
             )
             conn.commit()
             logger.info("Migration: added agent_id column to entities table")
+        except Exception:
+            conn.rollback()
+
+        # Reduce entity_name from VARCHAR(500) to VARCHAR(255) for key length compatibility
+        try:
+            cursor.execute(
+                "ALTER TABLE entities MODIFY COLUMN entity_name VARCHAR(255) NOT NULL"
+            )
+            conn.commit()
+            logger.info("Migration: reduced entity_name to VARCHAR(255)")
         except Exception:
             conn.rollback()
 
