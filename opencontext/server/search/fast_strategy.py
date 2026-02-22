@@ -8,6 +8,7 @@ For events, searches L0 directly and attaches parent summaries in one batch.
 """
 
 import asyncio
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.llm.global_embedding_client import do_vectorize
@@ -47,10 +48,13 @@ class FastSearchStrategy(BaseSearchStrategy):
         agent_id: Optional[str],
     ) -> TypedResults:
         storage = get_storage()
+        t0 = time.perf_counter()
 
         # Step 1: Pre-generate embedding once, share across all vector searches
         vectorize = Vectorize(text=query)
         await asyncio.to_thread(do_vectorize, vectorize)
+        t_embed = time.perf_counter()
+        logger.info(f"[fast-search] embedding: {(t_embed - t0)*1000:.0f}ms")
 
         # Step 2: Build time filters
         time_filters = self._build_time_filters(time_range)
@@ -80,7 +84,7 @@ class FastSearchStrategy(BaseSearchStrategy):
 
         if ContextType.EVENT.value in context_types:
             event_filters = dict(time_filters) if time_filters else {}
-            event_filters["hierarchy_level"] = 0  # Only L0 raw events
+            event_filters["hierarchy_level"] = {"$gte": 0, "$lte": 0}  # Only L0 raw events
             tasks["event"] = asyncio.to_thread(
                 storage.search,
                 vectorize,
@@ -106,8 +110,14 @@ class FastSearchStrategy(BaseSearchStrategy):
 
         # Execute all in parallel
         task_names = list(tasks.keys())
+        t_before_gather = time.perf_counter()
         raw_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        t_after_gather = time.perf_counter()
         results_map = dict(zip(task_names, raw_results))
+        logger.info(
+            f"[fast-search] parallel queries ({', '.join(task_names)}): "
+            f"{(t_after_gather - t_before_gather)*1000:.0f}ms"
+        )
 
         # Step 4: Assemble TypedResults
         typed = TypedResults()
@@ -142,6 +152,8 @@ class FastSearchStrategy(BaseSearchStrategy):
             if isinstance(result, Exception):
                 logger.error(f"Fast search failed for {name}: {result}")
 
+        t_end = time.perf_counter()
+        logger.info(f"[fast-search] total: {(t_end - t0)*1000:.0f}ms")
         return typed
 
     def _build_time_filters(self, time_range: Optional[TimeRange]) -> Dict[str, Any]:

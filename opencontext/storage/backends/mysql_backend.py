@@ -10,6 +10,7 @@ MySQL document note storage backend implementation
 
 import json
 import os
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
@@ -33,7 +34,7 @@ class MySQLBackend(IDocumentStorageBackend):
 
     def __init__(self):
         self.db_config: Optional[Dict[str, Any]] = None
-        self.connection = None
+        self._local = threading.local()  # per-thread connections
         self._initialized = False
         self._pool = None
 
@@ -70,8 +71,8 @@ class MySQLBackend(IDocumentStorageBackend):
             finally:
                 temp_conn.close()
 
-            # Connect to the database
-            self.connection = pymysql.connect(**self.db_config)
+            # Connect to the database (store in thread-local for the init thread)
+            self._local.connection = pymysql.connect(**self.db_config)
 
             # Create table structure
             self._create_tables()
@@ -87,13 +88,15 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
     def _get_connection(self):
-        """Get a database connection, reconnect if necessary"""
+        """Get a database connection for the current thread, creating one if needed."""
         import pymysql
         from pymysql.cursors import DictCursor
 
-        if self.connection is None or not self.connection.open:
-            self.connection = pymysql.connect(**self.db_config)
-        return self.connection
+        conn = getattr(self._local, "connection", None)
+        if conn is None or not conn.open:
+            conn = pymysql.connect(**self.db_config)
+            self._local.connection = conn
+        return conn
 
     def _create_tables(self):
         """Create database table structure"""
@@ -2133,9 +2136,10 @@ class MySQLBackend(IDocumentStorageBackend):
         return QueryResult(documents=[], total_count=0)
 
     def close(self):
-        """Close the database connection"""
-        if self.connection:
-            self.connection.close()
-            self.connection = None
-            self._initialized = False
-            logger.info("MySQL database connection closed")
+        """Close the database connection for the current thread."""
+        conn = getattr(self._local, "connection", None)
+        if conn:
+            conn.close()
+            self._local.connection = None
+        self._initialized = False
+        logger.info("MySQL database connection closed")

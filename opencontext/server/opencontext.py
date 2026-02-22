@@ -19,6 +19,7 @@ from opencontext.llm.global_vlm_client import GlobalVLMClient
 from opencontext.managers.capture_manager import ContextCaptureManager
 from opencontext.managers.processor_manager import ContextProcessorManager
 from opencontext.models.context import ProcessedContext, RawContextProperties
+from opencontext.models.enums import CONTEXT_STORAGE_BACKENDS, ContextType
 from opencontext.server.component_initializer import ComponentInitializer
 from opencontext.server.context_operations import ContextOperations
 from opencontext.storage.global_storage import GlobalStorage
@@ -114,26 +115,71 @@ class OpenContext:
 
     def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool:
         """
-        Store processed contexts.
+        Store processed contexts, routing by type per CONTEXT_STORAGE_BACKENDS.
 
-        Args:
-            contexts: List of processed contexts to store
-
-        Returns:
-            True if storage was successful, False otherwise
+        - profile/entity → relational DB (MySQL)
+        - document/event/knowledge → vector DB (VikingDB)
         """
         if not contexts:
             return False
 
-        if self.storage:
-            try:
-                return self.storage.batch_upsert_processed_context(contexts)
-            except Exception as e:
-                logger.error(f"Error storing processed contexts: {e}")
-                return False
-        else:
+        if not self.storage:
             logger.warning("Storage is not initialized.")
             return False
+
+        try:
+            vector_contexts = []
+            for ctx in contexts:
+                ctx_type = ctx.extracted_data.context_type
+                backend = CONTEXT_STORAGE_BACKENDS.get(ctx_type, "vector_db")
+
+                if backend == "document_db":
+                    if ctx_type == ContextType.PROFILE:
+                        self._store_profile(ctx)
+                    elif ctx_type == ContextType.ENTITY:
+                        self._store_entities(ctx)
+                else:
+                    vector_contexts.append(ctx)
+
+            success = True
+            if vector_contexts:
+                success = self.storage.batch_upsert_processed_context(vector_contexts)
+            return success
+        except Exception as e:
+            logger.error(f"Error storing processed contexts: {e}")
+            return False
+
+    def _store_profile(self, ctx: ProcessedContext) -> None:
+        """Store a profile context to relational DB."""
+        ed = ctx.extracted_data
+        props = ctx.properties
+        self.storage.upsert_profile(
+            user_id=props.user_id or "default",
+            agent_id=props.agent_id or "default",
+            content=ed.summary or "",
+            summary=ed.summary,
+            keywords=ed.keywords,
+            entities=ed.entities,
+            importance=ed.importance,
+            metadata=ctx.metadata,
+        )
+        logger.info(f"Profile stored for user={props.user_id}, agent={props.agent_id}")
+
+    def _store_entities(self, ctx: ProcessedContext) -> None:
+        """Store entity contexts to relational DB."""
+        ed = ctx.extracted_data
+        props = ctx.properties
+        for entity_name in ed.entities:
+            self.storage.upsert_entity(
+                user_id=props.user_id or "default",
+                entity_name=entity_name,
+                content=ed.summary or "",
+                entity_type=None,
+                summary=ed.summary,
+                keywords=ed.keywords,
+                metadata=ctx.metadata,
+            )
+            logger.info(f"Entity '{entity_name}' stored for user={props.user_id}")
 
     def start_capture(self) -> None:
         """Start all capture components."""
