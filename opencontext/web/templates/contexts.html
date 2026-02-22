@@ -45,7 +45,13 @@
                         <td class="px-3"><a href="#" onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" title="{{ context.id }}">{{ context.id[:8] }}...</a></td>
                         <td>{{ context.title or 'N/A' }}</td>
                         <td>{{ (context.summary or '')[:50] }}{% if context.summary and context.summary|length > 50 %}...{% endif %}</td>
-                        <td><span class="badge bg-secondary">{{ context.context_type }}</span></td>
+                        <td>
+                            <span class="badge bg-secondary">{{ context.context_type }}</span>
+                            {% if context.context_type == 'event' and context.hierarchy_level > 0 %}
+                            {% set level_colors = {1: 'success', 2: 'warning', 3: 'danger'} %}
+                            <span class="badge bg-{{ level_colors.get(context.hierarchy_level, 'info') }}">L{{ context.hierarchy_level }}</span>
+                            {% endif %}
+                        </td>
                         <td>{{ context.create_time }}</td>
                         <td class="text-end px-3">
                             <button onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" class="btn btn-sm btn-outline-primary">查看</button>

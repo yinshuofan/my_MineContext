@@ -1,0 +1,355 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">记忆缓存</h1>
+    <div id="cache-status" class="d-none">
+        <span id="cache-hit-badge" class="badge me-2"></span>
+        <small class="text-muted" id="cache-time-info"></small>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Query Panel -->
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">查询参数</h5>
+            </div>
+            <div class="card-body">
+                <form id="memoryCacheForm">
+                    <div class="mb-3">
+                        <label for="userId" class="form-label">用户 ID <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="userId" placeholder="输入用户ID" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="agentId" class="form-label">Agent ID</label>
+                        <input type="text" class="form-control" id="agentId" placeholder="default" value="default">
+                    </div>
+                    <div class="mb-3">
+                        <label for="recentDays" class="form-label">近期天数</label>
+                        <input type="number" class="form-control" id="recentDays" value="7" min="1" max="90">
+                    </div>
+                    <div class="mb-3">
+                        <label for="maxAccessed" class="form-label">最近访问数量</label>
+                        <input type="number" class="form-control" id="maxAccessed" value="20" min="1" max="100">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="forceRefresh">
+                        <label class="form-check-label" for="forceRefresh">强制刷新</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" id="loadingSpinner"></span>
+                        <span id="queryButtonText">查询</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="col-md-9">
+        <div id="results-area">
+            <div class="text-muted text-center py-5">
+                <i data-feather="cpu" class="mb-3" style="width: 48px; height: 48px;"></i>
+                <p>输入用户 ID 并点击"查询"按钮查看记忆状态</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('memoryCacheForm').addEventListener('submit', handleQuery);
+});
+
+async function handleQuery(event) {
+    event.preventDefault();
+
+    const userId = document.getElementById('userId').value.trim();
+    if (!userId) { alert('请输入用户 ID'); return; }
+
+    const agentId = document.getElementById('agentId').value.trim() || 'default';
+    const recentDays = document.getElementById('recentDays').value || 7;
+    const maxAccessed = document.getElementById('maxAccessed').value || 20;
+    const forceRefresh = document.getElementById('forceRefresh').checked;
+
+    setLoading(true);
+
+    try {
+        const params = new URLSearchParams({
+            user_id: userId,
+            agent_id: agentId,
+            recent_days: recentDays,
+            max_accessed: maxAccessed,
+            force_refresh: forceRefresh
+        });
+
+        const response = await fetch(`/api/memory-cache?${params}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || data.detail || '查询失败');
+        }
+
+        renderResults(data);
+    } catch (error) {
+        console.error('Query error:', error);
+        document.getElementById('results-area').innerHTML = `
+            <div class="alert alert-danger">
+                <i data-feather="alert-circle" class="me-2"></i>查询失败: ${error.message}
+            </div>
+        `;
+        feather.replace();
+    } finally {
+        setLoading(false);
+    }
+}
+
+function setLoading(loading) {
+    const spinner = document.getElementById('loadingSpinner');
+    const buttonText = document.getElementById('queryButtonText');
+    const submitButton = document.querySelector('#memoryCacheForm button[type="submit"]');
+
+    if (loading) {
+        spinner.classList.remove('d-none');
+        buttonText.textContent = '查询中...';
+        submitButton.disabled = true;
+    } else {
+        spinner.classList.add('d-none');
+        buttonText.textContent = '查询';
+        submitButton.disabled = false;
+    }
+}
+
+function renderResults(data) {
+    // Cache status bar
+    const cacheStatus = document.getElementById('cache-status');
+    cacheStatus.classList.remove('d-none');
+    const hitBadge = document.getElementById('cache-hit-badge');
+    const meta = data.cache_metadata || {};
+    if (meta.cache_hit) {
+        hitBadge.className = 'badge bg-success me-2';
+        hitBadge.textContent = '缓存命中';
+    } else {
+        hitBadge.className = 'badge bg-warning me-2';
+        hitBadge.textContent = '从数据库构建';
+    }
+    document.getElementById('cache-time-info').textContent =
+        `响应 ${(meta.response_time_ms || 0).toFixed(0)}ms` +
+        (meta.built_at ? ` | 构建于 ${new Date(meta.built_at).toLocaleString('zh-CN')}` : '');
+
+    // Build results HTML
+    let html = '';
+
+    // 1. Profile
+    html += renderProfile(data.profile);
+
+    // 2. Entities
+    html += renderEntities(data.entities || []);
+
+    // 3. Recently Accessed
+    html += renderRecentlyAccessed(data.recently_accessed || []);
+
+    // 4. Recent Memories
+    const rm = data.recent_memories || {};
+    html += renderTodayEvents(rm.today_events || []);
+    html += renderDailySummaries(rm.daily_summaries || []);
+    html += renderDocsAndKnowledge(rm.recent_documents || [], rm.recent_knowledge || []);
+
+    document.getElementById('results-area').innerHTML = html;
+    feather.replace();
+}
+
+function renderProfile(profile) {
+    let content;
+    if (!profile) {
+        content = '<p class="text-muted">暂无用户画像</p>';
+    } else {
+        const keywords = (profile.keywords || []).map(k => `<span class="badge bg-secondary me-1">${k}</span>`).join('');
+        content = `
+            ${profile.summary ? `<p class="mb-2"><strong>摘要:</strong> ${profile.summary}</p>` : ''}
+            <div class="bg-light p-3 rounded mb-2" style="white-space: pre-wrap;">${profile.content || '无内容'}</div>
+            ${keywords ? `<div><strong>关键词:</strong> ${keywords}</div>` : ''}
+        `;
+    }
+    return wrapCard('用户画像', 'user', content, 'profile-section');
+}
+
+function renderEntities(entities) {
+    let content;
+    if (entities.length === 0) {
+        content = '<p class="text-muted">暂无实体</p>';
+    } else {
+        let rows = entities.map(e => `
+            <tr>
+                <td><strong>${e.entity_name}</strong></td>
+                <td><span class="badge bg-info">${e.entity_type || 'other'}</span></td>
+                <td>${(e.summary || e.content || '').substring(0, 80)}${(e.summary || e.content || '').length > 80 ? '...' : ''}</td>
+                <td><small class="text-muted">${(e.aliases || []).join(', ')}</small></td>
+            </tr>
+        `).join('');
+        content = `
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light"><tr><th>名称</th><th>类型</th><th>描述</th><th>别名</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        `;
+    }
+    return wrapCard(`已知实体 <span class="badge bg-secondary">${entities.length}</span>`, 'users', content, 'entities-section');
+}
+
+function renderRecentlyAccessed(items) {
+    let content;
+    if (items.length === 0) {
+        content = '<p class="text-muted">暂无最近访问记录</p>';
+    } else {
+        const TYPE_COLORS = {profile: 'primary', entity: 'info', document: 'secondary', event: 'success', knowledge: 'warning'};
+        content = items.map(item => {
+            const accessTime = new Date(item.accessed_ts * 1000).toLocaleString('zh-CN');
+            const color = TYPE_COLORS[item.context_type] || 'secondary';
+            return `
+                <div class="border rounded p-2 mb-2 d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <div>
+                            <span class="badge bg-${color} me-1">${item.context_type}</span>
+                            <a href="#" onclick="viewContext('${item.id}', '${item.context_type}')" class="text-decoration-none fw-semibold">${item.title || '未命名'}</a>
+                        </div>
+                        ${item.summary ? `<small class="text-muted">${item.summary.substring(0, 100)}${item.summary.length > 100 ? '...' : ''}</small>` : ''}
+                    </div>
+                    <div class="text-end ms-2" style="min-width: 100px;">
+                        ${item.score != null ? `<span class="badge bg-primary">${item.score.toFixed(3)}</span>` : ''}
+                        <div><small class="text-muted">${accessTime}</small></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    return wrapCard(`最近访问 <span class="badge bg-secondary">${items.length}</span>`, 'clock', content, 'accessed-section');
+}
+
+function renderTodayEvents(events) {
+    let content;
+    if (events.length === 0) {
+        content = '<p class="text-muted">今日暂无事件</p>';
+    } else {
+        content = events.map(evt => {
+            const time = evt.event_time ? new Date(evt.event_time).toLocaleTimeString('zh-CN') : '';
+            const entities = (evt.entities || []).map(e => `<span class="badge bg-info me-1">${e}</span>`).join('');
+            const stars = evt.importance > 0 ? `<span class="text-warning">${'★'.repeat(Math.min(evt.importance, 5))}</span>` : '';
+            return `
+                <div class="d-flex mb-2">
+                    <div class="text-muted me-3" style="min-width: 60px;"><small>${time}</small></div>
+                    <div class="flex-grow-1 border-start ps-3">
+                        <div class="fw-semibold">${evt.title || '未命名'} ${stars}</div>
+                        ${evt.summary ? `<small class="text-muted">${evt.summary.substring(0, 150)}${evt.summary.length > 150 ? '...' : ''}</small>` : ''}
+                        ${entities ? `<div class="mt-1">${entities}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    return wrapCard(`今日事件 <span class="badge bg-secondary">${events.length}</span>`, 'zap', content, 'today-section');
+}
+
+function renderDailySummaries(summaries) {
+    let content;
+    if (summaries.length === 0) {
+        content = '<p class="text-muted">暂无历史日摘要</p>';
+    } else {
+        content = summaries.map(s => `
+            <div class="border rounded p-2 mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="badge bg-success">${s.time_bucket}</span>
+                    <small class="text-muted">${s.children_count} 条事件</small>
+                </div>
+                ${s.summary ? `<small>${s.summary.substring(0, 200)}${s.summary.length > 200 ? '...' : ''}</small>` : '<small class="text-muted">暂无摘要</small>'}
+            </div>
+        `).join('');
+    }
+    return wrapCard(`历史日摘要 <span class="badge bg-secondary">${summaries.length}</span>`, 'calendar', content, 'summaries-section');
+}
+
+function renderDocsAndKnowledge(docs, knowledge) {
+    const renderItems = (items) => {
+        if (items.length === 0) return '<p class="text-muted">暂无数据</p>';
+        return items.map(item => {
+            const keywords = (item.keywords || []).map(k => `<span class="badge bg-secondary me-1">${k}</span>`).join('');
+            const time = item.create_time ? new Date(item.create_time).toLocaleString('zh-CN') : '';
+            return `
+                <div class="border rounded p-2 mb-2">
+                    <div class="fw-semibold">${item.title || '未命名'}</div>
+                    ${item.summary ? `<small class="text-muted">${item.summary.substring(0, 120)}${item.summary.length > 120 ? '...' : ''}</small>` : ''}
+                    <div class="mt-1">
+                        ${keywords}
+                        ${time ? `<small class="text-muted float-end">${time}</small>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    };
+
+    const content = `
+        <ul class="nav nav-tabs mb-3" id="docsKnowledgeTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="docs-tab" data-bs-toggle="tab" data-bs-target="#docs-panel" type="button" role="tab">
+                    文档 <span class="badge bg-secondary">${docs.length}</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="knowledge-tab" data-bs-toggle="tab" data-bs-target="#knowledge-panel" type="button" role="tab">
+                    知识 <span class="badge bg-secondary">${knowledge.length}</span>
+                </button>
+            </li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="docs-panel" role="tabpanel">${renderItems(docs)}</div>
+            <div class="tab-pane fade" id="knowledge-panel" role="tabpanel">${renderItems(knowledge)}</div>
+        </div>
+    `;
+    return wrapCard('近期文档 & 知识', 'book-open', content, 'docs-knowledge-section');
+}
+
+function wrapCard(title, icon, content, id) {
+    return `
+        <div class="card mb-3" id="${id}">
+            <div class="card-header" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#${id}-body" aria-expanded="true">
+                <h6 class="d-flex align-items-center mb-0">
+                    <i data-feather="${icon}" class="me-2" style="width: 16px; height: 16px;"></i>
+                    ${title}
+                </h6>
+            </div>
+            <div class="collapse show" id="${id}-body">
+                <div class="card-body">${content}</div>
+            </div>
+        </div>
+    `;
+}
+
+async function viewContext(contextId, contextType) {
+    try {
+        const response = await fetch('/contexts/detail', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({id: contextId, context_type: contextType})
+        });
+        if (response.ok) {
+            const html = await response.text();
+            document.open();
+            document.write(html);
+            document.close();
+        } else {
+            alert('查看失败');
+        }
+    } catch (error) {
+        console.error('查看操作失败:', error);
+        alert('查看操作失败');
+    }
+}
+</script>
+{% endblock %}

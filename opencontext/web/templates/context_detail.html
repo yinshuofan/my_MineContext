@@ -101,6 +101,62 @@
             </div>
         </div>
 
+        <!-- Event Hierarchy Tree (only for event type) -->
+        {% if context.context_type == 'event' %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="d-flex align-items-center mb-0">
+                    事件层级结构
+                    {% set level_colors = {0: 'info', 1: 'success', 2: 'warning', 3: 'danger'} %}
+                    <span class="badge bg-{{ level_colors.get(context.hierarchy_level, 'secondary') }} ms-2">L{{ context.hierarchy_level }}</span>
+                    {% if context.hierarchy_level == 0 %}<small class="text-muted ms-1">原始事件</small>
+                    {% elif context.hierarchy_level == 1 %}<small class="text-muted ms-1">日摘要</small>
+                    {% elif context.hierarchy_level == 2 %}<small class="text-muted ms-1">周摘要</small>
+                    {% elif context.hierarchy_level == 3 %}<small class="text-muted ms-1">月摘要</small>
+                    {% endif %}
+                </h6>
+            </div>
+            <div class="card-body">
+                <!-- Time bucket -->
+                {% if context.time_bucket %}
+                <div class="mb-3">
+                    <strong>时间桶:</strong> <span class="badge bg-secondary">{{ context.time_bucket }}</span>
+                </div>
+                {% endif %}
+
+                <!-- Parent node link -->
+                {% if context.parent_id %}
+                <div class="mb-3">
+                    <strong>父节点:</strong>
+                    <a href="#" onclick="viewContext('{{ context.parent_id }}', 'event')" class="text-decoration-none">
+                        <span class="badge bg-outline-primary border border-primary text-primary">{{ context.parent_id[:12] }}...</span>
+                    </a>
+                    <span id="parent-title" class="text-muted ms-1"></span>
+                </div>
+                {% endif %}
+
+                <!-- Children tree -->
+                {% if context.children_ids and context.children_ids|length > 0 %}
+                <div class="mt-3">
+                    <h6>子节点 <span class="badge bg-secondary">{{ context.children_ids|length }}</span></h6>
+                    <div id="children-tree">
+                        <div class="text-center p-3">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <small class="text-muted ms-2">加载子节点...</small>
+                        </div>
+                    </div>
+                </div>
+                {% elif context.hierarchy_level == 0 %}
+                <div class="text-muted"><small>L0 原始事件，无子节点</small></div>
+                {% else %}
+                <div class="text-muted"><small>暂无子节点</small></div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Raw Data -->
         <div class="card mb-4">
             <div class="card-header" style="cursor: pointer;" data-bs-toggle="collapse" href="#raw-data-collapse" role="button" aria-expanded="false" aria-controls="raw-data-collapse">
@@ -168,12 +224,144 @@
         max-height: 600px;
         overflow-y: auto;
     }
+    .tree-node {
+        border-left: 2px solid #dee2e6;
+        padding-left: 16px;
+        margin-left: 8px;
+    }
+    .tree-item {
+        position: relative;
+        padding: 8px 12px;
+        margin-bottom: 4px;
+        border-radius: 6px;
+        background: #f8f9fa;
+        transition: background 0.15s;
+    }
+    .tree-item:hover {
+        background: #e9ecef;
+    }
+    .tree-item::before {
+        content: '';
+        position: absolute;
+        left: -18px;
+        top: 16px;
+        width: 12px;
+        height: 0;
+        border-top: 2px solid #dee2e6;
+    }
+    .tree-toggle {
+        cursor: pointer;
+        user-select: none;
+    }
+    .tree-toggle .bi {
+        transition: transform 0.2s;
+    }
+    .tree-toggle.expanded .bi {
+        transform: rotate(90deg);
+    }
 </style>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    const LEVEL_COLORS = {0: 'info', 1: 'success', 2: 'warning', 3: 'danger'};
+    const LEVEL_LABELS = {0: '原始事件', 1: '日摘要', 2: '周摘要', 3: '月摘要'};
+
+    // Cache loaded contexts to avoid duplicate fetches
+    const contextCache = {};
+
+    async function fetchContext(contextId) {
+        if (contextCache[contextId]) return contextCache[contextId];
+        try {
+            const response = await fetch(`/api/contexts/${contextId}?context_type=event`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            contextCache[contextId] = data;
+            return data;
+        } catch (e) {
+            console.error('Failed to fetch context:', contextId, e);
+            return null;
+        }
+    }
+
+    function renderTreeItem(ctx) {
+        const level = ctx.hierarchy_level || 0;
+        const color = LEVEL_COLORS[level] || 'secondary';
+        const hasChildren = ctx.children_ids && ctx.children_ids.length > 0;
+        const childCount = hasChildren ? ctx.children_ids.length : 0;
+
+        return `
+            <div class="tree-item" data-id="${ctx.id}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        ${hasChildren ? `<span class="tree-toggle me-1" onclick="toggleChildren(this, '${ctx.id}')"><i class="bi bi-chevron-right"></i></span>` : '<span class="me-3"></span>'}
+                        <span class="badge bg-${color} me-1">L${level}</span>
+                        <a href="#" onclick="viewContext('${ctx.id}', 'event')" class="text-decoration-none fw-semibold">${ctx.title || '未命名'}</a>
+                        ${hasChildren ? `<span class="badge bg-secondary ms-1">${childCount}</span>` : ''}
+                        ${ctx.time_bucket ? `<small class="text-muted ms-2">${ctx.time_bucket}</small>` : ''}
+                    </div>
+                </div>
+                ${ctx.summary ? `<div class="text-muted small mt-1 ms-4">${ctx.summary.substring(0, 120)}${ctx.summary.length > 120 ? '...' : ''}</div>` : ''}
+                ${hasChildren ? `<div class="tree-node d-none" id="children-of-${ctx.id}"></div>` : ''}
+            </div>
+        `;
+    }
+
+    async function toggleChildren(toggleEl, parentId) {
+        const container = document.getElementById(`children-of-${parentId}`);
+        const isExpanded = toggleEl.classList.contains('expanded');
+
+        if (isExpanded) {
+            container.classList.add('d-none');
+            toggleEl.classList.remove('expanded');
+            return;
+        }
+
+        toggleEl.classList.add('expanded');
+        container.classList.remove('d-none');
+
+        // If already loaded, just show
+        if (container.dataset.loaded === 'true') return;
+
+        container.innerHTML = '<div class="text-center p-2"><div class="spinner-border spinner-border-sm"></div></div>';
+
+        const parent = contextCache[parentId];
+        if (!parent || !parent.children_ids) return;
+
+        const children = await Promise.all(parent.children_ids.map(id => fetchContext(id)));
+        const validChildren = children.filter(c => c !== null);
+
+        if (validChildren.length === 0) {
+            container.innerHTML = '<div class="text-muted small p-2">无法加载子节点</div>';
+        } else {
+            container.innerHTML = validChildren.map(c => renderTreeItem(c)).join('');
+        }
+        container.dataset.loaded = 'true';
+    }
+
+    async function viewContext(contextId, contextType) {
+        try {
+            const response = await fetch('/contexts/detail', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: contextId, context_type: contextType})
+            });
+            if (response.ok) {
+                const html = await response.text();
+                document.open();
+                document.write(html);
+                document.close();
+            } else {
+                alert('查看失败');
+            }
+        } catch (error) {
+            console.error('查看操作失败:', error);
+            alert('查看操作失败');
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        // Delete button
         document.getElementById('delete-btn').addEventListener('click', async function() {
             if (confirm('确定要删除这个上下文吗？此操作不可撤销。')) {
                 try {
@@ -192,6 +380,44 @@
                 }
             }
         });
+
+        {% if context.context_type == 'event' %}
+        // Load parent title
+        {% if context.parent_id %}
+        (async () => {
+            const parent = await fetchContext('{{ context.parent_id }}');
+            if (parent) {
+                document.getElementById('parent-title').textContent = parent.title || '';
+            }
+        })();
+        {% endif %}
+
+        // Load children tree
+        {% if context.children_ids and context.children_ids|length > 0 %}
+        (async () => {
+            const childrenIds = {{ context.children_ids | tojson }};
+            const treeContainer = document.getElementById('children-tree');
+
+            // Cache current context for toggleChildren
+            contextCache['{{ context.id }}'] = {
+                id: '{{ context.id }}',
+                children_ids: childrenIds,
+                hierarchy_level: {{ context.hierarchy_level }},
+                title: {{ (context.title or '') | tojson }},
+                summary: {{ (context.summary or '') | tojson }}
+            };
+
+            const children = await Promise.all(childrenIds.map(id => fetchContext(id)));
+            const validChildren = children.filter(c => c !== null);
+
+            if (validChildren.length === 0) {
+                treeContainer.innerHTML = '<div class="text-muted">无法加载子节点</div>';
+            } else {
+                treeContainer.innerHTML = validChildren.map(c => renderTreeItem(c)).join('');
+            }
+        })();
+        {% endif %}
+        {% endif %}
     });
 </script>
 {% endblock %}

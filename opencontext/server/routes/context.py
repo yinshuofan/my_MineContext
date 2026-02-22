@@ -105,6 +105,21 @@ async def read_context_detail(
     )
 
 
+@router.get("/api/contexts/{context_id}")
+async def get_context_api(
+    context_id: str,
+    context_type: str = Query(..., description="Context type (event, knowledge, etc.)"),
+    opencontext: OpenContext = Depends(get_context_lab),
+    _auth: str = auth_dependency,
+):
+    """Get a single context by ID as JSON (used for tree lazy loading)."""
+    context = opencontext.get_context(context_id, context_type)
+    if context is None:
+        raise HTTPException(status_code=404, detail="Context not found")
+    model = ProcessedContextModel.from_processed_context(context, project_root)
+    return model.model_dump()
+
+
 @router.get("/api/context_types")
 async def get_context_types(
     opencontext: OpenContext = Depends(get_context_lab), _auth: str = auth_dependency
