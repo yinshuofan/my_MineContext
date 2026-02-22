@@ -91,14 +91,17 @@ async def unified_search(
         strategy = _get_intelligent_strategy()
 
     try:
-        results = await strategy.search(
-            query=request.query,
-            context_types=context_types,
-            top_k=request.top_k,
-            time_range=request.time_range,
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
+        results = await asyncio.wait_for(
+            strategy.search(
+                query=request.query,
+                context_types=context_types,
+                top_k=request.top_k,
+                time_range=request.time_range,
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            ),
+            timeout=30.0,
         )
 
         elapsed_ms = (time.monotonic() - start_time) * 1000
@@ -140,6 +143,23 @@ async def unified_search(
                 total_results=total,
                 search_time_ms=round(elapsed_ms, 2),
                 types_searched=actually_searched,
+            ),
+        )
+
+    except asyncio.TimeoutError:
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+        logger.warning(
+            f"Search timed out after {elapsed_ms:.0f}ms for query='{request.query[:50]}'"
+        )
+        return UnifiedSearchResponse(
+            success=False,
+            results=TypedResults(),
+            metadata=SearchMetadata(
+                strategy=request.strategy.value,
+                query=request.query,
+                total_results=0,
+                search_time_ms=round(elapsed_ms, 2),
+                types_searched=context_types,
             ),
         )
 

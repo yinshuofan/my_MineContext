@@ -33,7 +33,7 @@ class TimeRange(BaseModel):
 class UnifiedSearchRequest(BaseModel):
     """Unified search API request"""
 
-    query: str = Field(..., description="Natural language search query")
+    query: str = Field(..., min_length=1, max_length=2000, description="Search query text")
     strategy: SearchStrategy = Field(
         default=SearchStrategy.FAST,
         description="Search strategy: 'fast' for direct parallel search, 'intelligent' for LLM-driven agentic search",

@@ -7,6 +7,7 @@ GET /api/memory-cache — Returns a user's current memory state snapshot.
 DELETE /api/memory-cache — Invalidates the cache for a user.
 """
 
+import asyncio
 import time
 
 from fastapi import APIRouter, Query
@@ -27,9 +28,7 @@ async def get_user_memory_cache(
     device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
     recent_days: int = Query(default=None, description="Recent memory window in days"),
-    max_recent_events_today: int = Query(
-        default=None, description="Max today L0 events"
-    ),
+    max_recent_events_today: int = Query(default=None, description="Max today L0 events"),
     max_accessed: int = Query(default=20, ge=1, le=100, description="Max recently accessed items"),
     force_refresh: bool = Query(default=False, description="Force rebuild cache"),
     _auth: str = auth_dependency,
@@ -47,18 +46,26 @@ async def get_user_memory_cache(
     manager = get_memory_cache_manager()
 
     try:
-        response = await manager.get_user_memory_cache(
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-            recent_days=recent_days,
-            max_recent_events_today=max_recent_events_today,
-            max_accessed=max_accessed,
-            force_refresh=force_refresh,
+        response = await asyncio.wait_for(
+            manager.get_user_memory_cache(
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+                recent_days=recent_days,
+                max_recent_events_today=max_recent_events_today,
+                max_accessed=max_accessed,
+                force_refresh=force_refresh,
+            ),
+            timeout=15.0,
         )
         elapsed_ms = (time.monotonic() - t0) * 1000
         response.cache_metadata["response_time_ms"] = round(elapsed_ms, 2)
         return response
+    except asyncio.TimeoutError:
+        return JSONResponse(
+            status_code=504,
+            content={"success": False, "error": "Memory cache request timed out"},
+        )
     except Exception as e:
         logger.exception(f"Memory cache request failed: {e}")
         return JSONResponse(

@@ -135,17 +135,70 @@ class TextChatProcessor(BaseContextProcessor):
     def _build_processed_context(
         self, memory: Dict, raw_context: RawContextProperties
     ) -> Optional[ProcessedContext]:
-        """为单条 memory 构建 ProcessedContext。"""
+        """Build ProcessedContext for a single memory with input validation."""
+        # Validate memory is a dict
+        if not isinstance(memory, dict):
+            logger.warning(f"Invalid memory format: expected dict, got {type(memory).__name__}")
+            return None
+
+        # Validate and sanitize entity names
         raw_entities = memory.get("entities", [])
         entity_names = []
         if isinstance(raw_entities, list):
             for e in raw_entities:
                 if isinstance(e, str):
-                    entity_names.append(e)
+                    name = e.strip()[:255]
+                    if name:
+                        entity_names.append(name)
                 elif isinstance(e, dict):
-                    entity_names.append(e.get("name", str(e)))
+                    name = str(e.get("name", "")).strip()[:255]
+                    if name:
+                        entity_names.append(name)
 
-        context_type = get_context_type_for_analysis(memory.get("context_type", "event"))
+        # Validate context_type
+        raw_type = memory.get("context_type", "event")
+        if not isinstance(raw_type, str):
+            raw_type = "event"
+        from opencontext.models.enums import validate_context_type
+
+        if not validate_context_type(raw_type.lower().strip()):
+            logger.warning(
+                f"LLM returned unrecognized context_type: '{raw_type}', falling back to event"
+            )
+        context_type = get_context_type_for_analysis(raw_type)
+
+        # Validate and sanitize title
+        title = memory.get("title", "")
+        if not isinstance(title, str) or not title.strip():
+            title = "Untitled"
+        title = title.strip()[:500]
+
+        # Validate and sanitize summary
+        summary = memory.get("summary", "")
+        if not isinstance(summary, str):
+            summary = str(summary) if summary else ""
+
+        # Validate and sanitize keywords
+        keywords = memory.get("keywords", [])
+        if not isinstance(keywords, list):
+            keywords = []
+        keywords = [str(k).strip()[:100] for k in keywords if k and str(k).strip()][:20]
+
+        # Validate importance (0-10 range)
+        importance = memory.get("importance", 5)
+        try:
+            importance = int(importance)
+        except (ValueError, TypeError):
+            importance = 5
+        importance = max(0, min(10, importance))
+
+        # Validate confidence (0-100 range)
+        confidence = memory.get("confidence", 0)
+        try:
+            confidence = int(confidence)
+        except (ValueError, TypeError):
+            confidence = 0
+        confidence = max(0, min(100, confidence))
 
         # 解析 LLM 返回的 event_time，回退到 raw_context.create_time
         event_time = raw_context.create_time
@@ -163,13 +216,13 @@ class TextChatProcessor(BaseContextProcessor):
         enable_merge = context_type == ContextType.KNOWLEDGE
 
         extracted_data = ExtractedData(
-            title=memory.get("title", "Chat Summary"),
-            summary=memory.get("summary", ""),
-            keywords=memory.get("keywords", []),
+            title=title,
+            summary=summary,
+            keywords=keywords,
             entities=entity_names,
             context_type=context_type,
-            importance=memory.get("importance", 0),
-            confidence=memory.get("confidence", 0),
+            importance=importance,
+            confidence=confidence,
         )
 
         return ProcessedContext(

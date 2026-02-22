@@ -11,6 +11,7 @@ SQLite document note storage backend implementation
 import json
 import os
 import sqlite3
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
@@ -35,6 +36,7 @@ class SQLiteBackend(IDocumentStorageBackend):
     def __init__(self):
         self.db_path: Optional[str] = None
         self.connection: Optional[sqlite3.Connection] = None
+        self._local = threading.local()
         self._initialized = False
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -48,6 +50,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
             self.connection.row_factory = sqlite3.Row  # Allow column name access
+            self.connection.execute("PRAGMA journal_mode=WAL")
 
             # Create table structure
             self._create_tables()
@@ -60,6 +63,16 @@ class SQLiteBackend(IDocumentStorageBackend):
         except Exception as e:
             logger.exception(f"SQLite backend initialization failed: {e}")
             return False
+
+    def _get_connection(self):
+        """Get a thread-local database connection."""
+        conn = getattr(self._local, "connection", None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            self._local.connection = conn
+        return conn
 
     def _create_tables(self):
         """Create database table structure"""
@@ -539,7 +552,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        cursor = self.connection.cursor()
+        cursor = self._get_connection().cursor()
         try:
             cursor.execute(
                 """

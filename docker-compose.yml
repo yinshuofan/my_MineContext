@@ -34,6 +34,12 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./persist:/app/persist
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:1733/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     deploy:
       replicas: 3
 
@@ -69,6 +75,11 @@ services:
       - mysql_data:/var/lib/mysql
     ports:
       - "${MYSQL_PORT_PUBLISHED:-3307}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   redis:
     image: redis:alpine
@@ -77,6 +88,11 @@ services:
       - redis_data:/data
     ports:
       - "${REDIS_PORT_PUBLISHED:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 
 volumes:

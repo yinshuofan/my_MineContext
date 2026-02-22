@@ -8,6 +8,7 @@ Health check routes
 """
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
 from opencontext.server.middleware.auth import is_auth_enabled
 from opencontext.server.opencontext import OpenContext
@@ -44,3 +45,28 @@ async def api_health_check(opencontext: OpenContext = Depends(get_context_lab)):
 async def auth_status():
     """Check if API authentication is enabled"""
     return convert_resp(data={"auth_enabled": is_auth_enabled()})
+
+
+@router.get("/api/ready")
+async def readiness_check(opencontext: OpenContext = Depends(get_context_lab)):
+    """Readiness probe - checks all dependencies are connectable."""
+    try:
+        health_data = opencontext.check_components_health()
+        all_healthy = all(v for v in health_data.values() if isinstance(v, bool))
+        status_code = 200 if all_healthy else 503
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "status": "ready" if all_healthy else "not_ready",
+                "components": health_data,
+            },
+        )
+    except Exception as e:
+        from opencontext.utils.logging_utils import get_logger
+
+        logger = get_logger(__name__)
+        logger.exception(f"Readiness check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "error": str(e)},
+        )

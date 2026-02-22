@@ -44,6 +44,13 @@ def get_or_create_context_lab():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI."""
+    # Increase default thread pool for asyncio.to_thread() calls
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=50))
+
     # Startup
     if not hasattr(app.state, "context_lab_instance"):
         app.state.context_lab_instance = get_or_create_context_lab()
@@ -77,6 +84,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add Request ID middleware (added after CORS so it runs first due to LIFO ordering)
+from opencontext.server.middleware.request_id import RequestIDMiddleware
+
+app.add_middleware(RequestIDMiddleware)
 
 # Project root
 if hasattr(sys, "_MEIPASS"):

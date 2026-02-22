@@ -10,6 +10,7 @@ This module provides HTTP endpoints for receiving context data from external ser
 replacing the automatic capture/pull mechanisms with a push-based architecture.
 """
 
+import asyncio
 import base64
 import json
 import os
@@ -20,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContentFormat, ContextSource
@@ -97,14 +98,23 @@ async def _schedule_user_hierarchy_summary(
 class PushChatMessageRequest(BaseModel):
     """Push a single chat message"""
 
-    role: str = Field(..., description="Message role: user, assistant, system")
+    role: str = Field(
+        ..., min_length=1, max_length=20, description="Message role: user, assistant, system"
+    )
     content: List[Dict[str, Any]] = Field(
         ...,
+        min_length=1,
         description="Message content (OpenAI format: List of content blocks with type and text)",
     )
-    user_id: Optional[str] = Field(None, description="User identifier")
-    device_id: Optional[str] = Field(None, description="Device identifier")
-    agent_id: Optional[str] = Field(None, description="Agent identifier")
+    user_id: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="User identifier"
+    )
+    device_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Device identifier"
+    )
+    agent_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Agent identifier"
+    )
     timestamp: Optional[str] = Field(None, description="Message timestamp (ISO format)")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
@@ -113,11 +123,20 @@ class PushChatMessagesRequest(BaseModel):
     """Push multiple chat messages in batch"""
 
     messages: List[Dict[str, Any]] = Field(
-        ..., description="List of chat messages (OpenAI format: role, content)"
+        ...,
+        min_length=1,
+        max_length=100,
+        description="List of chat messages (max 100)",
     )
-    user_id: Optional[str] = Field(None, description="Default user identifier")
-    device_id: Optional[str] = Field(None, description="Default device identifier")
-    agent_id: Optional[str] = Field(None, description="Default agent identifier")
+    user_id: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="Default user identifier"
+    )
+    device_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Default device identifier"
+    )
+    agent_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Default agent identifier"
+    )
     flush_immediately: bool = Field(False, description="Whether to flush buffer immediately")
 
 
@@ -126,11 +145,19 @@ class ProcessChatMessagesRequest(BaseModel):
 
     messages: List[Dict[str, Any]] = Field(
         ...,
+        min_length=1,
+        max_length=100,
         description="List of chat messages (OpenAI format: role, content[type, text] or other format)",
     )
-    user_id: Optional[str] = Field(None, description="User identifier")
-    device_id: Optional[str] = Field(None, description="Device identifier")
-    agent_id: Optional[str] = Field(None, description="Agent identifier")
+    user_id: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="User identifier"
+    )
+    device_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Device identifier"
+    )
+    agent_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Agent identifier"
+    )
 
 
 class PushDocumentRequest(BaseModel):
@@ -141,46 +168,78 @@ class PushDocumentRequest(BaseModel):
     base64_data: Optional[str] = Field(None, description="Base64 encoded document data")
     filename: Optional[str] = Field(None, description="Filename for base64 uploads")
     content_type: Optional[str] = Field(None, description="MIME type of the document")
-    user_id: Optional[str] = Field(None, description="User identifier")
-    device_id: Optional[str] = Field(None, description="Device identifier")
+    user_id: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="User identifier"
+    )
+    device_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Device identifier"
+    )
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class PushActivityRequest(BaseModel):
     """Push an activity record"""
 
-    title: str = Field(..., description="Activity title")
-    content: str = Field(..., description="Activity content/description")
+    title: str = Field(..., min_length=1, max_length=500, description="Activity title")
+    content: str = Field(
+        ..., min_length=1, max_length=50000, description="Activity content/description"
+    )
     start_time: Optional[str] = Field(None, description="Activity start time (ISO format)")
     end_time: Optional[str] = Field(None, description="Activity end time (ISO format)")
     resources: Optional[List[str]] = Field(None, description="Related resource paths/URLs")
-    user_id: Optional[str] = Field(None, description="User identifier")
-    device_id: Optional[str] = Field(None, description="Device identifier")
-    agent_id: Optional[str] = Field(None, description="Agent identifier")
+    user_id: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="User identifier"
+    )
+    device_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Device identifier"
+    )
+    agent_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Agent identifier"
+    )
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class PushContextRequest(BaseModel):
     """Push a generic context item"""
 
-    source: str = Field(..., description="Context source type: document, chat, activity, etc.")
-    content_format: str = Field("text", description="Content format: text, image, markdown, etc.")
-    content_text: Optional[str] = Field(None, description="Text content")
-    content_images: Optional[List[str]] = Field(None, description="Image paths or base64 data")
+    source: str = Field(..., min_length=1, max_length=50, description="Context source type")
+    content_format: str = Field("text", min_length=1, max_length=20, description="Content format")
+    content_text: Optional[str] = Field(None, max_length=100000, description="Text content")
+    content_images: Optional[List[str]] = Field(
+        None, max_length=20, description="Image paths or base64 data"
+    )
     create_time: Optional[str] = Field(None, description="Creation time (ISO format)")
-    user_id: Optional[str] = Field(None, description="User identifier")
-    device_id: Optional[str] = Field(None, description="Device identifier")
-    agent_id: Optional[str] = Field(None, description="Agent identifier")
+    user_id: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="User identifier"
+    )
+    device_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Device identifier"
+    )
+    agent_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Agent identifier"
+    )
     additional_info: Optional[Dict[str, Any]] = Field(None, description="Additional context info")
     enable_merge: bool = Field(True, description="Whether to enable context merging")
+
+    @model_validator(mode="after")
+    def check_content_provided(self):
+        if not self.content_text and not self.content_images:
+            raise ValueError("At least one of content_text or content_images must be provided")
+        return self
 
 
 class FlushBufferRequest(BaseModel):
     """Request to flush chat buffer"""
 
-    user_id: Optional[str] = Field(None, description="User identifier")
-    device_id: Optional[str] = Field(None, description="Device identifier")
-    agent_id: Optional[str] = Field(None, description="Agent identifier")
+    user_id: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="User identifier"
+    )
+    device_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Device identifier"
+    )
+    agent_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Agent identifier"
+    )
 
 
 # ============================================================================
@@ -295,13 +354,16 @@ async def push_chat_message(
                 code=503, status=503, message="TextChatCapture component not available"
             )
 
-        # Push message (async - non-blocking)
-        await text_chat.push_message(
-            role=request.role,
-            content=request.content,
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
+        # Push message (async - non-blocking) with timeout protection
+        await asyncio.wait_for(
+            text_chat.push_message(
+                role=request.role,
+                content=request.content,
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            ),
+            timeout=60.0,
         )
 
         # Schedule compression and hierarchy summary tasks for the user
@@ -317,6 +379,9 @@ async def push_chat_message(
         )
 
         return convert_resp(message="Chat message pushed successfully")
+    except asyncio.TimeoutError:
+        logger.warning("Push chat message timed out after 60s")
+        return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
         logger.exception(f"Error pushing chat message: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
@@ -339,28 +404,34 @@ async def push_chat_messages(
                 code=503, status=503, message="TextChatCapture component not available"
             )
 
-        # Push each message (async - non-blocking)
-        for msg in request.messages:
-            await text_chat.push_message(
-                role=msg.get("role", "user"),
-                content=msg.get("content", ""),
-                user_id=msg.get("user_id") or request.user_id,
-                device_id=msg.get("device_id") or request.device_id,
-                agent_id=msg.get("agent_id") or request.agent_id,
-            )
+        async def _push_all_messages():
+            # Push each message (async - non-blocking)
+            for msg in request.messages:
+                await text_chat.push_message(
+                    role=msg.get("role", "user"),
+                    content=msg.get("content", ""),
+                    user_id=msg.get("user_id") or request.user_id,
+                    device_id=msg.get("device_id") or request.device_id,
+                    agent_id=msg.get("agent_id") or request.agent_id,
+                )
 
-        # Flush buffer if requested (async - non-blocking)
-        if request.flush_immediately:
-            await text_chat.flush_user_buffer(
-                user_id=request.user_id,
-                device_id=request.device_id,
-                agent_id=request.agent_id,
-            )
+            # Flush buffer if requested (async - non-blocking)
+            if request.flush_immediately:
+                await text_chat.flush_user_buffer(
+                    user_id=request.user_id,
+                    device_id=request.device_id,
+                    agent_id=request.agent_id,
+                )
+
+        await asyncio.wait_for(_push_all_messages(), timeout=60.0)
 
         return convert_resp(
             message=f"Pushed {len(request.messages)} chat messages successfully",
             data={"count": len(request.messages)},
         )
+    except asyncio.TimeoutError:
+        logger.warning("Push chat messages timed out after 60s")
+        return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
         logger.exception(f"Error pushing chat messages: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
@@ -437,14 +508,20 @@ async def flush_chat_buffer(
                 code=503, status=503, message="TextChatCapture component not available"
             )
 
-        # Flush buffer (async - non-blocking)
-        await text_chat.flush_user_buffer(
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
+        # Flush buffer (async - non-blocking) with timeout protection
+        await asyncio.wait_for(
+            text_chat.flush_user_buffer(
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            ),
+            timeout=60.0,
         )
 
         return convert_resp(message="Chat buffer flushed successfully")
+    except asyncio.TimeoutError:
+        logger.warning("Flush chat buffer timed out after 60s")
+        return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
         logger.exception(f"Error flushing chat buffer: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
@@ -478,12 +555,18 @@ async def push_document(
                 code=400, status=400, message="Either 'file_path' or 'base64_data' must be provided"
             )
 
-        err_msg = opencontext.add_document(file_path=file_path)
+        err_msg = await asyncio.wait_for(
+            asyncio.to_thread(opencontext.add_document, file_path=file_path),
+            timeout=60.0,
+        )
 
         if err_msg:
             return convert_resp(code=400, status=400, message=err_msg)
 
         return convert_resp(message="Document pushed successfully", data={"path": file_path})
+    except asyncio.TimeoutError:
+        logger.warning("Push document timed out after 60s")
+        return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
         logger.exception(f"Error pushing document: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
@@ -556,13 +639,17 @@ async def push_activity(
             json.dumps(request.metadata, ensure_ascii=False) if request.metadata else None
         )
 
-        activity_id = storage.insert_activity(
-            title=request.title,
-            content=request.content,
-            resources=resources_json,
-            metadata=metadata_json,
-            start_time=start_time,
-            end_time=end_time,
+        activity_id = await asyncio.wait_for(
+            asyncio.to_thread(
+                storage.insert_activity,
+                title=request.title,
+                content=request.content,
+                resources=resources_json,
+                metadata=metadata_json,
+                start_time=start_time,
+                end_time=end_time,
+            ),
+            timeout=60.0,
         )
 
         # Schedule hierarchy summary task for the user
@@ -575,6 +662,9 @@ async def push_activity(
         return convert_resp(
             message="Activity pushed successfully", data={"activity_id": activity_id}
         )
+    except asyncio.TimeoutError:
+        logger.warning("Push activity timed out after 60s")
+        return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
         logger.exception(f"Error pushing activity: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
@@ -612,8 +702,11 @@ async def push_context(
             enable_merge=request.enable_merge,
         )
 
-        # Process context
-        success = opencontext.add_context(raw_context)
+        # Process context with timeout protection
+        success = await asyncio.wait_for(
+            asyncio.to_thread(opencontext.add_context, raw_context),
+            timeout=60.0,
+        )
 
         if success:
             # Schedule hierarchy summary task for the user
@@ -625,6 +718,9 @@ async def push_context(
             return convert_resp(message="Context pushed successfully")
         else:
             return convert_resp(code=500, status=500, message="Failed to process context")
+    except asyncio.TimeoutError:
+        logger.warning("Push context timed out after 60s")
+        return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
         logger.exception(f"Error pushing context: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
@@ -638,7 +734,9 @@ async def push_context(
 class BatchPushItem(BaseModel):
     """A single item in a batch push request"""
 
-    type: str = Field(..., description="Item type: chat, document, activity, context")
+    type: str = Field(
+        ..., min_length=1, max_length=30, description="Item type: chat, document, activity, context"
+    )
     data: Dict[str, Any] = Field(
         ..., description="Item data matching the corresponding push request schema"
     )
@@ -647,9 +745,15 @@ class BatchPushItem(BaseModel):
 class BatchPushRequest(BaseModel):
     """Batch push request containing multiple items of different types"""
 
-    items: List[BatchPushItem]
-    user_id: Optional[str] = Field(None, description="Default user identifier")
-    device_id: Optional[str] = Field(None, description="Default device identifier")
+    items: List[BatchPushItem] = Field(
+        ..., min_length=1, max_length=50, description="Batch items (max 50)"
+    )
+    user_id: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="Default user identifier"
+    )
+    device_id: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Default device identifier"
+    )
 
 
 @router.post("/batch", response_class=JSONResponse)

@@ -13,7 +13,7 @@ Recently accessed items are stored in a separate Redis Hash and always read in r
 import asyncio
 import json
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.config.global_config import get_config
@@ -40,6 +40,7 @@ class UserMemoryCacheManager:
     def __init__(self):
         self._config = self._load_config()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._build_semaphore: Optional[asyncio.Semaphore] = None
 
     def _capture_loop(self) -> None:
         """Capture the event loop reference when called from async context."""
@@ -47,6 +48,12 @@ class UserMemoryCacheManager:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
             pass
+
+    def _get_build_semaphore(self) -> asyncio.Semaphore:
+        """Lazily create the build semaphore."""
+        if self._build_semaphore is None:
+            self._build_semaphore = asyncio.Semaphore(3)
+        return self._build_semaphore
 
     def _load_config(self) -> Dict[str, Any]:
         raw = get_config("memory_cache") or {}
@@ -64,9 +71,7 @@ class UserMemoryCacheManager:
     # ─── Key helpers ───
 
     @staticmethod
-    def _accessed_key(
-        user_id: str, device_id: str = "default", agent_id: str = "default"
-    ) -> str:
+    def _accessed_key(user_id: str, device_id: str = "default", agent_id: str = "default") -> str:
         return f"memory_cache:accessed:{user_id}:{device_id}:{agent_id}"
 
     @staticmethod
@@ -200,7 +205,9 @@ class UserMemoryCacheManager:
                 snapshot = await cache.get_json(snapshot_key)
                 if snapshot and not force_refresh:
                     return self._merge_response(
-                        snapshot, accessed, cache_hit=True,
+                        snapshot,
+                        accessed,
+                        cache_hit=True,
                         ttl_remaining=await cache.ttl(snapshot_key),
                     )
 
@@ -216,20 +223,63 @@ class UserMemoryCacheManager:
             finally:
                 await cache.release_lock(lock_key, lock_token)
         else:
-            # Lock timeout — fallback: try snapshot one more time, or build without caching
+            # Lock timeout — use semaphore to limit concurrent builds
             snapshot = await cache.get_json(snapshot_key)
             if snapshot:
                 return self._merge_response(
-                    snapshot, accessed, cache_hit=True,
+                    snapshot,
+                    accessed,
+                    cache_hit=True,
                     ttl_remaining=await cache.ttl(snapshot_key),
                 )
-            # Last resort: build without lock (duplicate build OK, better than failing)
-            snapshot_data = await self._build_snapshot(
-                user_id, device_id, agent_id, recent_days, max_recent_events_today
-            )
-            return self._merge_response(
-                snapshot_data, accessed, cache_hit=False, ttl_remaining=0
-            )
+
+            sem = self._get_build_semaphore()
+            try:
+                await asyncio.wait_for(sem.acquire(), timeout=5)
+                try:
+                    # Double-check after acquiring semaphore
+                    snapshot = await cache.get_json(snapshot_key)
+                    if snapshot:
+                        return self._merge_response(
+                            snapshot,
+                            accessed,
+                            cache_hit=True,
+                            ttl_remaining=await cache.ttl(snapshot_key),
+                        )
+                    snapshot_data = await self._build_snapshot(
+                        user_id,
+                        device_id,
+                        agent_id,
+                        recent_days,
+                        max_recent_events_today,
+                    )
+                    ttl = self._config["snapshot_ttl"]
+                    await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
+                    return self._merge_response(
+                        snapshot_data, accessed, cache_hit=False, ttl_remaining=ttl
+                    )
+                finally:
+                    sem.release()
+            except asyncio.TimeoutError:
+                # Semaphore timeout — last resort
+                snapshot = await cache.get_json(snapshot_key)
+                if snapshot:
+                    return self._merge_response(
+                        snapshot,
+                        accessed,
+                        cache_hit=True,
+                        ttl_remaining=await cache.ttl(snapshot_key),
+                    )
+                snapshot_data = await self._build_snapshot(
+                    user_id,
+                    device_id,
+                    agent_id,
+                    recent_days,
+                    max_recent_events_today,
+                )
+                return self._merge_response(
+                    snapshot_data, accessed, cache_hit=False, ttl_remaining=0
+                )
 
     # ─── Recently Accessed (real-time from Redis) ───
 
@@ -300,12 +350,15 @@ class UserMemoryCacheManager:
 
         # Parallel queries
         tasks = {
-            "profile": asyncio.to_thread(
-                storage.get_profile, user_id, device_id, agent_id
-            ),
+            "profile": asyncio.to_thread(storage.get_profile, user_id, device_id, agent_id),
             "entities": asyncio.to_thread(
-                storage.list_entities, user_id, device_id, agent_id,
-                None, self._config["max_entities"], 0,
+                storage.list_entities,
+                user_id,
+                device_id,
+                agent_id,
+                None,
+                self._config["max_entities"],
+                0,
             ),
             "today_events": asyncio.to_thread(
                 storage.get_all_processed_contexts,
@@ -358,9 +411,7 @@ class UserMemoryCacheManager:
                 logger.error(f"Memory cache build error ({name}): {result}")
 
         t_queries = time.perf_counter()
-        logger.info(
-            f"[memory-cache] parallel queries: {(t_queries - t0)*1000:.0f}ms"
-        )
+        logger.info(f"[memory-cache] parallel queries: {(t_queries - t0)*1000:.0f}ms")
 
         # Assemble snapshot
         snapshot: Dict[str, Any] = {
@@ -441,9 +492,7 @@ class UserMemoryCacheManager:
             for ctx_type, contexts in docs_data.items():
                 for ctx in contexts:
                     doc_items.append(self._ctx_to_recent_item(ctx))
-            doc_items.sort(
-                key=lambda x: x.get("create_time") or "", reverse=True
-            )
+            doc_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
             recent_memories["recent_documents"] = doc_items
 
         # Recent knowledge
@@ -453,17 +502,13 @@ class UserMemoryCacheManager:
             for ctx_type, contexts in knowledge_data.items():
                 for ctx in contexts:
                     knowledge_items.append(self._ctx_to_recent_item(ctx))
-            knowledge_items.sort(
-                key=lambda x: x.get("create_time") or "", reverse=True
-            )
+            knowledge_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
             recent_memories["recent_knowledge"] = knowledge_items
 
         snapshot["recent_memories"] = recent_memories
 
         t_end = time.perf_counter()
-        logger.info(
-            f"[memory-cache] snapshot built for user={user_id}: {(t_end - t0)*1000:.0f}ms"
-        )
+        logger.info(f"[memory-cache] snapshot built for user={user_id}: {(t_end - t0)*1000:.0f}ms")
 
         return snapshot
 

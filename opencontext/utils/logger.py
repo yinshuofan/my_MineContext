@@ -16,6 +16,16 @@ from typing import Any, Dict
 from loguru import logger
 
 
+def _request_id_patcher(record):
+    """Patch log records with the current request ID from contextvars."""
+    try:
+        from opencontext.server.middleware.request_id import request_id_var
+
+        record["extra"]["request_id"] = request_id_var.get("")
+    except Exception:
+        record["extra"]["request_id"] = ""
+
+
 class LogManager:
     """
     Log manager
@@ -38,8 +48,14 @@ class LogManager:
         logger.remove()
         level = config.get("level", "INFO")
 
+        # Configure patcher to inject request_id into all log records
+        logger.configure(patcher=_request_id_patcher)
+
         # Console logging
-        console_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{message}</cyan>"
+        console_format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level>"
+            " | <dim>{extra[request_id]:>8}</dim> | <cyan>{message}</cyan>"
+        )
         logger.add(sys.stderr, level=level, format=console_format)
 
         # File logging
@@ -56,7 +72,9 @@ class LogManager:
             ext = os.path.splitext(base_name)[1]
             dated_log_path = os.path.join(log_dir, f"{name_without_ext}_{{time:YYYY-MM-DD}}{ext}")
 
-            file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
+            file_format = (
+                "{time:YYYY-MM-DD HH:mm:ss} | {level}" " | {extra[request_id]:>8} | {message}"
+            )
             rotation = "100 MB"
             retention = 2  # Keep only the 2 most recent files
 

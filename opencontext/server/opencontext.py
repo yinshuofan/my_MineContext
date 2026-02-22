@@ -22,7 +22,7 @@ from opencontext.models.context import ProcessedContext, RawContextProperties
 from opencontext.models.enums import CONTEXT_STORAGE_BACKENDS, ContextType
 from opencontext.server.component_initializer import ComponentInitializer
 from opencontext.server.context_operations import ContextOperations
-from opencontext.storage.global_storage import GlobalStorage
+from opencontext.storage.global_storage import GlobalStorage, get_storage
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -114,45 +114,52 @@ class OpenContext:
             return False
 
     def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool:
-        """
-        Store processed contexts, routing by type per CONTEXT_STORAGE_BACKENDS.
-
-        - profile/entity → relational DB (MySQL)
-        - document/event/knowledge → vector DB (VikingDB)
-        """
+        """Store processed contexts, routing by type per CONTEXT_STORAGE_BACKENDS."""
         if not contexts:
             return False
-
         if not self.storage:
             logger.warning("Storage is not initialized.")
             return False
 
         try:
             vector_contexts = []
+            db_contexts = []
+
             for ctx in contexts:
                 ctx_type = ctx.extracted_data.context_type
                 backend = CONTEXT_STORAGE_BACKENDS.get(ctx_type, "vector_db")
-
                 if backend == "document_db":
+                    db_contexts.append(ctx)
+                else:
+                    vector_contexts.append(ctx)
+
+            # Store relational DB contexts (profile/entity) as a batch
+            # If any fails, the exception propagates and we skip cache invalidation
+            affected_users = set()
+            if db_contexts:
+                for ctx in db_contexts:
+                    ctx_type = ctx.extracted_data.context_type
                     if ctx_type == ContextType.PROFILE:
                         self._store_profile(ctx)
                     elif ctx_type == ContextType.ENTITY:
                         self._store_entities(ctx)
-                else:
-                    vector_contexts.append(ctx)
+                    uid = ctx.properties.user_id
+                    if uid:
+                        affected_users.add((uid, ctx.properties.device_id, ctx.properties.agent_id))
 
+            # Store vector contexts
             success = True
             if vector_contexts:
                 success = self.storage.batch_upsert_processed_context(vector_contexts)
-                # Invalidate memory cache for affected users
-                user_ids_seen = set()
                 for ctx in vector_contexts:
                     uid = ctx.properties.user_id
-                    if uid and uid not in user_ids_seen:
-                        user_ids_seen.add(uid)
-                        self._invalidate_user_cache(
-                            uid, ctx.properties.device_id, ctx.properties.agent_id
-                        )
+                    if uid:
+                        affected_users.add((uid, ctx.properties.device_id, ctx.properties.agent_id))
+
+            # Only invalidate cache after ALL operations succeed
+            for uid, did, aid in affected_users:
+                self._invalidate_user_cache(uid, did, aid)
+
             return success
         except Exception as e:
             logger.error(f"Error storing processed contexts: {e}")
@@ -176,7 +183,6 @@ class OpenContext:
         logger.info(
             f"Profile stored for user={props.user_id}, device={props.device_id}, agent={props.agent_id}"
         )
-        self._invalidate_user_cache(props.user_id, props.device_id, props.agent_id)
 
     def _store_entities(self, ctx: ProcessedContext) -> None:
         """Store entity contexts to relational DB."""
@@ -195,7 +201,6 @@ class OpenContext:
                 metadata=ctx.metadata,
             )
             logger.info(f"Entity '{entity_name}' stored for user={props.user_id}")
-        self._invalidate_user_cache(props.user_id, props.device_id, props.agent_id)
 
     def _invalidate_user_cache(
         self,
@@ -203,7 +208,7 @@ class OpenContext:
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
     ) -> None:
-        """Fire-and-forget cache invalidation. Uses thread-safe submission if no event loop."""
+        """Fire-and-forget cache invalidation with sync fallback."""
         if not user_id:
             return
         try:
@@ -215,9 +220,6 @@ class OpenContext:
             did = device_id or "default"
             aid = agent_id or "default"
 
-            # Always use run_coroutine_threadsafe — works from both event loop
-            # and background threads. Preferred over create_task which may not
-            # execute from sync call contexts.
             loop = manager._loop
             if not loop:
                 try:
@@ -231,11 +233,35 @@ class OpenContext:
                 )
                 logger.debug(f"Cache invalidation submitted for user={user_id}")
             else:
-                logger.debug(
-                    f"Cache invalidation skipped (no event loop) for user={user_id}"
-                )
+                # Sync fallback: directly delete Redis key
+                self._invalidate_cache_sync_fallback(user_id, did, aid)
         except Exception as e:
-            logger.debug(f"Cache invalidation failed for user={user_id}: {e}")
+            logger.warning(f"Cache invalidation failed for user={user_id}: {e}")
+
+    def _invalidate_cache_sync_fallback(self, user_id: str, device_id: str, agent_id: str) -> None:
+        """Synchronous fallback: directly delete Redis snapshot key."""
+        try:
+            import redis as sync_redis
+
+            config = GlobalConfig.get_instance()
+            redis_conf = config.get("redis", {})
+            if not redis_conf:
+                logger.debug("No Redis config available for sync cache invalidation")
+                return
+
+            client = sync_redis.Redis(
+                host=redis_conf.get("host", "localhost"),
+                port=redis_conf.get("port", 6379),
+                password=redis_conf.get("password"),
+                db=redis_conf.get("db", 0),
+                socket_timeout=3,
+            )
+            snapshot_key = f"memory_cache:snapshot:{user_id}:{device_id}:{agent_id}"
+            client.delete(snapshot_key)
+            client.close()
+            logger.debug(f"Cache invalidation (sync fallback) for user={user_id}")
+        except Exception as e:
+            logger.warning(f"Sync cache invalidation fallback failed: {e}")
 
     def start_capture(self) -> None:
         """Start all capture components."""
@@ -366,15 +392,44 @@ class OpenContext:
             raise RuntimeError("Context operations not initialized")
         return self.context_operations.get_context_types()
 
-    def check_components_health(self) -> Dict[str, bool]:
-        """Check health status of all components."""
-        return {
+    def check_components_health(self) -> Dict[str, Any]:
+        """Check health status of all components including actual connectivity."""
+        health: Dict[str, Any] = {
             "config": GlobalConfig.get_instance().is_initialized(),
             "storage": GlobalStorage.get_instance().get_storage() is not None,
-            "llm": GlobalEmbeddingClient.get_instance().is_initialized()
-            and GlobalVLMClient.get_instance().is_initialized(),
-            "capture": bool(self.capture_manager),
+            "llm": GlobalEmbeddingClient.get_instance().is_initialized(),
         }
+
+        # Check MySQL/SQLite connectivity
+        try:
+            storage = get_storage()
+            if hasattr(storage, "document_storage") and storage.document_storage:
+                backend = storage.document_storage
+                if hasattr(backend, "_pool") and backend._pool:
+                    # MySQL with pool: try checkout
+                    conn = backend._pool.connect()
+                    conn.close()
+                    health["mysql"] = True
+                elif hasattr(backend, "_get_connection"):
+                    backend._get_connection()
+                    health["document_db"] = True
+        except Exception:
+            health["document_db"] = False
+
+        # Check Redis connectivity
+        try:
+            from opencontext.storage.redis_cache import get_redis_cache
+
+            cache = get_redis_cache()
+            if cache and hasattr(cache, "_sync_client") and cache._sync_client:
+                cache._sync_client.ping()
+                health["redis"] = True
+            else:
+                health["redis"] = False
+        except Exception:
+            health["redis"] = False
+
+        return health
 
 
 def main():
