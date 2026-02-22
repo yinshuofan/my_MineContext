@@ -49,7 +49,8 @@ async def lifespan(app: FastAPI):
     from concurrent.futures import ThreadPoolExecutor
 
     loop = asyncio.get_running_loop()
-    loop.set_default_executor(ThreadPoolExecutor(max_workers=50))
+    executor = ThreadPoolExecutor(max_workers=50)
+    loop.set_default_executor(executor)
 
     # Startup
     if not hasattr(app.state, "context_lab_instance"):
@@ -72,6 +73,8 @@ async def lifespan(app: FastAPI):
             context_lab.component_initializer.stop_task_scheduler()
     except Exception as e:
         logger.warning(f"Error stopping task scheduler: {e}")
+
+    executor.shutdown(wait=False)
 
 
 app = FastAPI(title="OpenContext", version="1.0.0", lifespan=lifespan)

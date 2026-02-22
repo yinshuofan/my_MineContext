@@ -406,12 +406,14 @@ class OpenContext:
             if hasattr(storage, "document_storage") and storage.document_storage:
                 backend = storage.document_storage
                 if hasattr(backend, "_pool") and backend._pool:
-                    # MySQL with pool: try checkout
-                    conn = backend._pool.connect()
-                    conn.close()
-                    health["mysql"] = True
+                    # MySQL with pool: use context manager for safe checkout/return
+                    with backend._get_connection():
+                        pass
+                    health["document_db"] = True
                 elif hasattr(backend, "_get_connection"):
-                    backend._get_connection()
+                    # SQLite: verify actual connectivity
+                    conn = backend._get_connection()
+                    conn.execute("SELECT 1")
                     health["document_db"] = True
         except Exception:
             health["document_db"] = False
