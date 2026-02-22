@@ -64,6 +64,31 @@ async def _schedule_user_compression(
         logger.warning(f"Failed to schedule compression task: {e}")
 
 
+async def _schedule_user_hierarchy_summary(
+    user_id: Optional[str], device_id: Optional[str] = None, agent_id: Optional[str] = None
+) -> None:
+    """
+    Schedule a hierarchy summary task for the user (async).
+    Generates daily/weekly/monthly event summaries after a 24h delay.
+    """
+    if not user_id:
+        return
+
+    try:
+        from opencontext.scheduler import get_scheduler
+
+        scheduler = get_scheduler()
+        if scheduler:
+            await scheduler.schedule_user_task(
+                task_type="hierarchy_summary",
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to schedule hierarchy summary task: {e}")
+
+
 # ============================================================================
 # Request Models
 # ============================================================================
@@ -278,8 +303,13 @@ async def push_chat_message(
             agent_id=request.agent_id,
         )
 
-        # Schedule compression task for the user
+        # Schedule compression and hierarchy summary tasks for the user
         await _schedule_user_compression(
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+        )
+        await _schedule_user_hierarchy_summary(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
@@ -364,6 +394,12 @@ async def process_chat_messages(
 
         background_tasks.add_task(
             _schedule_user_compression,
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+        )
+        background_tasks.add_task(
+            _schedule_user_hierarchy_summary,
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
@@ -528,6 +564,12 @@ async def push_activity(
             end_time=end_time,
         )
 
+        # Schedule hierarchy summary task for the user
+        await _schedule_user_hierarchy_summary(
+            user_id=request.user_id,
+            device_id=request.device_id,
+        )
+
         return convert_resp(
             message="Activity pushed successfully", data={"activity_id": activity_id}
         )
@@ -572,6 +614,12 @@ async def push_context(
         success = opencontext.add_context(raw_context)
 
         if success:
+            # Schedule hierarchy summary task for the user
+            await _schedule_user_hierarchy_summary(
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            )
             return convert_resp(message="Context pushed successfully")
         else:
             return convert_resp(code=500, status=500, message="Failed to process context")

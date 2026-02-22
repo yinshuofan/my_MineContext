@@ -165,37 +165,35 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.exception(error_msg)
             errors.append(error_msg)
 
-        # ── Level 2: Weekly summary if today is Monday ──
-        # 如果今天是周一，生成上周的周摘要
-        if today.weekday() == 0:  # Monday
-            last_week_start = today - datetime.timedelta(days=7)
-            # ISO week format: "2026-W08"
-            iso_year, iso_week, _ = last_week_start.isocalendar()
-            week_str = f"{iso_year}-W{iso_week:02d}"
-            try:
-                weekly_result = self._generate_weekly_summary(user_id, week_str)
-                if weekly_result:
-                    generated_summaries.append(f"weekly:{week_str}")
-                    logger.info(f"Weekly summary generated for user={user_id}, week={week_str}")
-            except Exception as e:
-                error_msg = f"Failed to generate weekly summary for {week_str}: {e}"
-                logger.exception(error_msg)
-                errors.append(error_msg)
+        # ── Level 2: Weekly summary for the most recent completed week ──
+        # 始终尝试生成上一个完整 ISO 周的周摘要（去重检查防止重复生成）
+        prev_week_day = today - datetime.timedelta(days=today.weekday() + 1)  # last Sunday
+        iso_year, iso_week, _ = prev_week_day.isocalendar()
+        week_str = f"{iso_year}-W{iso_week:02d}"
+        try:
+            weekly_result = self._generate_weekly_summary(user_id, week_str)
+            if weekly_result:
+                generated_summaries.append(f"weekly:{week_str}")
+                logger.info(f"Weekly summary generated for user={user_id}, week={week_str}")
+        except Exception as e:
+            error_msg = f"Failed to generate weekly summary for {week_str}: {e}"
+            logger.exception(error_msg)
+            errors.append(error_msg)
 
-        # ── Level 3: Monthly summary if today is the 1st ──
-        # 如果今天是1号，生成上月的月摘要
-        if today.day == 1:
-            last_month = today - datetime.timedelta(days=1)
-            month_str = last_month.strftime("%Y-%m")  # e.g. "2026-01"
-            try:
-                monthly_result = self._generate_monthly_summary(user_id, month_str)
-                if monthly_result:
-                    generated_summaries.append(f"monthly:{month_str}")
-                    logger.info(f"Monthly summary generated for user={user_id}, month={month_str}")
-            except Exception as e:
-                error_msg = f"Failed to generate monthly summary for {month_str}: {e}"
-                logger.exception(error_msg)
-                errors.append(error_msg)
+        # ── Level 3: Monthly summary for the most recent completed month ──
+        # 始终尝试生成上一个完整月的月摘要（去重检查防止重复生成）
+        first_of_month = today.replace(day=1)
+        last_day_prev_month = first_of_month - datetime.timedelta(days=1)
+        month_str = last_day_prev_month.strftime("%Y-%m")  # e.g. "2026-01"
+        try:
+            monthly_result = self._generate_monthly_summary(user_id, month_str)
+            if monthly_result:
+                generated_summaries.append(f"monthly:{month_str}")
+                logger.info(f"Monthly summary generated for user={user_id}, month={month_str}")
+        except Exception as e:
+            error_msg = f"Failed to generate monthly summary for {month_str}: {e}"
+            logger.exception(error_msg)
+            errors.append(error_msg)
 
         execution_time = int((time.time() - start_time) * 1000)
 
