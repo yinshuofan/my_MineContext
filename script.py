@@ -90,8 +90,8 @@ class MineContextClient:
             metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        推送单条聊天消息
-        
+        推送单条聊天消息（通过统一 /api/push/chat 端点）
+
         Args:
             role: 消息角色 (user/assistant/system)
             content: 消息内容
@@ -99,25 +99,21 @@ class MineContextClient:
             device_id: 设备标识符（覆盖默认值）
             agent_id: Agent标识符（覆盖默认值）
             metadata: 额外元数据
-        
+
         Returns:
             API 响应
         """
         client = await self._get_client()
 
         payload = {
-            "role": role,
-            "content": content,
+            "messages": [{"role": role, "content": content}],
             "user_id": user_id or self.user_id,
             "device_id": device_id or self.device_id,
             "agent_id": agent_id or self.agent_id,
-            "timestamp": datetime.now().isoformat(),
         }
-        if metadata:
-            payload["metadata"] = metadata
 
         try:
-            response = await client.post("/api/push/chat/message", json=payload)
+            response = await client.post("/api/push/chat", json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
@@ -133,12 +129,12 @@ class MineContextClient:
             flush_immediately: bool = False,
     ) -> Dict[str, Any]:
         """
-        批量推送聊天消息
-        
+        批量推送聊天消息（通过统一 /api/push/chat 端点）
+
         Args:
             messages: 消息列表，每条消息包含 role 和 content
             flush_immediately: 是否立即刷新缓冲区
-        
+
         Returns:
             API 响应
         """
@@ -146,13 +142,7 @@ class MineContextClient:
 
         payload = {
             "messages": [
-                {
-                    "role": msg["role"],
-                    "content": msg["content"],
-                    "user_id": self.user_id,
-                    "device_id": self.device_id,
-                    "agent_id": self.agent_id,
-                }
+                {"role": msg["role"], "content": msg["content"]}
                 for msg in messages
             ],
             "user_id": self.user_id,
@@ -162,7 +152,7 @@ class MineContextClient:
         }
 
         try:
-            response = await client.post("/api/push/chat/messages", json=payload)
+            response = await client.post("/api/push/chat", json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
@@ -174,21 +164,23 @@ class MineContextClient:
 
     async def flush_chat_buffer(self) -> Dict[str, Any]:
         """
-        手动刷新聊天缓冲区
-        
+        刷新聊天缓冲区（通过统一 /api/push/chat 端点 + flush_immediately）
+
         Returns:
             API 响应
         """
         client = await self._get_client()
 
         payload = {
+            "messages": [{"role": "system", "content": [{"type": "text", "text": ""}]}],
             "user_id": self.user_id,
             "device_id": self.device_id,
             "agent_id": self.agent_id,
+            "flush_immediately": True,
         }
 
         try:
-            response = await client.post("/api/push/chat/flush", json=payload)
+            response = await client.post("/api/push/chat", json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:

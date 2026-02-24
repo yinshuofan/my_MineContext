@@ -175,9 +175,7 @@ The server is async-first (FastAPI + uvicorn) but many storage operations are sy
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/health` | GET | Health check with component status |
-| `/api/push/chat/message` | POST | Push single chat message (buffered) |
-| `/api/push/chat/messages` | POST | Push batch messages (buffered) |
-| `/api/push/chat/process` | POST | Process messages directly (bypass buffer) |
+| `/api/push/chat` | POST | Unified chat push (`process_mode: "buffer"` or `"direct"`) |
 | `/api/push/activity` | POST | Push activity/event record |
 | `/api/push/context` | POST | Push generic context |
 | `/api/push/document` | POST | Push document (file_path or base64) |
@@ -221,7 +219,7 @@ Registered tasks:
 - `DataCleanupTask` (`periodic`) — retention-based cleanup
 - `HierarchySummaryTask` (`user_activity`) — generates L1/L2/L3 event summaries, scheduled from push endpoints via `_schedule_user_hierarchy_summary()` in `push.py`
 
-Push endpoints that schedule hierarchy summary: `push_chat_message`, `process_chat_messages`, `push_activity`, `push_context`.
+Push endpoints that schedule hierarchy summary: `push_chat` (both modes), `push_activity`, `push_context`.
 
 ## Configuration
 

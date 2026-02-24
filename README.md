@@ -117,24 +117,21 @@ docker-compose up
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/api/push/chat/process` | POST | 推送聊天记录并立即处理 |
-| `/api/push/chat/message` | POST | 推送单条聊天消息（缓冲后批量处理） |
-| `/api/push/chat/messages` | POST | 批量推送聊天消息 |
+| `/api/push/chat` | POST | 推送聊天消息（`process_mode: "buffer"` 或 `"direct"`） |
 | `/api/push/document` | POST | 推送文档（本地路径或 Base64） |
 | `/api/push/document/upload` | POST | 上传文档文件 |
 | `/api/push/activity` | POST | 推送活动记录 |
 | `/api/push/context` | POST | 推送通用上下文 |
-| `/api/push/batch` | POST | 批量推送（支持混合类型） |
 
 **示例：推送聊天记录**
 
 ```bash
-curl -X POST http://localhost:1733/api/push/chat/process \
+curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
-      {"role": "user", "content": "明天下午3点和张伟开会讨论项目进度"},
-      {"role": "assistant", "content": "好的，我已记录明天下午3点与张伟的项目进度会议。"}
+      {"role": "user", "content": [{"type": "text", "text": "明天下午3点和张伟开会讨论项目进度"}]},
+      {"role": "assistant", "content": [{"type": "text", "text": "好的，我已记录明天下午3点与张伟的项目进度会议。"}]}
     ],
     "user_id": "user_001",
     "agent_id": "default"
@@ -276,7 +273,7 @@ curl "http://localhost:1733/api/memory-cache?user_id=user_001"
 下游服务（如聊天机器人、AI 助手）接入 MineContext 的推荐流程：
 
 ```
-1. 推送数据   →  POST /api/push/chat/process（每轮对话后推送）
+1. 推送数据   →  POST /api/push/chat（每轮对话后推送）
 2. 搜索记忆   →  POST /api/search（对话时检索相关记忆）
 3. 获取缓存   →  GET /api/memory-cache（获取用户完整记忆状态）
 ```

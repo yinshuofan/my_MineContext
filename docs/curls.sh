@@ -29,25 +29,27 @@ curl -X GET http://localhost:1733/api/ready
 
 
 # ============================================================================
-# 2. Push - Chat
+# 2. Push - Chat (unified endpoint)
 # ============================================================================
 
-# Push Single Chat Message
-curl -X POST http://localhost:1733/api/push/chat/message \
+# Push Chat Messages (buffer mode, default)
+curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "role": "user",
-    "content": [{"type": "text", "text": "I prefer using Python for data analysis"}],
+    "messages": [
+      {
+        "role": "user",
+        "content": [{"type": "text", "text": "I prefer using Python for data analysis"}]
+      }
+    ],
     "user_id": "user_001",
     "device_id": "default",
-    "agent_id": "default",
-    "timestamp": "2026-02-24T10:00:00Z",
-    "metadata": {}
+    "agent_id": "default"
   }'
 # -H "X-API-Key: your-api-key"
 
-# Push Batch Chat Messages
-curl -X POST http://localhost:1733/api/push/chat/messages \
+# Push Chat Messages (buffer + flush immediately)
+curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -63,12 +65,12 @@ curl -X POST http://localhost:1733/api/push/chat/messages \
     "user_id": "user_001",
     "device_id": "default",
     "agent_id": "default",
-    "flush_immediately": false
+    "flush_immediately": true
   }'
 # -H "X-API-Key: your-api-key"
 
-# Process Chat Messages (bypass buffer)
-curl -X POST http://localhost:1733/api/push/chat/process \
+# Push Chat Messages (direct mode, bypass buffer)
+curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -83,17 +85,8 @@ curl -X POST http://localhost:1733/api/push/chat/process \
     ],
     "user_id": "user_001",
     "device_id": "default",
-    "agent_id": "default"
-  }'
-# -H "X-API-Key: your-api-key"
-
-# Flush Chat Buffer
-curl -X POST http://localhost:1733/api/push/chat/flush \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user_001",
-    "device_id": "default",
-    "agent_id": "default"
+    "agent_id": "default",
+    "process_mode": "direct"
   }'
 # -H "X-API-Key: your-api-key"
 
@@ -143,36 +136,7 @@ curl -X POST http://localhost:1733/api/push/context \
 
 
 # ============================================================================
-# 5. Push - Batch
-# ============================================================================
-
-# Batch Push (multiple types in one request)
-curl -X POST http://localhost:1733/api/push/batch \
-  -H "Content-Type: application/json" \
-  -d '{
-    "items": [
-      {
-        "type": "chat",
-        "data": {
-          "role": "user",
-          "content": [{"type": "text", "text": "Remind me to review the PR"}]
-        }
-      },
-      {
-        "type": "document",
-        "data": {
-          "file_path": "/path/to/report.pdf"
-        }
-      }
-    ],
-    "user_id": "user_001",
-    "device_id": "default"
-  }'
-# -H "X-API-Key: your-api-key"
-
-
-# ============================================================================
-# 6. Search
+# 5. Search
 # ============================================================================
 
 # Unified Search (fast strategy)
@@ -218,7 +182,7 @@ curl -X POST http://localhost:1733/api/vector_search \
 
 
 # ============================================================================
-# 7. Memory Cache
+# 6. Memory Cache
 # ============================================================================
 
 # Get Memory Cache Snapshot
@@ -231,7 +195,7 @@ curl -X DELETE "http://localhost:1733/api/memory-cache?user_id=user_001&device_i
 
 
 # ============================================================================
-# 8. Contexts
+# 7. Contexts
 # ============================================================================
 
 # Get Context Detail (HTML)
@@ -262,7 +226,7 @@ curl -X POST http://localhost:1733/contexts/delete \
 
 
 # ============================================================================
-# 9. Agent Chat
+# 8. Agent Chat
 # ============================================================================
 
 # Agent Chat (synchronous)
@@ -313,7 +277,7 @@ curl -X GET http://localhost:1733/api/agent/test
 
 
 # ============================================================================
-# 10. Conversations
+# 9. Conversations
 # ============================================================================
 
 # Create Conversation
@@ -347,7 +311,7 @@ curl -X DELETE http://localhost:1733/api/agent/chat/conversations/1/update
 
 
 # ============================================================================
-# 11. Messages
+# 10. Messages
 # ============================================================================
 
 # Create Message
@@ -406,7 +370,7 @@ curl -X POST http://localhost:1733/api/agent/chat/messages/2/interrupt
 
 
 # ============================================================================
-# 12. Documents & WebLinks
+# 11. Documents & WebLinks
 # ============================================================================
 
 # Upload Document (via file path)
@@ -428,7 +392,7 @@ curl -X POST http://localhost:1733/api/weblinks/upload \
 
 
 # ============================================================================
-# 13. Vaults (Document Management)
+# 12. Vaults (Document Management)
 # ============================================================================
 
 # List Vault Documents
@@ -473,7 +437,7 @@ curl -X GET http://localhost:1733/api/vaults/1/context
 
 
 # ============================================================================
-# 14. Monitoring
+# 13. Monitoring
 # ============================================================================
 
 # System Overview
@@ -522,7 +486,7 @@ curl -X GET "http://localhost:1733/api/monitoring/processing-errors?hours=1&top=
 
 
 # ============================================================================
-# 15. Settings - Model
+# 14. Settings - Model
 # ============================================================================
 
 # Get Model Settings
@@ -565,7 +529,7 @@ curl -X POST http://localhost:1733/api/model_settings/validate \
 
 
 # ============================================================================
-# 16. Settings - General
+# 15. Settings - General
 # ============================================================================
 
 # Get General Settings
@@ -590,7 +554,7 @@ curl -X POST http://localhost:1733/api/settings/general \
 
 
 # ============================================================================
-# 17. Settings - Prompts
+# 16. Settings - Prompts
 # ============================================================================
 
 # Get Prompts
@@ -634,7 +598,7 @@ curl -X POST http://localhost:1733/api/settings/prompts/language \
 
 
 # ============================================================================
-# 18. Settings - Reset
+# 17. Settings - Reset
 # ============================================================================
 
 # Reset All Settings to Defaults

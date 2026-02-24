@@ -16,7 +16,7 @@ import os
 import tempfile
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -94,16 +94,14 @@ async def _schedule_user_hierarchy_summary(
 # ============================================================================
 
 
-class PushChatMessageRequest(BaseModel):
-    """Push a single chat message"""
+class PushChatRequest(BaseModel):
+    """Unified chat push request"""
 
-    role: str = Field(
-        ..., min_length=1, max_length=20, description="Message role: user, assistant, system"
-    )
-    content: List[Dict[str, Any]] = Field(
+    messages: List[Dict[str, Any]] = Field(
         ...,
         min_length=1,
-        description="Message content (OpenAI format: List of content blocks with type and text)",
+        max_length=100,
+        description="Chat messages (OpenAI format: [{role, content}])",
     )
     user_id: Optional[str] = Field(
         None, min_length=1, max_length=255, description="User identifier"
@@ -114,48 +112,13 @@ class PushChatMessageRequest(BaseModel):
     agent_id: Optional[str] = Field(
         None, min_length=1, max_length=100, description="Agent identifier"
     )
-    timestamp: Optional[str] = Field(None, description="Message timestamp (ISO format)")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
-
-
-class PushChatMessagesRequest(BaseModel):
-    """Push multiple chat messages in batch"""
-
-    messages: List[Dict[str, Any]] = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="List of chat messages (max 100)",
+    process_mode: Literal["buffer", "direct"] = Field(
+        "buffer",
+        description="buffer=Redis buffered (default), direct=bypass buffer and process immediately",
     )
-    user_id: Optional[str] = Field(
-        None, min_length=1, max_length=255, description="Default user identifier"
-    )
-    device_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Default device identifier"
-    )
-    agent_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Default agent identifier"
-    )
-    flush_immediately: bool = Field(False, description="Whether to flush buffer immediately")
-
-
-class ProcessChatMessagesRequest(BaseModel):
-    """Process chat messages directly (bypass buffer)"""
-
-    messages: List[Dict[str, Any]] = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="List of chat messages (OpenAI format: role, content[type, text] or other format)",
-    )
-    user_id: Optional[str] = Field(
-        None, min_length=1, max_length=255, description="User identifier"
-    )
-    device_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Device identifier"
-    )
-    agent_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Agent identifier"
+    flush_immediately: bool = Field(
+        False,
+        description="In buffer mode, whether to flush the buffer immediately after pushing",
     )
 
 
@@ -203,20 +166,6 @@ class PushContextRequest(BaseModel):
         if not self.content_text and not self.content_images:
             raise ValueError("At least one of content_text or content_images must be provided")
         return self
-
-
-class FlushBufferRequest(BaseModel):
-    """Request to flush chat buffer"""
-
-    user_id: Optional[str] = Field(
-        None, min_length=1, max_length=255, description="User identifier"
-    )
-    device_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Device identifier"
-    )
-    agent_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Agent identifier"
-    )
 
 
 # ============================================================================
@@ -308,175 +257,24 @@ def _get_format_enum(format_str: str) -> ContentFormat:
 
 
 # ============================================================================
-# Chat Message Push Endpoints
+# Chat Push Endpoint
 # ============================================================================
 
 
-@router.post("/chat/message", response_class=JSONResponse)
-async def push_chat_message(
-    request: PushChatMessageRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push a single chat message to the context capture system.
-    The message will be buffered and processed when the buffer is full.
-    Uses async Redis operations to avoid blocking the event loop.
-    """
-    try:
-        # Get TextChatCapture component
-        text_chat = opencontext.capture_manager.get_component("text_chat")
-        if text_chat is None:
-            return convert_resp(
-                code=503, status=503, message="TextChatCapture component not available"
-            )
-
-        # Push message (async - non-blocking) with timeout protection
-        await asyncio.wait_for(
-            text_chat.push_message(
-                role=request.role,
-                content=request.content,
-                user_id=request.user_id,
-                device_id=request.device_id,
-                agent_id=request.agent_id,
-            ),
-            timeout=60.0,
-        )
-
-        # Schedule compression and hierarchy summary tasks for the user
-        await _schedule_user_compression(
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-        )
-        await _schedule_user_hierarchy_summary(
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-        )
-
-        return convert_resp(message="Chat message pushed successfully")
-    except asyncio.TimeoutError:
-        logger.warning("Push chat message timed out after 60s")
-        return convert_resp(code=504, status=504, message="Request timed out")
-    except Exception as e:
-        logger.exception(f"Error pushing chat message: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-
-@router.post("/chat/messages", response_class=JSONResponse)
-async def push_chat_messages(
-    request: PushChatMessagesRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push multiple chat messages in batch.
-    Uses async Redis operations to avoid blocking the event loop.
-    """
-    try:
-        text_chat = opencontext.capture_manager.get_component("text_chat")
-        if text_chat is None:
-            return convert_resp(
-                code=503, status=503, message="TextChatCapture component not available"
-            )
-
-        async def _push_all_messages():
-            # Push each message (async - non-blocking)
-            for msg in request.messages:
-                await text_chat.push_message(
-                    role=msg.get("role", "user"),
-                    content=msg.get("content", ""),
-                    user_id=msg.get("user_id") or request.user_id,
-                    device_id=msg.get("device_id") or request.device_id,
-                    agent_id=msg.get("agent_id") or request.agent_id,
-                )
-
-            # Flush buffer if requested (async - non-blocking)
-            if request.flush_immediately:
-                await text_chat.flush_user_buffer(
-                    user_id=request.user_id,
-                    device_id=request.device_id,
-                    agent_id=request.agent_id,
-                )
-
-        await asyncio.wait_for(_push_all_messages(), timeout=60.0)
-
-        return convert_resp(
-            message=f"Pushed {len(request.messages)} chat messages successfully",
-            data={"count": len(request.messages)},
-        )
-    except asyncio.TimeoutError:
-        logger.warning("Push chat messages timed out after 60s")
-        return convert_resp(code=504, status=504, message="Request timed out")
-    except Exception as e:
-        logger.exception(f"Error pushing chat messages: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-
-@router.post("/chat/process", response_class=JSONResponse)
-async def process_chat_messages(
-    request: ProcessChatMessagesRequest,
+@router.post("/chat", response_class=JSONResponse)
+async def push_chat(
+    request: PushChatRequest,
     background_tasks: BackgroundTasks,
     opencontext: OpenContext = Depends(get_context_lab),
     _auth: str = auth_dependency,
 ):
     """
-    Process chat messages directly and send to pipeline, bypassing Redis buffer.
-    Messages are immediately sent to the context processing pipeline without buffering.
-    This endpoint returns immediately after task submission.
-    """
-    try:
-        message_capturer = opencontext.capture_manager.get_component("text_chat")
-        if message_capturer is None:
-            return convert_resp(
-                code=503, status=503, message="TextChatCapture component not available"
-            )
+    Unified chat push endpoint.
 
-        background_tasks.add_task(
-            message_capturer.process_messages_directly,
-            messages=request.messages,
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-        )
+    - process_mode="buffer" (default): Push messages to Redis buffer. Optionally flush immediately.
+    - process_mode="direct": Bypass buffer and send messages directly to the processing pipeline.
 
-        background_tasks.add_task(
-            _schedule_user_compression,
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-        )
-        background_tasks.add_task(
-            _schedule_user_hierarchy_summary,
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-        )
-
-        return convert_resp(
-            message="Chat messages submitted for processing",
-            data={
-                "message_count": len(request.messages),
-                "user_id": request.user_id,
-                "device_id": request.device_id,
-                "agent_id": request.agent_id,
-            },
-        )
-    except Exception as e:
-        logger.exception(f"Error submitting chat messages: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-
-@router.post("/chat/flush", response_class=JSONResponse)
-async def flush_chat_buffer(
-    request: FlushBufferRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Manually flush the chat message buffer for a specific user.
-    Uses async Redis operations to avoid blocking the event loop.
+    Both modes schedule compression and hierarchy summary tasks.
     """
     try:
         text_chat = opencontext.capture_manager.get_component("text_chat")
@@ -485,22 +283,72 @@ async def flush_chat_buffer(
                 code=503, status=503, message="TextChatCapture component not available"
             )
 
-        # Flush buffer (async - non-blocking) with timeout protection
-        await asyncio.wait_for(
-            text_chat.flush_user_buffer(
+        if request.process_mode == "buffer":
+            async def _push_all_messages():
+                for msg in request.messages:
+                    await text_chat.push_message(
+                        role=msg.get("role", "user"),
+                        content=msg.get("content", ""),
+                        user_id=request.user_id,
+                        device_id=request.device_id,
+                        agent_id=request.agent_id,
+                    )
+                if request.flush_immediately:
+                    await text_chat.flush_user_buffer(
+                        user_id=request.user_id,
+                        device_id=request.device_id,
+                        agent_id=request.agent_id,
+                    )
+
+            await asyncio.wait_for(_push_all_messages(), timeout=60.0)
+
+            await _schedule_user_compression(
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,
-            ),
-            timeout=60.0,
-        )
+            )
+            await _schedule_user_hierarchy_summary(
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            )
 
-        return convert_resp(message="Chat buffer flushed successfully")
+            return convert_resp(
+                message="Chat messages pushed successfully",
+                data={"count": len(request.messages)},
+            )
+
+        else:  # direct
+            background_tasks.add_task(
+                text_chat.process_messages_directly,
+                messages=request.messages,
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            )
+            background_tasks.add_task(
+                _schedule_user_compression,
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            )
+            background_tasks.add_task(
+                _schedule_user_hierarchy_summary,
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            )
+
+            return convert_resp(
+                message="Chat messages submitted for processing",
+                data={"message_count": len(request.messages)},
+            )
+
     except asyncio.TimeoutError:
-        logger.warning("Flush chat buffer timed out after 60s")
+        logger.warning("Push chat timed out after 60s")
         return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
-        logger.exception(f"Error flushing chat buffer: {e}")
+        logger.exception(f"Error pushing chat: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
 
 
@@ -643,88 +491,3 @@ async def push_context(
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
 
 
-# ============================================================================
-# Batch Push Endpoint
-# ============================================================================
-
-
-class BatchPushItem(BaseModel):
-    """A single item in a batch push request"""
-
-    type: str = Field(
-        ..., min_length=1, max_length=30, description="Item type: chat, document, context"
-    )
-    data: Dict[str, Any] = Field(
-        ..., description="Item data matching the corresponding push request schema"
-    )
-
-
-class BatchPushRequest(BaseModel):
-    """Batch push request containing multiple items of different types"""
-
-    items: List[BatchPushItem] = Field(
-        ..., min_length=1, max_length=50, description="Batch items (max 50)"
-    )
-    user_id: Optional[str] = Field(
-        None, min_length=1, max_length=255, description="Default user identifier"
-    )
-    device_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Default device identifier"
-    )
-
-
-@router.post("/batch", response_class=JSONResponse)
-async def push_batch(
-    request: BatchPushRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push multiple items of different types in a single request.
-    This is useful for syncing data from external services efficiently.
-    Uses async Redis operations for chat items to avoid blocking the event loop.
-    """
-    try:
-        results = []
-        storage = opencontext.storage
-        text_chat = opencontext.capture_manager.get_component("text_chat")
-
-        for item in request.items:
-            item_result = {"type": item.type, "success": False}
-            try:
-                if item.type == "chat":
-                    if text_chat:
-                        # Use async version to avoid blocking the event loop
-                        await text_chat.push_message(
-                            role=item.data.get("role", "user"),
-                            content=item.data.get("content", ""),
-                            user_id=item.data.get("user_id") or request.user_id,
-                            device_id=item.data.get("device_id") or request.device_id,
-                            agent_id=item.data.get("agent_id"),
-                        )
-                        item_result["success"] = True
-
-                elif item.type == "document":
-                    file_path = item.data.get("file_path")
-                    if file_path:
-                        err = opencontext.add_document(file_path=file_path)
-                        item_result["success"] = err is None
-                        if err:
-                            item_result["error"] = err
-
-                else:
-                    item_result["error"] = f"Unknown item type: {item.type}"
-
-            except Exception as e:
-                item_result["error"] = str(e)
-
-            results.append(item_result)
-
-        success_count = sum(1 for r in results if r.get("success"))
-        return convert_resp(
-            message=f"Batch push completed: {success_count}/{len(results)} items succeeded",
-            data={"results": results, "success_count": success_count, "total": len(results)},
-        )
-    except Exception as e:
-        logger.exception(f"Error in batch push: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")

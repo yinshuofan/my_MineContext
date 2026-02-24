@@ -13,7 +13,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `utils.py` | `get_context_lab(request) -> OpenContext` dependency, `convert_resp()` standard JSON helper |
 | `__init__.py` | Package marker (empty) |
 | **routes/** | |
-| `routes/push.py` | Push API endpoints (`/api/push/*`) -- chat messages, documents, contexts, batch |
+| `routes/push.py` | Push API endpoints (`/api/push/*`) -- unified chat, documents, contexts |
 | `routes/search.py` | Unified search endpoint (`POST /api/search`) with strategy selection |
 | `routes/memory_cache.py` | Memory cache endpoints (`GET/DELETE /api/memory-cache`) |
 | `routes/health.py` | Health and readiness probes (`/health`, `/api/health`, `/api/ready`, `/api/auth/status`) |
@@ -203,16 +203,12 @@ def convert_resp(data=None, code=0, status=200, message="success") -> JSONRespon
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| POST | `/api/push/chat/message` | `push_chat_message` | Push single chat message (buffered via Redis) |
-| POST | `/api/push/chat/messages` | `push_chat_messages` | Push batch messages (buffered) |
-| POST | `/api/push/chat/process` | `process_chat_messages` | Process messages directly (bypass buffer, BackgroundTasks) |
-| POST | `/api/push/chat/flush` | `flush_chat_buffer` | Manually flush user's chat buffer |
+| POST | `/api/push/chat` | `push_chat` | Unified chat push (buffer or direct mode) |
 | POST | `/api/push/document` | `push_document` | Push document (file_path or base64) |
 | POST | `/api/push/document/upload` | `upload_document_file` | Upload document via multipart form |
 | POST | `/api/push/context` | `push_context` | Push generic context item |
-| POST | `/api/push/batch` | `push_batch` | Push multiple items of different types |
 
-Push endpoints that schedule hierarchy summary: `push_chat_message`, `process_chat_messages`, `push_context`.
+Push endpoints that schedule hierarchy summary: `push_chat` (both modes), `push_context`.
 
 ### Search Routes (`/api/*`)
 
@@ -401,16 +397,26 @@ HTTP Request
   -> Response with X-Request-ID header
 ```
 
-### Push Flow (e.g., `/api/push/chat/message`)
+### Push Flow (`POST /api/push/chat`)
 
+Buffer mode (`process_mode="buffer"`):
 ```
-push_chat_message()
-  -> text_chat.push_message()          # async Redis buffer
+push_chat()
+  -> for msg in messages: text_chat.push_message()  # async Redis buffer
+  -> if flush_immediately: text_chat.flush_user_buffer()
   -> _schedule_user_compression()       # scheduler.schedule_user_task("memory_compression")
   -> _schedule_user_hierarchy_summary() # scheduler.schedule_user_task("hierarchy_summary")
 ```
 
-When buffer flushes (or via `/api/push/chat/process`):
+Direct mode (`process_mode="direct"`):
+```
+push_chat()
+  -> BackgroundTasks: text_chat.process_messages_directly()
+  -> BackgroundTasks: _schedule_user_compression()
+  -> BackgroundTasks: _schedule_user_hierarchy_summary()
+```
+
+When buffer flushes or direct processing runs:
 ```
 TextChatCapture.process_messages_directly()
   -> processor_manager.process()
