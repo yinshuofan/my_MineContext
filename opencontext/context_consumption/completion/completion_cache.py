@@ -131,20 +131,11 @@ class CompletionCache:
         )
 
     def _init_redis(self, redis_config: Dict[str, Any]):
-        """Initialize Redis connection"""
+        """Initialize Redis connection using global singleton"""
         try:
-            from opencontext.storage.redis_cache import get_redis_cache, RedisCacheConfig
-            
-            config = RedisCacheConfig(
-                host=redis_config.get("host", "localhost"),
-                port=redis_config.get("port", 6379),
-                password=redis_config.get("password"),
-                db=redis_config.get("db", 0),
-                key_prefix=redis_config.get("key_prefix", "opencontext:"),
-                default_ttl=self.ttl_seconds,
-            )
-            
-            self._redis_cache = get_redis_cache(config)
+            from opencontext.storage.redis_cache import get_redis_cache
+
+            self._redis_cache = get_redis_cache()
             self._use_redis = self._redis_cache.is_connected()
             
             if self._use_redis:

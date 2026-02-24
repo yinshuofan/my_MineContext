@@ -65,6 +65,30 @@ class OpenContext:
             GlobalStorage.get_instance()
             GlobalVLMClient.get_instance()
 
+            # Initialize Redis singleton from top-level config before any component
+            redis_config = GlobalConfig.get_instance().get_config("redis") or {}
+            if redis_config.get("enabled", True):
+                from opencontext.storage.redis_cache import RedisCacheConfig, init_redis_cache
+
+                redis_cfg = RedisCacheConfig(
+                    host=redis_config.get("host", "localhost"),
+                    port=int(redis_config.get("port", 6379)),
+                    password=redis_config.get("password") or None,
+                    db=int(redis_config.get("db", 0)),
+                    key_prefix=redis_config.get("key_prefix", "opencontext:"),
+                    max_connections=int(redis_config.get("max_connections", 10)),
+                    socket_timeout=float(redis_config.get("socket_timeout", 5.0)),
+                    socket_connect_timeout=float(
+                        redis_config.get("socket_connect_timeout", 5.0)
+                    ),
+                    retry_on_timeout=redis_config.get("retry_on_timeout", True),
+                )
+                init_redis_cache(redis_cfg)
+                logger.info(
+                    f"Redis singleton initialized: "
+                    f"{redis_cfg.host}:{redis_cfg.port}/{redis_cfg.db}"
+                )
+
             self.storage = GlobalStorage.get_instance().get_storage()
 
             self.context_operations = ContextOperations()

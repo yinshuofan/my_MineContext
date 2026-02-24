@@ -46,22 +46,11 @@ class TextChatCapture(BaseCaptureComponent):
         self._buffer_size = config.get("buffer_size", 4)
         self._buffer_ttl = config.get("buffer_ttl", 3600 * 24)
 
-        # 初始化 Redis 缓存（必须）
-        redis_config = config.get("redis", {})
-
+        # 初始化 Redis 缓存（使用全局单例，由 OpenContext.initialize() 统一配置）
         try:
-            from opencontext.storage.redis_cache import RedisCacheConfig, get_redis_cache
+            from opencontext.storage.redis_cache import get_redis_cache
 
-            redis_cfg = RedisCacheConfig(
-                host=redis_config.get("host", "localhost"),
-                port=redis_config.get("port", 6379),
-                password=redis_config.get("password"),
-                db=redis_config.get("db", 0),
-                key_prefix=redis_config.get("key_prefix", "opencontext:"),
-                default_ttl=self._buffer_ttl,
-            )
-
-            self._redis_cache = get_redis_cache(redis_cfg)
+            self._redis_cache = get_redis_cache()
 
             # 注意：is_connected() 现在是异步的，初始化时先创建实例
             # 连接将在第一次异步操作时自动建立

@@ -189,21 +189,10 @@ class ComponentInitializer:
                 create_hierarchy_handler,
             )
             from opencontext.scheduler import get_scheduler, init_scheduler
-            from opencontext.storage.redis_cache import RedisCache, get_redis_cache
+            from opencontext.storage.redis_cache import get_redis_cache
 
-            # Get Redis cache
+            # Get Redis cache (singleton already initialized by OpenContext.initialize())
             redis_cache = get_redis_cache()
-            if not redis_cache:
-                # Try to create Redis cache from config
-                redis_config = self.config.get("redis", {})
-                if redis_config:
-                    redis_cache = RedisCache(
-                        host=redis_config.get("host", "localhost"),
-                        port=redis_config.get("port", 6379),
-                        db=redis_config.get("db", 0),
-                        password=redis_config.get("password"),
-                    )
-
             if not redis_cache:
                 logger.warning("Redis cache not available, task scheduler requires Redis")
                 return
