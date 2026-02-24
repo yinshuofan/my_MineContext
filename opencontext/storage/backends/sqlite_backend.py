@@ -495,17 +495,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             vault_id = cursor.lastrowid
             self._get_connection().commit()
             logger.info("Default Quick Start document inserted")
-            from opencontext.managers.event_manager import EventType, get_event_manager
-
-            event_type = EventType.SYSTEM_STATUS
-            data = {
-                "title": "Start With Tutorial",
-                "content": default_content,
-                "doc_type": "vaults",
-                "doc_id": vault_id,
-            }
-            event_manager = get_event_manager()
-            event_manager.publish_event(event_type=event_type, data=data)
 
         except Exception as e:
             logger.exception(f"Failed to insert default Quick Start document: {e}")

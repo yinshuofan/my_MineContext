@@ -19,7 +19,6 @@ from .routes import (
     context,
     conversation,
     documents,
-    events,
     health,
     memory_cache,
     messages,
@@ -45,7 +44,6 @@ router.include_router(context.router)
 router.include_router(monitoring.router)
 router.include_router(vaults.router)
 router.include_router(agent_chat.router)
-router.include_router(events.router)
 router.include_router(settings.router)
 router.include_router(conversation.router)
 router.include_router(messages.router)

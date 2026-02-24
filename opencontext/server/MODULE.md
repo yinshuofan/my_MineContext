@@ -22,7 +22,6 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/agent_chat.py` | Agent chat interface (`/api/agent/chat`, `/api/agent/chat/stream`, workflow resume/state/cancel) |
 | `routes/conversation.py` | Conversation CRUD (`/api/agent/chat/conversations/*`) |
 | `routes/messages.py` | Message CRUD and streaming (`/api/agent/chat/message/*`) |
-| `routes/events.py` | Event system (`/api/events/fetch`, `/api/events/status`, `/api/events/publish`) |
 | `routes/monitoring.py` | Monitoring endpoints (`/api/monitoring/*`) -- overview, context-types, token-usage, processing, etc. |
 | `routes/settings.py` | Model settings, general settings, prompts CRUD (`/api/model_settings/*`, `/api/settings/*`) |
 | `routes/vaults.py` | Vault document management (`/api/vaults/*`) with background context processing |
@@ -280,14 +279,6 @@ Push endpoints that schedule hierarchy summary: `push_chat_message`, `process_ch
 | GET | `/api/agent/chat/conversations/{cid}/messages` | `get_conversation_messages` | List conversation messages |
 | POST | `/api/agent/chat/messages/{mid}/interrupt` | `interrupt_message_generation` | Interrupt generation |
 
-### Event Routes (`/api/events/*`)
-
-| Method | Path | Handler | Description |
-|--------|------|---------|-------------|
-| GET | `/api/events/fetch` | `fetch_and_clear_events` | Fetch and clear cached events |
-| GET | `/api/events/status` | `get_event_status` | Event cache status |
-| POST | `/api/events/publish` | `publish_event` | Publish event (testing) |
-
 ### Monitoring Routes (`/api/monitoring/*`)
 
 | Method | Path | Handler | Description |
@@ -383,7 +374,7 @@ Push endpoints that schedule hierarchy summary: `push_chat_message`, `process_ch
 | LLM | `opencontext.llm.global_embedding_client` (do_vectorize, GlobalEmbeddingClient), `opencontext.llm.global_vlm_client`, `opencontext.llm.llm_client` |
 | Scheduler | `opencontext.scheduler` (get_scheduler, init_scheduler) |
 | Agent | `opencontext.context_consumption.context_agent` (ContextAgent), `context_agent.core.llm_context_strategy` (LLMContextStrategy) |
-| Managers | `opencontext.managers.capture_manager`, `processor_manager`, `event_manager` |
+| Managers | `opencontext.managers.capture_manager`, `processor_manager` |
 | Monitoring | `opencontext.monitoring` (get_monitor, initialize_monitor) |
 | Completion | `opencontext.context_consumption.completion` (get_completion_service) |
 

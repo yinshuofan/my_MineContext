@@ -473,33 +473,7 @@ curl -X GET http://localhost:1733/api/vaults/1/context
 
 
 # ============================================================================
-# 14. Events
-# ============================================================================
-
-# Fetch and Clear Events
-curl -X GET http://localhost:1733/api/events/fetch
-# -H "X-API-Key: your-api-key"
-
-# Get Event System Status
-curl -X GET http://localhost:1733/api/events/status
-# -H "X-API-Key: your-api-key"
-
-# Publish Event
-curl -X POST http://localhost:1733/api/events/publish \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event_type": "context_updated",
-    "data": {
-      "context_id": "ctx_abc123",
-      "context_type": "knowledge",
-      "action": "created"
-    }
-  }'
-# -H "X-API-Key: your-api-key"
-
-
-# ============================================================================
-# 15. Monitoring
+# 14. Monitoring
 # ============================================================================
 
 # System Overview
@@ -548,7 +522,7 @@ curl -X GET "http://localhost:1733/api/monitoring/processing-errors?hours=1&top=
 
 
 # ============================================================================
-# 16. Settings - Model
+# 15. Settings - Model
 # ============================================================================
 
 # Get Model Settings
@@ -591,7 +565,7 @@ curl -X POST http://localhost:1733/api/model_settings/validate \
 
 
 # ============================================================================
-# 17. Settings - General
+# 16. Settings - General
 # ============================================================================
 
 # Get General Settings
@@ -616,7 +590,7 @@ curl -X POST http://localhost:1733/api/settings/general \
 
 
 # ============================================================================
-# 18. Settings - Prompts
+# 17. Settings - Prompts
 # ============================================================================
 
 # Get Prompts
@@ -660,7 +634,7 @@ curl -X POST http://localhost:1733/api/settings/prompts/language \
 
 
 # ============================================================================
-# 19. Settings - Reset
+# 18. Settings - Reset
 # ============================================================================
 
 # Reset All Settings to Defaults
