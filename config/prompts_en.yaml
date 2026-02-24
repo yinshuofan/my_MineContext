@@ -571,11 +571,83 @@ hierarchy_summary:
     - `keywords`: (List[string]) Key topics and themes
     - `entities`: (List[string]) Key people, projects, and tools mentioned
     - `importance`: (integer) Overall importance of the period's activities (0-10)
-  user: |
-    Please summarize the following user activities for the time period: {time_period}
+
+  # ── Normal summary prompts ──
+  daily_summary: |
+    Please summarize the following user activities for: {time_period}
 
     **Activity Records**:
     {activity_records}
+
+    Please generate a JSON summary object.
+
+  weekly_summary: |
+    Please synthesize the following daily summaries and raw events into a weekly overview for: {time_period}
+
+    The records include daily summaries (high-level) and raw events (detailed). Use both levels to produce a comprehensive weekly summary that captures major themes, progress, and notable events.
+
+    **Activity Records**:
+    {activity_records}
+
+    Please generate a JSON summary object.
+
+  monthly_summary: |
+    Please synthesize the following weekly summaries and daily summaries into a monthly overview for: {time_period}
+
+    The records include weekly summaries (high-level) and daily summaries (detailed). Use both levels to produce a comprehensive monthly overview capturing major accomplishments, recurring themes, and strategic direction.
+
+    **Activity Records**:
+    {activity_records}
+
+    Please generate a JSON summary object.
+
+  # ── Partial (batch sub-summary) prompts ──
+  daily_partial_summary: |
+    Please summarize this PARTIAL batch of user activities for {time_period}. This is batch {batch_info}. Summarize only these events, preserving key details for later merging.
+
+    **Activity Records**:
+    {activity_records}
+
+    Please generate a JSON summary object.
+
+  weekly_partial_summary: |
+    Please summarize this PARTIAL batch of daily summaries and events for {time_period}. This is batch {batch_info}. Summarize only these days, preserving key details for later merging.
+
+    **Activity Records**:
+    {activity_records}
+
+    Please generate a JSON summary object.
+
+  monthly_partial_summary: |
+    Please summarize this PARTIAL batch of weekly/daily summaries for {time_period}. This is batch {batch_info}. Summarize only these weeks, preserving key details for later merging.
+
+    **Activity Records**:
+    {activity_records}
+
+    Please generate a JSON summary object.
+
+  # ── Merge prompts ──
+  daily_merge: |
+    Please merge the following partial daily summaries into a single cohesive daily summary for {time_period}. Eliminate redundancy, maintain chronological flow, and produce one unified overview.
+
+    **Partial Summaries**:
+    {partial_summaries}
+
+    Please generate a JSON summary object.
+
+  weekly_merge: |
+    Please merge the following partial weekly summaries into a single cohesive weekly summary for {time_period}. Eliminate redundancy, highlight major themes, and produce one unified overview.
+
+    **Partial Summaries**:
+    {partial_summaries}
+
+    Please generate a JSON summary object.
+
+  monthly_merge: |
+    Please merge the following partial monthly summaries into a single cohesive monthly summary for {time_period}. Eliminate redundancy, capture the big picture, and produce one unified overview.
+
+    **Partial Summaries**:
+    {partial_summaries}
 
     Please generate a JSON summary object.
 

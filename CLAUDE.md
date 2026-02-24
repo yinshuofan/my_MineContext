@@ -89,7 +89,13 @@ Key fields on `ContextProperties`: `hierarchy_level`, `parent_id`, `children_ids
 - Only active users get summaries (no wasted LLM calls for inactive users)
 - Tasks are processed sequentially by the scheduler (one per 10s cycle), providing natural rate limiting
 - Each execution tries to generate the most recent completed daily/weekly/monthly summary, with idempotent dedup checks preventing regeneration
-- Requires `HIERARCHY_SUMMARY_ENABLED=true` env var to activate
+- Enabled by default (`HIERARCHY_SUMMARY_ENABLED` defaults to `true`); set to `false` to disable
+
+**Hierarchical content inclusion**: Higher-level summaries include content from multiple levels for richer context:
+- L2 (weekly) summaries use both L1 daily summaries AND L0 raw events
+- L3 (monthly) summaries use both L2 weekly summaries AND L1 daily summaries
+
+**Token overflow handling**: When input content exceeds `_MAX_INPUT_TOKENS` (60K), the system automatically splits into batches, generates sub-summaries per batch, then merges via LLM. Weekly batches split by day-groups, monthly by week-groups, to maintain temporal coherence.
 
 ### Retrieval Tools
 
@@ -278,7 +284,7 @@ When sync code runs inside the event loop thread (e.g., `_handle_processed_conte
 `RedisTaskScheduler._process_periodic_tasks()` calls handlers with `(None, None, None)`. Any task whose `validate_context()` requires a non-null `user_id` will silently fail. Use `user_activity` trigger mode for per-user tasks; `periodic` is only for global system tasks (like `DataCleanupTask`). This was the root cause of `HierarchySummaryTask` never executing — it was configured as `periodic` but required `user_id`.
 
 ### Scheduler task type must be registered (enabled) or `schedule_user_task` silently fails
-`schedule_user_task()` calls `get_task_config()` which looks up the task type in Redis. If the task's `enabled` flag is `false` in config, `_collect_task_types()` skips registration, and `get_task_config()` returns `None`, causing `schedule_user_task()` to log a warning and return `False`. The push endpoint continues normally — no error is raised. Always set `HIERARCHY_SUMMARY_ENABLED=true` in production to enable the task.
+`schedule_user_task()` calls `get_task_config()` which looks up the task type in Redis. If the task's `enabled` flag is `false` in config, `_collect_task_types()` skips registration, and `get_task_config()` returns `None`, causing `schedule_user_task()` to log a warning and return `False`. The push endpoint continues normally — no error is raised. `HIERARCHY_SUMMARY_ENABLED` now defaults to `true`; set to `false` to explicitly disable the task.
 
 ### MySQL InnoDB composite key length limit
 InnoDB with utf8mb4 has a max key length of 3072 bytes. Each `VARCHAR(N)` uses `N*4` bytes in a key. Composite unique keys must keep total VARCHAR length under 768 chars. Current column sizes: `user_id VARCHAR(255)`, `device_id VARCHAR(100)`, `agent_id VARCHAR(100)`, `entity_name VARCHAR(255)` — total 710, just under the limit.

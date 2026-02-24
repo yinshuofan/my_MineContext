@@ -34,45 +34,97 @@ from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
+# ── Token estimation constants ──
+# Token 估算常量
+
+_MAX_INPUT_TOKENS = 60000  # Conservative limit (model supports ~128K, but quality degrades)
+_BATCH_TOKEN_TARGET = 25000  # Per-batch limit for overflow splitting
+_PROMPT_OVERHEAD_TOKENS = 800  # System prompt + formatting overhead
+
+
+def _estimate_tokens(text: str) -> int:
+    """
+    Estimate token count for mixed Chinese/English text.
+    估算中英文混合文本的 token 数。
+
+    Chinese characters ≈ 1.5 tokens/char, ASCII ≈ 0.25 tokens/char.
+    Conservative for mixed content to avoid overflowing context windows.
+
+    Args:
+        text: Input text
+
+    Returns:
+        Estimated token count
+    """
+    if not text:
+        return 0
+    chinese_chars = 0
+    ascii_chars = 0
+    for ch in text:
+        if "\u4e00" <= ch <= "\u9fff" or "\u3400" <= ch <= "\u4dbf":
+            chinese_chars += 1
+        else:
+            ascii_chars += 1
+    return int(chinese_chars * 1.5 + ascii_chars * 0.25)
+
+
 # ── Fallback prompts (used when prompt group "hierarchy_summary" is not configured) ──
 # 当 prompt group 未配置时使用的默认提示词
 
 _FALLBACK_PROMPTS = {
+    # ── Normal summary prompts ──
     "daily_summary": (
-        "You are a personal memory assistant. Below are the user's event records for {time_bucket}. "
-        "Please summarize these events into a concise daily overview that captures the key activities, "
-        "decisions, and outcomes of the day. Keep the summary structured and actionable.\n\n"
-        "Events:\n{events_text}\n\n"
-        "Please provide:\n"
-        "1. A short title for this day's summary\n"
-        "2. A concise summary paragraph (2-4 sentences)\n"
-        "3. Key keywords (comma separated)\n"
-        "4. Key entities mentioned (comma separated)\n\n"
-        "Respond in the same language as the events."
+        "Please summarize the following user activities for the time period: {time_period}\n\n"
+        "**Activity Records**:\n{activity_records}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
     ),
     "weekly_summary": (
-        "You are a personal memory assistant. Below are the user's daily summaries for the week of {time_bucket}. "
-        "Please synthesize these daily summaries into a weekly overview that highlights major themes, "
-        "progress on ongoing work, and notable events.\n\n"
-        "Daily Summaries:\n{events_text}\n\n"
-        "Please provide:\n"
-        "1. A short title for this week's summary\n"
-        "2. A concise summary paragraph (3-5 sentences)\n"
-        "3. Key keywords (comma separated)\n"
-        "4. Key entities mentioned (comma separated)\n\n"
-        "Respond in the same language as the summaries."
+        "Please summarize the following user activities for the time period: {time_period}\n\n"
+        "**Activity Records**:\n{activity_records}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
     ),
     "monthly_summary": (
-        "You are a personal memory assistant. Below are the user's weekly summaries for {time_bucket}. "
-        "Please synthesize these weekly summaries into a monthly overview that captures the big picture: "
-        "major accomplishments, recurring themes, and strategic direction.\n\n"
-        "Weekly Summaries:\n{events_text}\n\n"
-        "Please provide:\n"
-        "1. A short title for this month's summary\n"
-        "2. A concise summary paragraph (4-6 sentences)\n"
-        "3. Key keywords (comma separated)\n"
-        "4. Key entities mentioned (comma separated)\n\n"
-        "Respond in the same language as the summaries."
+        "Please summarize the following user activities for the time period: {time_period}\n\n"
+        "**Activity Records**:\n{activity_records}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+    ),
+    # ── Partial (batch sub-summary) prompts ──
+    "daily_partial_summary": (
+        "Please summarize this PARTIAL batch of user activities for {time_period}. "
+        "This is batch {batch_info} — summarize only these events, preserving key details.\n\n"
+        "**Activity Records**:\n{activity_records}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+    ),
+    "weekly_partial_summary": (
+        "Please summarize this PARTIAL batch of user activities for {time_period}. "
+        "This is batch {batch_info} — summarize only these days, preserving key details.\n\n"
+        "**Activity Records**:\n{activity_records}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+    ),
+    "monthly_partial_summary": (
+        "Please summarize this PARTIAL batch of user activities for {time_period}. "
+        "This is batch {batch_info} — summarize only these weeks, preserving key details.\n\n"
+        "**Activity Records**:\n{activity_records}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+    ),
+    # ── Merge prompts ──
+    "daily_merge": (
+        "Please merge the following partial daily summaries into a single cohesive daily summary "
+        "for {time_period}.\n\n"
+        "**Partial Summaries**:\n{partial_summaries}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+    ),
+    "weekly_merge": (
+        "Please merge the following partial weekly summaries into a single cohesive weekly summary "
+        "for {time_period}.\n\n"
+        "**Partial Summaries**:\n{partial_summaries}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+    ),
+    "monthly_merge": (
+        "Please merge the following partial monthly summaries into a single cohesive monthly summary "
+        "for {time_period}.\n\n"
+        "**Partial Summaries**:\n{partial_summaries}\n\n"
+        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
     ),
 }
 
@@ -116,7 +168,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         super().__init__(
             name="hierarchy_summary",
             description="Generate hierarchical time-based summaries for event contexts",
-            trigger_mode=TriggerMode.PERIODIC,
+            trigger_mode=TriggerMode.USER_ACTIVITY,
             interval=interval,
             timeout=timeout,
             task_ttl=14400,
@@ -224,6 +276,481 @@ class HierarchySummaryTask(BasePeriodicTask):
         """Validate that user_id is provided"""
         return bool(context.user_id)
 
+    # ── Content formatting methods ──
+
+    @staticmethod
+    def _format_l0_events(contexts: List[ProcessedContext]) -> str:
+        """
+        Format L0 raw events for L1 (daily) summary generation.
+        将 L0 原始事件格式化为 L1（每日）摘要生成的输入。
+
+        Events are sorted by time, numbered, with key fields shown.
+
+        Args:
+            contexts: List of L0 ProcessedContext events
+
+        Returns:
+            Formatted text string
+        """
+        sorted_ctxs = sorted(
+            contexts,
+            key=lambda c: (
+                c.properties.event_time.isoformat() if c.properties.event_time else ""
+            ),
+        )
+        parts = []
+        for i, ctx in enumerate(sorted_ctxs, 1):
+            ed = ctx.extracted_data
+            line_parts = [f"[{i}]"]
+            if ed.title:
+                line_parts.append(f"Title: {ed.title}")
+            if ctx.properties.event_time:
+                line_parts.append(f"Time: {ctx.properties.event_time.strftime('%H:%M')}")
+            if ed.summary:
+                line_parts.append(f"Summary: {ed.summary}")
+            if ed.keywords:
+                line_parts.append(f"Keywords: {', '.join(ed.keywords)}")
+            parts.append(" | ".join(line_parts))
+        return "\n".join(parts)
+
+    @staticmethod
+    def _format_weekly_hierarchical(
+        l1_summaries: List[ProcessedContext],
+        l0_events_by_day: Dict[str, List[ProcessedContext]],
+    ) -> str:
+        """
+        Format weekly content hierarchically: L1 daily summaries + L0 raw events per day.
+        分层格式化每周内容：L1 每日摘要 + 每天的 L0 原始事件。
+
+        For L2 (weekly) summary generation. Includes both summary and raw event detail.
+
+        Args:
+            l1_summaries: L1 daily summary contexts for the week
+            l0_events_by_day: Dict mapping date_str -> list of L0 events for that day
+
+        Returns:
+            Formatted hierarchical text string
+        """
+        # Build a map from date_str -> L1 summary
+        l1_by_day: Dict[str, ProcessedContext] = {}
+        for ctx in l1_summaries:
+            tb = ctx.properties.time_bucket
+            if tb:
+                l1_by_day[tb] = ctx
+
+        # Collect all day keys (from both L1 and L0)
+        all_days = sorted(set(list(l1_by_day.keys()) + list(l0_events_by_day.keys())))
+
+        parts = []
+        for day_str in all_days:
+            # Determine day-of-week label
+            try:
+                day_date = datetime.date.fromisoformat(day_str)
+                dow = day_date.strftime("%a")
+            except (ValueError, TypeError):
+                dow = ""
+
+            l1_ctx = l1_by_day.get(day_str)
+            l0_list = l0_events_by_day.get(day_str, [])
+
+            if l1_ctx:
+                ed = l1_ctx.extracted_data
+                parts.append(f"=== Daily Summary: {day_str} ({dow}) ===")
+                parts.append(ed.summary if ed.summary else "(no summary)")
+                if l0_list:
+                    parts.append("")
+                    parts.append("  --- Raw Events ---")
+                    sorted_l0 = sorted(
+                        l0_list,
+                        key=lambda c: (
+                            c.properties.event_time.isoformat()
+                            if c.properties.event_time
+                            else ""
+                        ),
+                    )
+                    for j, evt in enumerate(sorted_l0, 1):
+                        evd = evt.extracted_data
+                        line = [f"  [{j}]"]
+                        if evd.title:
+                            line.append(f"Title: {evd.title}")
+                        if evt.properties.event_time:
+                            line.append(
+                                f"Time: {evt.properties.event_time.strftime('%H:%M')}"
+                            )
+                        if evd.summary:
+                            line.append(f"Summary: {evd.summary}")
+                        parts.append(" | ".join(line))
+            elif l0_list:
+                # Unsummarized day — only L0 events exist
+                parts.append(f"=== Unsummarized Day: {day_str} ({dow}) ===")
+                sorted_l0 = sorted(
+                    l0_list,
+                    key=lambda c: (
+                        c.properties.event_time.isoformat()
+                        if c.properties.event_time
+                        else ""
+                    ),
+                )
+                for j, evt in enumerate(sorted_l0, 1):
+                    evd = evt.extracted_data
+                    line = [f"  [{j}]"]
+                    if evd.title:
+                        line.append(f"Title: {evd.title}")
+                    if evt.properties.event_time:
+                        line.append(f"Time: {evt.properties.event_time.strftime('%H:%M')}")
+                    if evd.summary:
+                        line.append(f"Summary: {evd.summary}")
+                    parts.append(" | ".join(line))
+
+            parts.append("")  # blank line between days
+
+        return "\n".join(parts).strip()
+
+    @staticmethod
+    def _format_monthly_hierarchical(
+        l2_summaries: List[ProcessedContext],
+        l1_summaries_by_week: Dict[str, List[ProcessedContext]],
+    ) -> str:
+        """
+        Format monthly content hierarchically: L2 weekly summaries + L1 daily summaries per week.
+        分层格式化每月内容：L2 每周摘要 + 每周的 L1 每日摘要。
+
+        For L3 (monthly) summary generation.
+
+        Args:
+            l2_summaries: L2 weekly summary contexts for the month
+            l1_summaries_by_week: Dict mapping week_str -> list of L1 daily summaries
+
+        Returns:
+            Formatted hierarchical text string
+        """
+        # Build map from week_str -> L2 summary
+        l2_by_week: Dict[str, ProcessedContext] = {}
+        for ctx in l2_summaries:
+            tb = ctx.properties.time_bucket
+            if tb:
+                l2_by_week[tb] = ctx
+
+        # Collect all week keys
+        all_weeks = sorted(set(list(l2_by_week.keys()) + list(l1_summaries_by_week.keys())))
+
+        parts = []
+        for week_str in all_weeks:
+            l2_ctx = l2_by_week.get(week_str)
+            l1_list = l1_summaries_by_week.get(week_str, [])
+
+            if l2_ctx:
+                ed = l2_ctx.extracted_data
+                parts.append(f"=== Weekly Summary: {week_str} ===")
+                parts.append(ed.summary if ed.summary else "(no summary)")
+
+                if l1_list:
+                    parts.append("")
+                    # Sort L1 summaries by time_bucket (date)
+                    sorted_l1 = sorted(
+                        l1_list,
+                        key=lambda c: c.properties.time_bucket or "",
+                    )
+                    for l1_ctx in sorted_l1:
+                        tb = l1_ctx.properties.time_bucket or "unknown"
+                        try:
+                            day_date = datetime.date.fromisoformat(tb)
+                            dow = day_date.strftime("%a")
+                        except (ValueError, TypeError):
+                            dow = ""
+                        l1_ed = l1_ctx.extracted_data
+                        parts.append(f"  --- Daily: {tb} ({dow}) ---")
+                        parts.append(f"  {l1_ed.summary if l1_ed.summary else '(no summary)'}")
+                        parts.append("")
+            elif l1_list:
+                # No L2 summary for this week, but L1 summaries exist
+                parts.append(f"=== Unsummarized Week: {week_str} ===")
+                sorted_l1 = sorted(
+                    l1_list,
+                    key=lambda c: c.properties.time_bucket or "",
+                )
+                for l1_ctx in sorted_l1:
+                    tb = l1_ctx.properties.time_bucket or "unknown"
+                    try:
+                        day_date = datetime.date.fromisoformat(tb)
+                        dow = day_date.strftime("%a")
+                    except (ValueError, TypeError):
+                        dow = ""
+                    l1_ed = l1_ctx.extracted_data
+                    parts.append(f"  --- Daily: {tb} ({dow}) ---")
+                    parts.append(f"  {l1_ed.summary if l1_ed.summary else '(no summary)'}")
+                    parts.append("")
+
+            parts.append("")  # blank line between weeks
+
+        return "\n".join(parts).strip()
+
+    # ── Batch splitting and overflow handling ──
+
+    @staticmethod
+    def _split_into_batches(
+        contexts: List[ProcessedContext], max_tokens_per_batch: int
+    ) -> List[List[ProcessedContext]]:
+        """
+        Split a list of contexts into batches that fit within the token budget.
+        将上下文列表拆分为符合 token 预算的批次。
+
+        Maintains chronological order. At least 1 context per batch.
+
+        Args:
+            contexts: List of ProcessedContext to split
+            max_tokens_per_batch: Maximum tokens per batch
+
+        Returns:
+            List of batches, each batch is a list of ProcessedContext
+        """
+        if not contexts:
+            return []
+
+        batches: List[List[ProcessedContext]] = []
+        current_batch: List[ProcessedContext] = []
+        current_tokens = 0
+
+        for ctx in contexts:
+            text = ctx.extracted_data.summary or ctx.extracted_data.title or ""
+            ctx_tokens = _estimate_tokens(text)
+
+            # Always put at least 1 context in each batch
+            if current_batch and (current_tokens + ctx_tokens) > max_tokens_per_batch:
+                batches.append(current_batch)
+                current_batch = [ctx]
+                current_tokens = ctx_tokens
+            else:
+                current_batch.append(ctx)
+                current_tokens += ctx_tokens
+
+        if current_batch:
+            batches.append(current_batch)
+
+        return batches
+
+    def _batch_summarize_and_merge(
+        self,
+        contexts: List[ProcessedContext],
+        level: int,
+        time_bucket: str,
+        format_fn,
+    ) -> Optional[str]:
+        """
+        Main overflow handler for L1 daily summaries.
+        L1 每日摘要的主要溢出处理程序。
+
+        1. Format all contexts, estimate tokens
+        2. If fits -> single LLM call (normal path)
+        3. If exceeds -> split into batches -> generate sub-summary per batch -> merge
+
+        Args:
+            contexts: List of L0 contexts to summarize
+            level: Hierarchy level (1)
+            time_bucket: Time bucket string
+            format_fn: Function to format contexts into text
+
+        Returns:
+            Summary text or None
+        """
+        formatted_text = format_fn(contexts)
+        total_tokens = _estimate_tokens(formatted_text) + _PROMPT_OVERHEAD_TOKENS
+
+        if total_tokens <= _MAX_INPUT_TOKENS:
+            # Normal path — fits in a single LLM call
+            return self._call_llm_for_summary(
+                formatted_content=formatted_text,
+                level=level,
+                time_bucket=time_bucket,
+            )
+
+        # Overflow path — split into batches
+        logger.info(
+            f"Token overflow for {_LEVEL_NAMES.get(level)} {time_bucket}: "
+            f"~{total_tokens} tokens, splitting into batches"
+        )
+        batches = self._split_into_batches(contexts, _BATCH_TOKEN_TARGET)
+        sub_summaries = []
+
+        for idx, batch in enumerate(batches):
+            batch_text = format_fn(batch)
+            batch_info = f"{idx + 1}/{len(batches)}"
+            sub_summary = self._call_llm_for_summary(
+                formatted_content=batch_text,
+                level=level,
+                time_bucket=time_bucket,
+                is_partial=True,
+                batch_info=batch_info,
+            )
+            if sub_summary:
+                sub_summaries.append(sub_summary)
+
+        if not sub_summaries:
+            logger.warning(f"All batch sub-summaries returned empty for {time_bucket}")
+            return None
+
+        if len(sub_summaries) == 1:
+            return sub_summaries[0]
+
+        # Merge sub-summaries
+        merged_text = "\n\n---\n\n".join(
+            f"[Part {i + 1}]\n{s}" for i, s in enumerate(sub_summaries)
+        )
+        return self._call_llm_for_merge(
+            sub_summaries_text=merged_text,
+            level=level,
+            time_bucket=time_bucket,
+        )
+
+    def _batch_summarize_weekly(
+        self,
+        l1_contexts: List[ProcessedContext],
+        l0_events_by_day: Dict[str, List[ProcessedContext]],
+        time_bucket: str,
+    ) -> Optional[str]:
+        """
+        Weekly overflow handler — batches by day-groups for coherence.
+        每周溢出处理 — 按天分组批处理以保持连贯性。
+
+        Args:
+            l1_contexts: L1 daily summary contexts for the week
+            l0_events_by_day: Dict mapping date_str -> L0 events
+            time_bucket: Week string like "2026-W08"
+
+        Returns:
+            Summary text or None
+        """
+        formatted_text = self._format_weekly_hierarchical(l1_contexts, l0_events_by_day)
+        total_tokens = _estimate_tokens(formatted_text) + _PROMPT_OVERHEAD_TOKENS
+
+        if total_tokens <= _MAX_INPUT_TOKENS:
+            return self._call_llm_for_summary(
+                formatted_content=formatted_text,
+                level=2,
+                time_bucket=time_bucket,
+            )
+
+        # Overflow — batch by day-groups (2-3 days per batch)
+        logger.info(
+            f"Token overflow for weekly {time_bucket}: "
+            f"~{total_tokens} tokens, splitting by day-groups"
+        )
+        l1_by_day: Dict[str, ProcessedContext] = {}
+        for ctx in l1_contexts:
+            tb = ctx.properties.time_bucket
+            if tb:
+                l1_by_day[tb] = ctx
+
+        all_days = sorted(set(list(l1_by_day.keys()) + list(l0_events_by_day.keys())))
+        # Split days into groups of 2-3
+        day_groups: List[List[str]] = []
+        for i in range(0, len(all_days), 3):
+            day_groups.append(all_days[i : i + 3])
+
+        sub_summaries = []
+        for idx, day_group in enumerate(day_groups):
+            group_l1 = [l1_by_day[d] for d in day_group if d in l1_by_day]
+            group_l0 = {d: l0_events_by_day[d] for d in day_group if d in l0_events_by_day}
+            group_text = self._format_weekly_hierarchical(group_l1, group_l0)
+            batch_info = f"{idx + 1}/{len(day_groups)}"
+            sub_summary = self._call_llm_for_summary(
+                formatted_content=group_text,
+                level=2,
+                time_bucket=time_bucket,
+                is_partial=True,
+                batch_info=batch_info,
+            )
+            if sub_summary:
+                sub_summaries.append(sub_summary)
+
+        if not sub_summaries:
+            return None
+        if len(sub_summaries) == 1:
+            return sub_summaries[0]
+
+        merged_text = "\n\n---\n\n".join(
+            f"[Part {i + 1}]\n{s}" for i, s in enumerate(sub_summaries)
+        )
+        return self._call_llm_for_merge(
+            sub_summaries_text=merged_text,
+            level=2,
+            time_bucket=time_bucket,
+        )
+
+    def _batch_summarize_monthly(
+        self,
+        l2_contexts: List[ProcessedContext],
+        l1_by_week: Dict[str, List[ProcessedContext]],
+        time_bucket: str,
+    ) -> Optional[str]:
+        """
+        Monthly overflow handler — batches by week-groups.
+        每月溢出处理 — 按周分组批处理。
+
+        Args:
+            l2_contexts: L2 weekly summary contexts for the month
+            l1_by_week: Dict mapping week_str -> L1 daily summaries
+            time_bucket: Month string like "2026-02"
+
+        Returns:
+            Summary text or None
+        """
+        formatted_text = self._format_monthly_hierarchical(l2_contexts, l1_by_week)
+        total_tokens = _estimate_tokens(formatted_text) + _PROMPT_OVERHEAD_TOKENS
+
+        if total_tokens <= _MAX_INPUT_TOKENS:
+            return self._call_llm_for_summary(
+                formatted_content=formatted_text,
+                level=3,
+                time_bucket=time_bucket,
+            )
+
+        # Overflow — batch by week-groups (2 weeks per batch)
+        logger.info(
+            f"Token overflow for monthly {time_bucket}: "
+            f"~{total_tokens} tokens, splitting by week-groups"
+        )
+        l2_by_week: Dict[str, ProcessedContext] = {}
+        for ctx in l2_contexts:
+            tb = ctx.properties.time_bucket
+            if tb:
+                l2_by_week[tb] = ctx
+
+        all_weeks = sorted(set(list(l2_by_week.keys()) + list(l1_by_week.keys())))
+        week_groups: List[List[str]] = []
+        for i in range(0, len(all_weeks), 2):
+            week_groups.append(all_weeks[i : i + 2])
+
+        sub_summaries = []
+        for idx, week_group in enumerate(week_groups):
+            group_l2 = [l2_by_week[w] for w in week_group if w in l2_by_week]
+            group_l1 = {w: l1_by_week[w] for w in week_group if w in l1_by_week}
+            group_text = self._format_monthly_hierarchical(group_l2, group_l1)
+            batch_info = f"{idx + 1}/{len(week_groups)}"
+            sub_summary = self._call_llm_for_summary(
+                formatted_content=group_text,
+                level=3,
+                time_bucket=time_bucket,
+                is_partial=True,
+                batch_info=batch_info,
+            )
+            if sub_summary:
+                sub_summaries.append(sub_summary)
+
+        if not sub_summaries:
+            return None
+        if len(sub_summaries) == 1:
+            return sub_summaries[0]
+
+        merged_text = "\n\n---\n\n".join(
+            f"[Part {i + 1}]\n{s}" for i, s in enumerate(sub_summaries)
+        )
+        return self._call_llm_for_merge(
+            sub_summaries_text=merged_text,
+            level=3,
+            time_bucket=time_bucket,
+        )
+
     # ── Private methods for each hierarchy level ──
 
     def _generate_daily_summary(self, user_id: str, date_str: str) -> Optional[ProcessedContext]:
@@ -277,7 +804,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         }
         l0_dict = storage.get_all_processed_contexts(
             context_types=[ContextType.EVENT.value],
-            limit=200,
+            limit=500,
             filter=l0_filters,
             user_id=user_id,
         )
@@ -288,10 +815,13 @@ class HierarchySummaryTask(BasePeriodicTask):
             return None
         children_ids = [ctx.id for ctx in contexts]
 
-        # Generate summary via LLM
-        # 通过 LLM 生成摘要
-        summary_text = self._generate_summary_via_llm(
-            contexts=contexts, level=1, time_bucket=date_str
+        # Generate summary via LLM with batch overflow handling
+        # 通过 LLM 生成摘要，支持 batch 溢出处理
+        summary_text = self._batch_summarize_and_merge(
+            contexts=contexts,
+            level=1,
+            time_bucket=date_str,
+            format_fn=self._format_l0_events,
         )
         if not summary_text:
             logger.warning(f"LLM returned empty summary for daily {date_str}")
@@ -309,15 +839,18 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     def _generate_weekly_summary(self, user_id: str, week_str: str) -> Optional[ProcessedContext]:
         """
-        Generate a weekly summary (Level 2) from Level 1 daily summaries.
-        从 Level 1 日摘要生成每周摘要 (Level 2)。
+        Generate a weekly summary (Level 2) from Level 1 daily summaries + Level 0 raw events.
+        从 Level 1 日摘要 + Level 0 原始事件生成每周摘要 (Level 2)。
+
+        Higher-level summaries now include content from both immediate children (L1) and
+        grandchildren (L0) for richer context.
 
         Args:
             user_id: User identifier
             week_str: ISO week string, e.g. "2026-W08"
 
         Returns:
-            ProcessedContext of the generated weekly summary, or None if no daily summaries found
+            ProcessedContext of the generated weekly summary, or None if no data found
         """
         storage = get_storage()
         if not storage:
@@ -338,12 +871,11 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.info(f"Weekly summary already exists for user={user_id}, week={week_str}")
             return None
 
-        # Parse week string to get date range for daily summaries
-        # 解析周字符串以获取日摘要的日期范围
+        # Parse week string to get date range
+        # 解析周字符串以获取日期范围
         year, week_num = week_str.split("-W")
         year = int(year)
         week_num = int(week_num)
-        # Monday of the given ISO week
         week_start = datetime.date.fromisocalendar(year, week_num, 1)
         week_end = week_start + datetime.timedelta(days=6)
 
@@ -358,24 +890,70 @@ class HierarchySummaryTask(BasePeriodicTask):
             top_k=7,
         )
 
-        if not l1_results:
-            logger.info(f"No L1 daily summaries found for user={user_id}, week={week_str}")
+        l1_contexts = [ctx for ctx, _score in l1_results] if l1_results else []
+
+        # Also fetch L0 events for the entire week to enrich the weekly summary
+        # 同时获取整周的 L0 事件以丰富周摘要
+        week_start_ts = int(
+            datetime.datetime(
+                week_start.year,
+                week_start.month,
+                week_start.day,
+                tzinfo=datetime.timezone.utc,
+            ).timestamp()
+        )
+        week_end_ts = int(
+            datetime.datetime(
+                week_end.year,
+                week_end.month,
+                week_end.day,
+                23,
+                59,
+                59,
+                tzinfo=datetime.timezone.utc,
+            ).timestamp()
+        )
+
+        l0_filters = {
+            "event_time_ts": {"$gte": week_start_ts, "$lte": week_end_ts},
+            "hierarchy_level": {"$gte": 0, "$lte": 0},
+        }
+        l0_dict = storage.get_all_processed_contexts(
+            context_types=[ContextType.EVENT.value],
+            limit=500,
+            filter=l0_filters,
+            user_id=user_id,
+        )
+        l0_events = l0_dict.get(ContextType.EVENT.value, [])
+
+        # Group L0 events by day
+        # 按天分组 L0 事件
+        l0_events_by_day: Dict[str, List[ProcessedContext]] = {}
+        for evt in l0_events:
+            if evt.properties.event_time:
+                day_key = evt.properties.event_time.strftime("%Y-%m-%d")
+                l0_events_by_day.setdefault(day_key, []).append(evt)
+
+        if not l1_contexts and not l0_events:
+            logger.info(f"No L1/L0 data found for user={user_id}, week={week_str}")
             return None
 
-        contexts = [ctx for ctx, _score in l1_results]
-        children_ids = [ctx.id for ctx in contexts]
+        # Collect children_ids from both L1 and L0
+        children_ids = [ctx.id for ctx in l1_contexts]
+        for evts in l0_events_by_day.values():
+            children_ids.extend(evt.id for evt in evts)
 
-        # Generate summary via LLM
-        # 通过 LLM 生成摘要
-        summary_text = self._generate_summary_via_llm(
-            contexts=contexts, level=2, time_bucket=week_str
+        # Generate summary with hierarchical content and overflow handling
+        # 使用分层内容和溢出处理生成摘要
+        summary_text = self._batch_summarize_weekly(
+            l1_contexts=l1_contexts,
+            l0_events_by_day=l0_events_by_day,
+            time_bucket=week_str,
         )
         if not summary_text:
             logger.warning(f"LLM returned empty summary for weekly {week_str}")
             return None
 
-        # Store the summary and update parent_id on children
-        # 存储摘要并更新子记录的 parent_id
         return self._store_summary(
             user_id=user_id,
             summary_text=summary_text,
@@ -386,15 +964,18 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     def _generate_monthly_summary(self, user_id: str, month_str: str) -> Optional[ProcessedContext]:
         """
-        Generate a monthly summary (Level 3) from Level 2 weekly summaries.
-        从 Level 2 周摘要生成月摘要 (Level 3)。
+        Generate a monthly summary (Level 3) from Level 2 weekly summaries + Level 1 daily summaries.
+        从 Level 2 周摘要 + Level 1 日摘要生成月摘要 (Level 3)。
+
+        Higher-level summaries now include content from both immediate children (L2) and
+        grandchildren (L1) for richer context.
 
         Args:
             user_id: User identifier
             month_str: Month string, e.g. "2026-02"
 
         Returns:
-            ProcessedContext of the generated monthly summary, or None if no weekly summaries found
+            ProcessedContext of the generated monthly summary, or None if no data found
         """
         storage = get_storage()
         if not storage:
@@ -417,14 +998,14 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Determine ISO weeks that fall within this month
         # 计算该月包含的 ISO 周
-        year, month = month_str.split("-")
-        year = int(year)
-        month = int(month)
-        first_day = datetime.date(year, month, 1)
-        if month == 12:
+        year_str, month_num_str = month_str.split("-")
+        year = int(year_str)
+        month_num = int(month_num_str)
+        first_day = datetime.date(year, month_num, 1)
+        if month_num == 12:
             last_day = datetime.date(year + 1, 1, 1) - datetime.timedelta(days=1)
         else:
-            last_day = datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)
+            last_day = datetime.date(year, month_num + 1, 1) - datetime.timedelta(days=1)
 
         # Collect all ISO week identifiers for the month
         # 收集该月所有 ISO 周标识符
@@ -435,10 +1016,13 @@ class HierarchySummaryTask(BasePeriodicTask):
             weeks_in_month.add(f"{iso_year}-W{iso_week:02d}")
             current += datetime.timedelta(days=1)
 
-        # Query Level 2 weekly summaries for each week in the month
-        # 查询该月每周的 Level 2 周摘要
+        # Query Level 2 weekly summaries and Level 1 daily summaries for each week
+        # 查询该月每周的 Level 2 周摘要和 Level 1 日摘要
         all_weekly_contexts: List[ProcessedContext] = []
+        l1_summaries_by_week: Dict[str, List[ProcessedContext]] = {}
+
         for wk in sorted(weeks_in_month):
+            # Fetch L2 weekly summary
             wk_results = storage.search_hierarchy(
                 context_type=ContextType.EVENT.value,
                 hierarchy_level=2,
@@ -450,23 +1034,43 @@ class HierarchySummaryTask(BasePeriodicTask):
             for ctx, _score in wk_results:
                 all_weekly_contexts.append(ctx)
 
-        if not all_weekly_contexts:
-            logger.info(f"No L2 weekly summaries found for user={user_id}, month={month_str}")
+            # Fetch L1 daily summaries for this week to enrich the monthly summary
+            # 获取本周的 L1 日摘要以丰富月摘要
+            wk_year, wk_num = wk.split("-W")
+            wk_start = datetime.date.fromisocalendar(int(wk_year), int(wk_num), 1)
+            wk_end = wk_start + datetime.timedelta(days=6)
+
+            l1_results = storage.search_hierarchy(
+                context_type=ContextType.EVENT.value,
+                hierarchy_level=1,
+                time_bucket_start=wk_start.isoformat(),
+                time_bucket_end=wk_end.isoformat(),
+                user_id=user_id,
+                top_k=7,
+            )
+            if l1_results:
+                l1_summaries_by_week[wk] = [ctx for ctx, _score in l1_results]
+
+        if not all_weekly_contexts and not l1_summaries_by_week:
+            logger.info(f"No L2/L1 data found for user={user_id}, month={month_str}")
             return None
 
+        # Collect children_ids from both L2 and L1
         children_ids = [ctx.id for ctx in all_weekly_contexts]
+        for l1_list in l1_summaries_by_week.values():
+            children_ids.extend(ctx.id for ctx in l1_list)
 
-        # Generate summary via LLM
-        # 通过 LLM 生成摘要
-        summary_text = self._generate_summary_via_llm(
-            contexts=all_weekly_contexts, level=3, time_bucket=month_str
+        # Generate summary with hierarchical content and overflow handling
+        # 使用分层内容和溢出处理生成摘要
+        summary_text = self._batch_summarize_monthly(
+            l2_contexts=all_weekly_contexts,
+            l1_by_week=l1_summaries_by_week,
+            time_bucket=month_str,
         )
         if not summary_text:
             logger.warning(f"LLM returned empty summary for monthly {month_str}")
             return None
 
-        # Store the summary
-        # 存储摘要
         return self._store_summary(
             user_id=user_id,
             summary_text=summary_text,
@@ -475,79 +1079,153 @@ class HierarchySummaryTask(BasePeriodicTask):
             children_ids=children_ids,
         )
 
-    def _generate_summary_via_llm(
+    def _call_llm_for_summary(
         self,
-        contexts: List[ProcessedContext],
+        formatted_content: str,
         level: int,
         time_bucket: str,
+        is_partial: bool = False,
+        batch_info: str = "",
     ) -> Optional[str]:
         """
-        Call LLM to produce a summary of the given contexts.
-        调用 LLM 为给定的上下文列表生成摘要文本。
+        Call LLM to produce a summary from pre-formatted content.
+        调用 LLM 从预格式化的内容生成摘要。
+
+        Properly uses YAML prompt structure: system message + level-specific user template.
+        Falls through: {level}_summary key -> {level}_partial_summary key -> generic user key
+        -> _FALLBACK_PROMPTS.
 
         Args:
-            contexts: List of ProcessedContext to summarize
+            formatted_content: Pre-formatted text of events/summaries
             level: Target hierarchy level (1=daily, 2=weekly, 3=monthly)
-            time_bucket: Time bucket identifier for the summary
+            time_bucket: Time bucket identifier
+            is_partial: Whether this is a partial batch sub-summary
+            batch_info: Batch identifier string like "1/3"
 
         Returns:
             Summary text string, or None on failure
         """
-        if not contexts:
-            return None
-
         level_name = _LEVEL_NAMES.get(level, "unknown")
-
-        # Build events text from contexts
-        # 从上下文列表中构建事件文本
-        events_parts = []
-        for i, ctx in enumerate(contexts, 1):
-            ed = ctx.extracted_data
-            parts = [f"[{i}]"]
-            if ed.title:
-                parts.append(f"Title: {ed.title}")
-            if ed.summary:
-                parts.append(f"Summary: {ed.summary}")
-            if ed.keywords:
-                parts.append(f"Keywords: {', '.join(ed.keywords)}")
-            parts.append(f"Time: {ctx.properties.event_time.isoformat()}")
-            events_parts.append(" | ".join(parts))
-
-        events_text = "\n".join(events_parts)
-
-        # Get prompt from prompt group, fall back to hardcoded prompts
-        # 从 prompt group 获取提示词，如果不存在则使用硬编码默认值
         prompt_group = get_prompt_group("hierarchy_summary")
-        prompt_key = f"{level_name}_summary"
+
+        # Determine which prompt key to use
+        if is_partial:
+            prompt_key = f"{level_name}_partial_summary"
+        else:
+            prompt_key = f"{level_name}_summary"
+
+        # Build messages: system + user
+        messages = []
+
+        # System message from prompt group
+        if prompt_group and "system" in prompt_group:
+            messages.append({"role": "system", "content": prompt_group["system"]})
+
+        # User message — try prompt group first, then fallback
+        template_vars = {
+            "time_period": time_bucket,
+            "activity_records": formatted_content,
+            "batch_info": batch_info,
+        }
 
         if prompt_group and prompt_key in prompt_group:
-            prompt_template = prompt_group[prompt_key]
+            user_template = prompt_group[prompt_key]
+        elif prompt_group and "user" in prompt_group:
+            # Generic user key from YAML
+            user_template = prompt_group["user"]
         else:
-            prompt_template = _FALLBACK_PROMPTS.get(prompt_key, "")
-            if not prompt_template:
-                logger.error(f"No prompt template found for level={level_name}")
+            # Fallback to hardcoded prompts
+            user_template = _FALLBACK_PROMPTS.get(prompt_key, "")
+            if not user_template:
+                user_template = _FALLBACK_PROMPTS.get(f"{level_name}_summary", "")
+            if not user_template:
+                logger.error(f"No prompt template found for {prompt_key}")
                 return None
 
-        prompt = prompt_template.format(
-            time_bucket=time_bucket,
-            events_text=events_text,
-        )
+        try:
+            user_content = user_template.format(**template_vars)
+        except KeyError as e:
+            logger.warning(f"Template variable missing for {prompt_key}: {e}, using raw format")
+            user_content = user_template.replace("{time_period}", time_bucket).replace(
+                "{activity_records}", formatted_content
+            )
 
-        # Call LLM via global VLM client (disable tool execution for simple generation)
-        # 通过全局 VLM 客户端调用 LLM (禁用工具执行, 仅做简单文本生成)
-        messages = [
-            {"role": "user", "content": prompt},
-        ]
+        messages.append({"role": "user", "content": user_content})
 
         try:
             response = generate_with_messages(messages, enable_executor=False)
             if response:
                 return response.strip()
             else:
-                logger.warning(f"LLM returned empty response for {level_name} summary")
+                logger.warning(f"LLM returned empty response for {prompt_key}")
                 return None
         except Exception as e:
-            logger.exception(f"LLM call failed for {level_name} summary: {e}")
+            logger.exception(f"LLM call failed for {prompt_key}: {e}")
+            return None
+
+    def _call_llm_for_merge(
+        self,
+        sub_summaries_text: str,
+        level: int,
+        time_bucket: str,
+    ) -> Optional[str]:
+        """
+        Call LLM to merge multiple partial sub-summaries into one cohesive summary.
+        调用 LLM 将多个部分子摘要合并为一个完整摘要。
+
+        Looks for {level}_merge key in prompt group, falls back to hardcoded merge prompt.
+
+        Args:
+            sub_summaries_text: Formatted text of all partial sub-summaries
+            level: Hierarchy level (1=daily, 2=weekly, 3=monthly)
+            time_bucket: Time bucket identifier
+
+        Returns:
+            Merged summary text, or None on failure
+        """
+        level_name = _LEVEL_NAMES.get(level, "unknown")
+        prompt_group = get_prompt_group("hierarchy_summary")
+        merge_key = f"{level_name}_merge"
+
+        messages = []
+
+        # System message
+        if prompt_group and "system" in prompt_group:
+            messages.append({"role": "system", "content": prompt_group["system"]})
+
+        # User message for merge
+        template_vars = {
+            "time_period": time_bucket,
+            "partial_summaries": sub_summaries_text,
+        }
+
+        if prompt_group and merge_key in prompt_group:
+            user_template = prompt_group[merge_key]
+        else:
+            user_template = _FALLBACK_PROMPTS.get(merge_key, "")
+            if not user_template:
+                logger.error(f"No merge prompt template found for {merge_key}")
+                return None
+
+        try:
+            user_content = user_template.format(**template_vars)
+        except KeyError as e:
+            logger.warning(f"Template variable missing for {merge_key}: {e}")
+            user_content = user_template.replace("{time_period}", time_bucket).replace(
+                "{partial_summaries}", sub_summaries_text
+            )
+
+        messages.append({"role": "user", "content": user_content})
+
+        try:
+            response = generate_with_messages(messages, enable_executor=False)
+            if response:
+                return response.strip()
+            else:
+                logger.warning(f"LLM returned empty response for merge {merge_key}")
+                return None
+        except Exception as e:
+            logger.exception(f"LLM merge call failed for {merge_key}: {e}")
             return None
 
     def _store_summary(

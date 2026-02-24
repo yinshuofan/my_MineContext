@@ -367,7 +367,7 @@ scheduler:
     # Hierarchy summary task (generates daily/weekly/monthly event summaries)
     # Triggered by user activity (data push), runs at most once per 24h per user
     hierarchy_summary:
-      enabled: "${HIERARCHY_SUMMARY_ENABLED:false}"
+      enabled: "${HIERARCHY_SUMMARY_ENABLED:true}"
       trigger_mode: "user_activity"
       interval: 86400         # 24h delay after user push, then generate summaries
       timeout: 600            # 10 min timeout for LLM calls

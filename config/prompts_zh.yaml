@@ -1042,10 +1042,82 @@ hierarchy_summary:
     - `keywords`: (List[string]) 关键主题和话题
     - `entities`: (List[string]) 提到的关键人物、项目和工具
     - `importance`: (integer) 时段活动的整体重要性（0-10）
-  user: |
-    请总结以下用户在时间段 {time_period} 内的活动。
+
+  # ── 正常摘要提示词 ──
+  daily_summary: |
+    请总结以下用户在 {time_period} 的活动。
 
     **活动记录**:
     {activity_records}
+
+    请生成JSON摘要对象。
+
+  weekly_summary: |
+    请将以下每日摘要和原始事件综合为 {time_period} 的周概览。
+
+    记录中包含每日摘要（高层级）和原始事件（详细）。请结合两个层级生成全面的周摘要，捕捉主要主题、进展和值得注意的事件。
+
+    **活动记录**:
+    {activity_records}
+
+    请生成JSON摘要对象。
+
+  monthly_summary: |
+    请将以下周摘要和日摘要综合为 {time_period} 的月概览。
+
+    记录中包含周摘要（高层级）和日摘要（详细）。请结合两个层级生成全面的月概览，捕捉主要成就、反复出现的主题和战略方向。
+
+    **活动记录**:
+    {activity_records}
+
+    请生成JSON摘要对象。
+
+  # ── 部分批次（子摘要）提示词 ──
+  daily_partial_summary: |
+    请总结此部分批次的用户活动（{time_period}）。这是第 {batch_info} 批。仅总结这些事件，保留关键细节以便后续合并。
+
+    **活动记录**:
+    {activity_records}
+
+    请生成JSON摘要对象。
+
+  weekly_partial_summary: |
+    请总结此部分批次的日摘要和事件（{time_period}）。这是第 {batch_info} 批。仅总结这些天的内容，保留关键细节以便后续合并。
+
+    **活动记录**:
+    {activity_records}
+
+    请生成JSON摘要对象。
+
+  monthly_partial_summary: |
+    请总结此部分批次的周/日摘要（{time_period}）。这是第 {batch_info} 批。仅总结这些周的内容，保留关键细节以便后续合并。
+
+    **活动记录**:
+    {activity_records}
+
+    请生成JSON摘要对象。
+
+  # ── 合并提示词 ──
+  daily_merge: |
+    请将以下部分日摘要合并为 {time_period} 的完整日摘要。消除冗余，保持时间顺序，生成统一的概览。
+
+    **部分摘要**:
+    {partial_summaries}
+
+    请生成JSON摘要对象。
+
+  weekly_merge: |
+    请将以下部分周摘要合并为 {time_period} 的完整周摘要。消除冗余，突出主要主题，生成统一的概览。
+
+    **部分摘要**:
+    {partial_summaries}
+
+    请生成JSON摘要对象。
+
+  monthly_merge: |
+    请将以下部分月摘要合并为 {time_period} 的完整月摘要。消除冗余，捕捉整体大局，生成统一的概览。
+
+    **部分摘要**:
+    {partial_summaries}
 
     请生成JSON摘要对象。
