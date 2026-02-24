@@ -20,7 +20,6 @@ from opencontext.context_consumption.completion.completion_cache import get_comp
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.enums import CompletionType
 from opencontext.storage.global_storage import get_storage
-from opencontext.tools.retrieval_tools.semantic_context_tool import SemanticContextTool
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -62,7 +61,6 @@ class CompletionService:
         self.chat_client = None
         self.cache = get_completion_cache()  # Use a dedicated cache manager
         self.prompt_manager = None  # Prompt manager
-        self.semantic_search_tool = None  # SemanticContextTool instance
 
         # Completion configuration
         self.max_context_length = 500  # Maximum context length
@@ -79,9 +77,6 @@ class CompletionService:
             self.storage = get_storage()
 
             self.prompt_manager = get_prompt_manager()
-
-            # Initialize SemanticContextTool
-            self.semantic_search_tool = SemanticContextTool()
 
             logger.info("CompletionService initialized successfully")
 
@@ -351,59 +346,9 @@ class CompletionService:
 
     def _get_reference_suggestions(self, context: Dict[str, Any]) -> List[CompletionSuggestion]:
         """Get reference suggestions (based on vector search)"""
-        suggestions = []
-
-        try:
-            if not self.semantic_search_tool:
-                return suggestions
-
-            # Use context for vector search
-            search_text = context.get("context_before", "")
-            if len(search_text) < 10:
-                return suggestions
-
-            # Use SemanticContextTool for semantic search
-            search_results = self.semantic_search_tool.execute(query=search_text, top_k=5)
-
-            # Process search results
-            for result in search_results:
-                # Check for errors
-                if "error" in result:
-                    logger.warning(f"Search error: {result['error']}")
-                    continue
-
-                # Get similarity score
-                score = result.get("similarity_score", 0)
-                if score < self.similarity_threshold:
-                    continue
-
-                # Extract relevant text snippets
-                context_text = result.get("context", "")
-                if context_text:
-                    # Find relevant sentences
-                    sentences = context_text.split(".")
-                    for sentence in sentences[:2]:  # At most 2 sentences
-                        sentence = sentence.strip()
-                        if sentence and len(sentence) > 10:
-                            # Get document description information
-                            context_desc = result.get("context_description", "")
-                            context_used = []
-                            if context_desc:
-                                context_used.append(f"Source: {context_desc}")
-
-                            suggestions.append(
-                                CompletionSuggestion(
-                                    text=sentence + ".",
-                                    completion_type=CompletionType.REFERENCE_SUGGESTION,
-                                    confidence=score,
-                                    context_used=context_used,
-                                )
-                            )
-
-        except Exception as e:
-            logger.error(f"Failed to generate reference suggestions: {e}")
-
-        return suggestions
+        # Reference suggestions require vector search which is not available
+        # in the current completion service configuration
+        return []
 
     def _rank_and_filter_suggestions(
         self, suggestions: List[CompletionSuggestion]

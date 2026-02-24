@@ -684,54 +684,6 @@ class UnifiedStorage:
             return []
         return self._document_backend.get_todos(status, limit, offset, start_time, end_time)
 
-    def insert_activity(
-        self,
-        title: str,
-        content: str,
-        resources: str = None,
-        metadata: str = None,
-        start_time: datetime = None,
-        end_time: datetime = None,
-    ) -> int:
-        """Insert activity
-
-        Args:
-            title: Activity title
-            content: Activity content
-            resources: Resource information (JSON string)
-            metadata: Metadata information (JSON string), including categories, insights etc.
-            start_time: Start time
-            end_time: End time
-
-        Returns:
-            int: Activity record ID
-        """
-        if not self._initialized:
-            logger.error("Unified storage system not initialized")
-            return None
-
-        if not self._document_backend:
-            return None
-        return self._document_backend.insert_activity(
-            title, content, resources, metadata, start_time, end_time
-        )
-
-    def get_activities(
-        self,
-        start_time: datetime = None,
-        end_time: datetime = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[Dict]:
-        """Get activities"""
-        if not self._initialized:
-            logger.error("Unified storage system not initialized")
-            return []
-
-        if not self._document_backend:
-            return []
-        return self._document_backend.get_activities(start_time, end_time, limit, offset)
-
     def insert_tip(self, content: str) -> int:
         """Insert tip"""
         if not self._initialized:

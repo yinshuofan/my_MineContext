@@ -173,22 +173,6 @@ class MySQLBackend(IDocumentStorageBackend):
             """
             )
 
-            # Activity table - activity records
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS activity (
-                    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-                    title TEXT,
-                    content LONGTEXT,
-                    resources JSON,
-                    metadata JSON,
-                    start_time DATETIME,
-                    end_time DATETIME,
-                    INDEX idx_activity_time (start_time, end_time)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """
-            )
-
             # Tips table - tips
             cursor.execute(
                 """
@@ -724,90 +708,6 @@ class MySQLBackend(IDocumentStorageBackend):
             except Exception as e:
                 logger.exception(f"Failed to update todo item status: {e}")
                 return False
-
-    # Activity table operations
-    def insert_activity(
-        self,
-        title: str,
-        content: str,
-        resources: str = None,
-        metadata: str = None,
-        start_time: datetime = None,
-        end_time: datetime = None,
-    ) -> int:
-        """Insert activity record"""
-        if not self._initialized:
-            raise RuntimeError("MySQL backend not initialized")
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute(
-                    """
-                    INSERT INTO activity (title, content, resources, metadata, start_time, end_time)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                    (
-                        title,
-                        content,
-                        resources,
-                        metadata,
-                        start_time or datetime.now(),
-                        end_time or datetime.now(),
-                    ),
-                )
-
-                activity_id = cursor.lastrowid
-                conn.commit()
-                logger.info(f"Activity record inserted, ID: {activity_id}")
-                return activity_id
-            except Exception as e:
-                logger.exception(f"Failed to insert activity record: {e}")
-                raise
-
-    def get_activities(
-        self,
-        start_time: datetime = None,
-        end_time: datetime = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[Dict]:
-        """Get activity record list"""
-        if not self._initialized:
-            return []
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            try:
-                where_conditions = []
-                params = []
-
-                if start_time:
-                    where_conditions.append("start_time >= %s")
-                    params.append(start_time)
-                if end_time:
-                    where_conditions.append("end_time <= %s")
-                    params.append(end_time)
-
-                where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-                params.extend([limit, offset])
-
-                cursor.execute(
-                    f"""
-                    SELECT id, title, content, resources, metadata, start_time, end_time
-                    FROM activity
-                    WHERE {where_clause}
-                    ORDER BY start_time DESC
-                    LIMIT %s OFFSET %s
-                """,
-                    params,
-                )
-
-                rows = cursor.fetchall()
-                return list(rows)
-            except Exception as e:
-                logger.exception(f"Failed to get activity record list: {e}")
-                return []
 
     # Tips table operations
     def insert_tip(self, content: str) -> int:

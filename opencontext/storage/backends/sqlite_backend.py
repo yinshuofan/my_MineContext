@@ -136,34 +136,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             """
             )
 
-        # Activity table - activity records
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS activity (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT,
-                content TEXT,
-                resources JSON,
-                metadata JSON,
-                start_time DATETIME,
-                end_time DATETIME
-            )
-        """
-        )
-
-        cursor.execute(
-            """
-            PRAGMA table_info(activity)
-        """
-        )
-        columns = [column[1] for column in cursor.fetchall()]
-        if "metadata" not in columns:
-            cursor.execute(
-                """
-                ALTER TABLE activity ADD COLUMN metadata JSON
-            """
-            )
-
         # Tips table - tips
         cursor.execute(
             """
@@ -866,101 +838,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             self._get_connection().rollback()
             logger.exception(f"Failed to update todo item status: {e}")
             return False
-
-    # Activity table operations
-    def insert_activity(
-        self,
-        title: str,
-        content: str,
-        resources: str = None,
-        metadata: str = None,
-        start_time: datetime = None,
-        end_time: datetime = None,
-    ) -> int:
-        """Insert activity record
-
-        Args:
-            title: Activity title
-            content: Activity content
-            resources: Resource information (JSON string)
-            metadata: Metadata information (JSON string), including category, insights, etc.
-            start_time: Start time
-            end_time: End time
-
-        Returns:
-            int: Activity record ID
-        """
-        if not self._initialized:
-            raise RuntimeError("SQLite backend not initialized")
-
-        cursor = self._get_connection().cursor()
-        try:
-            cursor.execute(
-                """
-                INSERT INTO activity (title, content, resources, metadata, start_time, end_time)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    title,
-                    content,
-                    resources,
-                    metadata,
-                    start_time or datetime.now(),
-                    end_time or datetime.now(),
-                ),
-            )
-
-            activity_id = cursor.lastrowid
-            self._get_connection().commit()
-            logger.info(f"Activity record inserted, ID: {activity_id}")
-            return activity_id
-        except Exception as e:
-            self._get_connection().rollback()
-            logger.exception(f"Failed to insert activity record: {e}")
-            raise
-
-    def get_activities(
-        self,
-        start_time: datetime = None,
-        end_time: datetime = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[Dict]:
-        """Get activity record list"""
-        if not self._initialized:
-            return []
-
-        cursor = self._get_connection().cursor()
-        try:
-            where_conditions = []
-            params = []
-
-            if start_time:
-                where_conditions.append("start_time >= ?")
-                params.append(start_time)
-            if end_time:
-                where_conditions.append("end_time <= ?")
-                params.append(end_time)
-
-            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-            params.extend([limit, offset])
-
-            cursor.execute(
-                f"""
-                SELECT id, title, content, resources, metadata, start_time, end_time
-                FROM activity
-                WHERE {where_clause}
-                ORDER BY start_time DESC
-                LIMIT ? OFFSET ?
-            """,
-                params,
-            )
-
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
-        except Exception as e:
-            logger.exception(f"Failed to get activity record list: {e}")
-            return []
 
     # Tips table operations
     def insert_tip(self, content: str) -> int:

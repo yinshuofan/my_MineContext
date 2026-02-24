@@ -141,33 +141,6 @@ processing:
     ENTITY_CONTEXT_retention_days: 365
     ENTITY_CONTEXT_max_merge_count: 5
 
-    # Activity type configuration
-    activity_context_similarity_threshold: 0.80
-    activity_context_retention_days: 90
-    activity_context_max_merge_count: 3
-    activity_context_time_window_hours: 24
-
-    # Intent type configuration
-    intent_context_similarity_threshold: 0.75
-    intent_context_retention_days: 180
-    intent_context_max_merge_count: 4
-
-    # Semantic type configuration
-    semantic_context_similarity_threshold: 0.72
-    semantic_context_retention_days: 180
-    semantic_context_max_merge_count: 6
-
-    # Procedural type configuration
-    procedural_context_similarity_threshold: 0.75
-    procedural_context_retention_days: 120
-    procedural_context_max_merge_count: 4
-
-    # State type configuration
-    state_context_similarity_threshold: 0.70
-    state_context_retention_days: 7
-    state_context_max_merge_count: 10
-    state_context_time_window_minutes: 30
-
 redis:
   enabled: true
   host: "${REDIS_HOST:localhost}"
@@ -293,30 +266,6 @@ api_auth:
 # Prompts configuration
 prompts:
   language: "zh"
-
-# Content generation service configuration
-content_generation:
-  # Debug configuration
-  debug:
-    enabled: false # Enable debug mode to save generation messages and responses
-    output_path: "${CONTEXT_PATH:.}/debug/generation" # Debug output directory
-
-  # Task configurations
-  activity:
-    enabled: true
-    interval: 900 # Seconds, minimum 600 (10 minutes), recommended 900-1800 (15-30 minutes)
-
-  tips:
-    enabled: true
-    interval: 3600 # Seconds, minimum 1800 (30 minutes), recommended 3600-7200 (1-2 hours)
-
-  todos:
-    enabled: true
-    interval: 1800 # Seconds, minimum 1800 (30 minutes), recommended 1800-3600 (30-60 minutes)
-
-  report:
-    enabled: true
-    time: "08:00" # Daily report generation time (HH:MM)
 
 tools:
   # Operation tools configuration

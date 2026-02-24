@@ -25,9 +25,6 @@ logger = get_logger(__name__)
 class EventType(str, Enum):
     """Event type enumeration"""
 
-    TIP_GENERATED = "tip"
-    TODO_GENERATED = "todo"
-    ACTIVITY_GENERATED = "activity"
     DAILY_SUMMARY_GENERATED = "daily_summary"
     WEEKLY_SUMMARY_GENERATED = "weekly_summary"
     SYSTEM_STATUS = "system_status"

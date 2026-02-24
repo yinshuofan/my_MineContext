@@ -12,7 +12,6 @@ replacing the automatic capture/pull mechanisms with a push-based architecture.
 
 import asyncio
 import base64
-import json
 import os
 import tempfile
 import uuid
@@ -173,28 +172,6 @@ class PushDocumentRequest(BaseModel):
     )
     device_id: Optional[str] = Field(
         None, min_length=1, max_length=100, description="Device identifier"
-    )
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
-
-
-class PushActivityRequest(BaseModel):
-    """Push an activity record"""
-
-    title: str = Field(..., min_length=1, max_length=500, description="Activity title")
-    content: str = Field(
-        ..., min_length=1, max_length=50000, description="Activity content/description"
-    )
-    start_time: Optional[str] = Field(None, description="Activity start time (ISO format)")
-    end_time: Optional[str] = Field(None, description="Activity end time (ISO format)")
-    resources: Optional[List[str]] = Field(None, description="Related resource paths/URLs")
-    user_id: Optional[str] = Field(
-        None, min_length=1, max_length=255, description="User identifier"
-    )
-    device_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Device identifier"
-    )
-    agent_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Agent identifier"
     )
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
@@ -611,66 +588,6 @@ async def upload_document_file(
 
 
 # ============================================================================
-# Activity Push Endpoints
-# ============================================================================
-
-
-@router.post("/activity", response_class=JSONResponse)
-async def push_activity(
-    request: PushActivityRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push an activity record to the storage.
-    """
-    try:
-        storage = opencontext.storage
-        if storage is None:
-            return convert_resp(code=503, status=503, message="Storage not available")
-
-        start_time = _parse_datetime(request.start_time) or datetime.now()
-        end_time = _parse_datetime(request.end_time) or datetime.now()
-
-        resources_json = (
-            json.dumps(request.resources, ensure_ascii=False) if request.resources else None
-        )
-        metadata_json = (
-            json.dumps(request.metadata, ensure_ascii=False) if request.metadata else None
-        )
-
-        activity_id = await asyncio.wait_for(
-            asyncio.to_thread(
-                storage.insert_activity,
-                title=request.title,
-                content=request.content,
-                resources=resources_json,
-                metadata=metadata_json,
-                start_time=start_time,
-                end_time=end_time,
-            ),
-            timeout=60.0,
-        )
-
-        # Schedule hierarchy summary task for the user
-        await _schedule_user_hierarchy_summary(
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-        )
-
-        return convert_resp(
-            message="Activity pushed successfully", data={"activity_id": activity_id}
-        )
-    except asyncio.TimeoutError:
-        logger.warning("Push activity timed out after 60s")
-        return convert_resp(code=504, status=504, message="Request timed out")
-    except Exception as e:
-        logger.exception(f"Error pushing activity: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-
-# ============================================================================
 # Generic Context Push Endpoints
 # ============================================================================
 
@@ -735,7 +652,7 @@ class BatchPushItem(BaseModel):
     """A single item in a batch push request"""
 
     type: str = Field(
-        ..., min_length=1, max_length=30, description="Item type: chat, document, activity, context"
+        ..., min_length=1, max_length=30, description="Item type: chat, document, context"
     )
     data: Dict[str, Any] = Field(
         ..., description="Item data matching the corresponding push request schema"
@@ -794,23 +711,6 @@ async def push_batch(
                         item_result["success"] = err is None
                         if err:
                             item_result["error"] = err
-
-                elif item.type == "activity":
-                    if storage:
-                        activity_id = storage.insert_activity(
-                            title=item.data.get("title", ""),
-                            content=item.data.get("content", ""),
-                            resources=json.dumps(item.data.get("resources"))
-                            if item.data.get("resources")
-                            else None,
-                            metadata=json.dumps(item.data.get("metadata"))
-                            if item.data.get("metadata")
-                            else None,
-                            start_time=_parse_datetime(item.data.get("start_time")),
-                            end_time=_parse_datetime(item.data.get("end_time")),
-                        )
-                        item_result["success"] = True
-                        item_result["id"] = activity_id
 
                 else:
                     item_result["error"] = f"Unknown item type: {item.type}"

@@ -122,28 +122,7 @@ curl -X POST http://localhost:1733/api/push/document/upload \
 
 
 # ============================================================================
-# 4. Push - Activity
-# ============================================================================
-
-# Push Activity Record
-curl -X POST http://localhost:1733/api/push/activity \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Team standup meeting",
-    "content": "Discussed sprint progress: frontend auth module 80% complete, backend API refactoring started. Blockers: waiting for design review on settings page.",
-    "start_time": "2026-02-24T09:00:00Z",
-    "end_time": "2026-02-24T09:30:00Z",
-    "resources": ["https://jira.example.com/sprint/42"],
-    "user_id": "user_001",
-    "device_id": "default",
-    "agent_id": "default",
-    "metadata": {"meeting_type": "standup"}
-  }'
-# -H "X-API-Key: your-api-key"
-
-
-# ============================================================================
-# 5. Push - Context
+# 4. Push - Context
 # ============================================================================
 
 # Push Generic Context
@@ -164,7 +143,7 @@ curl -X POST http://localhost:1733/api/push/context \
 
 
 # ============================================================================
-# 6. Push - Batch
+# 5. Push - Batch
 # ============================================================================
 
 # Batch Push (multiple types in one request)
@@ -180,10 +159,9 @@ curl -X POST http://localhost:1733/api/push/batch \
         }
       },
       {
-        "type": "activity",
+        "type": "document",
         "data": {
-          "title": "Code review session",
-          "content": "Reviewed PR #234 for the auth module refactoring"
+          "file_path": "/path/to/report.pdf"
         }
       }
     ],
@@ -194,7 +172,7 @@ curl -X POST http://localhost:1733/api/push/batch \
 
 
 # ============================================================================
-# 7. Search
+# 6. Search
 # ============================================================================
 
 # Unified Search (fast strategy)
@@ -240,7 +218,7 @@ curl -X POST http://localhost:1733/api/vector_search \
 
 
 # ============================================================================
-# 8. Memory Cache
+# 7. Memory Cache
 # ============================================================================
 
 # Get Memory Cache Snapshot
@@ -253,7 +231,7 @@ curl -X DELETE "http://localhost:1733/api/memory-cache?user_id=user_001&device_i
 
 
 # ============================================================================
-# 9. Contexts
+# 8. Contexts
 # ============================================================================
 
 # Get Context Detail (HTML)
@@ -284,7 +262,7 @@ curl -X POST http://localhost:1733/contexts/delete \
 
 
 # ============================================================================
-# 10. Agent Chat
+# 9. Agent Chat
 # ============================================================================
 
 # Agent Chat (synchronous)
@@ -335,7 +313,7 @@ curl -X GET http://localhost:1733/api/agent/test
 
 
 # ============================================================================
-# 11. Conversations
+# 10. Conversations
 # ============================================================================
 
 # Create Conversation
@@ -369,7 +347,7 @@ curl -X DELETE http://localhost:1733/api/agent/chat/conversations/1/update
 
 
 # ============================================================================
-# 12. Messages
+# 11. Messages
 # ============================================================================
 
 # Create Message
@@ -428,7 +406,7 @@ curl -X POST http://localhost:1733/api/agent/chat/messages/2/interrupt
 
 
 # ============================================================================
-# 13. Documents & WebLinks
+# 12. Documents & WebLinks
 # ============================================================================
 
 # Upload Document (via file path)
@@ -450,7 +428,7 @@ curl -X POST http://localhost:1733/api/weblinks/upload \
 
 
 # ============================================================================
-# 14. Vaults (Document Management)
+# 13. Vaults (Document Management)
 # ============================================================================
 
 # List Vault Documents
@@ -495,7 +473,7 @@ curl -X GET http://localhost:1733/api/vaults/1/context
 
 
 # ============================================================================
-# 15. Events
+# 14. Events
 # ============================================================================
 
 # Fetch and Clear Events
@@ -521,7 +499,7 @@ curl -X POST http://localhost:1733/api/events/publish \
 
 
 # ============================================================================
-# 16. Monitoring
+# 15. Monitoring
 # ============================================================================
 
 # System Overview
@@ -570,7 +548,7 @@ curl -X GET "http://localhost:1733/api/monitoring/processing-errors?hours=1&top=
 
 
 # ============================================================================
-# 17. Settings - Model
+# 16. Settings - Model
 # ============================================================================
 
 # Get Model Settings
@@ -613,7 +591,7 @@ curl -X POST http://localhost:1733/api/model_settings/validate \
 
 
 # ============================================================================
-# 18. Settings - General
+# 17. Settings - General
 # ============================================================================
 
 # Get General Settings
@@ -638,7 +616,7 @@ curl -X POST http://localhost:1733/api/settings/general \
 
 
 # ============================================================================
-# 19. Settings - Prompts
+# 18. Settings - Prompts
 # ============================================================================
 
 # Get Prompts
@@ -682,7 +660,7 @@ curl -X POST http://localhost:1733/api/settings/prompts/language \
 
 
 # ============================================================================
-# 20. Settings - Reset
+# 19. Settings - Reset
 # ============================================================================
 
 # Reset All Settings to Defaults
@@ -697,6 +675,4 @@ curl -X POST http://localhost:1733/api/settings/reset
 # The following route modules exist but are NOT registered in the main router:
 # - screenshots.py  (POST /api/add_screenshot, /api/add_screenshots)
 # - completions.py  (POST /api/completions/suggest, etc.)
-# - content_generation.py (GET/POST /api/content_generation/config)
-# - debug.py        (GET/POST /api/debug/*)
 # These endpoints will NOT be accessible unless their routers are added to api.py.
