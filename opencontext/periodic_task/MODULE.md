@@ -1,0 +1,347 @@
+# periodic_task/ -- Task implementations and registry for the scheduler
+
+Defines the `IPeriodicTask` interface, a registry for task discovery, and three concrete task implementations (memory compression, data cleanup, hierarchy summary).
+
+## File Overview
+
+| File | Responsibility |
+|------|---------------|
+| `base.py` | ABCs (`IPeriodicTask`, `IPeriodicTaskRegistry`), base class `BasePeriodicTask`, dataclasses (`TaskContext`, `TaskResult`), enum `TaskPriority` |
+| `registry.py` | `PeriodicTaskRegistry` -- in-memory task registry; global singleton via `get_registry()` |
+| `memory_compression.py` | `MemoryCompressionTask` -- deduplicates similar knowledge contexts per user (`user_activity`) |
+| `data_cleanup.py` | `DataCleanupTask` -- retention-based data cleanup (`periodic`, global) |
+| `hierarchy_summary.py` | `HierarchySummaryTask` -- generates L1/L2/L3 event summaries (`user_activity`) |
+| `__init__.py` | Re-exports all public symbols including `create_*_handler` factory functions |
+
+## Key Classes and Functions
+
+### TaskPriority (enum)
+
+```python
+class TaskPriority(int, Enum):
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+    CRITICAL = 3
+```
+
+Defined but not currently used by any scheduling logic.
+
+### TaskResult (dataclass)
+
+| Field | Type | Default |
+|-------|------|---------|
+| `success` | `bool` | -- |
+| `message` | `str` | `""` |
+| `data` | `Optional[Dict[str, Any]]` | `None` |
+| `error` | `Optional[str]` | `None` |
+| `execution_time_ms` | `int` | `0` |
+
+Factory methods: `TaskResult.ok(message, data) -> TaskResult`, `TaskResult.fail(error, message) -> TaskResult`
+
+### TaskContext (dataclass)
+
+Execution context passed to every task. Created by handler factory functions.
+
+| Field | Type | Default |
+|-------|------|---------|
+| `user_id` | `str` | -- |
+| `device_id` | `Optional[str]` | `None` |
+| `agent_id` | `Optional[str]` | `None` |
+| `task_type` | `str` | `""` |
+| `retry_count` | `int` | `0` |
+| `extra` | `Dict[str, Any]` | `{}` |
+
+Property: `user_key -> str` (joins non-None fields with `":"`)
+
+### IPeriodicTask (ABC)
+
+| Member | Signature | Description |
+|--------|-----------|-------------|
+| `name` | `@property -> str` | Unique task type name |
+| `description` | `@property -> str` | Human-readable description |
+| `default_config` | `@property -> TaskConfig` | Default `TaskConfig` for registration |
+| `execute` | `(context: TaskContext) -> TaskResult` | Synchronous execution (main entry) |
+| `execute_async` | `async (context: TaskContext) -> TaskResult` | Async execution |
+| `validate_context` | `(context: TaskContext) -> bool` | Pre-execution validation (default: `True`) |
+| `on_success` | `(context, result) -> None` | Post-success callback (default: no-op) |
+| `on_failure` | `(context, result) -> None` | Post-failure callback (default: no-op) |
+| `should_retry` | `(context, result) -> bool` | Retry logic (default: retry if `retry_count < max_retries`) |
+
+### BasePeriodicTask
+
+Concrete base implementing `IPeriodicTask`. Subclasses override `execute()`.
+
+**Constructor**: `__init__(name, description="", trigger_mode=TriggerMode.USER_ACTIVITY, interval=1800, timeout=300, task_ttl=7200, max_retries=3)`
+
+- `default_config` property builds a `TaskConfig` from constructor args
+- `execute()` raises `NotImplementedError`
+- `execute_async()` wraps `execute()` with `run_in_executor`
+
+### IPeriodicTaskRegistry (ABC)
+
+| Method | Signature |
+|--------|-----------|
+| `register` | `(task: IPeriodicTask) -> bool` |
+| `unregister` | `(task_name: str) -> bool` |
+| `get` | `(task_name: str) -> Optional[IPeriodicTask]` |
+| `get_all` | `() -> Dict[str, IPeriodicTask]` |
+| `get_enabled_tasks` | `() -> Dict[str, IPeriodicTask]` |
+
+### PeriodicTaskRegistry
+
+In-memory implementation. Maintains `_tasks: Dict[str, IPeriodicTask]` and `_enabled: Dict[str, bool]`.
+
+Additional methods: `enable(task_name) -> bool`, `disable(task_name) -> bool`, `is_enabled(task_name) -> bool`
+
+**Global singleton functions**:
+- `get_registry() -> PeriodicTaskRegistry` -- lazy-creates on first call
+- `register_task(task: IPeriodicTask) -> bool` -- convenience wrapper
+- `get_task(task_name: str) -> Optional[IPeriodicTask]` -- convenience wrapper
+
+### MemoryCompressionTask
+
+Deduplicates similar knowledge contexts for a specific user.
+
+| Property | Value |
+|----------|-------|
+| `name` | `"memory_compression"` |
+| `trigger_mode` | `USER_ACTIVITY` |
+| `interval` | `172800` (48 hours) |
+| `timeout` | `300` |
+
+**Constructor**: `__init__(context_merger=None, interval=172800, timeout=300)`
+
+- `set_context_merger(context_merger) -> None` -- late injection
+- `execute(context)` -- calls `context_merger.periodic_memory_compression_for_user(user_id, device_id, agent_id, interval_seconds)` or falls back to `periodic_memory_compression(interval_seconds)`
+- `validate_context(context) -> bool` -- requires non-empty `user_id`
+
+**Factory**: `create_compression_handler(context_merger) -> TaskHandler`
+
+### DataCleanupTask
+
+Global retention-based cleanup. Delegates to `ContextMerger.intelligent_memory_cleanup()`.
+
+| Property | Value |
+|----------|-------|
+| `name` | `"data_cleanup"` |
+| `trigger_mode` | `PERIODIC` |
+| `interval` | `86400` (24 hours) |
+| `timeout` | `600` |
+
+**Constructor**: `__init__(context_merger=None, storage=None, interval=86400, timeout=600, retention_days=30)`
+
+- `set_context_merger(context_merger) -> None` / `set_storage(storage) -> None` -- late injection
+- `execute(context)` -- tries `context_merger.intelligent_memory_cleanup()`, then `cleanup_contexts_by_type()`, then falls back to storage `cleanup_expired_data()` or `delete_old_contexts()`
+- Handler receives `(None, None, None)` from periodic scheduler -- uses `"global"` as user_id
+
+**Factory**: `create_cleanup_handler(context_merger=None, storage=None, retention_days=30) -> TaskHandler`
+
+### HierarchySummaryTask
+
+Generates hierarchical time-based summaries (L1 daily, L2 weekly, L3 monthly) for EVENT contexts.
+
+| Property | Value |
+|----------|-------|
+| `name` | `"hierarchy_summary"` |
+| `trigger_mode` | `USER_ACTIVITY` |
+| `interval` | `86400` (24 hours) |
+| `timeout` | `600` |
+| `task_ttl` | `14400` |
+| `max_retries` | `2` |
+
+**Constructor**: `__init__(interval=86400, timeout=600)`
+
+No external dependency injection -- uses `get_storage()` and LLM globals directly.
+
+**Core flow in `execute(context)`**:
+1. Generate L1 daily summary for yesterday
+2. Generate L2 weekly summary for the most recent completed ISO week
+3. Generate L3 monthly summary for the most recent completed month
+
+Each `_generate_{level}_summary()` method:
+1. Checks for existing summary via `storage.search_hierarchy()` (idempotent dedup)
+2. Queries child-level data from storage
+3. Formats content, handles token overflow via batch splitting
+4. Calls LLM, stores result as `ProcessedContext`
+
+**Content formatting methods** (all `@staticmethod`):
+
+| Method | Input | Output |
+|--------|-------|--------|
+| `_format_l0_events(contexts)` | L0 events | Numbered lines: `[i] Title | Time | Summary | Keywords` |
+| `_format_weekly_hierarchical(l1_summaries, l0_events_by_day)` | L1 + L0 | Day-grouped: `=== Daily Summary: date ===` with nested raw events |
+| `_format_monthly_hierarchical(l2_summaries, l1_by_week)` | L2 + L1 | Week-grouped: `=== Weekly Summary: week ===` with nested daily summaries |
+
+**Token overflow handling**:
+
+Constants: `_MAX_INPUT_TOKENS = 60000`, `_BATCH_TOKEN_TARGET = 25000`, `_PROMPT_OVERHEAD_TOKENS = 800`
+
+| Method | Level | Batching strategy |
+|--------|-------|-------------------|
+| `_batch_summarize_and_merge(contexts, level, time_bucket, format_fn)` | L1 | Split by token budget per context |
+| `_batch_summarize_weekly(l1_contexts, l0_events_by_day, time_bucket)` | L2 | Split by day-groups (3 days per batch) |
+| `_batch_summarize_monthly(l2_contexts, l1_by_week, time_bucket)` | L3 | Split by week-groups (2 weeks per batch) |
+
+Each overflow handler: format -> check tokens -> if over limit, split into batches -> generate sub-summaries -> merge via `_call_llm_for_merge()`.
+
+**LLM interaction**:
+
+| Method | Purpose |
+|--------|---------|
+| `_call_llm_for_summary(formatted_content, level, time_bucket, is_partial?, batch_info?)` | Generate summary from formatted content |
+| `_call_llm_for_merge(sub_summaries_text, level, time_bucket)` | Merge partial sub-summaries into one |
+
+Prompt resolution: prompt group `"hierarchy_summary"` from YAML -> `{level}_summary` / `{level}_partial_summary` / `{level}_merge` keys -> fallback to `_FALLBACK_PROMPTS` dict.
+
+**Storage**: `_store_summary(user_id, summary_text, level, time_bucket, children_ids) -> Optional[ProcessedContext]` -- builds `ProcessedContext` with hierarchy fields, generates embedding via `do_vectorize()`, calls `storage.upsert_processed_context()`.
+
+**Factory**: `create_hierarchy_handler() -> TaskHandler`
+
+## Class Hierarchy
+
+```
+IPeriodicTask (ABC)
+  └── BasePeriodicTask
+        ├── MemoryCompressionTask
+        ├── DataCleanupTask
+        └── HierarchySummaryTask
+
+IPeriodicTaskRegistry (ABC)
+  └── PeriodicTaskRegistry
+```
+
+## Internal Data Flow
+
+### Task registration and handler wiring (at startup)
+
+```
+cli.py / opencontext.py startup
+  ├─ Create task instances (MemoryCompressionTask, DataCleanupTask, HierarchySummaryTask)
+  ├─ register_task() -> PeriodicTaskRegistry (in-memory)
+  ├─ create_*_handler() -> TaskHandler function (closure over task instance)
+  └─ scheduler.register_handler(task_type, handler)  -- wires handler into RedisTaskScheduler
+```
+
+### Task execution (triggered by scheduler)
+
+```
+RedisTaskScheduler._process_task_type() or _process_periodic_tasks()
+  └─> handler(user_id, device_id, agent_id)  -- the closure from create_*_handler()
+        ├─ Build TaskContext(user_id, device_id, agent_id, task_type)
+        ├─ task.validate_context(context)  -- returns False if user_id missing (for user_activity tasks)
+        ├─ task.execute(context) -> TaskResult
+        └─> return result.success
+```
+
+### HierarchySummaryTask execution detail
+
+```
+execute(context)
+  ├─> _generate_daily_summary(user_id, yesterday)
+  │     ├─ search_hierarchy(level=1, time_bucket=yesterday) -- dedup check
+  │     ├─ get_all_processed_contexts(EVENT, filter={event_time_ts, hierarchy_level=0})
+  │     ├─ _batch_summarize_and_merge(l0_events, level=1, ..., _format_l0_events)
+  │     │     ├─ If fits: _call_llm_for_summary()
+  │     │     └─ If overflow: _split_into_batches() -> partial summaries -> _call_llm_for_merge()
+  │     └─ _store_summary(level=1, time_bucket=yesterday, children_ids=[l0 ids])
+  │
+  ├─> _generate_weekly_summary(user_id, prev_week)
+  │     ├─ search_hierarchy(level=2, time_bucket=week) -- dedup check
+  │     ├─ search_hierarchy(level=1, week date range) -- fetch L1 summaries
+  │     ├─ get_all_processed_contexts(EVENT, filter={event_time_ts, hierarchy_level=0}) -- fetch L0
+  │     ├─ _batch_summarize_weekly(l1, l0_by_day, week_str)
+  │     └─ _store_summary(level=2, time_bucket=week, children_ids=[l1 + l0 ids])
+  │
+  └─> _generate_monthly_summary(user_id, prev_month)
+        ├─ search_hierarchy(level=3, time_bucket=month) -- dedup check
+        ├─ For each ISO week in month:
+        │     ├─ search_hierarchy(level=2, week) -- fetch L2 summaries
+        │     └─ search_hierarchy(level=1, week date range) -- fetch L1 summaries
+        ├─ _batch_summarize_monthly(l2, l1_by_week, month_str)
+        └─ _store_summary(level=3, time_bucket=month, children_ids=[l2 + l1 ids])
+```
+
+## Cross-Module Dependencies
+
+**Imports from**:
+- `opencontext.scheduler.base` -- `TaskConfig`, `TriggerMode` (used by all task classes)
+- `opencontext.storage.global_storage.get_storage` -- hierarchy_summary accesses storage directly
+- `opencontext.llm.global_vlm_client.generate_with_messages` -- hierarchy_summary LLM calls
+- `opencontext.llm.global_embedding_client.do_vectorize` -- hierarchy_summary embedding generation
+- `opencontext.config.global_config.get_prompt_group` -- hierarchy_summary prompt resolution
+- `opencontext.models.context` -- `ProcessedContext`, `ContextProperties`, `ExtractedData`, `Vectorize`
+- `opencontext.models.enums` -- `ContextType`, `ContentFormat`
+
+**Depended on by**:
+- `opencontext.server.opencontext` -- creates task instances, calls `register_task()`, creates handlers
+- `opencontext.server.push` -- calls `_schedule_user_hierarchy_summary()` which calls `scheduler.schedule_user_task("hierarchy_summary", ...)`
+
+## Conventions and Constraints
+
+- **Handlers must be synchronous**: The scheduler calls handlers via `run_in_executor()`. The `create_*_handler()` factories return sync closures that call `task.execute()`.
+- **`validate_context` gates execution**: For `user_activity` tasks (`MemoryCompressionTask`, `HierarchySummaryTask`), `validate_context()` requires non-empty `user_id`. Periodic tasks receive `None` user_id from the scheduler.
+- **Idempotent summary generation**: `HierarchySummaryTask` checks for existing summaries before generating. Safe to re-trigger.
+- **Late dependency injection**: `MemoryCompressionTask` and `DataCleanupTask` accept `context_merger`/`storage` via constructor or `set_*()` methods. `HierarchySummaryTask` uses globals (`get_storage()`, LLM singletons).
+- **Handler factory pattern**: Each task has a `create_*_handler()` function that returns a `TaskHandler`-compatible closure. This is what gets registered with the scheduler via `scheduler.register_handler()`.
+
+## Extension Points
+
+### Adding a new periodic task
+
+1. **Create task class** in a new file (e.g., `opencontext/periodic_task/my_task.py`):
+
+```python
+from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
+from opencontext.scheduler.base import TriggerMode
+
+class MyTask(BasePeriodicTask):
+    def __init__(self, interval: int = 3600, timeout: int = 300):
+        super().__init__(
+            name="my_task",                    # Must match config key in config.yaml
+            description="What this task does",
+            trigger_mode=TriggerMode.USER_ACTIVITY,  # or PERIODIC for global tasks
+            interval=interval,
+            timeout=timeout,
+        )
+
+    def execute(self, context: TaskContext) -> TaskResult:
+        # Implementation here
+        return TaskResult.ok("Done")
+
+    def validate_context(self, context: TaskContext) -> bool:
+        return bool(context.user_id)  # Required for USER_ACTIVITY tasks
+
+def create_my_handler():
+    task = MyTask()
+    def handler(user_id, device_id, agent_id):
+        ctx = TaskContext(user_id=user_id, device_id=device_id,
+                          agent_id=agent_id, task_type="my_task")
+        if not task.validate_context(ctx):
+            return False
+        return task.execute(ctx).success
+    return handler
+```
+
+2. **Register in `__init__.py`**: Add imports and `__all__` entries.
+
+3. **Add config** in `config/config.yaml` under `scheduler.tasks`:
+
+```yaml
+scheduler:
+  tasks:
+    my_task:
+      enabled: true
+      trigger_mode: "user_activity"  # or "periodic"
+      interval: 3600
+      timeout: 300
+```
+
+4. **Wire up in `opencontext.py`** startup: create handler, register with scheduler:
+
+```python
+handler = create_my_handler()
+scheduler.register_handler("my_task", handler)
+```
+
+5. **For `user_activity` tasks**: call `scheduler.schedule_user_task("my_task", user_id, ...)` from the appropriate push endpoint.

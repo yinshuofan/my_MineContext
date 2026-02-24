@@ -299,6 +299,24 @@ InnoDB with utf8mb4 has a max key length of 3072 bytes. Each `VARCHAR(N)` uses `
 - **New storage backend**: Implement `IVectorStorageBackend` or `IDocumentStorageBackend` from `base_storage.py`, register in factory
 - **New retrieval tool**: Extend `BaseTool`, register in `tool_definitions.py` and `tools_executor.py`
 
+## Module Documentation
+
+Each core module has a `MODULE.md` file providing implementation-level documentation for AI assistants. These files document class responsibilities, method signatures, data flow, and extension patterns.
+
+**Modules with MODULE.md:**
+- `opencontext/models/` -- Core data models and enums
+- `opencontext/config/` -- Configuration loading and prompt management
+- `opencontext/llm/` -- LLM client singletons
+- `opencontext/storage/` -- Dual-backend storage layer
+- `opencontext/context_capture/` -- Input source capture components
+- `opencontext/context_processing/` -- Processing pipeline (processors, chunkers, merger)
+- `opencontext/tools/` -- Retrieval tool framework and implementations
+- `opencontext/server/` -- FastAPI server, routes, search strategies, cache
+- `opencontext/scheduler/` -- Task scheduling (Redis-backed)
+- `opencontext/periodic_task/` -- Periodic task implementations
+
+**Maintenance rule**: When modifying a module's internal structure (adding/removing classes, changing method signatures, altering data flow), update the corresponding `MODULE.md` to keep it accurate.
+
 ## API Documentation
 
 - `docs/curls.sh` — All API endpoints as cURL commands, organized by category. Used for Apifox import and as a quick API reference.
