@@ -206,9 +206,8 @@ def convert_resp(data=None, code=0, status=200, message="success") -> JSONRespon
 | POST | `/api/push/chat` | `push_chat` | Unified chat push (buffer or direct mode) |
 | POST | `/api/push/document` | `push_document` | Push document (file_path or base64) |
 | POST | `/api/push/document/upload` | `upload_document_file` | Upload document via multipart form |
-| POST | `/api/push/context` | `push_context` | Push generic context item |
 
-Push endpoints that schedule hierarchy summary: `push_chat` (both modes), `push_context`.
+Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 
 ### Search Routes (`/api/*`)
 

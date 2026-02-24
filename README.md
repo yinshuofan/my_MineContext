@@ -121,7 +121,6 @@ docker-compose up
 | `/api/push/document` | POST | 推送文档（本地路径或 Base64） |
 | `/api/push/document/upload` | POST | 上传文档文件 |
 | `/api/push/activity` | POST | 推送活动记录 |
-| `/api/push/context` | POST | 推送通用上下文 |
 
 **示例：推送聊天记录**
 

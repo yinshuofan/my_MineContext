@@ -15,15 +15,12 @@ import base64
 import os
 import tempfile
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
-from opencontext.models.context import RawContextProperties
-from opencontext.models.enums import ContentFormat, ContextSource
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.opencontext import OpenContext
 from opencontext.server.utils import convert_resp, get_context_lab
@@ -139,35 +136,6 @@ class PushDocumentRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
-class PushContextRequest(BaseModel):
-    """Push a generic context item"""
-
-    source: str = Field(..., min_length=1, max_length=50, description="Context source type")
-    content_format: str = Field("text", min_length=1, max_length=20, description="Content format")
-    content_text: Optional[str] = Field(None, max_length=100000, description="Text content")
-    content_images: Optional[List[str]] = Field(
-        None, max_length=20, description="Image paths or base64 data"
-    )
-    create_time: Optional[str] = Field(None, description="Creation time (ISO format)")
-    user_id: Optional[str] = Field(
-        None, min_length=1, max_length=255, description="User identifier"
-    )
-    device_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Device identifier"
-    )
-    agent_id: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Agent identifier"
-    )
-    additional_info: Optional[Dict[str, Any]] = Field(None, description="Additional context info")
-    enable_merge: bool = Field(True, description="Whether to enable context merging")
-
-    @model_validator(mode="after")
-    def check_content_provided(self):
-        if not self.content_text and not self.content_images:
-            raise ValueError("At least one of content_text or content_images must be provided")
-        return self
-
-
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -209,51 +177,6 @@ def _save_base64_to_temp_file(base64_data: str, filename: str, storage_dir: str 
     except Exception as e:
         logger.exception(f"Failed to save base64 data to file: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid base64 data: {e}")
-
-
-def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
-    """Parse datetime string to datetime object"""
-    if not dt_str:
-        return None
-    try:
-        # Try ISO format first
-        return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-    except ValueError:
-        try:
-            # Try common formats
-            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S"]:
-                try:
-                    return datetime.strptime(dt_str, fmt)
-                except ValueError:
-                    continue
-        except Exception:
-            pass
-    return None
-
-
-def _get_source_enum(source_str: str) -> ContextSource:
-    """Convert source string to ContextSource enum"""
-    source_map = {
-        "document": ContextSource.LOCAL_FILE,
-        "chat": ContextSource.CHAT_LOG,
-        "vault": ContextSource.VAULT,
-        "input": ContextSource.INPUT,
-        "local_file": ContextSource.LOCAL_FILE,
-        "web_link": ContextSource.WEB_LINK,
-    }
-    return source_map.get(source_str.lower(), ContextSource.INPUT)
-
-
-def _get_format_enum(format_str: str) -> ContentFormat:
-    """Convert format string to ContentFormat enum"""
-    format_map = {
-        "text": ContentFormat.TEXT,
-        "image": ContentFormat.IMAGE,
-        "markdown": ContentFormat.MARKDOWN,
-        "pdf": ContentFormat.PDF,
-        "html": ContentFormat.HTML,
-    }
-    return format_map.get(format_str.lower(), ContentFormat.TEXT)
 
 
 # ============================================================================
@@ -432,62 +355,6 @@ async def upload_document_file(
         )
     except Exception as e:
         logger.exception(f"Error uploading document: {e}")
-        return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-
-# ============================================================================
-# Generic Context Push Endpoints
-# ============================================================================
-
-
-@router.post("/context", response_class=JSONResponse)
-async def push_context(
-    request: PushContextRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
-    _auth: str = auth_dependency,
-):
-    """
-    Push a generic context item to the processing pipeline.
-    This is a flexible endpoint that can handle various context types.
-    """
-    try:
-        create_time = _parse_datetime(request.create_time) or datetime.now()
-
-        # Build RawContextProperties
-        raw_context = RawContextProperties(
-            source=_get_source_enum(request.source),
-            content_format=_get_format_enum(request.content_format),
-            content_text=request.content_text,
-            content_images=request.content_images,
-            create_time=create_time,
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-            additional_info=request.additional_info or {},
-            enable_merge=request.enable_merge,
-        )
-
-        # Process context with timeout protection
-        success = await asyncio.wait_for(
-            asyncio.to_thread(opencontext.add_context, raw_context),
-            timeout=60.0,
-        )
-
-        if success:
-            # Schedule hierarchy summary task for the user
-            await _schedule_user_hierarchy_summary(
-                user_id=request.user_id,
-                device_id=request.device_id,
-                agent_id=request.agent_id,
-            )
-            return convert_resp(message="Context pushed successfully")
-        else:
-            return convert_resp(code=500, status=500, message="Failed to process context")
-    except asyncio.TimeoutError:
-        logger.warning("Push context timed out after 60s")
-        return convert_resp(code=504, status=504, message="Request timed out")
-    except Exception as e:
-        logger.exception(f"Error pushing context: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
 
 

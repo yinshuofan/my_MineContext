@@ -115,28 +115,7 @@ curl -X POST http://localhost:1733/api/push/document/upload \
 
 
 # ============================================================================
-# 4. Push - Context
-# ============================================================================
-
-# Push Generic Context
-curl -X POST http://localhost:1733/api/push/context \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "clipboard",
-    "content_format": "text",
-    "content_text": "Best practices for microservice architecture: use API gateways, implement circuit breakers, and adopt event-driven communication.",
-    "create_time": "2026-02-24T10:30:00Z",
-    "user_id": "user_001",
-    "device_id": "default",
-    "agent_id": "default",
-    "additional_info": {"topic": "architecture"},
-    "enable_merge": true
-  }'
-# -H "X-API-Key: your-api-key"
-
-
-# ============================================================================
-# 5. Search
+# 4. Search
 # ============================================================================
 
 # Unified Search (fast strategy)
@@ -182,7 +161,7 @@ curl -X POST http://localhost:1733/api/vector_search \
 
 
 # ============================================================================
-# 6. Memory Cache
+# 5. Memory Cache
 # ============================================================================
 
 # Get Memory Cache Snapshot
@@ -195,7 +174,7 @@ curl -X DELETE "http://localhost:1733/api/memory-cache?user_id=user_001&device_i
 
 
 # ============================================================================
-# 7. Contexts
+# 6. Contexts
 # ============================================================================
 
 # Get Context Detail (HTML)
@@ -226,7 +205,7 @@ curl -X POST http://localhost:1733/contexts/delete \
 
 
 # ============================================================================
-# 8. Agent Chat
+# 7. Agent Chat
 # ============================================================================
 
 # Agent Chat (synchronous)
@@ -277,7 +256,7 @@ curl -X GET http://localhost:1733/api/agent/test
 
 
 # ============================================================================
-# 9. Conversations
+# 8. Conversations
 # ============================================================================
 
 # Create Conversation
@@ -311,7 +290,7 @@ curl -X DELETE http://localhost:1733/api/agent/chat/conversations/1/update
 
 
 # ============================================================================
-# 10. Messages
+# 9. Messages
 # ============================================================================
 
 # Create Message
@@ -370,7 +349,7 @@ curl -X POST http://localhost:1733/api/agent/chat/messages/2/interrupt
 
 
 # ============================================================================
-# 11. Documents & WebLinks
+# 10. Documents & WebLinks
 # ============================================================================
 
 # Upload Document (via file path)
@@ -392,7 +371,7 @@ curl -X POST http://localhost:1733/api/weblinks/upload \
 
 
 # ============================================================================
-# 12. Vaults (Document Management)
+# 11. Vaults (Document Management)
 # ============================================================================
 
 # List Vault Documents
@@ -437,7 +416,7 @@ curl -X GET http://localhost:1733/api/vaults/1/context
 
 
 # ============================================================================
-# 13. Monitoring
+# 12. Monitoring
 # ============================================================================
 
 # System Overview
@@ -486,7 +465,7 @@ curl -X GET "http://localhost:1733/api/monitoring/processing-errors?hours=1&top=
 
 
 # ============================================================================
-# 14. Settings - Model
+# 13. Settings - Model
 # ============================================================================
 
 # Get Model Settings
@@ -529,7 +508,7 @@ curl -X POST http://localhost:1733/api/model_settings/validate \
 
 
 # ============================================================================
-# 15. Settings - General
+# 14. Settings - General
 # ============================================================================
 
 # Get General Settings
@@ -554,7 +533,7 @@ curl -X POST http://localhost:1733/api/settings/general \
 
 
 # ============================================================================
-# 16. Settings - Prompts
+# 15. Settings - Prompts
 # ============================================================================
 
 # Get Prompts
@@ -598,7 +577,7 @@ curl -X POST http://localhost:1733/api/settings/prompts/language \
 
 
 # ============================================================================
-# 17. Settings - Reset
+# 16. Settings - Reset
 # ============================================================================
 
 # Reset All Settings to Defaults
