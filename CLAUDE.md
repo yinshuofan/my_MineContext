@@ -298,3 +298,8 @@ InnoDB with utf8mb4 has a max key length of 3072 bytes. Each `VARCHAR(N)` uses `
 - **New processor**: Extend `BaseContextProcessor`, implement `can_process()` and `process()`, register in `ProcessorFactory`
 - **New storage backend**: Implement `IVectorStorageBackend` or `IDocumentStorageBackend` from `base_storage.py`, register in factory
 - **New retrieval tool**: Extend `BaseTool`, register in `tool_definitions.py` and `tools_executor.py`
+
+## API Documentation
+
+- `docs/curls.sh` — All API endpoints as cURL commands, organized by category. Used for Apifox import and as a quick API reference.
+- **Maintenance rule**: When adding, modifying, or removing API endpoints, update `docs/curls.sh` to keep it in sync.
