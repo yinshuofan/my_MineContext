@@ -30,7 +30,7 @@ async def api_health_check(opencontext: OpenContext = Depends(get_context_lab)):
         health_data = {
             "status": "healthy",
             "service": "opencontext",
-            "components": opencontext.check_components_health(),
+            "components": await opencontext.check_components_health(),
         }
         return convert_resp(data=health_data)
     except Exception as e:
@@ -51,7 +51,7 @@ async def auth_status():
 async def readiness_check(opencontext: OpenContext = Depends(get_context_lab)):
     """Readiness probe - checks all dependencies are connectable."""
     try:
-        health_data = opencontext.check_components_health()
+        health_data = await opencontext.check_components_health()
         all_healthy = all(v for v in health_data.values() if isinstance(v, bool))
         status_code = 200 if all_healthy else 503
         return JSONResponse(

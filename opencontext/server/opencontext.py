@@ -392,7 +392,7 @@ class OpenContext:
             raise RuntimeError("Context operations not initialized")
         return self.context_operations.get_context_types()
 
-    def check_components_health(self) -> Dict[str, Any]:
+    async def check_components_health(self) -> Dict[str, Any]:
         """Check health status of all components including actual connectivity."""
         health: Dict[str, Any] = {
             "config": GlobalConfig.get_instance().is_initialized(),
@@ -423,9 +423,8 @@ class OpenContext:
             from opencontext.storage.redis_cache import get_redis_cache
 
             cache = get_redis_cache()
-            if cache and hasattr(cache, "_sync_client") and cache._sync_client:
-                cache._sync_client.ping()
-                health["redis"] = True
+            if cache:
+                health["redis"] = await cache.is_connected()
             else:
                 health["redis"] = False
         except Exception:
