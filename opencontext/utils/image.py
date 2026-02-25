@@ -12,6 +12,10 @@ from typing import Optional
 import imagehash
 from PIL import Image
 
+from opencontext.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
+
 
 def calculate_bytes2phash(image_bytes: bytes) -> Optional[str]:
     """
@@ -26,7 +30,8 @@ def calculate_bytes2phash(image_bytes: bytes) -> Optional[str]:
         image = Image.open(io.BytesIO(image_bytes))
         hash_result = str(imagehash.dhash(image, hash_size=8))
         return hash_result
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to calculate perceptual hash from bytes: {e}")
         return None
 
 
@@ -39,7 +44,8 @@ def calculate_phash(path: str) -> Optional[str]:
 
         image = Image.open(path)
         return str(imagehash.dhash(image, hash_size=8))
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to calculate perceptual hash for file: {e}")
         return None
 
 

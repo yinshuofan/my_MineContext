@@ -49,9 +49,9 @@ class ScreenshotCapture(BaseCaptureComponent):
         self._save_screenshots = False
         self._screenshot_dir = None
         self._dedup_enabled = True
-        self._last_screenshots: Dict[str, tuple[Image.Image, RawContextProperties]] = (
-            {}
-        )  # Used to store the last stable screenshot for each monitor
+        self._last_screenshots: Dict[
+            str, tuple[Image.Image, RawContextProperties]
+        ] = {}  # Used to store the last stable screenshot for each monitor
         self._similarity_threshold = 95  # Image similarity threshold (0-100), default 95
         self._max_image_size = None  # Add maximum image size
         self._resize_quality = 95  # Add image scaling quality

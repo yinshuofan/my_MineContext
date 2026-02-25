@@ -212,8 +212,12 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
 
         try:
             entity_list = await asyncio.to_thread(
-                storage.search_entities, user_id, device_id or "default",
-                agent_id or "default", query, top_k,
+                storage.search_entities,
+                user_id,
+                device_id or "default",
+                agent_id or "default",
+                query,
+                top_k,
             )
             entities = [
                 EntityResult(

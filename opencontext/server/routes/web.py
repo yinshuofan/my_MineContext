@@ -94,9 +94,7 @@ async def vector_search_page(request: Request):
 @router.get("/memory_cache", response_class=HTMLResponse)
 async def memory_cache_page(request: Request):
     """Memory cache visualization page"""
-    return templates.TemplateResponse(
-        "memory_cache.html", {"request": request, "title": "记忆缓存"}
-    )
+    return templates.TemplateResponse("memory_cache.html", {"request": request, "title": "记忆缓存"})
 
 
 @router.get("/chat", response_class=HTMLResponse)

@@ -443,7 +443,10 @@ class IDocumentStorageBackend(IStorageBackend):
 
     @abstractmethod
     def get_entity(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default",
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
         entity_name: str = "",
     ) -> Optional[Dict]:
         """Get entity by user_id + device_id + agent_id + entity_name
@@ -506,7 +509,10 @@ class IDocumentStorageBackend(IStorageBackend):
 
     @abstractmethod
     def delete_entity(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default",
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
         entity_name: str = "",
     ) -> bool:
         """Delete entity

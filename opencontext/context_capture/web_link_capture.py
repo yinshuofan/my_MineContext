@@ -343,7 +343,8 @@ class WebLinkCapture(BaseCaptureComponent):
                 p = urlparse(url)
                 hostname = p.hostname or "page"
                 base = hostname
-            except Exception:
+            except Exception as e:
+                logger.debug(f"URL parsing failed, defaulting to 'page': {e}")
                 base = "page"
         base = re.sub(r"[^a-zA-Z0-9._-]", "_", base)[:80]
         digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:10]

@@ -181,8 +181,11 @@ class ProfileEntityTool(BaseTool):
 
         top_k = min(max(params.get("top_k", 10), 1), 100)
         results = self.storage.search_entities(
-            user_id, device_id=device_id, agent_id=agent_id,
-            query_text=query, limit=top_k,
+            user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            query_text=query,
+            limit=top_k,
         )
         if not results:
             return {"success": False, "error": f"No entities found matching '{query}'"}
@@ -195,8 +198,11 @@ class ProfileEntityTool(BaseTool):
         entity_type = params.get("entity_type")
         top_k = min(max(params.get("top_k", 100), 1), 1000)
         results = self.storage.list_entities(
-            user_id, device_id=device_id, agent_id=agent_id,
-            entity_type=entity_type, limit=top_k,
+            user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            entity_type=entity_type,
+            limit=top_k,
         )
         return {"success": True, "entities": results, "count": len(results)}
 
@@ -280,9 +286,7 @@ class ProfileEntityTool(BaseTool):
         aid = agent_id if agent_id is not None else self.agent_id
 
         # 1. Try exact match
-        result = self.storage.get_entity(
-            uid, device_id=did, agent_id=aid, entity_name=entity_name
-        )
+        result = self.storage.get_entity(uid, device_id=did, agent_id=aid, entity_name=entity_name)
         if result:
             return result.get("entity_name", entity_name), result
 

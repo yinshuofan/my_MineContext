@@ -135,7 +135,8 @@ class RedisCache:
         try:
             await self._async_client.ping()
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Redis async ping failed: {e}")
             self._async_connected = False
             return False
 
@@ -784,8 +785,8 @@ class RedisCache:
         if self._async_client:
             try:
                 await self._async_client.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error closing Redis async client: {e}")
             self._async_client = None
             self._async_connected = False
             logger.info("Redis async connection closed")
@@ -963,7 +964,8 @@ class InMemoryCache:
         try:
             json_str = json.dumps(value, ensure_ascii=False, default=str)
             return await self.set(key, json_str, ttl=ttl, nx=nx, xx=xx)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Redis set_json failed: {e}")
             return False
 
     # List Operations
@@ -1041,8 +1043,8 @@ class InMemoryCache:
         for v in values:
             try:
                 json_values.append(json.dumps(v, ensure_ascii=False, default=str))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"JSON serialization failed for list push: {e}")
         if not json_values:
             return 0
         return await self.rpush(key, *json_values)
@@ -1052,8 +1054,8 @@ class InMemoryCache:
         for v in values:
             try:
                 json_values.append(json.dumps(v, ensure_ascii=False, default=str))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"JSON serialization failed for list push: {e}")
         if not json_values:
             return 0
         return await self.lpush(key, *json_values)
@@ -1114,7 +1116,8 @@ class InMemoryCache:
         try:
             json_str = json.dumps(value, ensure_ascii=False, default=str)
             return await self.hset(key, field, json_str)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Redis hset_json failed: {e}")
             return 0
 
     async def hmset_json(self, key: str, mapping: Dict[str, Any]) -> bool:
@@ -1125,7 +1128,8 @@ class InMemoryCache:
             for k, v in mapping.items():
                 json_mapping[k] = json.dumps(v, ensure_ascii=False, default=str)
             return await self.hmset(key, json_mapping)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Redis hmset_json failed: {e}")
             return False
 
     async def hgetall_json(self, key: str) -> Dict[str, Any]:

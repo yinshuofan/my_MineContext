@@ -14,7 +14,7 @@ import hashlib
 import json
 import sys
 import threading
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
@@ -43,7 +43,7 @@ class CacheEntry:
     access_count: int
     confidence_score: float
     context_hash: str
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return {
@@ -55,7 +55,7 @@ class CacheEntry:
             "confidence_score": self.confidence_score,
             "context_hash": self.context_hash,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CacheEntry":
         """Create from dictionary"""
@@ -74,7 +74,7 @@ class CompletionCache:
     """
     Intelligent Completion Cache Manager
     Supports multiple caching strategies and performance optimizations.
-    
+
     Supports two storage backends:
     1. Redis (recommended): For multi-instance deployment with shared cache
     2. In-memory (fallback): When Redis is unavailable
@@ -120,7 +120,7 @@ class CompletionCache:
         # Redis cache
         self._redis_cache = None
         self._use_redis = False
-        
+
         # Initialize Redis if configured
         if redis_config and redis_config.get("enabled", True):
             self._init_redis(redis_config)
@@ -137,7 +137,7 @@ class CompletionCache:
 
             self._redis_cache = get_redis_cache()
             self._use_redis = self._redis_cache.is_connected()
-            
+
             if self._use_redis:
                 logger.info("CompletionCache: Using Redis for multi-instance cache sharing")
             else:
@@ -153,6 +153,7 @@ class CompletionCache:
     def get(self, key: str, context_hash: str = None) -> Optional[List[Any]]:
         """Get cached completion suggestions"""
         import time
+
         start_time = time.time()
 
         if self._use_redis:
@@ -170,45 +171,45 @@ class CompletionCache:
         """Get from Redis cache"""
         try:
             self._increment_stat("total_requests")
-            
+
             cache_key = self._make_cache_key(key)
             data = self._redis_cache.get_json(cache_key)
-            
+
             if data is None:
                 self._increment_stat("misses")
                 return None
-            
+
             entry = CacheEntry.from_dict(data)
-            
+
             # Check TTL expiration
             created_at = datetime.fromisoformat(entry.created_at)
             if datetime.now() - created_at > self.ttl:
                 self._redis_cache.delete(cache_key)
                 self._increment_stat("misses")
                 return None
-            
+
             # Check context hash
             if context_hash and entry.context_hash != context_hash:
                 self._increment_stat("misses")
                 return None
-            
+
             # Update access info
             entry.last_accessed = datetime.now().isoformat()
             entry.access_count += 1
             self._redis_cache.set_json(cache_key, entry.to_dict(), ttl=self.ttl_seconds)
-            
+
             # Update access order (for LRU)
             self._redis_cache.lrem(self.ACCESS_ORDER_KEY, 0, key)
             self._redis_cache.rpush(self.ACCESS_ORDER_KEY, key)
-            
+
             # Mark as hot key if frequently accessed
             if entry.access_count > 5:
                 self._redis_cache.sadd(self.HOT_KEYS_KEY, key)
-            
+
             self._increment_stat("hits")
             logger.debug(f"Cache hit (Redis): {key[:20]}...")
             return entry.suggestions
-            
+
         except Exception as e:
             logger.error(f"Redis cache get error: {e}")
             # Fallback to local cache
@@ -277,12 +278,12 @@ class CompletionCache:
         """Add to Redis cache"""
         try:
             now = datetime.now()
-            
+
             # Check cache size and evict if needed
             cache_size = len(self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*"))
             if cache_size >= self.max_size:
                 self._evict_entries_redis()
-            
+
             # Create entry
             entry = CacheEntry(
                 key=key,
@@ -293,16 +294,16 @@ class CompletionCache:
                 confidence_score=confidence_score,
                 context_hash=context_hash or "",
             )
-            
+
             # Store in Redis
             cache_key = self._make_cache_key(key)
             self._redis_cache.set_json(cache_key, entry.to_dict(), ttl=self.ttl_seconds)
-            
+
             # Add to access order
             self._redis_cache.rpush(self.ACCESS_ORDER_KEY, key)
-            
+
             logger.debug(f"Cache add (Redis): {key[:20]}... ({len(suggestions)} suggestions)")
-            
+
         except Exception as e:
             logger.error(f"Redis cache put error: {e}")
             # Fallback to local cache
@@ -377,32 +378,34 @@ class CompletionCache:
                 keys_to_remove = [key for key in self._local_cache.keys() if pattern in key]
                 for key in keys_to_remove:
                     self._evict_local(key)
-                logger.info(f"Invalidated local cache by pattern: {pattern} ({len(keys_to_remove)} items)")
+                logger.info(
+                    f"Invalidated local cache by pattern: {pattern} ({len(keys_to_remove)} items)"
+                )
 
     def _evict_entries_redis(self):
         """Evict entries from Redis cache"""
         try:
             hot_keys = self._redis_cache.smembers(self.HOT_KEYS_KEY)
-            
+
             # Get oldest keys from access order
             while True:
                 oldest_key = self._redis_cache.lpop(self.ACCESS_ORDER_KEY)
                 if not oldest_key:
                     break
-                
+
                 # Skip hot keys if possible
                 cache_size = len(self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*"))
                 if oldest_key in hot_keys and cache_size < self.max_size * 1.2:
                     self._redis_cache.rpush(self.ACCESS_ORDER_KEY, oldest_key)
                     continue
-                
+
                 # Evict
                 self._redis_cache.delete(self._make_cache_key(oldest_key))
                 self._increment_stat("evictions")
-                
+
                 if cache_size < self.max_size:
                     break
-                    
+
         except Exception as e:
             logger.error(f"Redis eviction error: {e}")
 
@@ -436,8 +439,8 @@ class CompletionCache:
         if self._use_redis:
             try:
                 self._redis_cache.incr(f"{self.STATS_KEY}:{stat_name}", amount)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Redis stat increment failed: {e}")
         with self._lock:
             self._stats[stat_name] = self._stats.get(stat_name, 0) + amount
 
@@ -477,7 +480,7 @@ class CompletionCache:
                     self._redis_cache.set_json(
                         f"{self.PRECOMPUTED_KEY_PREFIX}{document_id}",
                         precomputed,
-                        ttl=3600  # 1 hour
+                        ttl=3600,  # 1 hour
                     )
                 except Exception as e:
                     logger.error(f"Redis precompute error: {e}")
@@ -496,9 +499,9 @@ class CompletionCache:
                 data = self._redis_cache.get_json(f"{self.PRECOMPUTED_KEY_PREFIX}{document_id}")
                 if data:
                     return data
-            except Exception:
-                pass
-        
+            except Exception as e:
+                logger.debug(f"Redis get for precomputed context failed: {e}")
+
         return self._precomputed_contexts.get(document_id)
 
     def optimize(self):
@@ -511,7 +514,7 @@ class CompletionCache:
         """Optimize Redis cache"""
         try:
             now = datetime.now()
-            
+
             # Clean up expired entries
             keys = self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*")
             for key in keys:
@@ -520,7 +523,7 @@ class CompletionCache:
                     created_at = datetime.fromisoformat(data["created_at"])
                     if now - created_at > self.ttl * 2:
                         self._redis_cache.delete(key)
-            
+
             # Clean up old precomputed contexts
             precomputed_keys = self._redis_cache.keys(f"{self.PRECOMPUTED_KEY_PREFIX}*")
             for key in precomputed_keys:
@@ -529,7 +532,7 @@ class CompletionCache:
                     computed_at = datetime.fromisoformat(data["computed_at"])
                     if now - computed_at > timedelta(hours=1):
                         self._redis_cache.delete(key)
-            
+
             logger.info("Redis cache optimization complete")
         except Exception as e:
             logger.error(f"Redis optimization error: {e}")
@@ -538,7 +541,7 @@ class CompletionCache:
         """Optimize local cache"""
         with self._lock:
             now = datetime.now()
-            
+
             # Clean up expired entries
             expired_keys = []
             for key, entry in self._local_cache.items():
@@ -557,7 +560,9 @@ class CompletionCache:
             }
 
             # Compact access order list
-            self._local_access_order = [key for key in self._local_access_order if key in self._local_cache]
+            self._local_access_order = [
+                key for key in self._local_access_order if key in self._local_cache
+            ]
 
             # Clean up old precomputed contexts
             old_contexts = [
@@ -593,10 +598,12 @@ class CompletionCache:
 
             if self._use_redis:
                 try:
-                    stats["redis_cache_size"] = len(self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*"))
+                    stats["redis_cache_size"] = len(
+                        self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*")
+                    )
                     stats["redis_hot_keys_count"] = self._redis_cache.scard(self.HOT_KEYS_KEY)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to get Redis cache statistics: {e}")
 
             stats["local_cache_size"] = len(self._local_cache)
             stats["local_hot_keys_count"] = len(self._hot_keys)
@@ -640,13 +647,13 @@ class CompletionCache:
             try:
                 redis_hot_keys = self._redis_cache.smembers(self.HOT_KEYS_KEY)
                 hot_keys.update(redis_hot_keys)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Redis hot key access failed: {e}")
 
         with self._lock:
             for key in hot_keys:
                 entry = None
-                
+
                 # Try local cache first
                 if key in self._local_cache:
                     entry = self._local_cache[key]
@@ -656,9 +663,9 @@ class CompletionCache:
                         data = self._redis_cache.get_json(self._make_cache_key(key))
                         if data:
                             entry = CacheEntry.from_dict(data)
-                    except Exception:
-                        pass
-                
+                    except Exception as e:
+                        logger.debug(f"Redis hot key access failed: {e}")
+
                 if entry:
                     hot_patterns.append(
                         {

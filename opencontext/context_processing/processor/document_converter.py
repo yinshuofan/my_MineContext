@@ -179,7 +179,8 @@ class DocumentConverter:
                 if xobject.get("/Subtype") == "/Image":
                     return True
             return False
-        except Exception:
+        except Exception as e:
+            logger.debug(f"PDF page image detection failed: {e}")
             return False
 
     def analyze_docx_pages(self, file_path: str) -> List[PageInfo]:
@@ -354,7 +355,8 @@ class DocumentConverter:
                                 if br_type == "page":
                                     return True
             return False
-        except Exception:
+        except Exception as e:
+            logger.debug(f"DOCX page break detection failed: {e}")
             return False
 
     def _extract_paragraph_images(self, paragraph, doc) -> List[Image.Image]:

@@ -48,7 +48,8 @@ class MetricsCollector:
                     if hasattr(result, "__len__") and not isinstance(result, str):
                         try:
                             context_count = len(result)
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Could not determine context count: {e}")
                             context_count = 1
 
                     monitor.record_processing_metrics(
@@ -94,7 +95,8 @@ class MetricsCollector:
                     elif hasattr(result, "__len__") and not isinstance(result, str):
                         try:
                             snippets_count = len(result)
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Could not determine snippets count: {e}")
                             snippets_count = 0
 
                     # 尝试从参数中获取query

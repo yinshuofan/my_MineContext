@@ -407,7 +407,8 @@ class LLMClient:
                                         if ". Request id:" in actual_msg:
                                             actual_msg = actual_msg.split(". Request id:")[0]
                                         return actual_msg
-                            except:
+                            except Exception as e:
+                                logger.debug(f"Failed to parse error message details: {e}")
                                 pass
                         return f"Error {code}"
 

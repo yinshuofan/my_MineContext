@@ -87,7 +87,8 @@ class BaseContextRetrievalTool(BaseTool):
                         entity_name, user_id=filters.user_id
                     )
                     unified_entities.append(matched_name if matched_name else entity_name)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Entity matching failed for '{entity_name}', using original: {e}")
                     unified_entities.append(entity_name)
             build_filter["entities"] = unified_entities
 

@@ -506,8 +506,8 @@ class VikingDBHTTPClient:
                     except RuntimeError:
                         # If we can't get a loop and can't run a new one (e.g. nested), just ignore
                         pass
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error closing VikingDB async session: {e}")
         if self._executor:
             self._executor.shutdown(wait=False)
 
