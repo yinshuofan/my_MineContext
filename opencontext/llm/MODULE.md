@@ -9,7 +9,7 @@ Provides OpenAI-compatible client wrappers for chat completion, embedding, and v
 | `llm_client.py` | Core `LLMClient` class wrapping OpenAI sync/async APIs for chat and embedding |
 | `global_embedding_client.py` | Thread-safe singleton for embedding operations |
 | `global_vlm_client.py` | Thread-safe singleton for vision/chat LLM with automatic tool-call execution loop |
-| `__init__.py` | Empty (no public re-exports) |
+| `__init__.py` | Module docstring only (no public re-exports) |
 
 ## Key Classes and Functions
 
@@ -27,7 +27,7 @@ Fields: `self.model`, `self.api_key`, `self.base_url`, `self.timeout` (default 3
 
 | Method | Signature | Returns |
 |--------|-----------|---------|
-| `generate` | `(prompt: str, **kwargs) -> str` | Convenience; wraps prompt in messages list |
+| `generate` | `(prompt: str, **kwargs)` | Convenience; wraps prompt in messages list, returns ChatCompletion response (same as `generate_with_messages`) |
 | `generate_with_messages` | `(messages: List[Dict[str, Any]], **kwargs)` | OpenAI `ChatCompletion` response object |
 | `generate_with_messages_async` | `(messages: List[Dict[str, Any]], **kwargs)` | Same, awaitable |
 | `generate_with_messages_stream` | `(messages: List[Dict[str, Any]], **kwargs)` | Sync stream iterator |
@@ -91,6 +91,12 @@ Thread-safe singleton. Wraps a `LLMClient(LLMType.CHAT)` configured from `get_co
 
 **Module-level convenience functions:** `is_initialized()`, `generate_with_messages()`, `generate_with_messages_async()`, `generate_for_agent_async()`, `generate_stream_for_agent()`.
 
+**Note:** The module-level `is_initialized()` checks `_auto_initialized` (True after auto-init attempt, even on failure), NOT `_vlm_client is not None`. The instance method `is_initialized()` checks `_vlm_client is not None`. These have different semantics.
+
+**Implementation details:**
+- `generate_stream_for_agent` calls the private method `_vlm_client._openai_chat_completion_stream_async()` directly, bypassing the type check in `generate_with_messages_stream_async`.
+- `_openai_chat_completion_stream_async` in `LLMClient` creates a local `AsyncOpenAI` client instead of using `self.async_client`.
+
 ## Cross-Module Dependencies
 
 **Imports from:**
@@ -98,6 +104,7 @@ Thread-safe singleton. Wraps a `LLMClient(LLMType.CHAT)` configured from `get_co
 - `opencontext.models.context` -- `Vectorize` model
 - `opencontext.monitoring` -- `record_processing_stage`, `record_token_usage`
 - `opencontext.tools.tools_executor` -- `ToolsExecutor` (lazy import in `GlobalVLMClient`)
+- `opencontext.storage.unified_storage` -- `UnifiedStorage` (imported in `global_vlm_client.py`)
 - `opencontext.utils.json_parser` -- `parse_json_from_response`
 - `openai` -- `OpenAI`, `AsyncOpenAI`, `APIError`
 
@@ -109,7 +116,7 @@ Thread-safe singleton. Wraps a `LLMClient(LLMType.CHAT)` configured from `get_co
 
 ## Conventions and Constraints
 
-- All three singletons use double-checked locking with `threading.Lock`. Do not bypass `get_instance()`.
+- Both singletons (`GlobalEmbeddingClient`, `GlobalVLMClient`) use double-checked locking with `threading.Lock`. `LLMClient` is a plain class, not a singleton. Do not bypass `get_instance()` for the singletons.
 - `LLMType` gates method access: calling `generate_embedding` on a `CHAT`-type client raises `ValueError`. Do not mix types.
 - Token usage is recorded via `record_token_usage` inside API call methods. The import is guarded by `try/except ImportError` for graceful degradation.
 - The `provider` field only affects `thinking` parameter handling (Doubao-specific `extra_body`). All other API calls use standard OpenAI format.

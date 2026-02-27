@@ -26,8 +26,8 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/settings.py` | Model settings, general settings, prompts CRUD (`/api/model_settings/*`, `/api/settings/*`) |
 | `routes/vaults.py` | Vault document management (`/api/vaults/*`) with background context processing |
 | `routes/web.py` | HTML pages -- contexts list, vector search, chat, monitoring, settings, file serving |
-| `routes/screenshots.py` | Screenshot push (`/api/add_screenshot`, `/api/add_screenshots`) |
-| `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) |
+| `routes/screenshots.py` | Screenshot push (`/api/add_screenshot`, `/api/add_screenshots`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
+| `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | **search/** | |
 | `search/base_strategy.py` | `BaseSearchStrategy` ABC with `search()` abstract method |
 | `search/fast_strategy.py` | `FastSearchStrategy` -- zero LLM calls, parallel storage queries |
@@ -67,8 +67,18 @@ class OpenContext:
     def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]
     def update_context(self, doc_id: str, context: ProcessedContext) -> bool
     def delete_context(self, doc_id: str, context_type: str) -> bool
-    def check_components_health(self) -> Dict[str, Any]  # Checks config, storage, llm, document_db, redis
+    async def check_components_health(self) -> Dict[str, Any]  # Checks config, storage, llm, document_db, redis
+
+    # Additional public methods
+    def start_capture(self) -> None                  # Starts all capture components via capture_manager.start_all_components()
+    def get_context_types(self) -> List[str]          # Delegates to context_operations.get_context_types()
+
+    # Private helpers
+    def _initialize_monitoring(self) -> None          # Initializes monitoring system; called from initialize()
+    def _invalidate_cache_sync_fallback(self, user_id, device_id, agent_id) -> None  # Sync Redis DELETE fallback
 ```
+
+Module-level: `main()` function -- entry point for `if __name__ == "__main__"`, parses args and runs uvicorn.
 
 Key fields: `capture_manager` (ContextCaptureManager), `processor_manager` (ContextProcessorManager), `storage` (UnifiedStorage), `context_operations` (ContextOperations), `component_initializer` (ComponentInitializer).
 
@@ -81,6 +91,10 @@ class ComponentInitializer:
     def initialize_task_scheduler(self, processor_manager: Optional[ContextProcessorManager] = None) -> None
     async def start_task_scheduler(self) -> None   # Called after event loop is running
     def stop_task_scheduler(self) -> None
+
+    # Private helpers
+    def _to_camel_case(self, name: str) -> str             # Converts snake_case to CamelCase
+    def _create_capture_component(self, name, config)      # Creates capture component from CAPTURE_COMPONENTS dict or dynamic import
 ```
 
 ### ContextOperations (context_operations.py)
@@ -174,6 +188,10 @@ Caching architecture:
 def verify_api_key(request, api_key_header, api_key_query) -> str  # Returns key or raises 401
 def is_auth_enabled() -> bool
 def is_path_excluded(path: str) -> bool  # Wildcard matching via fnmatch
+def reset_auth_cache() -> None           # Clears cached auth config (useful for testing)
+def get_auth_config() -> dict            # Returns auth config dict from global config
+def get_valid_api_keys() -> List[str]    # Returns list of valid API keys (filters out empty)
+def get_excluded_paths() -> List[str]    # Returns list of excluded paths
 auth_dependency = Depends(verify_api_key)  # Used as route dependency
 ```
 
@@ -325,7 +343,7 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 | POST | `/api/documents/upload` | `upload_document` | Upload document (local path) |
 | POST | `/api/weblinks/upload` | `upload_weblink` | Submit web link for processing |
 
-### Completion Routes (`/api/completions/*`)
+### Completion Routes (`/api/completions/*`) -- INACTIVE (not registered in `api.py`)
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|

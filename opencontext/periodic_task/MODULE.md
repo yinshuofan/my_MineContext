@@ -54,6 +54,8 @@ Execution context passed to every task. Created by handler factory functions.
 
 Property: `user_key -> str` (joins non-None fields with `":"`)
 
+Method: `to_dict() -> Dict[str, Any]` -- serializes all fields to a dictionary
+
 ### IPeriodicTask (ABC)
 
 | Member | Signature | Description |
@@ -229,9 +231,10 @@ cli.py / opencontext.py startup
 RedisTaskScheduler._process_task_type() or _process_periodic_tasks()
   └─> handler(user_id, device_id, agent_id)  -- the closure from create_*_handler()
         ├─ Build TaskContext(user_id, device_id, agent_id, task_type)
-        ├─ task.validate_context(context)  -- returns False if user_id missing (for user_activity tasks)
         ├─ task.execute(context) -> TaskResult
         └─> return result.success
+        NOTE: handler closures do NOT call validate_context(); they invoke execute() directly.
+              validate_context() is available on the task interface but not wired into the handlers.
 ```
 
 ### HierarchySummaryTask execution detail
@@ -265,6 +268,7 @@ execute(context)
 ## Cross-Module Dependencies
 
 **Imports from**:
+- `loguru` -- `logger` imported directly in `base.py`, `registry.py`, `memory_compression.py`, `data_cleanup.py` (4 of 5 files); only `hierarchy_summary.py` uses the standard `opencontext.utils.logging_utils.get_logger`
 - `opencontext.scheduler.base` -- `TaskConfig`, `TriggerMode` (used by all task classes)
 - `opencontext.storage.global_storage.get_storage` -- hierarchy_summary accesses storage directly
 - `opencontext.llm.global_vlm_client.generate_with_messages` -- hierarchy_summary LLM calls
@@ -280,7 +284,7 @@ execute(context)
 ## Conventions and Constraints
 
 - **Handlers must be synchronous**: The scheduler calls handlers via `run_in_executor()`. The `create_*_handler()` factories return sync closures that call `task.execute()`.
-- **`validate_context` gates execution**: For `user_activity` tasks (`MemoryCompressionTask`, `HierarchySummaryTask`), `validate_context()` requires non-empty `user_id`. Periodic tasks receive `None` user_id from the scheduler.
+- **`validate_context` is defined but not called by handlers**: `MemoryCompressionTask` and `HierarchySummaryTask` override `validate_context()` to require non-empty `user_id`, but the `create_*_handler()` closures do NOT call it before `execute()`. The method exists on the interface for external callers to use if desired.
 - **Idempotent summary generation**: `HierarchySummaryTask` checks for existing summaries before generating. Safe to re-trigger.
 - **Late dependency injection**: `MemoryCompressionTask` and `DataCleanupTask` accept `context_merger`/`storage` via constructor or `set_*()` methods. `HierarchySummaryTask` uses globals (`get_storage()`, LLM singletons).
 - **Handler factory pattern**: Each task has a `create_*_handler()` function that returns a `TaskHandler`-compatible closure. This is what gets registered with the scheduler via `scheduler.register_handler()`.

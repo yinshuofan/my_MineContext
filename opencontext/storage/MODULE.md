@@ -9,7 +9,7 @@
 | `global_storage.py` | `GlobalStorage` singleton wrapper; provides `get_storage()` accessor |
 | `redis_cache.py` | `RedisCache` (async), `InMemoryCache` (fallback), distributed lock support |
 | `__init__.py` | Re-exports Redis cache classes and functions |
-| `backends/__init__.py` | Conditional imports of all backend implementations |
+| `backends/__init__.py` | Imports backend implementations: `ChromaDBBackend` and `SQLiteBackend` unconditionally; `MySQLBackend`, `QdrantBackend`, `VikingDBBackend` conditionally (try/except). `DashVectorBackend` is NOT imported. |
 | `backends/chromadb_backend.py` | `ChromaDBBackend` -- ChromaDB vector storage (per-type collections) |
 | `backends/qdrant_backend.py` | `QdrantBackend` -- Qdrant vector storage (per-type collections) |
 | `backends/vikingdb_backend.py` | `VikingDBBackend` -- Volcengine VikingDB (single collection, field filtering) |
@@ -104,6 +104,7 @@ StorageType.VECTOR_DB:
     "chromadb"  -> ChromaDBBackend()
     "qdrant"    -> QdrantBackend()
     "vikingdb"  -> VikingDBBackend()
+    # Note: DashVectorBackend exists in backends/ but is NOT registered in the factory
 
 StorageType.DOCUMENT_DB:
     "mysql"     -> MySQLBackend()
@@ -138,6 +139,12 @@ Thread-safe singleton (double-checked locking) wrapping `UnifiedStorage`.
 | `is_initialized()` | `bool` | Whether storage is ready |
 | `reset()` | `None` | Resets singleton (for testing) |
 
+**Convenience methods** (delegate to UnifiedStorage, raise `RuntimeError` if not initialized):
+- `upsert_processed_context(context) -> bool`
+- `batch_upsert_processed_context(contexts) -> bool`
+- `get_processed_context(doc_id, context_type) -> Optional[ProcessedContext]`
+- `delete_processed_context(doc_id, context_type) -> bool`
+
 Module-level convenience functions:
 - `get_storage() -> Optional[UnifiedStorage]` -- **the recommended accessor** (returns UnifiedStorage directly)
 - `get_global_storage() -> GlobalStorage` -- returns the wrapper (lacks profile/entity methods)
@@ -155,6 +162,10 @@ Async-only Redis client. Configured via `RedisCacheConfig` dataclass:
 | `key_prefix` | `str` | `"opencontext:"` |
 | `default_ttl` | `int` | `3600` |
 | `max_connections` | `int` | `10` |
+| `socket_timeout` | `float` | `5.0` |
+| `socket_connect_timeout` | `float` | `5.0` |
+| `retry_on_timeout` | `bool` | `True` |
+| `decode_responses` | `bool` | `True` |
 
 Operation groups: basic KV, JSON KV, lists (with JSON variants), hashes (with JSON variants), sets, sorted sets, atomic incr/decr, distributed locks.
 

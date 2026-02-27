@@ -11,7 +11,7 @@ Tool definitions, executor, and implementations for all retrieval and operation 
 | `tools_executor.py` | `ToolsExecutor` -- name-based tool dispatch, sync/async execution, batch parallel execution |
 | `profile_tools/__init__.py` | Exports `ProfileEntityTool` |
 | `profile_tools/profile_entity_tool.py` | `ProfileEntityTool` -- entity CRUD and relationship queries against relational DB |
-| `retrieval_tools/__init__.py` | Exports all retrieval tool classes and `BaseContextRetrievalTool` |
+| `retrieval_tools/__init__.py` | Exports `BaseContextRetrievalTool` and the 4 concrete retrieval tool classes (`DocumentRetrievalTool`, `KnowledgeRetrievalTool`, `HierarchicalEventTool`, `ProfileRetrievalTool`) |
 | `retrieval_tools/base_retrieval_tool.py` | `BaseRetrievalTool` -- older base class with entity unification and vector search helpers (used as mixin pattern) |
 | `retrieval_tools/base_context_retrieval_tool.py` | `BaseContextRetrievalTool` -- primary base class for vector DB context retrieval tools; provides `_execute_search`, `_build_filters`, `_format_results` |
 | `retrieval_tools/base_document_retrieval_tool.py` | `BaseDocumentRetrievalTool` -- base class for SQLite/relational document retrieval (pagination, datetime parsing) |
@@ -33,31 +33,31 @@ BaseTool (ABC)                                      # base.py
 ├── WebSearchTool                                   # operation_tools/
 ├── BaseRetrievalTool                               # retrieval_tools/base_retrieval_tool.py
 │   (not subclassed by any current tool)
+├── BaseDocumentRetrievalTool                       # retrieval_tools/base_document_retrieval_tool.py
+│   (not subclassed by any current tool)
 └── BaseContextRetrievalTool                        # retrieval_tools/base_context_retrieval_tool.py
     ├── DocumentRetrievalTool                       # retrieval_tools/document_retrieval_tool.py
     └── KnowledgeRetrievalTool                      # retrieval_tools/knowledge_retrieval_tool.py
 
 DocumentManagementTool (standalone, not BaseTool)   # retrieval_tools/document_management_tool.py
-BaseDocumentRetrievalTool (BaseTool subclass)       # retrieval_tools/base_document_retrieval_tool.py
-    (not subclassed by any current tool)
 ```
 
 ## Key Classes and Functions
 
 ### BaseTool (ABC) -- `base.py`
 
-The interface all tools implement. `get_definition()` is concrete and builds the LLM function-calling schema from the three abstract classmethods.
+The interface all tools implement. `get_definition()` is concrete and builds the LLM function-calling schema from the three classmethods. Only `execute()` is `@abstractmethod`; the other three (`get_name`, `get_description`, `get_parameters`) are regular `@classmethod`s that subclasses override but are not enforced by ABC.
 
 ```python
 class BaseTool(ABC):
     @classmethod
-    def get_name(cls) -> str             # Tool name string (used as registry key)
+    def get_name(cls) -> str             # Tool name string (used as registry key) -- NOT abstract
     @classmethod
-    def get_description(cls) -> str      # Natural language description for LLM
+    def get_description(cls) -> str      # Natural language description for LLM -- NOT abstract
     @classmethod
-    def get_parameters(cls) -> Dict[str, Any]  # JSON Schema for parameters
+    def get_parameters(cls) -> Dict[str, Any]  # JSON Schema for parameters -- NOT abstract
     @abstractmethod
-    def execute(self, **kwargs) -> Dict[str, Any]  # Run the tool
+    def execute(self, **kwargs) -> Dict[str, Any]  # Run the tool -- ONLY abstract method
     @classmethod
     def get_definition(cls) -> Dict[str, Any]      # Returns {"name", "description", "parameters"}
 ```
@@ -71,7 +71,7 @@ class ToolsExecutor:
     def __init__(self)                    # Builds _tools_map with all 6 tool instances
     def run(self, tool_name: str, tool_input: Dict) -> Any            # Sync execution
     async def run_async(self, tool_name: str, tool_input: Dict) -> Any  # Async via asyncio.to_thread
-    async def batch_run_tools_async(self, tool_calls: List[Dict]) -> Any  # Parallel via asyncio.gather
+    async def batch_run_tools_async(self, tool_calls: List[Dict[str, Any]]) -> Any  # Parallel via asyncio.gather; expects OpenAI tool_call objects (with .function.name, .function.arguments attrs)
     def _validate_input(self, tool_input) -> Tuple[Dict|None, Dict|None]  # Normalize/validate
     def _handle_unknown_tool(self, tool_name: str) -> Dict[str, Any]      # Fuzzy suggestions via difflib
 ```
@@ -187,11 +187,12 @@ Standalone `BaseTool` subclass for relational DB queries. Operation-based dispat
 
 ```python
 class ProfileRetrievalTool(BaseTool):
-    def execute(self, **kwargs) -> Dict[str, Any]           # Dispatch by "operation" param
-    def _handle_get_profile(self, params: Dict) -> Dict     # storage.get_profile()
-    def _handle_find_entity(self, params: Dict) -> Dict     # storage.get_entity()
-    def _handle_search_entities(self, params: Dict) -> Dict # storage.search_entities()
-    def _handle_list_entities(self, params: Dict) -> Dict   # storage.list_entities()
+    def execute(self, **kwargs) -> Dict[str, Any]                          # Dispatch by "operation" param
+    def _get_storage(self)                                                 # Get storage instance; raises RuntimeError if unavailable
+    def _handle_get_profile(self, params: Dict[str, Any]) -> Dict[str, Any]     # storage.get_profile()
+    def _handle_find_entity(self, params: Dict[str, Any]) -> Dict[str, Any]     # storage.get_entity()
+    def _handle_search_entities(self, params: Dict[str, Any]) -> Dict[str, Any] # storage.search_entities()
+    def _handle_list_entities(self, params: Dict[str, Any]) -> Dict[str, Any]   # storage.list_entities()
 ```
 
 **Required params:** `operation` (enum: `get_profile`, `find_entity`, `search_entities`, `list_entities`), `user_id`
@@ -242,6 +243,7 @@ class DocumentManagementTool:   # Does not extend BaseTool
     def delete_document_chunks(self, raw_type: str, raw_id: str) -> Dict[str, Any]  # NOTE: actual deletion is TODO
     def _execute_document_search(self, query: str, context_types: List[str], filters: Dict, top_k: int = 10) -> List[Tuple[ProcessedContext, float]]
     def _aggregate_document_info(self, results: List[Tuple[ProcessedContext, float]]) -> Dict[str, Any]
+    def _format_context_result(self, context: ProcessedContext, score: float, additional_fields: Dict[str, Any] = None) -> Dict[str, Any]
 ```
 
 ### Unused Base Classes
@@ -329,14 +331,22 @@ execute(**kwargs)
 The registry groups tools into categories, consumed by `LLMContextStrategy` for function-calling:
 
 ```python
-CONTEXT_RETRIEVAL_TOOLS = [DocumentRetrievalTool, KnowledgeRetrievalTool, HierarchicalEventTool]
-ALL_PROFILE_TOOL_DEFINITIONS = [ProfileRetrievalTool, ProfileEntityTool]
-WEB_SEARCH_TOOL_DEFINITION = [WebSearchTool]
+# Each entry is {"type": "function", "function": <ToolClass>.get_definition()}
+CONTEXT_RETRIEVAL_TOOLS = [
+    {"type": "function", "function": DocumentRetrievalTool.get_definition()},
+    {"type": "function", "function": KnowledgeRetrievalTool.get_definition()},
+    {"type": "function", "function": HierarchicalEventTool.get_definition()},
+]
+ALL_PROFILE_TOOL_DEFINITIONS = [
+    {"type": "function", "function": ProfileRetrievalTool.get_definition()},
+    {"type": "function", "function": ProfileEntityTool.get_definition()},
+]
+WEB_SEARCH_TOOL_DEFINITION = [
+    {"type": "function", "function": WebSearchTool.get_definition()},
+]
 ALL_RETRIEVAL_TOOL_DEFINITIONS = CONTEXT_RETRIEVAL_TOOLS   # Alias
 ALL_TOOL_DEFINITIONS = ALL_RETRIEVAL_TOOL_DEFINITIONS + ALL_PROFILE_TOOL_DEFINITIONS + WEB_SEARCH_TOOL_DEFINITION
 ```
-
-Each entry is `{"type": "function", "function": <ToolClass>.get_definition()}`.
 
 ## Cross-Module Dependencies
 
@@ -346,6 +356,7 @@ Each entry is `{"type": "function", "function": <ToolClass>.get_definition()}`.
 - `opencontext.storage.global_storage` -- `get_storage()` (all tools use this for storage access)
 - `opencontext.config.global_config` -- `get_config()` (WebSearchTool only)
 - `opencontext.utils.logging_utils` -- `get_logger()`
+- `ddgs` -- DuckDuckGo search library (runtime/lazy import in `WebSearchTool._search_duckduckgo`)
 
 **Depended on by:**
 - `opencontext/server/search/intelligent_strategy.py` -- uses `ALL_TOOL_DEFINITIONS` and `ToolsExecutor` for LLM-driven agentic search

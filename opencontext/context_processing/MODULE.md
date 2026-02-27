@@ -61,6 +61,8 @@ Registers built-in processors on init:
 
 Note: `ScreenshotProcessor` is NOT registered in the factory -- it is used directly by the server layer.
 
+Also defines `ProcessorDependencies` Protocol (deprecated, but still present) with `prompt_manager` and `storage` fields -- used for type hints only, not functionally active.
+
 ```python
 class ProcessorFactory:
     def register_processor_type(self, type_name: str, processor_class: Type[IContextProcessor]) -> bool
@@ -79,13 +81,23 @@ Key abstract methods subclasses must implement:
 - `can_process(self, context: Any) -> bool`
 - `process(self, context: Any) -> List[ProcessedContext]`
 
+**Note**: The ABC declares `process()` as returning `List[ProcessedContext]`, but all concrete subclasses (`TextChatProcessor`, `DocumentProcessor`, `ScreenshotProcessor`) actually return `bool`. Only `ContextMerger` returns `[]` (empty list). This is a known inconsistency.
+
 Provided methods:
 ```python
+def get_name(self) -> str                    # returns class name by default; subclasses override
+def get_version(self) -> str                 # returns "1.0.0"
+@property
+def is_initialized(self) -> bool             # returns _is_initialized
+def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool
+def validate_config(self, config: Dict[str, Any]) -> bool   # default returns True
 def batch_process(self, contexts: List[Any]) -> Dict[str, List[ProcessedContext]]
 def set_callback(self, callback: Optional[Callable[[List[ProcessedContext]], None]]) -> bool
 def get_statistics(self) -> Dict[str, Any]
-def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool
+def reset_statistics(self) -> bool           # resets stats to zero
 def shutdown(self) -> bool
+def _extract_object_id(self, context: Any, processed_contexts: List[ProcessedContext]) -> str  # used by batch_process
+def _invoke_callback(self, processed_contexts: List[ProcessedContext]) -> None  # invokes callback if set
 ```
 
 State fields: `config: dict`, `_is_initialized: bool`, `_callback: Optional[Callable]`, `_processing_stats: dict`
@@ -122,13 +134,16 @@ async def batch_process_async(self, raw_contexts, user_id, device_id) -> List[Pr
 def real_process(self, raw_context: RawContextProperties) -> List[ProcessedContext]
 ```
 
-Three processing paths inside `real_process()`:
+Four processing paths inside `real_process()`:
 
 | Condition | Method | Strategy |
 |-----------|--------|----------|
 | Structured (CSV/XLSX/JSONL) | `_process_structured_document()` | Chunker-based (StructuredFileChunker or FAQChunker) |
 | Text content (INPUT source) | `_process_text_content()` | DocumentTextChunker |
+| Plain text (.txt) | `_process_txt_file()` | Read UTF-8 content -> DocumentTextChunker (no VLM) |
 | Visual (PDF/DOCX/images/PPT/MD) | `_process_visual_document()` | Page-by-page: text extraction + VLM for visual pages |
+
+Note: `.txt` files are routed from within `_process_document_page_by_page()` before page analysis begins.
 
 All paths produce `List[ProcessedContext]` via `_create_contexts_from_chunks()`.
 
@@ -426,6 +441,8 @@ The merger currently only supports KNOWLEDGE type. To add a new type:
 
 - **Entity persistence requires all 3 identifiers**: `refresh_entities()` and all `storage.upsert_entity()` / `storage.get_entity()` calls require `user_id`, `device_id`, `agent_id`. Omitting any causes argument mismatches.
 
+- **`shutdown()` signature varies across subclasses**: `BaseContextProcessor.shutdown(self) -> bool` takes no args and returns bool. `DocumentProcessor.shutdown(self, _graceful: bool = False)` and `ScreenshotProcessor.shutdown(self, graceful: bool = False)` add an extra parameter and return None implicitly. This deviates from the base class contract.
+
 - **Sync/async bridging in processors**: `TextChatProcessor.process()` and `ScreenshotProcessor.process()` detect whether an event loop is running and either create a task or call `asyncio.run()`. `DocumentProcessor` uses `loop.run_in_executor()` for async. Be careful when modifying this logic.
 
 - **VLM batch size is configurable**: `DocumentProcessor._vlm_batch_size` controls how many pages are sent to VLM in parallel. Set via `document_processing.vlm_batch_size` config.
@@ -435,3 +452,7 @@ The merger currently only supports KNOWLEDGE type. To add a new type:
 - **ProcessorFactory creates instances with parameterless constructors**: All processors read their own config from `GlobalConfig` inside `__init__()`. The factory's `config` and `**dependencies` parameters are deprecated and ignored.
 
 - **ScreenshotProcessor is not registered in the factory**: It is instantiated directly by the server layer, not through `processor_factory.create_processor()`.
+
+- **ScreenshotProcessor references non-existent enum values (latent bug)**: `can_process()` and `_create_processed_context()` use `ContextSource.SCREENSHOT`, which does not exist in the `ContextSource` enum (valid values: VAULT, LOCAL_FILE, WEB_LINK, INPUT, CHAT_LOG). The fallback in `_create_processed_context()` also references `ContextType.ACTIVITY_CONTEXT`, which does not exist in `ContextType` (valid values: PROFILE, ENTITY, DOCUMENT, EVENT, KNOWLEDGE). Both will raise `AttributeError` at runtime if reached.
+
+- **ContextMerger._merge_with_llm has Chinese string dependency**: Checks `if "无需合并" in response:` ("no merge needed") to detect when LLM declines a merge. This works with Chinese prompts but will not match if using English prompts.

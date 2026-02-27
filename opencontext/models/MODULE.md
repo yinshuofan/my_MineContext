@@ -43,9 +43,10 @@ OVERWRITE = "overwrite"  |  APPEND = "append"  |  APPEND_MERGE = "append_merge"
 DAILY_REPORT = "DailyReport"  |  WEEKLY_REPORT = "WeeklyReport"  |  NOTE = "Note"
 ```
 
-### CompletionType(Enum)
+### CompletionType(Enum) -- note: `Enum`, not `str, Enum`
 ```
-SEMANTIC_CONTINUATION  |  TEMPLATE_COMPLETION  |  REFERENCE_SUGGESTION  |  CONTEXT_AWARE
+SEMANTIC_CONTINUATION = "semantic_continuation"  |  TEMPLATE_COMPLETION = "template_completion"
+REFERENCE_SUGGESTION = "reference_suggestion"    |  CONTEXT_AWARE = "context_aware"
 ```
 
 ## Mapping Dicts (enums.py)
@@ -112,6 +113,8 @@ LLM extraction results. Fields:
 | `confidence` | `int` | `0` |
 | `importance` | `int` | `0` |
 
+Methods: `to_dict() -> Dict`, `from_dict(cls, data) -> ExtractedData`
+
 ### ContextProperties
 Tracking and hierarchy metadata. Fields:
 | Field | Type | Default | Notes |
@@ -139,7 +142,7 @@ Tracking and hierarchy metadata. Fields:
 | `source_file_key` | `Optional[str]` | `None` | `"user_id:file_path"` format |
 
 ### Vectorize
-Embedding configuration. Fields: `content_format` (ContentFormat), `image_path` (Optional[str]), `text` (Optional[str]), `vector` (Optional[List[float]]).
+Embedding configuration. Fields: `content_format` (ContentFormat, default `ContentFormat.TEXT`), `image_path` (Optional[str]), `text` (Optional[str]), `vector` (Optional[List[float]]).
 Method: `get_vectorize_content() -> str`
 
 ### ProcessedContext
@@ -159,7 +162,7 @@ Key methods:
 
 ### ProcessedContextModel
 API response model. Mirrors `ProcessedContext` fields as serialized types (datetimes as `str`, enums as `str`, embedding as `Optional[List[float]]`). Includes hierarchy fields and `source_file_key`.
-Key method: `from_processed_context(cls, pc: ProcessedContext, project_root: Path) -> ProcessedContextModel`
+Key methods: `from_processed_context(cls, pc: ProcessedContext, project_root: Path) -> ProcessedContextModel`, `from_dict(cls, data: Dict[str, Any]) -> ProcessedContextModel`
 
 ### RawContextModel
 API response model for raw context. Fields: `object_id`, `content_format`, `source`, `create_time` (all `str`), plus optional `content_path`, `content_text`, `additional_info`.
@@ -178,8 +181,10 @@ Relational DB model. Composite PK: `(user_id, device_id, agent_id)`.
 | `entities` | `List[str]` | `[]` |
 | `importance` | `int` | `0` |
 | `metadata` | `Optional[Dict[str, Any]]` | `{}` |
-| `created_at` | `datetime` | `utcnow` |
-| `updated_at` | `datetime` | `utcnow` |
+| `created_at` | `datetime` | `now(utc)` |
+| `updated_at` | `datetime` | `now(utc)` |
+
+Methods: `to_dict() -> Dict`, `from_dict(cls, data) -> ProfileData`
 
 ### EntityData
 Relational DB model. Unique key: `(user_id, device_id, agent_id, entity_name)`.
@@ -197,7 +202,9 @@ Relational DB model. Unique key: `(user_id, device_id, agent_id, entity_name)`.
 | `aliases` | `List[str]` | `[]` |
 | `relationships` | `Dict[str, List[str]]` | `{}` |
 | `metadata` | `Optional[Dict[str, Any]]` | `{}` |
-| `created_at`, `updated_at` | `datetime` | `utcnow` |
+| `created_at`, `updated_at` | `datetime` | `now(utc)` |
+
+Methods: `to_dict() -> Dict`, `from_dict(cls, data) -> EntityData`
 
 Note: `relationships` is stored inside the `metadata` JSON column in the DB, not as a separate column.
 

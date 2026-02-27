@@ -27,7 +27,7 @@ Loads YAML config with environment variable substitution.
 | `load_config` | `(config_path: Optional[str] = None) -> bool` | Load YAML, substitute env vars, merge user settings. Default path: `config/config.yaml`. Raises `FileNotFoundError` if path missing. |
 | `get_config` | `() -> Optional[Dict[str, Any]]` | Return full config dict |
 | `get_config_path` | `() -> Optional[str]` | Return config file path |
-| `deep_merge` | `(base: Dict, override: Dict) -> Dict` | Recursive dict merge (override wins) |
+| `deep_merge` | `(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]` | Recursive dict merge (override wins) |
 | `load_user_settings` | `() -> bool` | Load `user_setting_path` from config, merge into `_config` |
 | `save_user_settings` | `(settings: Dict[str, Any]) -> bool` | Save specific keys (vlm_model, embedding_model, capture, processing, logging, prompts, content_generation) to user settings file and merge |
 | `reset_user_settings` | `() -> bool` | Delete user settings file, reload config |
@@ -71,8 +71,9 @@ Thread-safe singleton wrapping both managers. Uses double-checked locking (`thre
 - `_prompt_manager: Optional[PromptManager]`
 - `_config_path: Optional[str]`
 - `_prompt_path: Optional[str]`
-- `_language: str` (default `"zh"`)
 - `_auto_initialized: bool`
+
+Note: `_language` is NOT set in `__init__`. It is set later in `_init_prompt_manager()` and `set_language()`. `get_language()` falls back to `"zh"` via `hasattr` check if the attribute doesn't exist yet.
 
 **Key methods:**
 
@@ -81,7 +82,7 @@ Thread-safe singleton wrapping both managers. Uses double-checked locking (`thre
 | `get_instance` | `(cls) -> GlobalConfig` | Get singleton; auto-initializes on first access |
 | `reset` | `(cls) -> None` | Reset singleton (for testing) |
 | `initialize` | `(config_path: Optional[str] = None) -> bool` | Init both managers; called once at startup |
-| `get_config` | `(path: Optional[str] = None) -> Optional[Dict]` | Dot-path config lookup (e.g. `"storage.vector_db"`) |
+| `get_config` | `(path: Optional[str] = None) -> Optional[Dict[str, Any]]` | Dot-path config lookup (e.g. `"storage.vector_db"`) |
 | `get_prompt` | `(name: str, default: Optional[str] = None) -> Optional[str]` | Delegates to `PromptManager.get_prompt()` |
 | `get_prompt_group` | `(name: str) -> Dict[str, str]` | Delegates to `PromptManager.get_prompt_group()` |
 | `get_language` | `() -> str` | Current language (`"zh"` or `"en"`) |
@@ -112,7 +113,8 @@ is_initialized() -> bool
 **Imports from:**
 - `pyyaml` (yaml.safe_load, yaml.dump)
 - `python-dotenv` (load_dotenv) -- in ConfigManager
-- `opencontext.utils.logging_utils` (get_logger)
+- `opencontext.utils.logging_utils` (get_logger) -- used by `config_manager.py` and `global_config.py`
+- `loguru` (logger) -- used directly by `prompt_manager.py` (does not use `get_logger`)
 - `opencontext.models.enums` -- PromptManager calls `get_context_type_descriptions_for_prompts()` and `get_context_type_descriptions_for_retrieval()`
 
 **Depended on by (most modules):**

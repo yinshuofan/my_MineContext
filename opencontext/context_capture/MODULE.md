@@ -12,7 +12,7 @@ Provides a base class and concrete implementations for capturing raw context dat
 | `folder_monitor.py` | `FolderMonitorCapture` -- watches local folders for file create/update/delete events |
 | `text_chat.py` | `TextChatCapture` -- buffers chat messages in Redis, flushes when threshold reached |
 | `vault_document_monitor.py` | `VaultDocumentMonitor` -- polls the vaults DB table for new/updated documents |
-| `__init__.py` | Re-exports `BaseCaptureComponent`, `VaultDocumentMonitor`, `FolderMonitorCapture`, `TextChatCapture` |
+| `__init__.py` | Re-exports `BaseCaptureComponent`, `VaultDocumentMonitor`, `FolderMonitorCapture`, `TextChatCapture` (note: `ScreenshotCapture` and `WebLinkCapture` are NOT exported) |
 
 ## Class Hierarchy
 
@@ -38,7 +38,7 @@ Abstract base class implementing `ICaptureComponent`. Manages lifecycle (init/st
 ```python
 def __init__(self, name: str, description: str, source_type: ContextSource)
 ```
-Key fields: `_config: Dict`, `_running: bool`, `_capture_thread: Thread`, `_stop_event: threading.Event`, `_callback: Callable`, `_capture_interval: float` (default 1.0), `_capture_count: int`, `_error_count: int`.
+Key fields: `_config: Dict`, `_running: bool`, `_capture_thread: Thread`, `_stop_event: threading.Event`, `_callback: Callable`, `_capture_interval: float` (default 1.0), `_capture_count: int`, `_error_count: int`, `_last_capture_time: Optional[datetime]`, `_last_error: Optional[str]`.
 
 **Public API (all implemented in base):**
 
@@ -53,6 +53,10 @@ Key fields: `_config: Dict`, `_running: bool`, `_capture_thread: Thread`, `_stop
 | `get_statistics` | `() -> Dict[str, Any]` | Base stats merged with `_get_statistics_impl()` |
 | `validate_config` | `(config: Dict[str, Any]) -> bool` | Base checks + `_validate_config_impl()` |
 | `get_config_schema` | `() -> Dict[str, Any]` | Base schema merged with `_get_config_schema_impl()` |
+| `is_running` | `() -> bool` | Whether the component is currently running |
+| `get_name` | `() -> str` | Returns `self._name` |
+| `get_description` | `() -> str` | Returns `self._description` |
+| `reset_statistics` | `() -> bool` | Resets capture/error counts, calls `_reset_statistics_impl()` |
 
 **Abstract methods subclasses must implement:**
 
@@ -69,7 +73,7 @@ Key fields: `_config: Dict`, `_running: bool`, `_capture_thread: Thread`, `_stop
 
 Captures screenshots from all monitors using the `mss` library. Supports configurable format (png/jpg), quality, region, deduplication, and max image size.
 
-- `source_type`: `ContextSource.SCREENSHOT`
+- `source_type`: `ContextSource.SCREENSHOT` (**Note**: `SCREENSHOT` does not exist in the `ContextSource` enum in `enums.py` -- this is a latent bug in the code)
 - `_take_screenshot() -> list` -- returns list of `(bytes, format_str, details_dict)` per monitor
 - `_create_new_context(screenshot_bytes, screenshot_format, timestamp, details) -> RawContextProperties`
 - On graceful stop, flushes pending stable screenshots via callback
@@ -133,7 +137,7 @@ Config keys: `buffer_size` (default 4), `buffer_ttl` (default 86400), `redis` (h
 
 Polls the vaults table in the relational DB for new/updated documents, generates `RawContextProperties` for the pipeline.
 
-- `source_type`: `ContextSource.INPUT`
+- `source_type`: `ContextSource.INPUT` (constructor), but `_create_context_from_event` produces `RawContextProperties` with `source=ContextSource.VAULT`
 - Runs its own `_monitor_loop` thread
 - Tracks `_processed_vault_ids: Set[int]` to avoid reprocessing
 
@@ -204,6 +208,7 @@ To add a new capture component:
 - `opencontext.storage.global_storage` -- `get_storage()` (used by `FolderMonitorCapture`, `VaultDocumentMonitor`)
 - `opencontext.context_processing.processor.document_processor` -- `DocumentProcessor.get_supported_formats()` (used by `FolderMonitorCapture`)
 - `opencontext.storage.redis_cache` -- `RedisCacheConfig`, `get_redis_cache` (used by `TextChatCapture`)
+- `opencontext.utils.logger` -- `LogManager.get_logger()` (used by `screenshot.py` instead of the standard `get_logger` from `logging_utils`)
 - External: `mss` (screenshot), `crawl4ai` (web markdown), `playwright` (web PDF), `PIL` (image processing)
 
 **Depended on by:**

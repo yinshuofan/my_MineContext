@@ -42,6 +42,7 @@ Configuration for a registered task type. Stored in Redis as a hash.
 | `timeout` | `int` | `300` | Distributed lock / execution timeout |
 | `task_ttl` | `int` | `7200` | Redis key TTL for task state |
 | `max_retries` | `int` | `3` | Max retry attempts |
+| `description` | `str` | `""` | Human-readable description |
 
 Methods: `to_dict() -> Dict[str, Any]`, `from_dict(data) -> TaskConfig`
 
@@ -60,7 +61,10 @@ Represents a single scheduled task instance for one user.
 | `created_at` | `int` | Unix timestamp of creation |
 | `scheduled_at` | `int` | Unix timestamp when task becomes eligible |
 | `last_activity` | `int` | Last user activity timestamp |
+| `retry_count` | `int` | Current retry attempt count (default `0`) |
 | `lock_token` | `Optional[str]` | Distributed lock token (set when acquired) |
+
+Methods: `to_dict() -> Dict[str, str]`, `from_dict(data) -> TaskInfo`
 
 ### UserKeyConfig (dataclass)
 
@@ -73,6 +77,8 @@ Controls which dimensions are included in composite user keys.
 | `use_agent_id` | `bool` | `True` |
 | `default_device_id` | `str` | `"default"` |
 | `default_agent_id` | `str` | `"default"` |
+
+Methods: `from_dict(data) -> UserKeyConfig`
 
 ### ITaskScheduler (ABC)
 
@@ -105,7 +111,7 @@ Implements `IUserKeyBuilder`. Separator: `":"`. Modes:
 - 2-key (`use_agent_id=False`): `user_id:device_id`
 - 1-key (`use_device_id=False`): `user_id`
 
-Additional methods: `get_key_count() -> int`, properties `use_device_id`, `use_agent_id`, `default_device_id`, `default_agent_id`.
+Additional methods: `from_dict(cls, config_dict: Dict) -> UserKeyBuilder`, `get_key_count() -> int`, properties `use_device_id`, `use_agent_id`, `default_device_id`, `default_agent_id`.
 
 ### RedisTaskScheduler
 
@@ -122,6 +128,8 @@ Implements `ITaskScheduler`. Stores all state in Redis via `RedisCache`.
 | `scheduler:last_exec:{type}:{user_key}` | Last execution timestamp (24h TTL) |
 | `scheduler:lock:{type}:{user_key}` | Distributed lock |
 | `scheduler:periodic:{type}` | Periodic task state hash (`last_run`, `next_run`, `status`) |
+
+**Properties**: `user_key_builder -> UserKeyBuilder`
 
 **Key internal methods**:
 
@@ -192,6 +200,7 @@ _executor_loop
 
 **Imports from**:
 - `opencontext.storage.redis_cache.RedisCache` -- all Redis operations
+- `loguru` (logger) -- used directly by `redis_scheduler.py` (not via `get_logger`)
 
 **Depended on by**:
 - `opencontext.periodic_task.base` -- imports `TaskConfig`, `TriggerMode`
