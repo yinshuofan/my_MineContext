@@ -478,7 +478,6 @@ merging:
       - `summary`: (string) Summary of merged new context.
       - `keywords`: (List[string]) Core keywords re-extracted based on new `title` and `summary`.
       - `entities`: (List[string]) Core entities re-extracted based on new `title` and `summary`.
-      - `tags`: (List[string]) Tags re-extracted based on new `title` and `summary`.
       - `importance`: (integer) Re-evaluate importance based on updated complete information (integer from 0 to 10).
       - `confidence`: (integer) Re-evaluate confidence in information accuracy based on updated complete information (integer from 0 to 10).
       - `event_time`: (string or null) Re-evaluate event time based on updated complete information. If exists, string in ISO 8601 format, otherwise null.
@@ -511,7 +510,6 @@ merging:
       - `summary`: (string) Comprehensive summary of the merged knowledge.
       - `keywords`: (List[string]) Core keywords.
       - `entities`: (List[string]) Core entities.
-      - `tags`: (List[string]) Tags.
       - `importance`: (integer) 0-10.
       - `confidence`: (integer) 0-10.
       - `event_time`: (string or null) ISO 8601 format or null.

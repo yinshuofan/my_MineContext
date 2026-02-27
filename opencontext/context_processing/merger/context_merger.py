@@ -322,7 +322,6 @@ class ContextMerger(BaseContextProcessor):
                         "summary",
                         "keywords",
                         "entities",
-                        "tags",
                         "importance",
                         "confidence",
                     ]

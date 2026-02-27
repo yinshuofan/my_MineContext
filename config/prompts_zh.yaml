@@ -477,7 +477,6 @@ merging:
       - `summary`: (string) 合并后新上下文的摘要。
       - `keywords`: (List[string]) 基于新的`title`和`summary`，重新提取出的核心关键词。
       - `entities`: (List[string]) 基于新的`title`和`summary`，重新提取出的核心实体。
-      - `tags`: (List[string]) 基于新的`title`和`summary`，重新提取出的标签。
       - `importance`: (integer) 基于更新后的完整信息，重新评估其重要性 (0到10的整数)。
       - `confidence`: (integer) 基于更新后的完整信息，重新评估你对信息准确性的置信度 (0到10的整数)。
       - `event_time`: (string or null) 基于更新后的完整信息，重新评估事件时间。如果存在，则为 ISO 8601 格式的字符串，否则为 null。
@@ -510,7 +509,6 @@ merging:
       - `summary`: (string) 合并后的知识综合摘要。
       - `keywords`: (List[string]) 核心关键词。
       - `entities`: (List[string]) 核心实体。
-      - `tags`: (List[string]) 标签。
       - `importance`: (integer) 0-10。
       - `confidence`: (integer) 0-10。
       - `event_time`: (string or null) ISO 8601格式或null。
