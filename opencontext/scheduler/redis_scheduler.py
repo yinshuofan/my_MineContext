@@ -264,8 +264,17 @@ class RedisTaskScheduler(ITaskScheduler):
                 # Another instance is processing, skip
                 continue
 
-            # Update task status
+            # Check if task hash still exists (may have expired via TTL)
             task_key = f"{self.TASK_PREFIX}{task_type}:{user_key}"
+            task_exists = await self._redis.exists(task_key)
+            if not task_exists:
+                # Orphaned queue entry — task hash expired, clean up and skip
+                await self._redis.zrem(queue_key, user_key)
+                await self._redis.release_lock(lock_key, lock_token)
+                logger.debug(f"Cleaned orphaned queue entry for {task_type}:{user_key}")
+                continue
+
+            # Update task status
             await self._redis.hset(task_key, "status", TaskStatus.RUNNING.value)
 
             # Remove from queue
