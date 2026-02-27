@@ -128,6 +128,7 @@ Implements `ITaskScheduler`. Stores all state in Redis via `RedisCache`.
 | `scheduler:last_exec:{type}:{user_key}` | Last execution timestamp (24h TTL) |
 | `scheduler:lock:{type}:{user_key}` | Distributed lock |
 | `scheduler:periodic:{type}` | Periodic task state hash (`last_run`, `next_run`, `status`) |
+| `scheduler:fail_count:{type}:{user_key}` | Consecutive failure count (auto-expires via TTL) |
 
 **Properties**: `user_key_builder -> UserKeyBuilder`
 
@@ -175,13 +176,14 @@ Push endpoint
         ├─ build_key() -> user_key
         ├─ Check existing task in Redis (skip if PENDING/RUNNING)
         ├─ Check last_exec time (skip if within interval)
+        ├─ Check fail_count >= max_retries (skip if exceeded; auto-resets via TTL)
         └─ Create TaskInfo, write to Redis hash + add to sorted set (score = now + interval)
 
 _executor_loop (every check_interval seconds)
   └─> _process_task_type(task_type) for each registered handler
         ├─ get_pending_task() -- ZRANGEBYSCORE for due tasks, acquire distributed lock
         ├─ run_in_executor(handler, user_id, device_id, agent_id)
-        └─ complete_task() -- update status, record last_exec, release lock
+        └─ complete_task() -- update status, record last_exec (always), manage fail_count, release lock
 ```
 
 ### periodic task lifecycle
@@ -217,3 +219,5 @@ _executor_loop
 - **One task per cycle per type**: `_process_task_type()` processes at most one pending task per executor loop iteration. This provides natural rate limiting.
 - **Lock token is required for `complete_task`**: Always pass the `lock_token` from `TaskInfo` to `complete_task()`.
 - **`check_interval` controls throughput**: Default 10s. All registered handler types are checked each cycle.
+- **`last_exec` is recorded on both success and failure**: This enforces interval spacing after failures too, preventing rapid re-scheduling when a dependency (e.g., LLM) is down.
+- **Consecutive failure tracking**: `fail_count` key tracks failures across task instances (since each push creates a new `TaskInfo`). When `fail_count >= max_retries`, new tasks are blocked. The key auto-expires via TTL (`max(max_retries * interval * 2, 86400)` seconds), allowing automatic recovery after transient outages. On success, `fail_count` is immediately deleted.

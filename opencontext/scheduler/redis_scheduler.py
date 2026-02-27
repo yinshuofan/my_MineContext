@@ -49,6 +49,7 @@ class RedisTaskScheduler(ITaskScheduler):
     LAST_EXEC_PREFIX = "scheduler:last_exec:"
     LOCK_PREFIX = "scheduler:lock:"
     PERIODIC_PREFIX = "scheduler:periodic:"
+    FAIL_COUNT_PREFIX = "scheduler:fail_count:"
 
     def __init__(self, redis_cache: RedisCache, config: Optional[Dict[str, Any]] = None):
         """
@@ -185,6 +186,23 @@ class RedisTaskScheduler(ITaskScheduler):
                 )
                 return False
 
+        # Check consecutive failure count against max_retries
+        fail_count_key = f"{self.FAIL_COUNT_PREFIX}{task_type}:{user_key}"
+        fail_count_str = await self._redis.get(fail_count_key)
+        if fail_count_str:
+            fail_count = int(fail_count_str)
+            # Defensive: ensure TTL exists (protect against orphaned keys)
+            key_ttl = await self._redis.ttl(fail_count_key)
+            if key_ttl == -1:  # No expiry set — re-apply default
+                await self._redis.expire(fail_count_key, 86400)
+            if fail_count >= task_config.max_retries:
+                logger.debug(
+                    f"Skipping {task_type} for {user_key}, "
+                    f"consecutive failures ({fail_count}) >= "
+                    f"max_retries ({task_config.max_retries})"
+                )
+                return False
+
         # Create new task
         now = int(time.time())
         scheduled_at = now + interval
@@ -277,15 +295,33 @@ class RedisTaskScheduler(ITaskScheduler):
         task_key = f"{self.TASK_PREFIX}{task_type}:{user_key}"
         lock_key = f"{self.LOCK_PREFIX}{task_type}:{user_key}"
         last_exec_key = f"{self.LAST_EXEC_PREFIX}{task_type}:{user_key}"
+        fail_count_key = f"{self.FAIL_COUNT_PREFIX}{task_type}:{user_key}"
 
         # Update task status
         status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
         await self._redis.hset(task_key, "status", status.value)
 
-        # Record execution time
+        # Always record last_exec to enforce interval spacing on both success and failure
+        await self._redis.set(last_exec_key, str(int(time.time())))
+        await self._redis.expire(last_exec_key, 86400)  # 24 hours
+
         if success:
-            await self._redis.set(last_exec_key, str(int(time.time())))
-            await self._redis.expire(last_exec_key, 86400)  # 24 hours
+            # Reset consecutive failure count on success
+            await self._redis.delete(fail_count_key)
+        else:
+            # Increment consecutive failure count
+            task_config = await self.get_task_config(task_type)
+            max_retries = task_config.max_retries if task_config else 3
+            interval = task_config.interval if task_config else 1800
+
+            count = await self._redis.incr(fail_count_key)
+            fail_count_ttl = max(max_retries * interval * 2, 86400)
+            await self._redis.expire(fail_count_key, fail_count_ttl)
+
+            logger.warning(
+                f"Task {task_type} for {user_key} failed "
+                f"(consecutive failures: {count}/{max_retries})"
+            )
 
         # Release lock
         await self._redis.release_lock(lock_key, lock_token)
