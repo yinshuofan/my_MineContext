@@ -12,6 +12,7 @@
 | `processor/document_processor.py` | Processes documents (PDF, DOCX, images, CSV, XLSX, JSONL, MD, TXT) |
 | `processor/screenshot_processor.py` | Processes screenshots via VLM with Redis-backed dedup and context caching |
 | `processor/entity_processor.py` | Standalone functions for validating and persisting entities to relational DB |
+| `processor/profile_processor.py` | Standalone functions for LLM-driven profile merge-before-write to relational DB |
 | `processor/document_converter.py` | Converts documents to images and analyzes page structure (PDF, DOCX, PPTX, MD) |
 | **chunker/** | |
 | `chunker/__init__.py` | Re-exports `BaseChunker`, `ChunkingConfig`, `StructuredFileChunker`, `FAQChunker`, `DocumentTextChunker` |
@@ -178,6 +179,30 @@ async def refresh_entities(
 `validate_and_clean_entities`: Converts list of dicts (with `name`, `type`, `description`, `aliases`, `metadata`) into `Dict[str, EntityData]`.
 
 `refresh_entities`: For each entity, checks if it exists in relational DB via `storage.get_entity()`. If exists, merges content/aliases/keywords. Upserts via `storage.upsert_entity()`. Always requires all three identifiers (`user_id`, `device_id`, `agent_id`).
+
+### profile_processor (`processor/profile_processor.py`)
+
+Standalone module (no class). Two public functions:
+
+```python
+def refresh_profile(
+    new_content: str,
+    new_summary: Optional[str],
+    new_keywords: Optional[List[str]],
+    new_entities: Optional[List[str]],
+    new_importance: int,
+    new_metadata: Optional[Dict[str, Any]],
+    user_id: str = "default",
+    device_id: str = "default",
+    agent_id: str = "default",
+) -> bool
+```
+
+`refresh_profile`: Checks if a profile exists via `storage.get_profile()`. If exists, calls `_merge_profile_with_llm()` to intelligently merge old and new data using the `merging.overwrite_merge` prompt, then upserts the merged result. If no existing profile, writes directly. Falls back to direct overwrite if LLM merge fails.
+
+`_merge_profile_with_llm`: Internal function. Loads `merging.overwrite_merge` prompt group, serializes old/new profile data as JSON, calls `generate_with_messages()` (sync), parses response JSON expecting `content`, `summary`, `keywords`, `entities`, `importance` fields.
+
+Called from: `OpenContext._store_profile()` in `opencontext/server/opencontext.py`.
 
 ### DocumentConverter (`processor/document_converter.py`)
 
@@ -352,12 +377,12 @@ ProcessedContext (KNOWLEDGE, enable_merge=True)
 | `opencontext.models.context` | All files | `ProcessedContext`, `RawContextProperties`, `ContextProperties`, `ExtractedData`, `Vectorize`, `Chunk`, `EntityData` |
 | `opencontext.models.enums` | All files | `ContextType`, `ContextSource`, `ContentFormat`, `FileType`, `STRUCTURED_FILE_TYPES` |
 | `opencontext.config.global_config` | Processors, chunker | `get_config()`, `get_prompt_group()`, `get_prompt_manager()` |
-| `opencontext.llm.global_vlm_client` | TextChat, Document, Screenshot, Merger | `generate_with_messages_async()`, `generate_with_messages()` |
+| `opencontext.llm.global_vlm_client` | TextChat, Document, Screenshot, Merger, Profile | `generate_with_messages_async()`, `generate_with_messages()` |
 | `opencontext.llm.global_embedding_client` | Screenshot, Merger | `do_vectorize()`, `do_vectorize_async()` |
-| `opencontext.storage.global_storage` | Document, Screenshot, Entity, Merger | `get_storage()` -> `UnifiedStorage` |
+| `opencontext.storage.global_storage` | Document, Screenshot, Entity, Profile, Merger | `get_storage()` -> `UnifiedStorage` |
 | `opencontext.storage.redis_cache` | Screenshot | `get_redis_cache()` for phash/context caching |
 | `opencontext.interfaces.processor_interface` | BaseProcessor | `IContextProcessor` interface |
-| `opencontext.utils.json_parser` | TextChat, Document, Screenshot, Merger | `parse_json_from_response()` |
+| `opencontext.utils.json_parser` | TextChat, Document, Screenshot, Profile, Merger | `parse_json_from_response()` |
 | `opencontext.utils.image` | Screenshot | `calculate_phash()`, `resize_image()` |
 | `opencontext.monitoring.monitor` | Document, Screenshot | `record_processing_error()`, `record_processing_metrics()` |
 
@@ -393,7 +418,9 @@ The merger currently only supports KNOWLEDGE type. To add a new type:
 
 ## Conventions and Constraints
 
-- **Merger only handles KNOWLEDGE**: `ContextMerger.can_process()` returns `False` for all non-KNOWLEDGE types. Profile/entity use relational DB overwrite, document uses delete+insert, event is immutable append. Do not route other types through the merger.
+- **Merger only handles KNOWLEDGE**: `ContextMerger.can_process()` returns `False` for all non-KNOWLEDGE types. Document uses delete+insert, event is immutable append. Do not route other types through the merger. Profile and entity have their own dedicated merge logic in `profile_processor.py` and `entity_processor.py` respectively.
+
+- **Profile persistence uses LLM merge**: `profile_processor.refresh_profile()` calls LLM with the `merging.overwrite_merge` prompt to intelligently merge new profile data with existing records before writing. This requires all 3 identifiers (`user_id`, `device_id`, `agent_id`). If LLM fails, falls back to direct overwrite.
 
 - **DocumentTextChunker uses `chunk_text()`, not `chunk()`**: Unlike other chunkers, `DocumentTextChunker.chunk()` raises `NotImplementedError`. Always call `chunk_text(texts: List[str])` instead.
 

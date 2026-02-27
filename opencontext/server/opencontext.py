@@ -188,19 +188,21 @@ class OpenContext:
             return False
 
     def _store_profile(self, ctx: ProcessedContext) -> None:
-        """Store a profile context to relational DB."""
+        """Store a profile context to relational DB with LLM-driven merge."""
+        from opencontext.context_processing.processor.profile_processor import refresh_profile
+
         ed = ctx.extracted_data
         props = ctx.properties
-        self.storage.upsert_profile(
+        refresh_profile(
+            new_content=ed.summary or "",
+            new_summary=ed.summary,
+            new_keywords=ed.keywords,
+            new_entities=ed.entities,
+            new_importance=ed.importance,
+            new_metadata=ctx.metadata,
             user_id=props.user_id or "default",
             device_id=props.device_id or "default",
             agent_id=props.agent_id or "default",
-            content=ed.summary or "",
-            summary=ed.summary,
-            keywords=ed.keywords,
-            entities=ed.entities,
-            importance=ed.importance,
-            metadata=ctx.metadata,
         )
         logger.info(
             f"Profile stored for user={props.user_id}, device={props.device_id}, agent={props.agent_id}"
