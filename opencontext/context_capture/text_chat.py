@@ -386,7 +386,8 @@ class TextChatCapture(BaseCaptureComponent):
         try:
             if not await self._redis_cache.is_connected():
                 return 0
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Redis connection check failed, returning 0: {e}")
             return 0
 
         buffer_key = self._make_buffer_key(user_id, device_id, agent_id)

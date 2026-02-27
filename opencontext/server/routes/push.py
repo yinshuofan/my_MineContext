@@ -207,6 +207,7 @@ async def push_chat(
             )
 
         if request.process_mode == "buffer":
+
             async def _push_all_messages():
                 for msg in request.messages:
                     await text_chat.push_message(
@@ -356,5 +357,3 @@ async def upload_document_file(
     except Exception as e:
         logger.exception(f"Error uploading document: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
-
-

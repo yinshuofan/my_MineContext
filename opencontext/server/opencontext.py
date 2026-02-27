@@ -78,9 +78,7 @@ class OpenContext:
                     key_prefix=redis_config.get("key_prefix", "opencontext:"),
                     max_connections=int(redis_config.get("max_connections", 10)),
                     socket_timeout=float(redis_config.get("socket_timeout", 5.0)),
-                    socket_connect_timeout=float(
-                        redis_config.get("socket_connect_timeout", 5.0)
-                    ),
+                    socket_connect_timeout=float(redis_config.get("socket_connect_timeout", 5.0)),
                     retry_on_timeout=redis_config.get("retry_on_timeout", True),
                 )
                 init_redis_cache(redis_cfg)
@@ -439,7 +437,8 @@ class OpenContext:
                     conn = backend._get_connection()
                     conn.execute("SELECT 1")
                     health["document_db"] = True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Document DB health check failed: {e}")
             health["document_db"] = False
 
         # Check Redis connectivity
@@ -451,7 +450,8 @@ class OpenContext:
                 health["redis"] = await cache.is_connected()
             else:
                 health["redis"] = False
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Redis health check failed: {e}")
             health["redis"] = False
 
         return health

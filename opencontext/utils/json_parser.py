@@ -101,5 +101,6 @@ def _fix_json_quotes(json_str: str) -> str:
     try:
         fixed = re.sub(pattern, fix_quotes_in_match, json_str)
         return fixed
-    except:
+    except Exception as e:
+        logger.debug(f"Regex JSON quote fix failed, returning original: {e}")
         return json_str

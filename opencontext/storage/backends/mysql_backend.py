@@ -117,8 +117,8 @@ class MySQLBackend(IDocumentStorageBackend):
         except Exception:
             try:
                 conn.rollback()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Nested rollback failed: {e}")
             raise
         finally:
             conn.close()  # Returns to pool

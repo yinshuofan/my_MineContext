@@ -69,8 +69,12 @@ class FastSearchStrategy(BaseSearchStrategy):
 
         if ContextType.ENTITY.value in context_types and user_id:
             tasks["entity"] = asyncio.to_thread(
-                storage.search_entities, user_id, device_id or "default",
-                agent_id or "default", query, top_k,
+                storage.search_entities,
+                user_id,
+                device_id or "default",
+                agent_id or "default",
+                query,
+                top_k,
             )
 
         if ContextType.DOCUMENT.value in context_types:

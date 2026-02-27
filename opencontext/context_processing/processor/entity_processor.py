@@ -80,7 +80,9 @@ async def refresh_entities(
 
             # Check if entity already exists
             existing = storage.get_entity(
-                user_id=user_id, device_id=device_id, agent_id=agent_id,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
                 entity_name=entity_name,
             )
             if existing:

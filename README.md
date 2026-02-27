@@ -120,7 +120,6 @@ docker-compose up
 | `/api/push/chat` | POST | 推送聊天消息（`process_mode: "buffer"` 或 `"direct"`） |
 | `/api/push/document` | POST | 推送文档（本地路径或 Base64） |
 | `/api/push/document/upload` | POST | 上传文档文件 |
-| `/api/push/activity` | POST | 推送活动记录 |
 
 **示例：推送聊天记录**
 

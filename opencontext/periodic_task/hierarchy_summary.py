@@ -294,9 +294,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         """
         sorted_ctxs = sorted(
             contexts,
-            key=lambda c: (
-                c.properties.event_time.isoformat() if c.properties.event_time else ""
-            ),
+            key=lambda c: (c.properties.event_time.isoformat() if c.properties.event_time else ""),
         )
         parts = []
         for i, ctx in enumerate(sorted_ctxs, 1):
@@ -363,9 +361,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                     sorted_l0 = sorted(
                         l0_list,
                         key=lambda c: (
-                            c.properties.event_time.isoformat()
-                            if c.properties.event_time
-                            else ""
+                            c.properties.event_time.isoformat() if c.properties.event_time else ""
                         ),
                     )
                     for j, evt in enumerate(sorted_l0, 1):
@@ -374,9 +370,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                         if evd.title:
                             line.append(f"Title: {evd.title}")
                         if evt.properties.event_time:
-                            line.append(
-                                f"Time: {evt.properties.event_time.strftime('%H:%M')}"
-                            )
+                            line.append(f"Time: {evt.properties.event_time.strftime('%H:%M')}")
                         if evd.summary:
                             line.append(f"Summary: {evd.summary}")
                         parts.append(" | ".join(line))
@@ -386,9 +380,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                 sorted_l0 = sorted(
                     l0_list,
                     key=lambda c: (
-                        c.properties.event_time.isoformat()
-                        if c.properties.event_time
-                        else ""
+                        c.properties.event_time.isoformat() if c.properties.event_time else ""
                     ),
                 )
                 for j, evt in enumerate(sorted_l0, 1):

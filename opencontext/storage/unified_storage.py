@@ -367,7 +367,8 @@ class UnifiedStorage:
             return (
                 GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
             )
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Config check for consumption failed, defaulting to enabled: {e}")
             return True  # Default to enabled if config not available
 
     def upsert_todo_embedding(
@@ -1025,7 +1026,10 @@ class UnifiedStorage:
         )
 
     def get_entity(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default",
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
         entity_name: str = "",
     ) -> Optional[Dict]:
         """Get entity → relational DB"""
@@ -1068,7 +1072,10 @@ class UnifiedStorage:
         )
 
     def delete_entity(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default",
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
         entity_name: str = "",
     ) -> bool:
         """Delete entity → relational DB"""

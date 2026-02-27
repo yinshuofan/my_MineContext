@@ -175,7 +175,9 @@ class ProfileRetrievalTool(BaseTool):
 
         storage = self._get_storage()
         entity = storage.get_entity(
-            user_id=user_id, device_id=device_id, agent_id=agent_id,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
             entity_name=entity_name,
         )
 
@@ -208,8 +210,11 @@ class ProfileRetrievalTool(BaseTool):
 
         storage = self._get_storage()
         results = storage.search_entities(
-            user_id=user_id, device_id=device_id, agent_id=agent_id,
-            query_text=query, limit=top_k,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            query_text=query,
+            limit=top_k,
         )
 
         return {
@@ -229,8 +234,11 @@ class ProfileRetrievalTool(BaseTool):
 
         storage = self._get_storage()
         results = storage.list_entities(
-            user_id=user_id, device_id=device_id, agent_id=agent_id,
-            entity_type=entity_type, limit=top_k,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            entity_type=entity_type,
+            limit=top_k,
         )
 
         return {

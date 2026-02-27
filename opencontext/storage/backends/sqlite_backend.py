@@ -1296,8 +1296,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to save token usage: {e}")
             try:
                 self._get_connection().rollback()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Rollback failed: {e}")
             return False
 
     def save_monitoring_stage_timing(
@@ -1392,8 +1392,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to save stage timing: {e}")
             try:
                 self._get_connection().rollback()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Rollback failed: {e}")
             return False
 
     def save_monitoring_data_stats(
@@ -1432,8 +1432,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to save data stats: {e}")
             try:
                 self._get_connection().rollback()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Rollback failed: {e}")
             return False
 
     def query_monitoring_token_usage(self, hours: int = 24) -> List[Dict[str, Any]]:
@@ -1658,8 +1658,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to cleanup old monitoring data: {e}")
             try:
                 self._get_connection().rollback()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Rollback failed: {e}")
             return False
 
     # Conversation/Message operations
@@ -2461,8 +2461,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         if local_conn and local_conn is not self.connection:
             try:
                 local_conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error closing thread-local connection: {e}")
         self._local.connection = None
 
         if self.connection:
