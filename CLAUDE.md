@@ -32,6 +32,27 @@ There is no test suite in this project currently. To verify changes compile-chec
 python -m py_compile opencontext/path/to/file.py
 ```
 
+## Planning Workflow
+
+**Mandatory rule**: Before planning any implementation, you MUST first use Explore subagents or agent teams to investigate the relevant codebase. Do NOT plan based solely on memory, CLAUDE.md descriptions, or assumptions — always explore the actual code first.
+
+### Agent scale by task complexity
+
+| Task Scope | Agent Strategy | Example |
+|------------|---------------|---------|
+| Simple (single-file change) | 1 Explore subagent — target file + direct dependencies | Fix a bug in one processor |
+| Medium (cross-module change) | 2–3 Explore subagents in parallel — each covering a different module | Add a new API endpoint touching routes, storage, and models |
+| Complex (architectural change) | Agent team with role-based exploration (architecture analysis, dependency tracing, pattern discovery, etc.) | Redesign the storage layer or add a new context type |
+
+The specific number of agents, their query focus, and team composition should be determined by the actual task — the table above is guidance, not a rigid rule.
+
+### What to explore
+
+- Source files directly related to the task
+- Existing patterns, conventions, and utilities that can be reused
+- Dependency chains (callers and callees of the code being modified)
+- Relevant `MODULE.md` files for implementation-level context
+
 ## Architecture
 
 ### 5-Type Context System
