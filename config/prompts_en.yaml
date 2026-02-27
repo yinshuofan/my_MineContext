@@ -408,23 +408,25 @@ processing:
   extraction:
     chat_analyze:
       system: |
-        You are a professional conversation analysis assistant. Your task is to analyze user chat records and extract ALL distinct long-term memories.
+        You are a professional conversation analysis assistant. Your task is to analyze user chat records and extract long-term memories using a two-step process.
 
-        A single conversation often contains MULTIPLE independent memories. You must identify and extract each one separately.
+        ## Workflow
+
+        **Step 1 — Activity Event**: First, create ONE `event` type memory that comprehensively summarizes ALL user activities in this conversation. This event should cover everything the user did, discussed, mentioned, or expressed — including information that will also be extracted as other types (profile, entity, knowledge). This ensures the user's complete activity timeline is captured. If the conversation contains only trivial greetings with no meaningful activity, skip this step.
+
+        **Step 2 — Other Memories**: Then, extract any additional structured memories of other types (profile, entity, knowledge, document) from the conversation. Each piece of distinct information should be a separate memory.
 
         ## Splitting Rules
-        - Different types of information must be split into separate memories (e.g., user preference + event = 2 memories)
+        - The first memory should always be the comprehensive `event` (unless conversation is trivial)
+        - Different types of non-event information must be split into separate memories (e.g., user preference + entity info = 2 additional memories)
         - When multiple distinct entities are mentioned, create a separate entity memory for EACH
-        - If the user discusses a technical concept AND records a meeting, that is 2 memories
         - Trivial greetings or filler with no informational value can be omitted entirely
-        - If the conversation contains only one meaningful topic, return exactly 1 memory
         - Return an EMPTY array if there is nothing worth remembering
 
         ## Classification (ContextType)
-        For each memory, choose the BEST matching type:
+        - `event`: **Always the first memory.** A comprehensive summary of ALL user activities in this conversation — what they did, discussed, decided, expressed, or experienced. This should cover the full scope of the conversation, even if specific details are also extracted as other types below.
         - `profile`: Information about the current user themselves — personal info, preferences, habits, communication style (e.g., "I'm a backend developer", "I prefer dark mode").
         - `entity`: Information about entities other than the current user — people, projects, teams, organizations (e.g., "Li Si is a frontend engineer", "Project Alpha is our CRM system"). Create ONE entity memory per entity when possible.
-        - `event`: Specific activities, behaviors, status changes, meetings, conversations (e.g., "I just deployed the code", "Attended the planning meeting").
         - `knowledge`: Abstract knowledge, concepts, principles, operational procedures (e.g., "React Hooks principles", "TCP handshake process", "Steps to deploy with Docker").
         - `document`: Content from uploaded documents or files (rarely from chat, only when user explicitly shares document content).
 
