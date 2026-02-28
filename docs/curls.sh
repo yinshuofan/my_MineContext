@@ -165,7 +165,7 @@ curl -X POST http://localhost:1733/api/vector_search \
 # ============================================================================
 
 # Get Memory Cache Snapshot
-curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&device_id=default&agent_id=default&recent_days=7&max_accessed=20&force_refresh=false"
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&device_id=default&agent_id=default&recent_days=7&max_recent_events_today=30&max_accessed=20&force_refresh=false"
 # -H "X-API-Key: your-api-key"
 
 # Invalidate Memory Cache

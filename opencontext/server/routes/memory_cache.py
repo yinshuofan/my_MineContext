@@ -59,7 +59,7 @@ async def get_user_memory_cache(
             timeout=15.0,
         )
         elapsed_ms = (time.monotonic() - t0) * 1000
-        response.cache_metadata["response_time_ms"] = round(elapsed_ms, 2)
+        logger.debug(f"Memory cache response time: {elapsed_ms:.2f}ms")
         return response
     except asyncio.TimeoutError:
         return JSONResponse(

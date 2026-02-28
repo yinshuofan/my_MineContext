@@ -35,7 +35,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `search/models.py` | Pydantic models: `UnifiedSearchRequest`, `TypedResults`, `VectorResult`, `ProfileResult`, `EntityResult` |
 | **cache/** | |
 | `cache/memory_cache_manager.py` | `UserMemoryCacheManager` singleton -- builds/caches per-user memory snapshots in Redis |
-| `cache/models.py` | Response models: `UserMemoryCacheResponse`, `RecentMemories`, `RecentlyAccessedItem`, etc. |
+| `cache/models.py` | Response models: `UserMemoryCacheResponse`, `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`, `RecentlyAccessedItem`; internal models: `RecentMemoryItem`, `DailySummaryItem` |
 | **middleware/** | |
 | `middleware/auth.py` | API key authentication via `X-API-Key` header or `api_key` query param |
 | `middleware/request_id.py` | `RequestIDMiddleware` -- assigns 8-char UUID per request, stored in `ContextVar` |
@@ -177,10 +177,10 @@ class UserMemoryCacheManager:
 ```
 
 Caching architecture:
-- **Snapshot** (profile + entities + recent memories): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
-- **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search, always read real-time.
+- **Snapshot** (profile + today events + daily summaries): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot stores full internal data; response assembly in `_merge_response()` simplifies to `SimpleProfile` (content + keywords + metadata), `SimpleDailySummary` (time_bucket + summary), `SimpleTodayEvent` (title + summary).
+- **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile/entity excluded), always read real-time.
 - **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. Falls back to local `asyncio.Semaphore(3)` if lock acquisition times out.
-- **Snapshot build**: 6 parallel `asyncio.to_thread()` queries (profile, entities, today events, daily summaries, recent docs, recent knowledge).
+- **Snapshot build**: 6 parallel `asyncio.to_thread()` queries (profile, entities, today events, daily summaries, recent docs, recent knowledge). Response only exposes profile, today_events, daily_summaries, recently_accessed.
 
 ### Auth Middleware (middleware/auth.py)
 
@@ -477,14 +477,16 @@ FastSearchStrategy.search()
 get_user_memory_cache()
   -> _get_recently_accessed()          # Always real-time from Redis Hash
   -> Check cached snapshot (Redis JSON)
-     HIT  -> _merge_response(snapshot, accessed, cache_hit=True)
+     HIT  -> _merge_response(snapshot, accessed)
      MISS -> acquire_lock()
           -> Double-check snapshot
           -> _build_snapshot()          # 6 parallel asyncio.to_thread() queries
              profile, entities, today_events, daily_summaries, recent_docs, recent_knowledge
           -> cache.set_json(snapshot, ttl=300s)
           -> release_lock()
-          -> _merge_response(snapshot, accessed, cache_hit=False)
+          -> _merge_response(snapshot, accessed)
+             # Simplifies snapshot to: SimpleProfile, SimpleTodayEvent, SimpleDailySummary
+             # Filters recently_accessed to exclude profile/entity types
 ```
 
 ### Cache Invalidation Flow

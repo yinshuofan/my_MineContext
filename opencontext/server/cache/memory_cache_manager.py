@@ -4,9 +4,10 @@
 UserMemoryCacheManager
 
 Builds and maintains per-user memory cache snapshots in Redis.
-Three sections: user profile (+ entities), recently accessed memories, recent memories (hierarchical).
+Four response sections: profile, recently accessed, today events, daily summaries.
 
-Snapshot (profile + entities + recent memories) is cached in Redis with a short TTL.
+Snapshot is cached in Redis with a short TTL (internally stores full data for all types).
+Response assembly (_merge_response) simplifies to: SimpleProfile, SimpleTodayEvent, SimpleDailySummary.
 Recently accessed items are stored in a separate Redis Hash and always read in real-time.
 """
 
@@ -22,11 +23,12 @@ from opencontext.models.enums import ContextType
 from opencontext.server.cache.models import (
     DailySummaryItem,
     RecentlyAccessedItem,
-    RecentMemories,
     RecentMemoryItem,
+    SimpleDailySummary,
+    SimpleProfile,
+    SimpleTodayEvent,
     UserMemoryCacheResponse,
 )
-from opencontext.server.search.models import EntityResult, ProfileResult
 from opencontext.storage.global_storage import get_storage
 from opencontext.storage.redis_cache import get_cache
 from opencontext.utils.logging_utils import get_logger
@@ -556,31 +558,39 @@ class UserMemoryCacheManager:
         ttl_remaining: int = 0,
     ) -> UserMemoryCacheResponse:
         """Merge snapshot data with real-time accessed items into final response."""
-        # Profile
+        # Profile (simplified: content + keywords + metadata only)
         profile = None
         profile_data = snapshot_data.get("profile")
         if profile_data:
-            profile = ProfileResult(**profile_data)
+            profile = SimpleProfile(
+                content=profile_data.get("content", ""),
+                keywords=profile_data.get("keywords", []),
+                metadata=profile_data.get("metadata", {}),
+            )
 
-        # Entities
-        entities = []
-        for e in snapshot_data.get("entities", []):
-            entities.append(EntityResult(**e))
+        # Filter out profile/entity from recently accessed (safety filter)
+        filtered_accessed = [
+            item for item in accessed if item.context_type not in ("profile", "entity")
+        ]
 
-        # Recent memories
+        # Daily summaries (simplified: time_bucket + summary only)
         rm_data = snapshot_data.get("recent_memories", {})
-        recent_memories = RecentMemories(
-            today_events=[RecentMemoryItem(**item) for item in rm_data.get("today_events", [])],
-            daily_summaries=[
-                DailySummaryItem(**item) for item in rm_data.get("daily_summaries", [])
-            ],
-            recent_documents=[
-                RecentMemoryItem(**item) for item in rm_data.get("recent_documents", [])
-            ],
-            recent_knowledge=[
-                RecentMemoryItem(**item) for item in rm_data.get("recent_knowledge", [])
-            ],
-        )
+        daily_summaries = [
+            SimpleDailySummary(
+                time_bucket=item.get("time_bucket", ""),
+                summary=item.get("summary"),
+            )
+            for item in rm_data.get("daily_summaries", [])
+        ]
+
+        # Today events (simplified: title + summary only)
+        today_events = [
+            SimpleTodayEvent(
+                title=item.get("title"),
+                summary=item.get("summary"),
+            )
+            for item in rm_data.get("today_events", [])
+        ]
 
         return UserMemoryCacheResponse(
             success=True,
@@ -588,15 +598,9 @@ class UserMemoryCacheManager:
             device_id=snapshot_data.get("device_id", "default"),
             agent_id=snapshot_data.get("agent_id", "default"),
             profile=profile,
-            entities=entities,
-            recently_accessed=accessed,
-            recent_memories=recent_memories,
-            cache_metadata={
-                "cache_hit": cache_hit,
-                "built_at": snapshot_data.get("built_at", ""),
-                "ttl_remaining_s": max(ttl_remaining, 0),
-                "recent_days": snapshot_data.get("recent_days", self._config["recent_days"]),
-            },
+            recently_accessed=filtered_accessed,
+            daily_summaries=daily_summaries,
+            today_events=today_events,
         )
 
 
