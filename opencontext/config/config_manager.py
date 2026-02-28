@@ -21,6 +21,20 @@ from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
+SAVEABLE_KEYS = {
+    "llm",
+    "vlm_model",
+    "embedding_model",
+    "capture",
+    "processing",
+    "logging",
+    "prompts",
+    "document_processing",
+    "scheduler",
+    "memory_cache",
+    "tools",
+}
+
 
 class ConfigManager:
     """
@@ -197,21 +211,13 @@ class ConfigManager:
                     if existing_settings:
                         user_settings = existing_settings
 
-            # Update with new settings
-            if "vlm_model" in settings:
-                user_settings["vlm_model"] = settings["vlm_model"]
-            if "embedding_model" in settings:
-                user_settings["embedding_model"] = settings["embedding_model"]
-            if "content_generation" in settings:
-                user_settings["content_generation"] = settings["content_generation"]
-            if "capture" in settings:
-                user_settings["capture"] = settings["capture"]
-            if "processing" in settings:
-                user_settings["processing"] = settings["processing"]
-            if "logging" in settings:
-                user_settings["logging"] = settings["logging"]
-            if "prompts" in settings:
-                user_settings["prompts"] = settings["prompts"]
+            # Update with new settings (only whitelisted keys).
+            # Note: This does whole-key replacement at the user_setting.yaml level,
+            # not deep_merge. Callers must send complete section objects.
+            # The deep_merge only happens when applying user_settings to _config.
+            for key in settings:
+                if key in SAVEABLE_KEYS:
+                    user_settings[key] = settings[key]
 
             # Save to file
             with open(user_setting_path, "w", encoding="utf-8") as f:

@@ -3,7 +3,8 @@
 let currentPrompts = {};
 let selectedPromptKey = '';
 
-// Toast notification helper
+// ==================== Utility ====================
+
 function showToast(message, isError = false) {
     const toastEl = document.getElementById('settingsToast');
     const toastBody = document.getElementById('toastMessage');
@@ -14,44 +15,225 @@ function showToast(message, isError = false) {
     toast.show();
 }
 
-// ==================== 截图捕获设置 ====================
+// Safe element value helpers
+function setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+}
+
+function setChecked(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!value;
+}
+
+function getVal(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : '';
+}
+
+function getInt(id) {
+    return parseInt(getVal(id)) || 0;
+}
+
+function getFloat(id) {
+    return parseFloat(getVal(id)) || 0;
+}
+
+function getChecked(id) {
+    const el = document.getElementById(id);
+    return el ? el.checked : false;
+}
+
+// ==================== Tab 1: Model Config ====================
+
+async function loadModelSettings() {
+    try {
+        const response = await fetch('/api/model_settings/get');
+        const data = await response.json();
+
+        if (data.code === 0 && data.data) {
+            const d = data.data;
+
+            // LLM
+            if (d.llm) {
+                setVal('llm_provider', d.llm.provider);
+                setVal('llm_model', d.llm.model);
+                setVal('llm_base_url', d.llm.base_url);
+                setVal('llm_api_key', d.llm.api_key);
+                setVal('llm_max_concurrent', d.llm.max_concurrent);
+            }
+
+            // VLM
+            if (d.vlm_model) {
+                setVal('vlm_provider', d.vlm_model.provider);
+                setVal('vlm_model', d.vlm_model.model);
+                setVal('vlm_base_url', d.vlm_model.base_url);
+                setVal('vlm_api_key', d.vlm_model.api_key);
+                setVal('vlm_max_concurrent', d.vlm_model.max_concurrent);
+            }
+
+            // Embedding
+            if (d.embedding_model) {
+                setVal('emb_provider', d.embedding_model.provider);
+                setVal('emb_model', d.embedding_model.model);
+                setVal('emb_base_url', d.embedding_model.base_url);
+                setVal('emb_api_key', d.embedding_model.api_key);
+                setVal('emb_max_concurrent', d.embedding_model.max_concurrent);
+                setVal('emb_output_dim', d.embedding_model.output_dim);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load model settings:', error);
+        showToast('Failed to load model settings', true);
+    }
+}
+
+function _collectModelSection(section) {
+    if (section === 'llm') {
+        return {
+            provider: getVal('llm_provider'),
+            model: getVal('llm_model'),
+            base_url: getVal('llm_base_url'),
+            api_key: getVal('llm_api_key'),
+            max_concurrent: getInt('llm_max_concurrent') || null,
+        };
+    } else if (section === 'vlm_model') {
+        return {
+            provider: getVal('vlm_provider'),
+            model: getVal('vlm_model'),
+            base_url: getVal('vlm_base_url'),
+            api_key: getVal('vlm_api_key'),
+            max_concurrent: getInt('vlm_max_concurrent') || null,
+        };
+    } else if (section === 'embedding_model') {
+        return {
+            provider: getVal('emb_provider'),
+            model: getVal('emb_model'),
+            base_url: getVal('emb_base_url'),
+            api_key: getVal('emb_api_key'),
+            max_concurrent: getInt('emb_max_concurrent') || null,
+            output_dim: getInt('emb_output_dim') || null,
+        };
+    }
+    return null;
+}
+
+async function validateModelSection(section) {
+    try {
+        showToast('Testing connection...');
+        const payload = {};
+        payload[section] = _collectModelSection(section);
+
+        const response = await fetch('/api/model_settings/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+
+        if (data.code === 0) {
+            showToast('Connection test passed!');
+        } else {
+            showToast('Connection test failed: ' + (data.message || 'Unknown error'), true);
+        }
+    } catch (error) {
+        console.error('Validation failed:', error);
+        showToast('Connection test failed', true);
+    }
+}
+
+async function saveAllModels() {
+    try {
+        const payload = {
+            llm: _collectModelSection('llm'),
+            vlm_model: _collectModelSection('vlm_model'),
+            embedding_model: _collectModelSection('embedding_model'),
+        };
+
+        const response = await fetch('/api/model_settings/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+
+        if (data.code === 0) {
+            showToast('Model settings saved successfully');
+        } else {
+            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
+        }
+    } catch (error) {
+        console.error('Failed to save model settings:', error);
+        showToast('Save failed', true);
+    }
+}
+
+// ==================== Tab 2: Capture Config ====================
+
+function populateCaptureSettings(allData) {
+    const cap = allData.capture || {};
+
+    setChecked('capture_enabled', cap.enabled);
+
+    // text_chat
+    const tc = cap.text_chat || {};
+    setChecked('text_chat_enabled', tc.enabled);
+    setVal('text_chat_buffer_size', tc.buffer_size);
+
+    // folder_monitor
+    const fm = cap.folder_monitor || {};
+    setChecked('folder_monitor_enabled', fm.enabled);
+    setVal('folder_monitor_interval', fm.monitor_interval);
+    setVal('folder_monitor_max_file_size', fm.max_file_size);
+    setChecked('folder_monitor_recursive', fm.recursive);
+    setChecked('folder_monitor_initial_scan', fm.initial_scan);
+    const paths = Array.isArray(fm.watch_folder_paths) ? fm.watch_folder_paths.join('\n') : '';
+    setVal('folder_monitor_paths', paths);
+
+    // vault_document_monitor
+    const vdm = cap.vault_document_monitor || {};
+    setChecked('vault_enabled', vdm.enabled);
+    setVal('vault_interval', vdm.monitor_interval);
+    setChecked('vault_initial_scan', vdm.initial_scan);
+}
 
 async function loadCaptureSettings() {
     try {
         const response = await fetch('/api/settings/general');
         const data = await response.json();
-
-        if (data.code === 0 && data.data) {
-            const capture = data.data.capture || {};
-            document.getElementById('screenshot_enabled').checked = capture.screenshot?.enabled || false;
-            document.getElementById('screenshot_interval').value = capture.screenshot?.capture_interval || 5;
-            document.getElementById('screenshot_path').value = capture.screenshot?.storage_path || '';
-
-            document.getElementById('vault_enabled').checked = capture.vault_document_monitor?.enabled || false;
-            document.getElementById('vault_interval').value = capture.vault_document_monitor?.monitor_interval || 30;
-            document.getElementById('vault_initial_scan').checked = capture.vault_document_monitor?.initial_scan !== false;
-        }
+        if (data.code === 0 && data.data) populateCaptureSettings(data.data);
     } catch (error) {
-        console.error('加载截图设置失败:', error);
-        showToast('加载截图设置失败', true);
+        console.error('Failed to load capture settings:', error);
+        showToast('Failed to load capture settings', true);
     }
 }
 
 document.getElementById('captureForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    const pathsText = getVal('folder_monitor_paths').trim();
+    const watchPaths = pathsText ? pathsText.split('\n').map(p => p.trim()).filter(Boolean) : [];
+
     const settings = {
         capture: {
-            screenshot: {
-                enabled: document.getElementById('screenshot_enabled').checked,
-                capture_interval: parseInt(document.getElementById('screenshot_interval').value),
-                storage_path: document.getElementById('screenshot_path').value
+            enabled: getChecked('capture_enabled'),
+            text_chat: {
+                enabled: getChecked('text_chat_enabled'),
+                buffer_size: getInt('text_chat_buffer_size'),
+            },
+            folder_monitor: {
+                enabled: getChecked('folder_monitor_enabled'),
+                monitor_interval: getInt('folder_monitor_interval'),
+                max_file_size: getInt('folder_monitor_max_file_size'),
+                recursive: getChecked('folder_monitor_recursive'),
+                initial_scan: getChecked('folder_monitor_initial_scan'),
+                watch_folder_paths: watchPaths,
             },
             vault_document_monitor: {
-                enabled: document.getElementById('vault_enabled').checked,
-                monitor_interval: parseInt(document.getElementById('vault_interval').value),
-                initial_scan: document.getElementById('vault_initial_scan').checked
-            }
+                enabled: getChecked('vault_enabled'),
+                monitor_interval: getInt('vault_interval'),
+                initial_scan: getChecked('vault_initial_scan'),
+            },
         }
     };
 
@@ -64,40 +246,68 @@ document.getElementById('captureForm')?.addEventListener('submit', async (e) => 
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('截图设置保存成功');
+            showToast('Capture settings saved');
         } else {
-            showToast('保存失败: ' + (data.message || '未知错误'), true);
+            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
         }
     } catch (error) {
-        console.error('保存截图设置失败:', error);
-        showToast('保存失败', true);
+        console.error('Failed to save capture settings:', error);
+        showToast('Save failed', true);
     }
 });
 
-// ==================== 处理配置 ====================
+// ==================== Tab 3: Processing Config ====================
+
+function populateProcessingSettings(allData) {
+    const proc = allData.processing || {};
+
+    setChecked('processing_enabled', proc.enabled);
+
+    // text_chat_processor
+    setChecked('text_chat_proc_enabled', proc.text_chat_processor?.enabled);
+
+    // document_processor
+    const dp = proc.document_processor || {};
+    setChecked('doc_proc_enabled', dp.enabled);
+    setVal('doc_proc_batch_size', dp.batch_size);
+    setVal('doc_proc_batch_timeout', dp.batch_timeout);
+
+    // screenshot_processor
+    const sp = proc.screenshot_processor || {};
+    setChecked('screenshot_proc_enabled', sp.enabled);
+    setVal('screenshot_hash_threshold', sp.similarity_hash_threshold);
+    setVal('screenshot_batch_size', sp.batch_size);
+    setVal('screenshot_batch_timeout', sp.batch_timeout);
+    setVal('screenshot_max_raw_props', sp.max_raw_properties);
+    setVal('screenshot_max_image_size', sp.max_image_size);
+    setVal('screenshot_resize_quality', sp.resize_quality);
+    setChecked('screenshot_enabled_delete', sp.enabled_delete);
+
+    // context_merger
+    const cm = proc.context_merger || {};
+    setChecked('merger_enabled', cm.enabled);
+    setVal('merger_threshold', cm.similarity_threshold);
+    setChecked('merger_intelligent', cm.use_intelligent_merging);
+    setChecked('merger_memory_mgmt', cm.enable_memory_management);
+    setVal('merger_retention_days', cm.knowledge_retention_days);
+    setVal('merger_sim_threshold', cm.knowledge_similarity_threshold);
+    setVal('merger_max_merge_count', cm.knowledge_max_merge_count);
+
+    // document_processing (separate top-level key)
+    const docProc = allData.document_processing || {};
+    setVal('docproc_batch_size', docProc.batch_size);
+    setVal('docproc_dpi', docProc.dpi);
+    setVal('docproc_text_threshold', docProc.text_threshold_per_page);
+}
 
 async function loadProcessingSettings() {
     try {
         const response = await fetch('/api/settings/general');
         const data = await response.json();
-
-        if (data.code === 0 && data.data) {
-            const proc = data.data.processing || {};
-
-            document.getElementById('doc_enabled').checked = proc.document_processor?.enabled !== false;
-            document.getElementById('doc_batch_size').value = proc.document_processor?.batch_size || 10;
-            document.getElementById('doc_batch_timeout').value = proc.document_processor?.batch_timeout || 5;
-
-            document.getElementById('screenshot_proc_enabled').checked = proc.screenshot_processor?.enabled !== false;
-            document.getElementById('screenshot_batch_size').value = proc.screenshot_processor?.batch_size || 20;
-            document.getElementById('screenshot_max_size').value = proc.screenshot_processor?.max_image_size || 1920;
-
-            document.getElementById('merger_enabled').checked = proc.context_merger?.enabled === true;
-            document.getElementById('merger_threshold').value = proc.context_merger?.similarity_threshold || 0.9;
-        }
+        if (data.code === 0 && data.data) populateProcessingSettings(data.data);
     } catch (error) {
-        console.error('加载处理设置失败:', error);
-        showToast('加载处理设置失败', true);
+        console.error('Failed to load processing settings:', error);
+        showToast('Failed to load processing settings', true);
     }
 }
 
@@ -106,21 +316,40 @@ document.getElementById('processingForm')?.addEventListener('submit', async (e) 
 
     const settings = {
         processing: {
+            enabled: getChecked('processing_enabled'),
+            text_chat_processor: {
+                enabled: getChecked('text_chat_proc_enabled'),
+            },
             document_processor: {
-                enabled: document.getElementById('doc_enabled').checked,
-                batch_size: parseInt(document.getElementById('doc_batch_size').value),
-                batch_timeout: parseInt(document.getElementById('doc_batch_timeout').value)
+                enabled: getChecked('doc_proc_enabled'),
+                batch_size: getInt('doc_proc_batch_size'),
+                batch_timeout: getInt('doc_proc_batch_timeout'),
             },
             screenshot_processor: {
-                enabled: document.getElementById('screenshot_proc_enabled').checked,
-                batch_size: parseInt(document.getElementById('screenshot_batch_size').value),
-                max_image_size: parseInt(document.getElementById('screenshot_max_size').value)
+                enabled: getChecked('screenshot_proc_enabled'),
+                similarity_hash_threshold: getInt('screenshot_hash_threshold'),
+                batch_size: getInt('screenshot_batch_size'),
+                batch_timeout: getInt('screenshot_batch_timeout'),
+                max_raw_properties: getInt('screenshot_max_raw_props'),
+                max_image_size: getInt('screenshot_max_image_size'),
+                resize_quality: getInt('screenshot_resize_quality'),
+                enabled_delete: getChecked('screenshot_enabled_delete'),
             },
             context_merger: {
-                enabled: document.getElementById('merger_enabled').checked,
-                similarity_threshold: parseFloat(document.getElementById('merger_threshold').value)
-            }
-        }
+                enabled: getChecked('merger_enabled'),
+                similarity_threshold: getFloat('merger_threshold'),
+                use_intelligent_merging: getChecked('merger_intelligent'),
+                enable_memory_management: getChecked('merger_memory_mgmt'),
+                knowledge_retention_days: getInt('merger_retention_days'),
+                knowledge_similarity_threshold: getFloat('merger_sim_threshold'),
+                knowledge_max_merge_count: getInt('merger_max_merge_count'),
+            },
+        },
+        document_processing: {
+            batch_size: getInt('docproc_batch_size'),
+            dpi: getInt('docproc_dpi'),
+            text_threshold_per_page: getInt('docproc_text_threshold'),
+        },
     };
 
     try {
@@ -132,66 +361,121 @@ document.getElementById('processingForm')?.addEventListener('submit', async (e) 
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('处理设置保存成功');
+            showToast('Processing settings saved');
         } else {
-            showToast('保存失败: ' + (data.message || '未知错误'), true);
+            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
         }
     } catch (error) {
-        console.error('保存处理设置失败:', error);
-        showToast('保存失败', true);
+        console.error('Failed to save processing settings:', error);
+        showToast('Save failed', true);
     }
 });
 
-// ==================== 内容生成设置 ====================
+// ==================== Tab 4: Scheduler & Cache ====================
 
-async function loadGenerationSettings() {
+function populateSchedulerCacheSettings(allData) {
+    const sched = allData.scheduler || {};
+    setChecked('scheduler_enabled', sched.enabled);
+
+    // executor
+    const exec = sched.executor || {};
+    setVal('executor_check_interval', exec.check_interval);
+    setVal('executor_max_concurrent', exec.max_concurrent);
+    setVal('executor_lock_timeout', exec.lock_timeout);
+
+    // tasks
+    const tasks = sched.tasks || {};
+
+    // memory_compression
+    const mc = tasks.memory_compression || {};
+    setChecked('task_mc_enabled', mc.enabled);
+    setVal('task_mc_trigger', mc.trigger_mode);
+    setVal('task_mc_interval', mc.interval);
+    setVal('task_mc_ttl', mc.task_ttl);
+
+    // data_cleanup
+    const dc = tasks.data_cleanup || {};
+    setChecked('task_dc_enabled', dc.enabled);
+    setVal('task_dc_trigger', dc.trigger_mode);
+    setVal('task_dc_interval', dc.interval);
+    setVal('task_dc_timeout', dc.timeout);
+    setVal('task_dc_retention', dc.retention_days);
+
+    // hierarchy_summary
+    const hs = tasks.hierarchy_summary || {};
+    setChecked('task_hs_enabled', hs.enabled);
+    setVal('task_hs_trigger', hs.trigger_mode);
+    setVal('task_hs_interval', hs.interval);
+    setVal('task_hs_timeout', hs.timeout);
+    setVal('task_hs_ttl', hs.task_ttl);
+
+    // memory_cache
+    const cache = allData.memory_cache || {};
+    setVal('cache_snapshot_ttl', cache.snapshot_ttl);
+    setVal('cache_recent_days', cache.recent_days);
+    setVal('cache_max_recently', cache.max_recently_accessed);
+    setVal('cache_max_today_events', cache.max_today_events);
+    setVal('cache_max_documents', cache.max_recent_documents);
+    setVal('cache_max_knowledge', cache.max_recent_knowledge);
+    setVal('cache_accessed_ttl', cache.accessed_ttl);
+    setVal('cache_max_entities', cache.max_entities);
+}
+
+async function loadSchedulerCacheSettings() {
     try {
         const response = await fetch('/api/settings/general');
         const data = await response.json();
-
-        if (data.code === 0 && data.data) {
-            const gen = data.data.content_generation || {};
-
-            document.getElementById('activity_enabled').checked = gen.activity?.enabled !== false;
-            document.getElementById('activity_interval').value = gen.activity?.interval || 900;
-
-            document.getElementById('tips_enabled').checked = gen.tips?.enabled !== false;
-            document.getElementById('tips_interval').value = gen.tips?.interval || 3600;
-
-            document.getElementById('todos_enabled').checked = gen.todos?.enabled !== false;
-            document.getElementById('todos_interval').value = gen.todos?.interval || 1800;
-
-            document.getElementById('report_enabled').checked = gen.report?.enabled !== false;
-            document.getElementById('report_time').value = gen.report?.time || '08:00';
-        }
+        if (data.code === 0 && data.data) populateSchedulerCacheSettings(data.data);
     } catch (error) {
-        console.error('加载内容生成设置失败:', error);
-        showToast('加载内容生成设置失败', true);
+        console.error('Failed to load scheduler/cache settings:', error);
+        showToast('Failed to load scheduler/cache settings', true);
     }
 }
 
-document.getElementById('generationForm')?.addEventListener('submit', async (e) => {
+document.getElementById('schedulerCacheForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const settings = {
-        content_generation: {
-            activity: {
-                enabled: document.getElementById('activity_enabled').checked,
-                interval: parseInt(document.getElementById('activity_interval').value)
+        scheduler: {
+            enabled: getChecked('scheduler_enabled'),
+            executor: {
+                check_interval: getInt('executor_check_interval'),
+                max_concurrent: getInt('executor_max_concurrent'),
+                lock_timeout: getInt('executor_lock_timeout'),
             },
-            tips: {
-                enabled: document.getElementById('tips_enabled').checked,
-                interval: parseInt(document.getElementById('tips_interval').value)
+            tasks: {
+                memory_compression: {
+                    enabled: getChecked('task_mc_enabled'),
+                    trigger_mode: getVal('task_mc_trigger'),
+                    interval: getInt('task_mc_interval'),
+                    task_ttl: getInt('task_mc_ttl'),
+                },
+                data_cleanup: {
+                    enabled: getChecked('task_dc_enabled'),
+                    trigger_mode: getVal('task_dc_trigger'),
+                    interval: getInt('task_dc_interval'),
+                    timeout: getInt('task_dc_timeout'),
+                    retention_days: getInt('task_dc_retention'),
+                },
+                hierarchy_summary: {
+                    enabled: getChecked('task_hs_enabled'),
+                    trigger_mode: getVal('task_hs_trigger'),
+                    interval: getInt('task_hs_interval'),
+                    timeout: getInt('task_hs_timeout'),
+                    task_ttl: getInt('task_hs_ttl'),
+                },
             },
-            todos: {
-                enabled: document.getElementById('todos_enabled').checked,
-                interval: parseInt(document.getElementById('todos_interval').value)
-            },
-            report: {
-                enabled: document.getElementById('report_enabled').checked,
-                time: document.getElementById('report_time').value
-            }
-        }
+        },
+        memory_cache: {
+            snapshot_ttl: getInt('cache_snapshot_ttl'),
+            recent_days: getInt('cache_recent_days'),
+            max_recently_accessed: getInt('cache_max_recently'),
+            max_today_events: getInt('cache_max_today_events'),
+            max_recent_documents: getInt('cache_max_documents'),
+            max_recent_knowledge: getInt('cache_max_knowledge'),
+            accessed_ttl: getInt('cache_accessed_ttl'),
+            max_entities: getInt('cache_max_entities'),
+        },
     };
 
     try {
@@ -203,111 +487,17 @@ document.getElementById('generationForm')?.addEventListener('submit', async (e) 
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('内容生成设置保存成功');
+            showToast('Scheduler & cache settings saved');
         } else {
-            showToast('保存失败: ' + (data.message || '未知错误'), true);
+            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
         }
     } catch (error) {
-        console.error('保存内容生成设置失败:', error);
-        showToast('保存失败', true);
+        console.error('Failed to save scheduler/cache settings:', error);
+        showToast('Save failed', true);
     }
 });
 
-// ==================== Prompts管理 ====================
-
-function buildPromptTree(obj, prefix = '', parentEl = null) {
-    const container = parentEl || document.getElementById('promptTree');
-    container.innerHTML = '';
-
-    function traverse(obj, prefix) {
-        for (const [key, value] of Object.entries(obj)) {
-            const fullKey = prefix ? `${prefix}.${key}` : key;
-
-            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                const hasStringValues = Object.values(value).some(v => typeof v === 'string');
-
-                if (hasStringValues) {
-                    // This is a prompt group
-                    const groupBtn = document.createElement('button');
-                    groupBtn.className = 'list-group-item list-group-item-action fw-bold';
-                    groupBtn.textContent = key;
-                    groupBtn.onclick = () => {
-                        groupBtn.classList.toggle('active');
-                        const children = groupBtn.nextElementSibling;
-                        children.style.display = children.style.display === 'none' ? 'block' : 'none';
-                    };
-                    container.appendChild(groupBtn);
-
-                    const childContainer = document.createElement('div');
-                    childContainer.style.paddingLeft = '20px';
-
-                    for (const [subKey, subValue] of Object.entries(value)) {
-                        if (typeof subValue === 'string') {
-                            const btn = document.createElement('button');
-                            btn.className = 'list-group-item list-group-item-action';
-                            btn.textContent = subKey;
-                            btn.onclick = () => selectPrompt(`${fullKey}.${subKey}`);
-                            childContainer.appendChild(btn);
-                        }
-                    }
-                    container.appendChild(childContainer);
-                } else {
-                    // Nested object
-                    const groupBtn = document.createElement('button');
-                    groupBtn.className = 'list-group-item list-group-item-action text-primary';
-                    groupBtn.textContent = key;
-                    container.appendChild(groupBtn);
-
-                    const nestedContainer = document.createElement('div');
-                    nestedContainer.style.paddingLeft = '15px';
-                    container.appendChild(nestedContainer);
-
-                    traverse(value, fullKey, nestedContainer);
-                }
-            }
-        }
-    }
-
-    function traverse(obj, prefix, parentEl) {
-        for (const [key, value] of Object.entries(obj)) {
-            const fullKey = prefix ? `${prefix}.${key}` : key;
-
-            if (typeof value === 'object' && value !== null) {
-                const hasStringValues = Object.values(value).some(v => typeof v === 'string');
-
-                if (hasStringValues) {
-                    const groupBtn = document.createElement('button');
-                    groupBtn.className = 'list-group-item list-group-item-action fw-bold';
-                    groupBtn.textContent = key;
-                    groupBtn.onclick = function() {
-                        this.classList.toggle('active');
-                        const children = this.nextElementSibling;
-                        if (children) {
-                            children.style.display = children.style.display === 'none' ? 'block' : 'none';
-                        }
-                    };
-                    parentEl.appendChild(groupBtn);
-
-                    const childContainer = document.createElement('div');
-                    childContainer.style.paddingLeft = '20px';
-
-                    for (const [subKey, subValue] of Object.entries(value)) {
-                        if (typeof subValue === 'string') {
-                            const btn = document.createElement('button');
-                            btn.className = 'list-group-item list-group-item-action';
-                            btn.textContent = subKey;
-                            btn.onclick = () => selectPrompt(`${fullKey}.${subKey}`);
-                            childContainer.appendChild(btn);
-                        }
-                    }
-                    parentEl.appendChild(childContainer);
-                }
-            }
-        }
-    }
-
-    traverse(obj, '', container);
-}
+// ==================== Tab 5: Prompts ====================
 
 function getPromptValue(key) {
     const keys = key.split('.');
@@ -322,9 +512,56 @@ function setPromptValue(key, newValue) {
     const keys = key.split('.');
     let current = currentPrompts;
     for (let i = 0; i < keys.length - 1; i++) {
+        if (!current[keys[i]]) current[keys[i]] = {};
         current = current[keys[i]];
     }
     current[keys[keys.length - 1]] = newValue;
+}
+
+function buildPromptTree(obj, prefix, parentEl) {
+    for (const [key, value] of Object.entries(obj)) {
+        const fullKey = prefix ? `${prefix}.${key}` : key;
+
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            // Group node
+            const groupBtn = document.createElement('button');
+            groupBtn.className = 'list-group-item list-group-item-action fw-bold';
+            groupBtn.textContent = key;
+            groupBtn.onclick = function() {
+                const children = this.nextElementSibling;
+                if (children) {
+                    children.style.display = children.style.display === 'none' ? 'block' : 'none';
+                }
+            };
+            parentEl.appendChild(groupBtn);
+
+            const childContainer = document.createElement('div');
+            childContainer.style.paddingLeft = '20px';
+            childContainer.style.display = 'none';
+
+            // Check for leaf strings inside
+            let hasLeaves = false;
+            for (const [subKey, subValue] of Object.entries(value)) {
+                if (typeof subValue === 'string') {
+                    hasLeaves = true;
+                    const btn = document.createElement('button');
+                    btn.className = 'list-group-item list-group-item-action';
+                    btn.textContent = subKey;
+                    btn.onclick = () => selectPrompt(`${fullKey}.${subKey}`);
+                    childContainer.appendChild(btn);
+                }
+            }
+
+            // Recurse into nested objects
+            for (const [subKey, subValue] of Object.entries(value)) {
+                if (typeof subValue === 'object' && subValue !== null && !Array.isArray(subValue)) {
+                    buildPromptTree({ [subKey]: subValue }, fullKey, childContainer);
+                }
+            }
+
+            parentEl.appendChild(childContainer);
+        }
+    }
 }
 
 function selectPrompt(key) {
@@ -332,9 +569,15 @@ function selectPrompt(key) {
     document.getElementById('currentPromptKey').textContent = key;
     document.getElementById('promptEditor').value = getPromptValue(key);
 
-    // Remove active class from all buttons
+    // Highlight the selected leaf
     document.querySelectorAll('#promptTree button').forEach(btn => {
         btn.classList.remove('active');
+    });
+    // Find the button whose onclick invokes this key
+    document.querySelectorAll('#promptTree .list-group-item-action:not(.fw-bold)').forEach(btn => {
+        if (btn.textContent === key.split('.').pop()) {
+            btn.classList.add('active');
+        }
     });
 }
 
@@ -351,12 +594,32 @@ async function loadPrompts() {
 
         if (data.code === 0 && data.data) {
             currentPrompts = data.data.prompts;
-            buildPromptTree(currentPrompts);
+            const treeEl = document.getElementById('promptTree');
+            treeEl.innerHTML = '';
+            buildPromptTree(currentPrompts, '', treeEl);
         }
     } catch (error) {
-        console.error('加载Prompts失败:', error);
-        showToast('加载Prompts失败', true);
+        console.error('Failed to load prompts:', error);
+        showToast('Failed to load prompts', true);
     }
+}
+
+async function saveCurrentPrompt() {
+    if (!selectedPromptKey) {
+        showToast('No prompt selected', true);
+        return;
+    }
+    // Sync editor value
+    setPromptValue(selectedPromptKey, document.getElementById('promptEditor').value);
+    await savePrompts();
+}
+
+async function saveAllPrompts() {
+    // Sync current editor
+    if (selectedPromptKey) {
+        setPromptValue(selectedPromptKey, document.getElementById('promptEditor').value);
+    }
+    await savePrompts();
 }
 
 async function savePrompts() {
@@ -369,13 +632,13 @@ async function savePrompts() {
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Prompts保存成功');
+            showToast('Prompts saved successfully');
         } else {
-            showToast('保存失败: ' + (data.message || '未知错误'), true);
+            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
         }
     } catch (error) {
-        console.error('保存Prompts失败:', error);
-        showToast('保存失败', true);
+        console.error('Failed to save prompts:', error);
+        showToast('Save failed', true);
     }
 }
 
@@ -389,10 +652,10 @@ async function exportPrompts() {
         a.download = `prompts_${new Date().getTime()}.yaml`;
         a.click();
         window.URL.revokeObjectURL(url);
-        showToast('导出成功');
+        showToast('Export successful');
     } catch (error) {
-        console.error('导出Prompts失败:', error);
-        showToast('导出失败', true);
+        console.error('Failed to export prompts:', error);
+        showToast('Export failed', true);
     }
 }
 
@@ -411,594 +674,42 @@ async function importPrompts(event) {
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('导入成功');
+            showToast('Import successful');
             loadPrompts();
         } else {
-            showToast('导入失败: ' + (data.message || '未知错误'), true);
+            showToast('Import failed: ' + (data.message || 'Unknown error'), true);
         }
     } catch (error) {
-        console.error('导入Prompts失败:', error);
-        showToast('导入失败', true);
+        console.error('Failed to import prompts:', error);
+        showToast('Import failed', true);
     } finally {
         event.target.value = '';
     }
 }
 
 async function resetAllSettings() {
-    if (!confirm('确认要重置所有设置吗？这将删除所有自定义配置和Prompts，恢复到默认设置。此操作不可撤销！')) {
+    if (!confirm('Are you sure you want to reset all settings? This will delete all custom configurations and prompts. This action cannot be undone!')) {
         return;
     }
 
     try {
-        const response = await fetch('/api/settings/reset', {
-            method: 'POST'
-        });
+        const response = await fetch('/api/settings/reset', { method: 'POST' });
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('设置重置成功，请刷新页面');
+            showToast('Settings reset successfully, reloading...');
             setTimeout(() => location.reload(), 2000);
         } else {
-            showToast('重置失败: ' + (data.message || '未知错误'), true);
+            showToast('Reset failed: ' + (data.message || 'Unknown error'), true);
         }
     } catch (error) {
-        console.error('重置设置失败:', error);
-        showToast('重置失败', true);
+        console.error('Failed to reset settings:', error);
+        showToast('Reset failed', true);
     }
 }
 
-// ==================== 模型配置 ====================
+// ==================== Prompt Language ====================
 
-async function loadModelSettings() {
-    try {
-        const response = await fetch('/api/model_settings/get');
-        const data = await response.json();
-
-        if (data.code === 0 && data.data && data.data.config) {
-            const config = data.data.config;
-
-            // Fill VLM configuration
-            document.getElementById('modelPlatform').value = config.modelPlatform || '';
-            document.getElementById('modelId').value = config.modelId || '';
-            document.getElementById('baseUrl').value = config.baseUrl || '';
-            document.getElementById('apiKey').value = config.apiKey || '';
-
-            // Fill Embedding configuration
-            document.getElementById('embeddingModelId').value = config.embeddingModelId || '';
-
-            // Check if using separate embedding configuration
-            const hasSeparateConfig = config.embeddingBaseUrl || config.embeddingApiKey || config.embeddingModelPlatform;
-
-            if (hasSeparateConfig) {
-                document.getElementById('separateEmbedding').checked = true;
-                document.getElementById('embeddingModelPlatform').value = config.embeddingModelPlatform || '';
-                document.getElementById('embeddingBaseUrl').value = config.embeddingBaseUrl || '';
-                document.getElementById('embeddingApiKey').value = config.embeddingApiKey || '';
-                toggleEmbeddingConfig();
-            }
-        }
-    } catch (error) {
-        console.error('加载模型设置失败:', error);
-        showToast('加载模型设置失败', true);
-    }
-}
-
-function toggleEmbeddingConfig() {
-    const checkbox = document.getElementById('separateEmbedding');
-    const section = document.getElementById('embeddingConfigSection');
-    section.style.display = checkbox.checked ? 'block' : 'none';
-}
-
-async function validateModelConfig() {
-    try {
-        showToast('正在测试连接...', false);
-
-        // Collect current configuration from the form
-        const useSeparate = document.getElementById('separateEmbedding').checked;
-
-        const settings = {
-            config: {
-                modelPlatform: document.getElementById('modelPlatform').value,
-                modelId: document.getElementById('modelId').value,
-                baseUrl: document.getElementById('baseUrl').value,
-                apiKey: document.getElementById('apiKey').value,
-                embeddingModelId: document.getElementById('embeddingModelId').value,
-                embeddingBaseUrl: useSeparate ? document.getElementById('embeddingBaseUrl').value : null,
-                embeddingApiKey: useSeparate ? document.getElementById('embeddingApiKey').value : null,
-                embeddingModelPlatform: useSeparate ? document.getElementById('embeddingModelPlatform').value : null
-            }
-        };
-
-        const response = await fetch('/api/model_settings/validate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(settings)
-        });
-
-        const data = await response.json();
-
-        if (data.code === 0) {
-            showToast('连接测试成功！VLM和Embedding模型均正常');
-        } else {
-            showToast('连接测试失败: ' + (data.message || '未知错误'), true);
-        }
-    } catch (error) {
-        console.error('模型配置测试失败:', error);
-        showToast('连接测试失败', true);
-    }
-}
-
-document.getElementById('modelForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const useSeparate = document.getElementById('separateEmbedding').checked;
-
-    const settings = {
-        config: {
-            modelPlatform: document.getElementById('modelPlatform').value,
-            modelId: document.getElementById('modelId').value,
-            baseUrl: document.getElementById('baseUrl').value,
-            apiKey: document.getElementById('apiKey').value,
-            embeddingModelId: document.getElementById('embeddingModelId').value,
-            embeddingBaseUrl: useSeparate ? document.getElementById('embeddingBaseUrl').value : null,
-            embeddingApiKey: useSeparate ? document.getElementById('embeddingApiKey').value : null,
-            embeddingModelPlatform: useSeparate ? document.getElementById('embeddingModelPlatform').value : null
-        }
-    };
-
-    try {
-        const response = await fetch('/api/model_settings/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(settings)
-        });
-        const data = await response.json();
-
-        if (data.code === 0) {
-            showToast('模型配置保存成功');
-        } else {
-            showToast('保存失败: ' + (data.message || '未知错误'), true);
-        }
-    } catch (error) {
-        console.error('保存模型设置失败:', error);
-        showToast('保存失败', true);
-    }
-});
-
-// ==================== 页面初始化 ====================
-
-document.addEventListener('DOMContentLoaded', function() {
-    loadModelSettings();
-    loadCaptureSettings();
-    loadProcessingSettings();
-    loadGenerationSettings();
-    loadPromptsToCategories();  // 使用新的加载函数
-
-    // Tab切换时加载对应设置
-    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function(e) {
-            const target = e.target.getAttribute('data-bs-target');
-            if (target === '#prompts' && Object.keys(currentPrompts).length === 0) {
-                loadPromptsToCategories();  // 使用新的加载函数
-            }
-        });
-    });
-});
-
-// ==================== 新的Prompts管理功能 ====================
-
-// Prompt分类映射
-const PROMPT_CATEGORIES = {
-    'smart_tip_generation': {
-        path: 'generation.smart_tip_generation',
-        prefix: 'tips'
-    },
-    'todo_extraction': {
-        path: 'generation.todo_extraction',
-        prefix: 'todos'
-    },
-    'generation_report': {
-        path: 'generation.generation_report',
-        prefix: 'report'
-    },
-    'realtime_activity_monitor': {
-        path: 'generation.realtime_activity_monitor',
-        prefix: 'activity'
-    }
-};
-
-// 当前选中的历史记录
-let selectedHistoryFile = null;
-let currentCategory = null;
-
-// 加载Prompts时填充到各个分类
-async function loadPromptsToCategories() {
-    try {
-        const [promptsResponse, settingsResponse] = await Promise.all([
-            fetch('/api/settings/prompts'),
-            fetch('/api/settings/general')
-        ]);
-
-        const promptsData = await promptsResponse.json();
-        const settingsData = await settingsResponse.json();
-
-        if (promptsData.code === 0 && promptsData.data) {
-            // API returns {data: {prompts: {...}}}
-            currentPrompts = promptsData.data.prompts || promptsData.data;
-
-            // 填充各个分类的prompts
-            for (const [category, config] of Object.entries(PROMPT_CATEGORIES)) {
-                const pathParts = config.path.split('.');
-                let promptData = currentPrompts;
-
-                for (const part of pathParts) {
-                    promptData = promptData?.[part];
-                }
-
-                if (promptData) {
-                    const systemEl = document.getElementById(`${config.prefix}_system`);
-                    const userEl = document.getElementById(`${config.prefix}_user`);
-
-                    if (systemEl) systemEl.value = promptData.system || '';
-                    if (userEl) userEl.value = promptData.user || '';
-                } else {
-                    console.warn(`No prompt data found for category: ${category}, path: ${config.path}`);
-                }
-            }
-        } else {
-            console.error('Failed to load prompts:', promptsData);
-            showToast('加载Prompts失败: ' + (promptsData.message || '未知错误'), true);
-        }
-
-        // 加载Debug配置 from general settings
-        if (settingsData.code === 0 && settingsData.data) {
-            const debugConfig = settingsData.data.content_generation?.debug || {};
-            const debugEnabledEl = document.getElementById('debugEnabled');
-            const debugPathEl = document.getElementById('debugOutputPath');
-
-            if (debugEnabledEl) debugEnabledEl.checked = debugConfig.enabled || false;
-            if (debugPathEl) {
-                // Use resolved path if available, otherwise use the original path
-                const outputPath = debugConfig.output_path_resolved || debugConfig.output_path || '';
-                debugPathEl.value = outputPath;
-            }
-        }
-    } catch (error) {
-        console.error('加载Prompts失败:', error);
-        showToast('加载Prompts失败: ' + error.message, true);
-    }
-}
-
-// 保存单个Prompt分类
-async function savePromptCategory(category) {
-    const config = PROMPT_CATEGORIES[category];
-    if (!config) return;
-
-    const systemPrompt = document.getElementById(`${config.prefix}_system`).value;
-    const userPrompt = document.getElementById(`${config.prefix}_user`).value;
-
-    // 更新currentPrompts
-    const pathParts = config.path.split('.');
-    let target = currentPrompts;
-
-    for (let i = 0; i < pathParts.length - 1; i++) {
-        if (!target[pathParts[i]]) target[pathParts[i]] = {};
-        target = target[pathParts[i]];
-    }
-
-    const lastKey = pathParts[pathParts.length - 1];
-    target[lastKey] = {
-        system: systemPrompt,
-        user: userPrompt
-    };
-
-    try {
-        const response = await fetch('/api/settings/prompts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompts: currentPrompts })
-        });
-
-        const data = await response.json();
-        if (data.code === 0) {
-            showToast(`${category} 保存成功`);
-        } else {
-            showToast('保存失败: ' + (data.message || '未知错误'), true);
-        }
-    } catch (error) {
-        console.error('保存Prompt失败:', error);
-        showToast('保存失败', true);
-    }
-}
-
-// 保存全部Prompts
-async function saveAllPrompts() {
-    // 收集所有分类的prompts
-    for (const [category, config] of Object.entries(PROMPT_CATEGORIES)) {
-        const systemPrompt = document.getElementById(`${config.prefix}_system`).value;
-        const userPrompt = document.getElementById(`${config.prefix}_user`).value;
-
-        const pathParts = config.path.split('.');
-        let target = currentPrompts;
-
-        for (let i = 0; i < pathParts.length - 1; i++) {
-            if (!target[pathParts[i]]) target[pathParts[i]] = {};
-            target = target[pathParts[i]];
-        }
-
-        const lastKey = pathParts[pathParts.length - 1];
-        target[lastKey] = {
-            system: systemPrompt,
-            user: userPrompt
-        };
-    }
-
-    try {
-        const response = await fetch('/api/settings/prompts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompts: currentPrompts })
-        });
-
-        const data = await response.json();
-        if (data.code === 0) {
-            showToast('全部Prompts保存成功');
-        } else {
-            showToast('保存失败: ' + (data.message || '未知错误'), true);
-        }
-    } catch (error) {
-        console.error('保存Prompts失败:', error);
-        showToast('保存失败', true);
-    }
-}
-
-// 保存Debug配置
-async function saveDebugConfig() {
-    const enabled = document.getElementById('debugEnabled').checked;
-    const outputPath = document.getElementById('debugOutputPath').value;
-
-    if (!currentPrompts.content_generation) {
-        currentPrompts.content_generation = {};
-    }
-
-    currentPrompts.content_generation.debug = {
-        enabled: enabled,
-        output_path: outputPath
-    };
-
-    try {
-        const response = await fetch('/api/settings/general', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                content_generation: currentPrompts.content_generation
-            })
-        });
-
-        const data = await response.json();
-        if (data.code === 0) {
-            showToast('Debug配置保存成功');
-        } else {
-            showToast('保存失败: ' + (data.message || '未知错误'), true);
-        }
-    } catch (error) {
-        console.error('保存Debug配置失败:', error);
-        showToast('保存失败', true);
-    }
-}
-
-// 查看历史记录
-async function viewHistory(category) {
-    currentCategory = category;
-    selectedHistoryFile = null;
-
-    document.getElementById('historyCategory').textContent = category;
-    document.getElementById('historyDetail').innerHTML = '<p class="text-muted">加载中...</p>';
-    document.getElementById('regenerateBtn').disabled = true;
-    document.getElementById('exportBtn').disabled = true;
-    document.getElementById('compareBtn').disabled = true;
-
-    try {
-        const response = await fetch(`/api/settings/prompts/history/${category}`);
-        const data = await response.json();
-
-        if (data.code === 0 && data.data) {
-            const historyList = document.getElementById('historyList');
-            historyList.innerHTML = '';
-
-            if (data.data.length === 0) {
-                historyList.innerHTML = '<p class="text-muted">暂无历史记录</p>';
-            } else {
-                data.data.forEach(item => {
-                    const btn = document.createElement('button');
-                    btn.className = 'list-group-item list-group-item-action';
-                    btn.innerHTML = `
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1">${new Date(item.timestamp).toLocaleString()}</h6>
-                            <small>${item.has_result ? '✓' : '×'}</small>
-                        </div>
-                        <small class="text-muted">${item.filename}</small>
-                    `;
-                    btn.onclick = () => loadHistoryDetail(category, item.filename);
-                    historyList.appendChild(btn);
-                });
-            }
-
-            document.getElementById('historyDetail').innerHTML = '<p class="text-muted">请选择一条历史记录</p>';
-        } else {
-            showToast('加载历史记录失败', true);
-        }
-    } catch (error) {
-        console.error('加载历史记录失败:', error);
-        showToast('加载历史记录失败', true);
-    }
-
-    // 显示modal
-    const modal = new bootstrap.Modal(document.getElementById('historyModal'));
-    modal.show();
-}
-
-// 加载历史记录详情
-async function loadHistoryDetail(category, filename) {
-    selectedHistoryFile = filename;
-
-    try {
-        const response = await fetch(`/api/settings/prompts/history/${category}/${filename}`);
-        const data = await response.json();
-
-        if (data.code === 0 && data.data) {
-            const detail = document.getElementById('historyDetail');
-
-            // 格式化显示Response - 如果是JSON则美化，否则直接显示
-            let formattedResponse = '';
-            try {
-                // 尝试解析为JSON
-                const responseObj = typeof data.data.response === 'string'
-                    ? JSON.parse(data.data.response)
-                    : data.data.response;
-                formattedResponse = JSON.stringify(responseObj, null, 2);
-            } catch (e) {
-                // 不是JSON，直接显示原文
-                formattedResponse = data.data.response || '';
-            }
-
-            detail.innerHTML = `
-                <div class="mb-3">
-                    <strong>文件名:</strong> ${filename}
-                </div>
-                <div class="mb-3">
-                    <strong>时间戳:</strong> ${data.data.timestamp || 'N/A'}
-                </div>
-                <div class="mb-3">
-                    <strong>Messages:</strong>
-                    <div class="border p-2 bg-light" style="max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.875rem;" contenteditable="true">${JSON.stringify(data.data.messages, null, 2)}</div>
-                    <small class="text-muted">可编辑（仅用于查看，不会保存）</small>
-                </div>
-                <div class="mb-3">
-                    <strong>Response:</strong>
-                    <div class="border p-2 bg-light" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.875rem;" contenteditable="true">${formattedResponse}</div>
-                    <small class="text-muted">可编辑（仅用于查看，不会保存）</small>
-                </div>
-            `;
-
-            document.getElementById('regenerateBtn').disabled = false;
-            document.getElementById('exportBtn').disabled = false;
-            document.getElementById('compareBtn').disabled = true;
-        }
-    } catch (error) {
-        console.error('加载历史记录详情失败:', error);
-        showToast('加载详情失败', true);
-    }
-}
-
-// 使用当前Prompt重新生成
-async function regenerateWithCurrent() {
-    if (!selectedHistoryFile || !currentCategory) return;
-
-    const config = PROMPT_CATEGORIES[currentCategory];
-    if (!config) return;
-
-    const systemPrompt = document.getElementById(`${config.prefix}_system`).value;
-    const userPrompt = document.getElementById(`${config.prefix}_user`).value;
-
-    const regenerateBtn = document.getElementById('regenerateBtn');
-    const compareBtn = document.getElementById('compareBtn');
-    const originalBtnText = regenerateBtn.innerHTML;
-
-    try {
-        // 显示加载状态
-        regenerateBtn.disabled = true;
-        regenerateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>生成中...';
-        showToast('正在重新生成，请稍候...', false);
-
-        const response = await fetch('/api/settings/prompts/regenerate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                category: currentCategory,
-                history_file: selectedHistoryFile,
-                custom_prompts: {
-                    system: systemPrompt,
-                    user: userPrompt
-                }
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.code === 0) {
-            showToast('重新生成成功！');
-            // 保存结果用于对比
-            window.regeneratedResult = data.data;
-
-            // 启用对比按钮
-            compareBtn.disabled = false;
-
-            // 自动打开对比Modal
-            setTimeout(() => {
-                compareResults();
-            }, 500);
-        } else {
-            showToast('重新生成失败: ' + (data.message || '未知错误'), true);
-        }
-    } catch (error) {
-        console.error('重新生成失败:', error);
-        showToast('重新生成失败: ' + error.message, true);
-    } finally {
-        // 恢复按钮状态
-        regenerateBtn.disabled = false;
-        regenerateBtn.innerHTML = originalBtnText;
-    }
-}
-
-// 对比结果
-function compareResults() {
-    if (!window.regeneratedResult) {
-        showToast('请先重新生成', true);
-        return;
-    }
-
-    const originalResultEl = document.getElementById('originalResult');
-    const newResultEl = document.getElementById('newResult');
-
-    // 格式化函数 - 智能判断是否为JSON
-    const formatResult = (result) => {
-        try {
-            // 如果是字符串，尝试解析为JSON
-            if (typeof result === 'string') {
-                const parsed = JSON.parse(result);
-                return JSON.stringify(parsed, null, 2);
-            }
-            // 如果已经是对象，直接格式化
-            return JSON.stringify(result, null, 2);
-        } catch (e) {
-            // 不是JSON，直接返回原文
-            return typeof result === 'string' ? result : String(result);
-        }
-    };
-
-    // 格式化并显示结果，支持自动换行
-    originalResultEl.textContent = formatResult(window.regeneratedResult.original_result);
-    newResultEl.textContent = formatResult(window.regeneratedResult.new_result);
-
-    // 添加样式以支持自动换行
-    originalResultEl.style.whiteSpace = 'pre-wrap';
-    originalResultEl.style.wordWrap = 'break-word';
-    newResultEl.style.whiteSpace = 'pre-wrap';
-    newResultEl.style.wordWrap = 'break-word';
-
-    const modal = new bootstrap.Modal(document.getElementById('compareModal'));
-    modal.show();
-}
-
-
-// 覆盖原有的loadPrompts函数
-const originalLoadPrompts = loadPrompts;
-loadPrompts = loadPromptsToCategories;
-
-// ==================== Prompt 语言切换 ====================
-
-// 获取当前Prompt语言
 async function getCurrentPromptLanguage() {
     try {
         const response = await fetch('/api/settings/prompts/language');
@@ -1007,17 +718,15 @@ async function getCurrentPromptLanguage() {
             return data.data.language || 'zh';
         }
     } catch (error) {
-        console.error('获取Prompt语言失败:', error);
+        console.error('Failed to get prompt language:', error);
     }
-    return 'zh'; // 默认中文
+    return 'zh';
 }
 
-// 切换Prompt语言
 async function changePromptLanguage() {
     const language = document.getElementById('promptLanguage').value;
 
-    if (!confirm(`确认切换到${language === 'zh' ? '中文' : '英文'}版本的Prompts吗？当前未保存的修改将丢失。`)) {
-        // 用户取消，恢复选择
+    if (!confirm(`Switch to ${language === 'zh' ? 'Chinese' : 'English'} prompts? Unsaved changes will be lost.`)) {
         const currentLang = await getCurrentPromptLanguage();
         document.getElementById('promptLanguage').value = currentLang;
         return;
@@ -1032,20 +741,55 @@ async function changePromptLanguage() {
 
         const data = await response.json();
         if (data.code === 0) {
-            showToast(`已切换到${language === 'zh' ? '中文' : '英文'}版本`);
-            // 重新加载Prompts
-            await loadPromptsToCategories();
+            showToast(`Switched to ${language === 'zh' ? 'Chinese' : 'English'} prompts`);
+            await loadPrompts();
         } else {
-            showToast('切换语言失败: ' + (data.message || '未知错误'), true);
+            showToast('Language switch failed: ' + (data.message || 'Unknown error'), true);
         }
     } catch (error) {
-        console.error('切换Prompt语言失败:', error);
-        showToast('切换语言失败', true);
+        console.error('Failed to switch prompt language:', error);
+        showToast('Language switch failed', true);
     }
 }
 
-// 页面加载时设置当前语言
+// ==================== Bulk Load General Settings ====================
+
+async function loadAllGeneralSettings() {
+    try {
+        const response = await fetch('/api/settings/general');
+        const data = await response.json();
+
+        if (data.code === 0 && data.data) {
+            populateCaptureSettings(data.data);
+            populateProcessingSettings(data.data);
+            populateSchedulerCacheSettings(data.data);
+        }
+    } catch (error) {
+        console.error('Failed to load general settings:', error);
+        showToast('Failed to load settings', true);
+    }
+}
+
+// ==================== Page Init ====================
+
 document.addEventListener('DOMContentLoaded', async function() {
+    // Load model settings + all general settings in parallel (single fetch)
+    loadModelSettings();
+    loadAllGeneralSettings();
+
+    // Prompts lazy-load on tab switch
+    let promptsLoaded = false;
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function(e) {
+            const target = e.target.getAttribute('data-bs-target');
+            if (target === '#prompts' && !promptsLoaded) {
+                loadPrompts();
+                promptsLoaded = true;
+            }
+        });
+    });
+
+    // Set language selector
     const currentLang = await getCurrentPromptLanguage();
     const langSelect = document.getElementById('promptLanguage');
     if (langSelect) {

@@ -29,7 +29,7 @@ Loads YAML config with environment variable substitution.
 | `get_config_path` | `() -> Optional[str]` | Return config file path |
 | `deep_merge` | `(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]` | Recursive dict merge (override wins) |
 | `load_user_settings` | `() -> bool` | Load `user_setting_path` from config, merge into `_config` |
-| `save_user_settings` | `(settings: Dict[str, Any]) -> bool` | Save specific keys (vlm_model, embedding_model, capture, processing, logging, prompts, content_generation) to user settings file and merge |
+| `save_user_settings` | `(settings: Dict[str, Any]) -> bool` | Save whitelisted keys (defined in module-level `SAVEABLE_KEYS`: llm, vlm_model, embedding_model, capture, processing, logging, prompts, document_processing, scheduler, memory_cache, tools) to user settings file and merge. Uses whole-key replacement at file level — callers must send complete section objects. |
 | `reset_user_settings` | `() -> bool` | Delete user settings file, reload config |
 
 **Environment variable substitution** (`_replace_env_vars`):
