@@ -68,6 +68,14 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `search_similar_todos` | `(query_embedding: List[float], top_k, similarity_threshold) -> List[Tuple[int, str, float]]` | (todo_id, content, score) |
 | `delete_todo_embedding` | `(todo_id: int) -> bool` | Success flag |
 
+Non-abstract method with default implementation (backends may override):
+
+| Method | Signature | Yields |
+|--------|-----------|--------|
+| `scroll_processed_contexts` | `(context_types, batch_size=100, filter, need_vector, user_id, device_id, agent_id) -> Generator[ProcessedContext, None, None]` | `ProcessedContext` objects one at a time |
+
+**`scroll_processed_contexts`**: Generator that iterates all matching contexts. The default implementation uses offset-based `get_all_processed_contexts` calls (O(n^2) for backends like ChromaDB). `QdrantBackend` overrides this with native cursor-based scrolling via `_client.scroll(offset=next_page_offset)` for O(n) performance. Used by `ContextMerger._cleanup_contexts_by_type()` for data cleanup iteration.
+
 ### IDocumentStorageBackend (ABC) -- `base_storage.py`
 
 Extends `IStorageBackend`. All abstract methods that new document backends must implement:

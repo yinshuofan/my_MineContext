@@ -658,31 +658,23 @@ class ContextMerger(BaseContextProcessor):
     def _cleanup_contexts_by_type(
         self, context_type: ContextType, strategy: ContextTypeAwareStrategy
     ) -> Dict[str, int]:
-        """Clean up contexts by type"""
+        """Clean up contexts by type using cursor-based scrolling."""
         stats = {"checked": 0, "cleaned": 0, "errors": 0}
 
         try:
-            limit = 100
-            offset = 0
-
             ids_to_delete: List[str] = []
-            while True:
-                contexts = self._get_contexts_for_cleanup(context_type.value, limit, offset)
-                if not contexts:
-                    break
 
-                for context in contexts:
-                    stats["checked"] += 1
-                    try:
-                        if strategy.should_cleanup(context):
-                            ids_to_delete.append(context.id)
-                    except Exception as e:
-                        stats["errors"] += 1
-                        logger.error(f"Error evaluating cleanup for context {context.id}: {e}")
-
-                if len(contexts) < limit:
-                    break
-                offset += limit
+            for context in self.storage.scroll_processed_contexts(
+                context_types=[context_type.value],
+                batch_size=100,
+            ):
+                stats["checked"] += 1
+                try:
+                    if strategy.should_cleanup(context):
+                        ids_to_delete.append(context.id)
+                except Exception as e:
+                    stats["errors"] += 1
+                    logger.error(f"Error evaluating cleanup for context {context.id}: {e}")
 
             if ids_to_delete:
                 try:
@@ -713,20 +705,6 @@ class ContextMerger(BaseContextProcessor):
             stats["errors"] += 1
 
         return stats
-
-    def _get_contexts_for_cleanup(
-        self, context_type_value: str, limit: int, offset: int
-    ) -> List[ProcessedContext]:
-        """Get contexts that need cleanup checking"""
-        try:
-            contexts_dict = self.storage.get_all_processed_contexts(
-                limit=limit, offset=offset, context_types=[context_type_value]
-            )
-            return contexts_dict.get(context_type_value, [])
-
-        except Exception as e:
-            logger.error(f"Error getting contexts for cleanup: {e}")
-            return []
 
     def memory_reinforcement(self, context_ids: List[str]):
         """

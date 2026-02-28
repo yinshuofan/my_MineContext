@@ -55,6 +55,9 @@ processing:
     use_intelligent_merging: true
     enable_memory_management: true
     enable_cross_type_processing: true
+    knowledge_retention_days: 30
+    knowledge_similarity_threshold: 0.8
+    knowledge_max_merge_count: 3
 
 # Storage Configuration
 storage:
@@ -148,6 +151,7 @@ scheduler:
       enabled: true
       trigger_mode: "periodic"
       interval: 86400
+      timeout: 3600
       retention_days: 30
 
 completion:

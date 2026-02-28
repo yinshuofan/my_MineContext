@@ -38,12 +38,9 @@ processing:
 
     use_intelligent_merging: false
 
-    ENTITY_CONTEXT_retention_days: 365
-    activity_context_retention_days: 90
-    intent_context_retention_days: 180
-    semantic_context_retention_days: 180
-    procedural_context_retention_days: 120
-    state_context_retention_days: 7
+    knowledge_retention_days: 30
+    knowledge_similarity_threshold: 0.8
+    knowledge_max_merge_count: 3
 
 storage:
   enabled: true

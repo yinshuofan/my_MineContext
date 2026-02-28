@@ -8,7 +8,7 @@ import datetime
 import json
 import uuid
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from qdrant_client import QdrantClient, models
 
@@ -335,6 +335,72 @@ class QdrantBackend(IVectorStorageBackend):
                 continue
 
         return result
+
+    def scroll_processed_contexts(
+        self,
+        context_types: Optional[List[str]] = None,
+        batch_size: int = 100,
+        filter: Optional[Dict[str, Any]] = None,
+        need_vector: bool = False,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Generator[ProcessedContext, None, None]:
+        """Cursor-based scrolling using Qdrant's native next_page_offset.
+
+        O(n) total — each batch fetches exactly batch_size records using the
+        cursor from the previous call. Qdrant's scroll cursor is stateless
+        (a point ID), so there is no server-side session to expire.
+        """
+        if not self._initialized:
+            return
+
+        if not context_types:
+            context_types = [k for k in self._collections.keys() if k != TODO_COLLECTION]
+
+        merged_filter = dict(filter) if filter else {}
+        if user_id:
+            merged_filter["user_id"] = user_id
+        if device_id:
+            merged_filter["device_id"] = device_id
+        if agent_id:
+            merged_filter["agent_id"] = agent_id
+
+        for context_type in context_types:
+            if context_type not in self._collections:
+                continue
+            collection_name = self._collections[context_type]
+
+            try:
+                filter_condition = self._build_filter_condition(merged_filter)
+                next_offset = None
+
+                while True:
+                    records, next_offset = self._client.scroll(
+                        collection_name=collection_name,
+                        scroll_filter=filter_condition,
+                        limit=batch_size,
+                        offset=next_offset,
+                        with_payload=True,
+                        with_vectors=need_vector,
+                    )
+
+                    if not records:
+                        break
+
+                    for point in records:
+                        context = self._qdrant_result_to_context(point, need_vector)
+                        if context:
+                            yield context
+
+                    if next_offset is None:
+                        break
+
+            except Exception as e:
+                logger.exception(
+                    f"Failed to scroll contexts from {context_type} collection: {e}"
+                )
+                continue
 
     def delete_processed_context(self, id: str, context_type: str) -> bool:
         return self.delete_contexts([id], context_type)

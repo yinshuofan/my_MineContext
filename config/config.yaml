@@ -107,6 +107,10 @@ processing:
     similarity_threshold: 0.01       # 合并相似度阈值
     use_intelligent_merging: false   # 是否启用 LLM 智能合并策略
     enable_memory_management: true   # 是否启用记忆管理（过期清理等）
+    # Knowledge 类型合并/清理策略参数
+    knowledge_retention_days: 30     # 知识记忆保留天数
+    knowledge_similarity_threshold: 0.8  # 知识合并相似度阈值
+    knowledge_max_merge_count: 3     # 知识最大合并次数
 
 # ============================================================
 # Redis 配置
@@ -314,6 +318,7 @@ scheduler:
       enabled: false
       trigger_mode: "periodic"
       interval: 60         # 执行间隔（秒）
+      timeout: 3600        # 执行超时 / Redis 锁 TTL（秒）
       retention_days: 30   # 数据保留天数
 
     # 事件层级摘要任务 — 生成日/周/月事件摘要（L1/L2/L3）

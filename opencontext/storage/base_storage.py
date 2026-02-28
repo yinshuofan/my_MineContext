@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from opencontext.models.context import ProcessedContext, Vectorize
 
@@ -123,6 +123,58 @@ class IVectorStorageBackend(IStorageBackend):
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
         """
+
+    def scroll_processed_contexts(
+        self,
+        context_types: Optional[List[str]] = None,
+        batch_size: int = 100,
+        filter: Optional[Dict[str, Any]] = None,
+        need_vector: bool = False,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Generator[ProcessedContext, None, None]:
+        """Iterate over all contexts matching the criteria, yielding one at a time.
+
+        Uses backend-native cursors where available (e.g., Qdrant scroll) to
+        avoid O(n^2) offset-based pagination. Backends that don't override this
+        get a default implementation using get_all_processed_contexts with offset.
+
+        Args:
+            context_types: List of context types to iterate
+            batch_size: Number of contexts per internal fetch
+            filter: Additional filter conditions
+            need_vector: Whether to include vectors in results
+            user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-user filtering
+            agent_id: Agent identifier for multi-user filtering
+
+        Yields:
+            ProcessedContext objects
+        """
+        if not context_types:
+            context_types = list(self.get_collection_names() or [])
+
+        for context_type in context_types:
+            offset = 0
+            while True:
+                result = self.get_all_processed_contexts(
+                    context_types=[context_type],
+                    limit=batch_size,
+                    offset=offset,
+                    filter=filter,
+                    need_vector=need_vector,
+                    user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
+                )
+                batch = result.get(context_type, [])
+                if not batch:
+                    break
+                yield from batch
+                if len(batch) < batch_size:
+                    break
+                offset += batch_size
 
     @abstractmethod
     def get_processed_context(self, id: str, context_type: str) -> ProcessedContext:

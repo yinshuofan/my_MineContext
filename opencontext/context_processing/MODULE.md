@@ -309,7 +309,7 @@ Periodic compression (`periodic_memory_compression_for_user`):
 2. Groups by cosine similarity using `_group_contexts_by_similarity()`
 3. Merges groups with `merge_multiple()`, upserts merged, deletes originals
 
-Config keys (from `processing.context_merger`): `similarity_threshold` (default 0.85), `use_intelligent_merging` (default True), `enable_memory_management` (default False)
+Config keys (from `processing.context_merger`): `similarity_threshold` (default 0.85), `use_intelligent_merging` (default True), `enable_memory_management` (default False), `knowledge_retention_days` (default 30), `knowledge_similarity_threshold` (default 0.8), `knowledge_max_merge_count` (default 3)
 
 ### Merge Strategies (`merger/merge_strategies.py`)
 

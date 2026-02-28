@@ -9,7 +9,7 @@ Unified storage system - unified management supporting multiple storage backends
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from opencontext.models.context import ProcessedContext, Vectorize
 from opencontext.models.enums import ContextType
@@ -272,6 +272,44 @@ class UnifiedStorage:
         except Exception as e:
             logger.exception(f"Failed to query ProcessedContext: {e}")
             return {}
+
+    def scroll_processed_contexts(
+        self,
+        context_types: Optional[List[str]] = None,
+        batch_size: int = 100,
+        filter: Optional[Dict[str, Any]] = None,
+        need_vector: bool = False,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Generator[ProcessedContext, None, None]:
+        """Iterate over all contexts matching the criteria, yielding one at a time.
+
+        Delegates to vector backend's scroll_processed_contexts.
+        """
+        if not self._initialized:
+            logger.error("Unified storage system not initialized")
+            return
+
+        if not self._vector_backend:
+            logger.error("Vector database backend not initialized")
+            return
+
+        if not context_types:
+            context_types = [ct.value for ct in ContextType]
+
+        try:
+            yield from self._vector_backend.scroll_processed_contexts(
+                context_types=context_types,
+                batch_size=batch_size,
+                filter=filter,
+                need_vector=need_vector,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+            )
+        except Exception as e:
+            logger.exception(f"Failed to scroll ProcessedContexts: {e}")
 
     def get_processed_context_count(self, context_type: str) -> int:
         """Get record count for specified context_type"""
