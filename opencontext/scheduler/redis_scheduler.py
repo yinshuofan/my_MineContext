@@ -413,7 +413,7 @@ class RedisTaskScheduler(ITaskScheduler):
             logger.info(f"Executing {task_type} for {task_info.user_key}")
 
             # Execute in thread pool to avoid blocking event loop
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             success = await loop.run_in_executor(
                 None, handler, task_info.user_id, task_info.device_id, task_info.agent_id
             )
