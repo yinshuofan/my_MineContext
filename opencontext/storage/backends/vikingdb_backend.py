@@ -1656,6 +1656,17 @@ class VikingDBBackend(IVectorStorageBackend):
                         conditions.append({"op": "must", "field": filter_key, "conds": [value]})
                 elif isinstance(value, bool):
                     conditions.append({"op": "must", "field": filter_key, "conds": [value]})
+                elif isinstance(value, (int, float)) and filter_key in RANGE_SUPPORTED_FIELDS:
+                    # Numeric fields stored as float32 (e.g. hierarchy_level) don't support
+                    # "must" operator in VikingDB — use range equality instead
+                    conditions.append(
+                        {
+                            "op": "range",
+                            "field": filter_key,
+                            "gte": float(value),
+                            "lte": float(value),
+                        }
+                    )
                 else:
                     conditions.append({"op": "must", "field": filter_key, "conds": [value]})
 
