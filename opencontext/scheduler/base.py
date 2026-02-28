@@ -19,7 +19,6 @@ class TriggerMode(str, Enum):
 
     USER_ACTIVITY = "user_activity"  # Triggered by user activity, delayed execution
     PERIODIC = "periodic"  # Fixed interval execution
-    CRON = "cron"  # Cron expression based scheduling
 
 
 class TaskStatus(str, Enum):
@@ -29,7 +28,6 @@ class TaskStatus(str, Enum):
     RUNNING = "running"  # Currently executing
     COMPLETED = "completed"  # Successfully completed
     FAILED = "failed"  # Execution failed
-    CANCELLED = "cancelled"  # Cancelled
 
 
 @dataclass

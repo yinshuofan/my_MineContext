@@ -1,31 +1,18 @@
-# periodic_task/ -- Task implementations and registry for the scheduler
+# periodic_task/ -- Task implementations for the scheduler
 
-Defines the `IPeriodicTask` interface, a registry for task discovery, and three concrete task implementations (memory compression, data cleanup, hierarchy summary).
+Defines the `IPeriodicTask` interface, base class `BasePeriodicTask`, and three concrete task implementations (memory compression, data cleanup, hierarchy summary).
 
 ## File Overview
 
 | File | Responsibility |
 |------|---------------|
-| `base.py` | ABCs (`IPeriodicTask`, `IPeriodicTaskRegistry`), base class `BasePeriodicTask`, dataclasses (`TaskContext`, `TaskResult`), enum `TaskPriority` |
-| `registry.py` | `PeriodicTaskRegistry` -- in-memory task registry; global singleton via `get_registry()` |
+| `base.py` | ABC (`IPeriodicTask`), base class `BasePeriodicTask`, dataclasses (`TaskContext`, `TaskResult`) |
 | `memory_compression.py` | `MemoryCompressionTask` -- deduplicates similar knowledge contexts per user (`user_activity`) |
 | `data_cleanup.py` | `DataCleanupTask` -- retention-based data cleanup (`periodic`, global) |
 | `hierarchy_summary.py` | `HierarchySummaryTask` -- generates L1/L2/L3 event summaries (`user_activity`) |
 | `__init__.py` | Re-exports all public symbols including `create_*_handler` factory functions |
 
 ## Key Classes and Functions
-
-### TaskPriority (enum)
-
-```python
-class TaskPriority(int, Enum):
-    LOW = 0
-    NORMAL = 1
-    HIGH = 2
-    CRITICAL = 3
-```
-
-Defined but not currently used by any scheduling logic.
 
 ### TaskResult (dataclass)
 
@@ -35,7 +22,6 @@ Defined but not currently used by any scheduling logic.
 | `message` | `str` | `""` |
 | `data` | `Optional[Dict[str, Any]]` | `None` |
 | `error` | `Optional[str]` | `None` |
-| `execution_time_ms` | `int` | `0` |
 
 Factory methods: `TaskResult.ok(message, data) -> TaskResult`, `TaskResult.fail(error, message) -> TaskResult`
 
@@ -49,12 +35,7 @@ Execution context passed to every task. Created by handler factory functions.
 | `device_id` | `Optional[str]` | `None` |
 | `agent_id` | `Optional[str]` | `None` |
 | `task_type` | `str` | `""` |
-| `retry_count` | `int` | `0` |
 | `extra` | `Dict[str, Any]` | `{}` |
-
-Property: `user_key -> str` (joins non-None fields with `":"`)
-
-Method: `to_dict() -> Dict[str, Any]` -- serializes all fields to a dictionary
 
 ### IPeriodicTask (ABC)
 
@@ -64,11 +45,7 @@ Method: `to_dict() -> Dict[str, Any]` -- serializes all fields to a dictionary
 | `description` | `@property -> str` | Human-readable description |
 | `default_config` | `@property -> TaskConfig` | Default `TaskConfig` for registration |
 | `execute` | `(context: TaskContext) -> TaskResult` | Synchronous execution (main entry) |
-| `execute_async` | `async (context: TaskContext) -> TaskResult` | Async execution |
 | `validate_context` | `(context: TaskContext) -> bool` | Pre-execution validation (default: `True`) |
-| `on_success` | `(context, result) -> None` | Post-success callback (default: no-op) |
-| `on_failure` | `(context, result) -> None` | Post-failure callback (default: no-op) |
-| `should_retry` | `(context, result) -> bool` | Retry logic (default: retry if `retry_count < max_retries`) |
 
 ### BasePeriodicTask
 
@@ -78,28 +55,6 @@ Concrete base implementing `IPeriodicTask`. Subclasses override `execute()`.
 
 - `default_config` property builds a `TaskConfig` from constructor args
 - `execute()` raises `NotImplementedError`
-- `execute_async()` wraps `execute()` with `run_in_executor`
-
-### IPeriodicTaskRegistry (ABC)
-
-| Method | Signature |
-|--------|-----------|
-| `register` | `(task: IPeriodicTask) -> bool` |
-| `unregister` | `(task_name: str) -> bool` |
-| `get` | `(task_name: str) -> Optional[IPeriodicTask]` |
-| `get_all` | `() -> Dict[str, IPeriodicTask]` |
-| `get_enabled_tasks` | `() -> Dict[str, IPeriodicTask]` |
-
-### PeriodicTaskRegistry
-
-In-memory implementation. Maintains `_tasks: Dict[str, IPeriodicTask]` and `_enabled: Dict[str, bool]`.
-
-Additional methods: `enable(task_name) -> bool`, `disable(task_name) -> bool`, `is_enabled(task_name) -> bool`
-
-**Global singleton functions**:
-- `get_registry() -> PeriodicTaskRegistry` -- lazy-creates on first call
-- `register_task(task: IPeriodicTask) -> bool` -- convenience wrapper
-- `get_task(task_name: str) -> Optional[IPeriodicTask]` -- convenience wrapper
 
 ### MemoryCompressionTask
 
@@ -116,7 +71,6 @@ Deduplicates similar knowledge contexts for a specific user.
 
 - `set_context_merger(context_merger) -> None` -- late injection
 - `execute(context)` -- calls `context_merger.periodic_memory_compression_for_user(user_id, device_id, agent_id, interval_seconds)` or falls back to `periodic_memory_compression(interval_seconds)`
-- `validate_context(context) -> bool` -- requires non-empty `user_id`
 
 **Factory**: `create_compression_handler(context_merger) -> TaskHandler`
 
@@ -208,9 +162,6 @@ IPeriodicTask (ABC)
         ├── MemoryCompressionTask
         ├── DataCleanupTask
         └── HierarchySummaryTask
-
-IPeriodicTaskRegistry (ABC)
-  └── PeriodicTaskRegistry
 ```
 
 ## Internal Data Flow
@@ -220,7 +171,6 @@ IPeriodicTaskRegistry (ABC)
 ```
 cli.py / opencontext.py startup
   ├─ Create task instances (MemoryCompressionTask, DataCleanupTask, HierarchySummaryTask)
-  ├─ register_task() -> PeriodicTaskRegistry (in-memory)
   ├─ create_*_handler() -> TaskHandler function (closure over task instance)
   └─ scheduler.register_handler(task_type, handler)  -- wires handler into RedisTaskScheduler
 ```
@@ -233,8 +183,6 @@ RedisTaskScheduler._process_task_type() or _process_periodic_tasks()
         ├─ Build TaskContext(user_id, device_id, agent_id, task_type)
         ├─ task.execute(context) -> TaskResult
         └─> return result.success
-        NOTE: handler closures do NOT call validate_context(); they invoke execute() directly.
-              validate_context() is available on the task interface but not wired into the handlers.
 ```
 
 ### HierarchySummaryTask execution detail
@@ -268,7 +216,7 @@ execute(context)
 ## Cross-Module Dependencies
 
 **Imports from**:
-- `loguru` -- `logger` imported directly in `base.py`, `registry.py`, `memory_compression.py`, `data_cleanup.py` (4 of 5 files); only `hierarchy_summary.py` uses the standard `opencontext.utils.logging_utils.get_logger`
+- `loguru` -- `logger` imported directly in `memory_compression.py`, `data_cleanup.py`; `hierarchy_summary.py` uses `opencontext.utils.logging_utils.get_logger`
 - `opencontext.scheduler.base` -- `TaskConfig`, `TriggerMode` (used by all task classes)
 - `opencontext.storage.global_storage.get_storage` -- hierarchy_summary accesses storage directly
 - `opencontext.llm.global_vlm_client.generate_with_messages` -- hierarchy_summary LLM calls
@@ -278,13 +226,13 @@ execute(context)
 - `opencontext.models.enums` -- `ContextType`, `ContentFormat`
 
 **Depended on by**:
-- `opencontext.server.opencontext` -- creates task instances, calls `register_task()`, creates handlers
+- `opencontext.server.component_initializer` -- creates task instances, creates handlers, registers with scheduler
 - `opencontext.server.push` -- calls `_schedule_user_hierarchy_summary()` which calls `scheduler.schedule_user_task("hierarchy_summary", ...)`
 
 ## Conventions and Constraints
 
 - **Handlers must be synchronous**: The scheduler calls handlers via `run_in_executor()`. The `create_*_handler()` factories return sync closures that call `task.execute()`.
-- **`validate_context` is defined but not called by handlers**: `MemoryCompressionTask` and `HierarchySummaryTask` override `validate_context()` to require non-empty `user_id`, but the `create_*_handler()` closures do NOT call it before `execute()`. The method exists on the interface for external callers to use if desired.
+- **`validate_context` is called by `create_hierarchy_handler()` only**: `HierarchySummaryTask` overrides `validate_context()` to require non-empty `user_id`, and its handler calls it before `execute()`. Other handlers do not call `validate_context()`.
 - **Idempotent summary generation**: `HierarchySummaryTask` checks for existing summaries before generating. Safe to re-trigger.
 - **Late dependency injection**: `MemoryCompressionTask` and `DataCleanupTask` accept `context_merger`/`storage` via constructor or `set_*()` methods. `HierarchySummaryTask` uses globals (`get_storage()`, LLM singletons).
 - **Handler factory pattern**: Each task has a `create_*_handler()` function that returns a `TaskHandler`-compatible closure. This is what gets registered with the scheduler via `scheduler.register_handler()`.
@@ -341,7 +289,7 @@ scheduler:
       timeout: 300
 ```
 
-4. **Wire up in `opencontext.py`** startup: create handler, register with scheduler:
+4. **Wire up in `component_initializer.py`** startup: create handler, register with scheduler:
 
 ```python
 handler = create_my_handler()

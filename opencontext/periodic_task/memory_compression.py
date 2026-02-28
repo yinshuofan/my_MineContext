@@ -14,7 +14,7 @@ from typing import Any, Optional
 from loguru import logger
 
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
-from opencontext.scheduler.base import TaskConfig, TriggerMode
+from opencontext.scheduler.base import TriggerMode
 
 
 class MemoryCompressionTask(BasePeriodicTask):
@@ -120,17 +120,6 @@ class MemoryCompressionTask(BasePeriodicTask):
         except Exception as e:
             logger.exception(f"Memory compression failed for user={user_id}: {e}")
             return TaskResult.fail(error=str(e), message=f"Compression failed for user {user_id}")
-
-    async def execute_async(self, context: TaskContext) -> TaskResult:
-        """Async version of execute"""
-        import asyncio
-
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self.execute, context)
-
-    def validate_context(self, context: TaskContext) -> bool:
-        """Validate that user_id is provided"""
-        return bool(context.user_id)
 
 
 def create_compression_handler(context_merger: Any):

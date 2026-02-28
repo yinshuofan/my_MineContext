@@ -9,21 +9,9 @@ Defines the abstract base classes and interfaces for periodic tasks.
 
 import abc
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Dict, Optional
 
-from loguru import logger
-
 from opencontext.scheduler.base import TaskConfig, TriggerMode
-
-
-class TaskPriority(int, Enum):
-    """Task execution priority"""
-
-    LOW = 0
-    NORMAL = 1
-    HIGH = 2
-    CRITICAL = 3
 
 
 @dataclass
@@ -34,7 +22,6 @@ class TaskResult:
     message: str = ""
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
-    execution_time_ms: int = 0
 
     @classmethod
     def ok(cls, message: str = "Success", data: Dict[str, Any] = None) -> "TaskResult":
@@ -55,28 +42,7 @@ class TaskContext:
     device_id: Optional[str] = None
     agent_id: Optional[str] = None
     task_type: str = ""
-    retry_count: int = 0
     extra: Dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def user_key(self) -> str:
-        """Build user key from context"""
-        parts = [self.user_id]
-        if self.device_id:
-            parts.append(self.device_id)
-        if self.agent_id:
-            parts.append(self.agent_id)
-        return ":".join(parts)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "user_id": self.user_id,
-            "device_id": self.device_id,
-            "agent_id": self.agent_id,
-            "task_type": self.task_type,
-            "retry_count": self.retry_count,
-            "extra": self.extra,
-        }
 
 
 class IPeriodicTask(abc.ABC):
@@ -135,21 +101,6 @@ class IPeriodicTask(abc.ABC):
         """
         pass
 
-    @abc.abstractmethod
-    async def execute_async(self, context: TaskContext) -> TaskResult:
-        """
-        Execute the task asynchronously.
-
-        Async version of execute() for non-blocking execution.
-
-        Args:
-            context: Task execution context
-
-        Returns:
-            TaskResult indicating success or failure
-        """
-        pass
-
     def validate_context(self, context: TaskContext) -> bool:
         """
         Validate the task context before execution.
@@ -164,116 +115,13 @@ class IPeriodicTask(abc.ABC):
         """
         return True
 
-    def on_success(self, context: TaskContext, result: TaskResult) -> None:
-        """
-        Callback invoked after successful task execution.
-
-        Override this method to add post-success logic.
-
-        Args:
-            context: Task execution context
-            result: Execution result
-        """
-        pass
-
-    def on_failure(self, context: TaskContext, result: TaskResult) -> None:
-        """
-        Callback invoked after failed task execution.
-
-        Override this method to add post-failure logic.
-
-        Args:
-            context: Task execution context
-            result: Execution result
-        """
-        pass
-
-    def should_retry(self, context: TaskContext, result: TaskResult) -> bool:
-        """
-        Determine if the task should be retried after failure.
-
-        Override this method to customize retry logic.
-
-        Args:
-            context: Task execution context
-            result: Execution result
-
-        Returns:
-            True if task should be retried
-        """
-        config = self.default_config
-        return not result.success and context.retry_count < config.max_retries
-
-
-class IPeriodicTaskRegistry(abc.ABC):
-    """Interface for periodic task registry"""
-
-    @abc.abstractmethod
-    def register(self, task: IPeriodicTask) -> bool:
-        """
-        Register a periodic task.
-
-        Args:
-            task: Task instance to register
-
-        Returns:
-            True if registration successful
-        """
-        pass
-
-    @abc.abstractmethod
-    def unregister(self, task_name: str) -> bool:
-        """
-        Unregister a periodic task.
-
-        Args:
-            task_name: Name of the task to unregister
-
-        Returns:
-            True if unregistration successful
-        """
-        pass
-
-    @abc.abstractmethod
-    def get(self, task_name: str) -> Optional[IPeriodicTask]:
-        """
-        Get a registered task by name.
-
-        Args:
-            task_name: Name of the task
-
-        Returns:
-            Task instance if found, None otherwise
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_all(self) -> Dict[str, IPeriodicTask]:
-        """
-        Get all registered tasks.
-
-        Returns:
-            Dictionary mapping task names to task instances
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_enabled_tasks(self) -> Dict[str, IPeriodicTask]:
-        """
-        Get all enabled tasks.
-
-        Returns:
-            Dictionary mapping task names to enabled task instances
-        """
-        pass
-
 
 class BasePeriodicTask(IPeriodicTask):
     """
     Base implementation of IPeriodicTask.
 
     Provides common functionality and sensible defaults.
-    Subclasses should override execute() and execute_async().
+    Subclasses should override execute().
     """
 
     def __init__(
@@ -322,14 +170,3 @@ class BasePeriodicTask(IPeriodicTask):
         Override this method in subclasses.
         """
         raise NotImplementedError("Subclasses must implement execute()")
-
-    async def execute_async(self, context: TaskContext) -> TaskResult:
-        """
-        Default async execution that wraps synchronous execute().
-
-        Override this method for true async implementation.
-        """
-        import asyncio
-
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self.execute, context)

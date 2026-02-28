@@ -11,9 +11,7 @@ such as memory compression, data cleanup, etc.
 from opencontext.periodic_task.base import (
     BasePeriodicTask,
     IPeriodicTask,
-    IPeriodicTaskRegistry,
     TaskContext,
-    TaskPriority,
     TaskResult,
 )
 from opencontext.periodic_task.data_cleanup import DataCleanupTask, create_cleanup_handler
@@ -25,29 +23,15 @@ from opencontext.periodic_task.memory_compression import (
     MemoryCompressionTask,
     create_compression_handler,
 )
-from opencontext.periodic_task.registry import (
-    PeriodicTaskRegistry,
-    get_registry,
-    get_task,
-    register_task,
-)
 
 __all__ = [
     # Interfaces
     "IPeriodicTask",
-    "IPeriodicTaskRegistry",
     # Base classes
     "BasePeriodicTask",
     # Data classes
     "TaskContext",
     "TaskResult",
-    # Enums
-    "TaskPriority",
-    # Registry
-    "PeriodicTaskRegistry",
-    "get_registry",
-    "register_task",
-    "get_task",
     # Task implementations
     "MemoryCompressionTask",
     "DataCleanupTask",

@@ -19,14 +19,12 @@ Stateless, async task scheduler that stores all state in Redis, supporting multi
 class TriggerMode(str, Enum):
     USER_ACTIVITY = "user_activity"  # Triggered per-user on data push, delayed execution
     PERIODIC = "periodic"            # Fixed interval, global (not user-specific)
-    CRON = "cron"                    # Defined but not implemented
 
 class TaskStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
-    CANCELLED = "cancelled"
 ```
 
 ### TaskConfig (dataclass)

@@ -14,7 +14,7 @@ from typing import Any, Optional
 from loguru import logger
 
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
-from opencontext.scheduler.base import TaskConfig, TriggerMode
+from opencontext.scheduler.base import TriggerMode
 
 
 class DataCleanupTask(BasePeriodicTask):
@@ -148,13 +148,6 @@ class DataCleanupTask(BasePeriodicTask):
         except Exception as e:
             logger.exception(f"Data cleanup failed: {e}")
             return TaskResult.fail(error=str(e), message="Data cleanup failed")
-
-    async def execute_async(self, context: TaskContext) -> TaskResult:
-        """Async version of execute"""
-        import asyncio
-
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self.execute, context)
 
 
 def create_cleanup_handler(
