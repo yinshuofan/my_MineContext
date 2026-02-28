@@ -26,6 +26,18 @@ from opencontext.scheduler.base import (
 from opencontext.scheduler.user_key_builder import UserKeyBuilder
 from opencontext.storage.redis_cache import RedisCache
 
+# Lua script: atomically pop lowest-score member only if score <= max_score.
+# Returns {member, score} if a due task exists, nil otherwise.
+# Runs atomically on Redis server — no race window between check and remove.
+_CONDITIONAL_ZPOPMIN_LUA = """
+local result = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, 1)
+if #result == 0 then return nil end
+local member = result[1]
+local score = redis.call('ZSCORE', KEYS[1], member)
+redis.call('ZREM', KEYS[1], member)
+return {member, score}
+"""
+
 
 class RedisTaskScheduler(ITaskScheduler):
     """
@@ -239,7 +251,9 @@ class RedisTaskScheduler(ITaskScheduler):
         """
         Get a pending task ready for execution (async).
 
-        Acquires a distributed lock to prevent duplicate execution.
+        Uses a Lua script for atomic conditional pop — only removes a task from
+        the queue if its scheduled time has arrived. Each instance claims a unique
+        task with no contention.
 
         Returns:
             TaskInfo if a task is available, None otherwise
@@ -252,38 +266,49 @@ class RedisTaskScheduler(ITaskScheduler):
         timeout = task_config.timeout
         now = int(time.time())
 
-        # Get all due tasks (score <= now)
-        tasks = await self._redis.zrangebyscore(queue_key, 0, now)
+        max_attempts = 20  # Bound orphan cleanup per cycle
 
-        for user_key in tasks:
-            # Try to acquire distributed lock
-            lock_key = f"{self.LOCK_PREFIX}{task_type}:{user_key}"
-            lock_token = await self._redis.acquire_lock(lock_key, timeout=timeout, blocking=False)
+        for _ in range(max_attempts):
+            # Atomically pop earliest task only if due (score <= now)
+            result = await self._redis.eval_lua(
+                _CONDITIONAL_ZPOPMIN_LUA, keys=[queue_key], args=[now]
+            )
+            if not result:
+                return None  # Queue empty or nothing due
 
-            if not lock_token:
-                # Another instance is processing, skip
-                continue
+            user_key = (
+                result[0].decode("utf-8") if isinstance(result[0], bytes) else result[0]
+            )
+            score = float(
+                result[1].decode("utf-8") if isinstance(result[1], bytes) else result[1]
+            )
 
-            # Check if task hash still exists (may have expired via TTL)
+            # Orphan check: task hash expired but queue entry remained
             task_key = f"{self.TASK_PREFIX}{task_type}:{user_key}"
             task_exists = await self._redis.exists(task_key)
             if not task_exists:
-                # Orphaned queue entry — task hash expired, clean up and skip
-                await self._redis.zrem(queue_key, user_key)
-                await self._redis.release_lock(lock_key, lock_token)
+                # Already removed by Lua, loop to next
                 logger.debug(f"Cleaned orphaned queue entry for {task_type}:{user_key}")
                 continue
 
-            # Update task status
+            # Acquire lock (safety net — protects against crashed previous execution
+            # whose lock hasn't expired. Near-impossible with atomic pop but defensive.)
+            lock_key = f"{self.LOCK_PREFIX}{task_type}:{user_key}"
+            lock_token = await self._redis.acquire_lock(
+                lock_key, timeout=timeout, blocking=False
+            )
+            if not lock_token:
+                # Previous execution still holds lock; put task back for later
+                await self._redis.zadd(queue_key, {user_key: score})
+                continue
+
+            # Mark as running
             await self._redis.hset(task_key, "status", TaskStatus.RUNNING.value)
 
-            # Remove from queue
-            await self._redis.zrem(queue_key, user_key)
-
-            # Parse user_key
+            # Parse user_key and return TaskInfo
             key_parts = self._user_key_builder.parse_key(user_key)
 
-            task_info = TaskInfo(
+            return TaskInfo(
                 task_type=task_type,
                 user_key=user_key,
                 user_id=key_parts.get("user_id") or "",
@@ -292,8 +317,6 @@ class RedisTaskScheduler(ITaskScheduler):
                 status=TaskStatus.RUNNING,
                 lock_token=lock_token,
             )
-
-            return task_info
 
         return None
 

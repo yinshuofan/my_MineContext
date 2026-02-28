@@ -599,6 +599,22 @@ class RedisCache:
             logger.error(f"Redis ZRANGEBYSCORE error: {e}")
             return []
 
+    async def eval_lua(self, script: str, keys: List[str], args: List = None) -> Any:
+        """Execute a Lua script on Redis server.
+
+        Keys are automatically prefixed. Scripts run atomically (Redis single-threaded).
+        """
+        if not await self._ensure_async_client():
+            return None
+        try:
+            prefixed_keys = [self._make_key(k) for k in keys]
+            return await self._async_client.eval(
+                script, len(prefixed_keys), *prefixed_keys, *(args or [])
+            )
+        except Exception as e:
+            logger.error(f"Redis eval_lua error: {e}")
+            return None
+
     async def zrem(self, key: str, *members: str) -> int:
         """Remove members from a sorted set."""
         if not await self._ensure_async_client() or not members:
