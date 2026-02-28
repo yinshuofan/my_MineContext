@@ -483,40 +483,48 @@ curl -X GET "http://localhost:1733/api/monitoring/scheduler/failures?hours=1"
 # 13. Settings - Model
 # ============================================================================
 
-# Get Model Settings
+# Get Model Settings (returns 3 model configs: llm, vlm_model, embedding_model)
 curl -X GET http://localhost:1733/api/model_settings/get
 # -H "X-API-Key: your-api-key"
 
-# Update Model Settings
+# Update Model Settings (partial — only non-null sections are saved)
 curl -X POST http://localhost:1733/api/model_settings/update \
   -H "Content-Type: application/json" \
   -d '{
-    "config": {
-      "modelPlatform": "openai",
-      "modelId": "gpt-4o",
-      "baseUrl": "https://api.openai.com/v1",
-      "apiKey": "sk-your-api-key",
-      "embeddingModelId": "text-embedding-3-large",
-      "embeddingBaseUrl": "https://api.openai.com/v1",
-      "embeddingApiKey": "sk-your-api-key",
-      "embeddingModelPlatform": "openai"
+    "llm": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-your-api-key",
+      "max_concurrent": 30
+    },
+    "vlm_model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-your-api-key",
+      "max_concurrent": 30
+    },
+    "embedding_model": {
+      "provider": "openai",
+      "model": "text-embedding-3-large",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-your-api-key",
+      "max_concurrent": 60,
+      "output_dim": 2048
     }
   }'
 # -H "X-API-Key: your-api-key"
 
-# Validate Model Settings
+# Validate Model Settings (any combination of 3 models, without saving)
 curl -X POST http://localhost:1733/api/model_settings/validate \
   -H "Content-Type: application/json" \
   -d '{
-    "config": {
-      "modelPlatform": "openai",
-      "modelId": "gpt-4o",
-      "baseUrl": "https://api.openai.com/v1",
-      "apiKey": "sk-your-api-key",
-      "embeddingModelId": "text-embedding-3-large",
-      "embeddingBaseUrl": "https://api.openai.com/v1",
-      "embeddingApiKey": "sk-your-api-key",
-      "embeddingModelPlatform": "openai"
+    "vlm_model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-your-api-key"
     }
   }'
 # -H "X-API-Key: your-api-key"
@@ -526,22 +534,38 @@ curl -X POST http://localhost:1733/api/model_settings/validate \
 # 14. Settings - General
 # ============================================================================
 
-# Get General Settings
+# Get General Settings (returns 7 sections: capture, processing, logging,
+#   document_processing, scheduler, memory_cache, tools)
 curl -X GET http://localhost:1733/api/settings/general
 # -H "X-API-Key: your-api-key"
 
-# Update General Settings
+# Update General Settings (partial — only non-null sections are saved)
 curl -X POST http://localhost:1733/api/settings/general \
   -H "Content-Type: application/json" \
   -d '{
     "capture": {
-      "screenshot_interval": 30
+      "enabled": true,
+      "text_chat": { "enabled": true, "buffer_size": 10 }
     },
     "processing": {
-      "batch_size": 10
+      "enabled": true,
+      "context_merger": { "enabled": true, "similarity_threshold": 0.01 }
     },
-    "logging": {
-      "level": "INFO"
+    "document_processing": {
+      "batch_size": 3,
+      "dpi": 200,
+      "text_threshold_per_page": 50
+    },
+    "scheduler": {
+      "enabled": true,
+      "tasks": {
+        "hierarchy_summary": { "enabled": true, "trigger_mode": "user_activity", "interval": 86400 }
+      }
+    },
+    "memory_cache": {
+      "snapshot_ttl": 3600,
+      "recent_days": 7,
+      "max_entities": 20
     }
   }'
 # -H "X-API-Key: your-api-key"

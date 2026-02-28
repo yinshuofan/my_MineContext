@@ -315,11 +315,11 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| GET | `/api/model_settings/get` | `get_model_settings` | Get model config |
-| POST | `/api/model_settings/update` | `update_model_settings` | Update and reinitialize LLM clients |
-| POST | `/api/model_settings/validate` | `validate_llm_config` | Validate without saving |
-| GET | `/api/settings/general` | `get_general_settings` | Get general settings |
-| POST | `/api/settings/general` | `update_general_settings` | Update general settings |
+| GET | `/api/model_settings/get` | `get_model_settings` | Get all 3 model configs (llm, vlm_model, embedding_model) as flat objects |
+| POST | `/api/model_settings/update` | `update_model_settings` | Partial update — validates then saves any non-null model section; reinitializes VLM/Embedding clients |
+| POST | `/api/model_settings/validate` | `validate_llm_config` | Validate any combination of 3 models without saving |
+| GET | `/api/settings/general` | `get_general_settings` | Get 7 config sections: capture, processing, logging, document_processing, scheduler, memory_cache, tools |
+| POST | `/api/settings/general` | `update_general_settings` | Update any of the 7 general settings sections (partial) |
 | GET | `/api/settings/prompts` | `get_prompts` | Get current prompts |
 | POST | `/api/settings/prompts` | `update_prompts` | Update prompts |
 | POST | `/api/settings/prompts/import` | `import_prompts` | Import prompts YAML |
