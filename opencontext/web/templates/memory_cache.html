@@ -191,12 +191,19 @@ function renderTodayEvents(events) {
     if (events.length === 0) {
         content = '<p class="text-muted">今日暂无事件</p>';
     } else {
-        content = events.map(evt => `
-            <div class="border-start border-3 border-success ps-3 mb-2">
-                <div class="fw-semibold">${evt.title || '未命名'}</div>
-                ${evt.summary ? `<small class="text-muted">${evt.summary}</small>` : ''}
-            </div>
-        `).join('');
+        content = events.map(evt => {
+            let timeStr = '';
+            if (evt.event_time) {
+                const d = new Date(evt.event_time);
+                timeStr = `<span class="badge bg-light text-dark me-1">${d.toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'})}</span>`;
+            }
+            return `
+                <div class="border-start border-3 border-success ps-3 mb-2">
+                    <div class="fw-semibold">${timeStr}${evt.title || '未命名'}</div>
+                    ${evt.summary ? `<small class="text-muted">${evt.summary}</small>` : ''}
+                </div>
+            `;
+        }).join('');
     }
     return wrapCard(`今日事件 <span class="badge bg-secondary">${events.length}</span>`, 'zap', content, 'today-section');
 }
