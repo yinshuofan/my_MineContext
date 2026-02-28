@@ -144,7 +144,7 @@ LLM prompts for extraction, classification, merging, and hierarchy summarization
 - Main config: `config/config.yaml` — YAML with `${ENV_VAR:default}` syntax
 - Environment variables: copy `.env.example` to `.env`
 - Key env vars: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `MYSQL_HOST`, `MYSQL_PASSWORD`, `REDIS_HOST`, `HIERARCHY_SUMMARY_ENABLED`
-- Service mode (`service_mode.enabled: true`): stateless deployment requiring external Redis + MySQL/vector DB
+- `OPENCONTEXT_CONFIG_PATH`: Set by `cli.py` when `--config` is provided; used by `GlobalConfig._auto_initialize()` in multi-worker subprocess auto-init
 
 ## Code Style
 

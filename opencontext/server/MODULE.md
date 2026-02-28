@@ -48,7 +48,7 @@ Central orchestrator. Created in `cli.py` lifespan, stored on `app.state.context
 
 ```python
 class OpenContext:
-    def __init__(self, config_path: Optional[str] = None)
+    def __init__(self)
     def initialize(self) -> None                    # Init all components in order
     def shutdown(self, graceful: bool = True) -> None
 

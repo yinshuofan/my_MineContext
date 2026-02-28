@@ -81,7 +81,7 @@ Note: `_language` is NOT set in `__init__`. It is set later in `_init_prompt_man
 |--------|-----------|-------------|
 | `get_instance` | `(cls) -> GlobalConfig` | Get singleton; auto-initializes on first access |
 | `reset` | `(cls) -> None` | Reset singleton (for testing) |
-| `initialize` | `(config_path: Optional[str] = None) -> bool` | Init both managers; called once at startup |
+| `initialize` | `(config_path: Optional[str] = None) -> bool` | Init both managers; called once at startup. In multi-worker mode, subprocesses auto-init via `_auto_initialize()` which reads `OPENCONTEXT_CONFIG_PATH` env var (default: `config/config.yaml`). |
 | `get_config` | `(path: Optional[str] = None) -> Optional[Dict[str, Any]]` | Dot-path config lookup (e.g. `"storage.vector_db"`) |
 | `get_prompt` | `(name: str, default: Optional[str] = None) -> Optional[str]` | Delegates to `PromptManager.get_prompt()` |
 | `get_prompt_group` | `(name: str) -> Dict[str, str]` | Delegates to `PromptManager.get_prompt_group()` |
