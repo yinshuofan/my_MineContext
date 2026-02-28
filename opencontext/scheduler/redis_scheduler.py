@@ -491,11 +491,8 @@ class RedisTaskScheduler(ITaskScheduler):
         try:
             logger.info(f"Executing {task_type} for {task_info.user_key}")
 
-            # Execute in thread pool to avoid blocking event loop
-            loop = asyncio.get_running_loop()
-            success = await loop.run_in_executor(
-                None, handler, task_info.user_id, task_info.device_id, task_info.agent_id
-            )
+            # Execute async handler directly
+            success = await handler(task_info.user_id, task_info.device_id, task_info.agent_id)
 
             await self.complete_task(
                 task_type, task_info.user_key, task_info.lock_token or "", success
@@ -602,10 +599,9 @@ class RedisTaskScheduler(ITaskScheduler):
                 )
                 await self._redis.expire(periodic_key, interval * 3)
 
-                # Execute task
+                # Execute async handler directly
                 logger.info(f"Executing periodic task: {task_type}")
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, handler, None, None, None)
+                await handler(None, None, None)
 
                 await self._redis.hset(periodic_key, "status", "idle")
                 await self._redis.expire(periodic_key, interval * 3)

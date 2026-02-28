@@ -122,7 +122,7 @@ class ProfileEntityTool(BaseTool):
             "additionalProperties": False,
         }
 
-    def execute(self, **kwargs) -> Dict[str, Any]:
+    async def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute entity operation"""
         operation = kwargs.get("operation")
         user_id = kwargs.get("user_id", self.user_id)
@@ -145,12 +145,12 @@ class ProfileEntityTool(BaseTool):
             }
 
         try:
-            return handler(kwargs, user_id, device_id, agent_id)
+            return await handler(kwargs, user_id, device_id, agent_id)
         except Exception as e:
             logger.error(f"Failed to execute entity operation - {operation}: {e}", exc_info=True)
             return {"success": False, "error": str(e), "operation": operation}
 
-    def _handle_find_exact(
+    async def _handle_find_exact(
         self, params: Dict[str, Any], user_id: str, device_id: str, agent_id: str
     ) -> Dict[str, Any]:
         """Handle exact search operation — queries relational DB"""
@@ -161,14 +161,14 @@ class ProfileEntityTool(BaseTool):
                 "error": "entity_name is required for find_exact_entity operation",
             }
 
-        result = self.storage.get_entity(
+        result = await self.storage.get_entity(
             user_id, device_id=device_id, agent_id=agent_id, entity_name=entity_name
         )
         if not result:
             return {"success": False, "error": f"Entity '{entity_name}' not found"}
         return {"success": True, "entity_info": result, "entity_name": entity_name}
 
-    def _handle_find_similar(
+    async def _handle_find_similar(
         self, params: Dict[str, Any], user_id: str, device_id: str, agent_id: str
     ) -> Dict[str, Any]:
         """Handle similar/fuzzy search operation — uses relational DB text search"""
@@ -180,7 +180,7 @@ class ProfileEntityTool(BaseTool):
             }
 
         top_k = min(max(params.get("top_k", 10), 1), 100)
-        results = self.storage.search_entities(
+        results = await self.storage.search_entities(
             user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -191,13 +191,13 @@ class ProfileEntityTool(BaseTool):
             return {"success": False, "error": f"No entities found matching '{query}'"}
         return {"success": True, "entities": results}
 
-    def _handle_list_entities(
+    async def _handle_list_entities(
         self, params: Dict[str, Any], user_id: str, device_id: str, agent_id: str
     ) -> Dict[str, Any]:
         """Handle list entities operation"""
         entity_type = params.get("entity_type")
         top_k = min(max(params.get("top_k", 100), 1), 1000)
-        results = self.storage.list_entities(
+        results = await self.storage.list_entities(
             user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -206,7 +206,7 @@ class ProfileEntityTool(BaseTool):
         )
         return {"success": True, "entities": results, "count": len(results)}
 
-    def _handle_check_relationships(
+    async def _handle_check_relationships(
         self, params: Dict[str, Any], user_id: str, device_id: str, agent_id: str
     ) -> Dict[str, Any]:
         """Handle relationship checking between two entities"""
@@ -216,10 +216,10 @@ class ProfileEntityTool(BaseTool):
         if not entity1_name or not entity2_name:
             return {"success": False, "error": "Both entity1 and entity2 are required"}
 
-        entity1 = self.storage.get_entity(
+        entity1 = await self.storage.get_entity(
             user_id, device_id=device_id, agent_id=agent_id, entity_name=entity1_name
         )
-        entity2 = self.storage.get_entity(
+        entity2 = await self.storage.get_entity(
             user_id, device_id=device_id, agent_id=agent_id, entity_name=entity2_name
         )
 
@@ -259,7 +259,7 @@ class ProfileEntityTool(BaseTool):
 
         return {"success": True, "related": False}
 
-    def match_entity(
+    async def match_entity(
         self,
         entity_name: str,
         entity_type: str = None,
@@ -286,12 +286,12 @@ class ProfileEntityTool(BaseTool):
         aid = agent_id if agent_id is not None else self.agent_id
 
         # 1. Try exact match
-        result = self.storage.get_entity(uid, device_id=did, agent_id=aid, entity_name=entity_name)
+        result = await self.storage.get_entity(uid, device_id=did, agent_id=aid, entity_name=entity_name)
         if result:
             return result.get("entity_name", entity_name), result
 
         # 2. Search by text
-        similar = self.storage.search_entities(
+        similar = await self.storage.search_entities(
             uid, device_id=did, agent_id=aid, query_text=entity_name, limit=top_k
         )
         if similar:

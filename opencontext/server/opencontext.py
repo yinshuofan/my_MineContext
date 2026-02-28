@@ -114,7 +114,7 @@ class OpenContext:
         except Exception as e:
             logger.error(f"Failed to initialize monitoring system: {e}")
 
-    def _handle_captured_context(self, contexts: List[RawContextProperties]) -> bool:
+    async def _handle_captured_context(self, contexts: List[RawContextProperties]) -> bool:
         """
         Handle batch processing and storage of captured context data.
         """
@@ -123,13 +123,13 @@ class OpenContext:
 
         try:
             for context_data in contexts:
-                self.processor_manager.process(context_data)
+                await self.processor_manager.process(context_data)
             return True
         except Exception as e:
             logger.error(f"Error processing captured contexts: {e}")
             return False
 
-    def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool:
+    async def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool:
         """Store processed contexts, routing by type per CONTEXT_STORAGE_BACKENDS."""
         if not contexts:
             return False
@@ -156,9 +156,9 @@ class OpenContext:
                 for ctx in db_contexts:
                     ctx_type = ctx.extracted_data.context_type
                     if ctx_type == ContextType.PROFILE:
-                        self._store_profile(ctx)
+                        await self._store_profile(ctx)
                     elif ctx_type == ContextType.ENTITY:
-                        self._store_entities(ctx)
+                        await self._store_entities(ctx)
                     uid = ctx.properties.user_id
                     if uid:
                         affected_users.add((uid, ctx.properties.device_id, ctx.properties.agent_id))
@@ -166,7 +166,7 @@ class OpenContext:
             # Store vector contexts
             success = True
             if vector_contexts:
-                success = self.storage.batch_upsert_processed_context(vector_contexts)
+                success = await self.storage.batch_upsert_processed_context(vector_contexts)
                 for ctx in vector_contexts:
                     uid = ctx.properties.user_id
                     if uid:
@@ -174,20 +174,20 @@ class OpenContext:
 
             # Only invalidate cache after ALL operations succeed
             for uid, did, aid in affected_users:
-                self._invalidate_user_cache(uid, did, aid)
+                await self._invalidate_user_cache(uid, did, aid)
 
             return success
         except Exception as e:
             logger.error(f"Error storing processed contexts: {e}")
             return False
 
-    def _store_profile(self, ctx: ProcessedContext) -> None:
+    async def _store_profile(self, ctx: ProcessedContext) -> None:
         """Store a profile context to relational DB with LLM-driven merge."""
         from opencontext.context_processing.processor.profile_processor import refresh_profile
 
         ed = ctx.extracted_data
         props = ctx.properties
-        refresh_profile(
+        await refresh_profile(
             new_content=ed.summary or "",
             new_summary=None,
             new_keywords=ed.keywords,
@@ -202,12 +202,12 @@ class OpenContext:
             f"Profile stored for user={props.user_id}, device={props.device_id}, agent={props.agent_id}"
         )
 
-    def _store_entities(self, ctx: ProcessedContext) -> None:
+    async def _store_entities(self, ctx: ProcessedContext) -> None:
         """Store entity contexts to relational DB."""
         ed = ctx.extracted_data
         props = ctx.properties
         for entity_name in ed.entities:
-            self.storage.upsert_entity(
+            await self.storage.upsert_entity(
                 user_id=props.user_id or "default",
                 device_id=props.device_id or "default",
                 agent_id=props.agent_id or "default",
@@ -220,66 +220,25 @@ class OpenContext:
             )
             logger.info(f"Entity '{entity_name}' stored for user={props.user_id}")
 
-    def _invalidate_user_cache(
+    async def _invalidate_user_cache(
         self,
         user_id: Optional[str],
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
     ) -> None:
-        """Fire-and-forget cache invalidation with sync fallback."""
+        """Invalidate user cache snapshot directly."""
         if not user_id:
             return
         try:
-            import asyncio
-
             from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
 
             manager = get_memory_cache_manager()
             did = device_id or "default"
             aid = agent_id or "default"
-
-            loop = manager._loop
-            if not loop:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(
-                    manager.invalidate_snapshot(user_id, did, aid), loop
-                )
-                logger.debug(f"Cache invalidation submitted for user={user_id}")
-            else:
-                # Sync fallback: directly delete Redis key
-                self._invalidate_cache_sync_fallback(user_id, did, aid)
+            await manager.invalidate_snapshot(user_id, did, aid)
+            logger.debug(f"Cache invalidated for user={user_id}")
         except Exception as e:
             logger.warning(f"Cache invalidation failed for user={user_id}: {e}")
-
-    def _invalidate_cache_sync_fallback(self, user_id: str, device_id: str, agent_id: str) -> None:
-        """Synchronous fallback: directly delete Redis snapshot key."""
-        try:
-            import redis as sync_redis
-
-            config = GlobalConfig.get_instance()
-            redis_conf = config.get("redis", {})
-            if not redis_conf:
-                logger.debug("No Redis config available for sync cache invalidation")
-                return
-
-            client = sync_redis.Redis(
-                host=redis_conf.get("host", "localhost"),
-                port=redis_conf.get("port", 6379),
-                password=redis_conf.get("password"),
-                db=redis_conf.get("db", 0),
-                socket_timeout=3,
-            )
-            snapshot_key = f"memory_cache:snapshot:{user_id}:{device_id}:{agent_id}"
-            client.delete(snapshot_key)
-            client.close()
-            logger.debug(f"Cache invalidation (sync fallback) for user={user_id}")
-        except Exception as e:
-            logger.warning(f"Sync cache invalidation fallback failed: {e}")
 
     def start_capture(self) -> None:
         """Start all capture components."""
@@ -329,12 +288,12 @@ class OpenContext:
             if not graceful:
                 raise
 
-    def add_context(self, context_data: RawContextProperties) -> bool:
+    async def add_context(self, context_data: RawContextProperties) -> bool:
         """
         Process a single context data item.
         """
         try:
-            return self.processor_manager.process(context_data)
+            return await self.processor_manager.process(context_data)
         except Exception as e:
             logger.error(f"Error adding context: {e}")
             return False
@@ -372,12 +331,12 @@ class OpenContext:
             return False
         return self.context_operations.delete_context(doc_id, context_type)
 
-    def add_document(self, file_path: str) -> Optional[str]:
+    async def add_document(self, file_path: str) -> Optional[str]:
         """Add a document to the system."""
         if not self.context_operations:
             logger.warning("Context operations not initialized.")
             return "Context operations not initialized"
-        return self.context_operations.add_document(file_path, self.add_context)
+        return await self.context_operations.add_document(file_path, self.add_context)
 
     def search(
         self,

@@ -63,7 +63,7 @@ class ContextOperations:
         logger.warning("Storage is not initialized.")
         return False
 
-    def add_document(self, file_path: str, context_processor_callback) -> Optional[str]:
+    async def add_document(self, file_path: str, context_processor_callback) -> Optional[str]:
         """Add a document to the system."""
         import uuid
         from pathlib import Path
@@ -97,7 +97,7 @@ class ContextOperations:
             )
 
             # Call processor
-            if not context_processor_callback(raw_context):
+            if not await context_processor_callback(raw_context):
                 return "Failed to add document"
             return None
         except Exception as e:

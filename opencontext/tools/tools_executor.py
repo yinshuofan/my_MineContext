@@ -80,17 +80,7 @@ class ToolsExecutor:
         tool_input, error = self._validate_input(tool_input)
         if error:
             return error
-        return await asyncio.to_thread(tool.execute, **tool_input)
-
-    def run(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
-        if tool_name not in self._tools_map:
-            return self._handle_unknown_tool(tool_name)
-
-        tool = self._tools_map[tool_name]
-        tool_input, error = self._validate_input(tool_input)
-        if error:
-            return error
-        return tool.execute(**tool_input)
+        return await tool.execute(**tool_input)
 
     async def batch_run_tools_async(self, tool_calls: List[Dict[str, Any]]) -> Any:
         results = []

@@ -55,7 +55,7 @@ class MemoryCompressionTask(BasePeriodicTask):
         """Set the context merger instance"""
         self._context_merger = context_merger
 
-    def execute(self, context: TaskContext) -> TaskResult:
+    async def execute(self, context: TaskContext) -> TaskResult:
         """
         Execute memory compression for a user.
 
@@ -130,18 +130,18 @@ def create_compression_handler(context_merger: Any):
         context_merger: ContextMerger instance
 
     Returns:
-        Handler function compatible with TaskScheduler
+        Async handler function compatible with TaskScheduler
     """
     task = MemoryCompressionTask(context_merger=context_merger)
 
-    def handler(user_id: str, device_id: Optional[str], agent_id: Optional[str]) -> bool:
+    async def handler(user_id: str, device_id: Optional[str], agent_id: Optional[str]) -> bool:
         context = TaskContext(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
             task_type="memory_compression",
         )
-        result = task.execute(context)
+        result = await task.execute(context)
         return result.success
 
     return handler

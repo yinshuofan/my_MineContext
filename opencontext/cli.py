@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     from concurrent.futures import ThreadPoolExecutor
 
     loop = asyncio.get_running_loop()
-    executor = ThreadPoolExecutor(max_workers=50)
+    executor = ThreadPoolExecutor(max_workers=10)
     loop.set_default_executor(executor)
 
     # Startup

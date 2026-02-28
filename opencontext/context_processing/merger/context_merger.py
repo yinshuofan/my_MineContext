@@ -78,7 +78,7 @@ class ContextMerger(BaseContextProcessor):
 
         logger.info(f"Initialized {len(self.strategies)} context merge strategies")
 
-    def process(self, context: ProcessedContext) -> List[ProcessedContext]:
+    async def process(self, context: ProcessedContext) -> List[ProcessedContext]:
         return []
 
     def can_process(self, context: ProcessedContext) -> bool:
@@ -88,7 +88,7 @@ class ContextMerger(BaseContextProcessor):
             and context.extracted_data.context_type == ContextType.KNOWLEDGE
         )
 
-    def find_merge_target(self, context: ProcessedContext) -> Optional[ProcessedContext]:
+    async def find_merge_target(self, context: ProcessedContext) -> Optional[ProcessedContext]:
         """
         Find merge target for knowledge contexts using intelligent strategies.
         Only processes KNOWLEDGE type — other types skip merging entirely.
@@ -103,7 +103,7 @@ class ContextMerger(BaseContextProcessor):
         # Check for vectorization
         if not context.vectorize:
             return None
-        do_vectorize(context.vectorize)
+        await do_vectorize(context.vectorize)
 
         context_type = context.extracted_data.context_type
 
@@ -204,7 +204,7 @@ class ContextMerger(BaseContextProcessor):
 
         return None, 0.0
 
-    def merge_multiple(
+    async def merge_multiple(
         self, target: ProcessedContext, sources: List[ProcessedContext]
     ) -> Optional[ProcessedContext]:
         """
@@ -220,9 +220,9 @@ class ContextMerger(BaseContextProcessor):
 
             # Use intelligent merging strategy
             if self.use_intelligent_merging and context_type in self.strategies:
-                merged_context = self._merge_with_intelligent_strategy(target, sources)
+                merged_context = await self._merge_with_intelligent_strategy(target, sources)
             else:
-                merged_context = self._merge_with_llm(target, sources)
+                merged_context = await self._merge_with_llm(target, sources)
 
             if merged_context:
                 self._statistics["merges_succeeded"] += 1
@@ -239,7 +239,7 @@ class ContextMerger(BaseContextProcessor):
             self._statistics["errors"] += 1
             return None
 
-    def _merge_with_intelligent_strategy(
+    async def _merge_with_intelligent_strategy(
         self, target: ProcessedContext, sources: List[ProcessedContext]
     ) -> Optional[ProcessedContext]:
         """Merge using intelligent strategies"""
@@ -251,7 +251,7 @@ class ContextMerger(BaseContextProcessor):
                 f"No strategy found for context type {context_type.value}, "
                 f"falling back to LLM merge"
             )
-            return self._merge_with_llm(target, sources)
+            return await self._merge_with_llm(target, sources)
 
         try:
             merged_context = strategy.merge_contexts(target, sources)
@@ -265,9 +265,9 @@ class ContextMerger(BaseContextProcessor):
         except Exception as e:
             logger.error(f"Error in intelligent strategy merge: {e}", exc_info=True)
             logger.info("Falling back to LLM-based merge")
-            return self._merge_with_llm(target, sources)
+            return await self._merge_with_llm(target, sources)
 
-    def _merge_with_llm(
+    async def _merge_with_llm(
         self, target: ProcessedContext, sources: List[ProcessedContext]
     ) -> Optional[ProcessedContext]:
         """
@@ -309,7 +309,7 @@ class ContextMerger(BaseContextProcessor):
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": user_prompt})
 
-            response = generate_with_messages(messages)
+            response = await generate_with_messages(messages)
             if response:
                 if "无需合并" in response:
                     logger.info(f"LLM indicated no merge needed for target {target.id}.")
@@ -401,7 +401,7 @@ class ContextMerger(BaseContextProcessor):
     def get_statistics(self):
         return self._statistics
 
-    def periodic_memory_compression(self, interval_seconds: int):
+    async def periodic_memory_compression(self, interval_seconds: int):
         """
         Periodic memory compression — only for KNOWLEDGE type.
         """
@@ -427,7 +427,7 @@ class ContextMerger(BaseContextProcessor):
             limit = 1000
             offset = 0
             while True:
-                contexts_by_backend = self.storage.get_all_processed_contexts(
+                contexts_by_backend = await self.storage.get_all_processed_contexts(
                     limit=limit,
                     offset=offset,
                     filter=filter,
@@ -458,15 +458,15 @@ class ContextMerger(BaseContextProcessor):
                             target_candidate = group[-1]
                             sources = group[:-1]
 
-                            merged_context = self.merge_multiple(target_candidate, sources)
+                            merged_context = await self.merge_multiple(target_candidate, sources)
                             if merged_context:
-                                self.storage.upsert_processed_context(merged_context)
-                                self.storage.delete_processed_context(
+                                await self.storage.upsert_processed_context(merged_context)
+                                await self.storage.delete_processed_context(
                                     target_candidate.id,
                                     target_candidate.extracted_data.context_type.value,
                                 )
                                 for ctx in sources:
-                                    self.storage.delete_processed_context(
+                                    await self.storage.delete_processed_context(
                                         ctx.id, ctx.extracted_data.context_type.value
                                     )
                                 logger.info(
@@ -482,7 +482,7 @@ class ContextMerger(BaseContextProcessor):
         except Exception as e:
             logger.exception(f"Error during periodic memory compression: {e}")
 
-    def periodic_memory_compression_for_user(
+    async def periodic_memory_compression_for_user(
         self,
         user_id: str,
         device_id: Optional[str] = None,
@@ -526,7 +526,7 @@ class ContextMerger(BaseContextProcessor):
             offset = 0
 
             while True:
-                contexts_by_backend = self.storage.get_all_processed_contexts(
+                contexts_by_backend = await self.storage.get_all_processed_contexts(
                     limit=limit,
                     offset=offset,
                     filter=filter,
@@ -561,15 +561,15 @@ class ContextMerger(BaseContextProcessor):
                             target_candidate = group[-1]
                             sources = group[:-1]
 
-                            merged_context = self.merge_multiple(target_candidate, sources)
+                            merged_context = await self.merge_multiple(target_candidate, sources)
                             if merged_context:
-                                self.storage.upsert_processed_context(merged_context)
-                                self.storage.delete_processed_context(
+                                await self.storage.upsert_processed_context(merged_context)
+                                await self.storage.delete_processed_context(
                                     target_candidate.id,
                                     target_candidate.extracted_data.context_type.value,
                                 )
                                 for ctx in sources:
-                                    self.storage.delete_processed_context(
+                                    await self.storage.delete_processed_context(
                                         ctx.id, ctx.extracted_data.context_type.value
                                     )
                                 logger.info(
@@ -628,7 +628,7 @@ class ContextMerger(BaseContextProcessor):
 
         return dot_product / (norm_emb1 * norm_emb2)
 
-    def intelligent_memory_cleanup(self):
+    async def intelligent_memory_cleanup(self):
         """
         Intelligent memory cleanup: based on forgetting curve and importance.
         Only applies to knowledge type.
@@ -642,7 +642,7 @@ class ContextMerger(BaseContextProcessor):
             cleanup_stats = {"total_checked": 0, "cleaned_up": 0, "errors": 0}
 
             for context_type, strategy in self.strategies.items():
-                type_stats = self._cleanup_contexts_by_type(context_type, strategy)
+                type_stats = await self._cleanup_contexts_by_type(context_type, strategy)
                 cleanup_stats["total_checked"] += type_stats["checked"]
                 cleanup_stats["cleaned_up"] += type_stats["cleaned"]
                 cleanup_stats["errors"] += type_stats["errors"]
@@ -655,7 +655,7 @@ class ContextMerger(BaseContextProcessor):
         except Exception as e:
             logger.error(f"Error during intelligent memory cleanup: {e}", exc_info=True)
 
-    def _cleanup_contexts_by_type(
+    async def _cleanup_contexts_by_type(
         self, context_type: ContextType, strategy: ContextTypeAwareStrategy
     ) -> Dict[str, int]:
         """Clean up contexts by type using cursor-based scrolling."""
@@ -664,7 +664,7 @@ class ContextMerger(BaseContextProcessor):
         try:
             ids_to_delete: List[str] = []
 
-            for context in self.storage.scroll_processed_contexts(
+            async for context in self.storage.scroll_processed_contexts(
                 context_types=[context_type.value],
                 batch_size=100,
             ):
@@ -678,7 +678,7 @@ class ContextMerger(BaseContextProcessor):
 
             if ids_to_delete:
                 try:
-                    if self.storage.delete_batch_processed_contexts(
+                    if await self.storage.delete_batch_processed_contexts(
                         ids_to_delete, context_type.value
                     ):
                         stats["cleaned"] += len(ids_to_delete)
@@ -706,7 +706,7 @@ class ContextMerger(BaseContextProcessor):
 
         return stats
 
-    def memory_reinforcement(self, context_ids: List[str]):
+    async def memory_reinforcement(self, context_ids: List[str]):
         """
         Memory reinforcement: reset forgetting state and boost importance.
         """
@@ -719,14 +719,14 @@ class ContextMerger(BaseContextProcessor):
 
         for context_id in context_ids:
             try:
-                context = self._find_context_by_id(context_id)
+                context = await self._find_context_by_id(context_id)
                 if not context:
                     logger.warning(f"Context {context_id} not found for reinforcement")
                     continue
 
                 reinforced_context = self._apply_memory_reinforcement(context)
                 if reinforced_context:
-                    self.storage.upsert_processed_context(reinforced_context)
+                    await self.storage.upsert_processed_context(reinforced_context)
                     reinforced_count += 1
                     logger.debug(f"Reinforced context {context_id}")
 
@@ -738,13 +738,13 @@ class ContextMerger(BaseContextProcessor):
             f"{reinforced_count}/{len(context_ids)} contexts reinforced"
         )
 
-    def _find_context_by_id(self, context_id: str) -> Optional[ProcessedContext]:
+    async def _find_context_by_id(self, context_id: str) -> Optional[ProcessedContext]:
         """Find a context by ID across all backends"""
         try:
             for context_type in ContextType:
                 backend = self.storage._get_or_create_backend(context_type.value)
                 if backend:
-                    contexts_dict = self.storage.get_all_processed_contexts(
+                    contexts_dict = await self.storage.get_all_processed_contexts(
                         limit=1000, offset=0, filter={}
                     )
                     all_contexts = []

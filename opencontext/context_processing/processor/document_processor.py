@@ -26,7 +26,7 @@ from opencontext.context_processing.chunker import (
 )
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
 from opencontext.context_processing.processor.document_converter import DocumentConverter, PageInfo
-from opencontext.llm.global_vlm_client import generate_with_messages_async
+from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import *
 from opencontext.models.enums import *
 from opencontext.monitoring.monitor import record_processing_error
@@ -172,50 +172,20 @@ class DocumentProcessor(BaseContextProcessor):
             return file_ext in self.get_supported_formats()
         return False
 
-    def process(self, context: RawContextProperties) -> bool:
+    async def process(self, context: RawContextProperties) -> bool:
         """
-        Process single document context synchronously.
-        For backward compatibility.
+        Process single document context asynchronously.
         """
         if not self.can_process(context):
             return False
         try:
-            processed_contexts = self.real_process(context)
+            processed_contexts = await asyncio.to_thread(self.real_process, context)
             if processed_contexts:
-                get_storage().batch_upsert_processed_context(processed_contexts)
+                await get_storage().batch_upsert_processed_context(processed_contexts)
             return bool(processed_contexts)
         except Exception as e:
             logger.exception(f"Error processing document {context.object_id}: {e}")
             return False
-
-    async def process_async(
-        self, context: RawContextProperties, user_id: str = "default", device_id: str = "default"
-    ) -> List[ProcessedContext]:
-        """
-        Process single document context asynchronously.
-
-        This is the main entry point for async processing.
-        Supports concurrent requests without blocking.
-
-        Args:
-            context: Raw document context
-            user_id: User identifier (for future use)
-            device_id: Device identifier (for future use)
-
-        Returns:
-            List of processed contexts
-        """
-        if not self.can_process(context):
-            return []
-
-        try:
-            # Run the processing in a thread pool to avoid blocking
-            loop = asyncio.get_running_loop()
-            processed_contexts = await loop.run_in_executor(None, self.real_process, context)
-            return processed_contexts if processed_contexts else []
-        except Exception as e:
-            logger.exception(f"Error in async document processing: {e}")
-            return []
 
     def real_process(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
         """Process document and return processed contexts."""
@@ -631,7 +601,7 @@ class DocumentProcessor(BaseContextProcessor):
             {"role": "user", "content": content},
         ]
 
-        response = await generate_with_messages_async(messages=messages)
+        response = await generate_with_messages(messages=messages)
         # VLM directly returns plain text, no JSON parsing needed
         return {
             "text": response.strip(),

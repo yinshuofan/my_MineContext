@@ -65,7 +65,7 @@ class BaseContextRetrievalTool(BaseTool):
         """Get storage from global singleton"""
         return get_storage()
 
-    def _build_filters(self, filters: ContextRetrievalFilter) -> Dict[str, Any]:
+    async def _build_filters(self, filters: ContextRetrievalFilter) -> Dict[str, Any]:
         """Build filter conditions for storage backend"""
         build_filter = {}
 
@@ -83,7 +83,7 @@ class BaseContextRetrievalTool(BaseTool):
             unified_entities = []
             for entity_name in filters.entities:
                 try:
-                    matched_name, _ = self.profile_entity_tool.match_entity(
+                    matched_name, _ = await self.profile_entity_tool.match_entity(
                         entity_name, user_id=filters.user_id
                     )
                     unified_entities.append(matched_name if matched_name else entity_name)
@@ -94,7 +94,7 @@ class BaseContextRetrievalTool(BaseTool):
 
         return build_filter
 
-    def _execute_search(
+    async def _execute_search(
         self, query: Optional[str], filters: ContextRetrievalFilter, top_k: int = 20
     ) -> List[Tuple[ProcessedContext, float]]:
         """
@@ -110,12 +110,12 @@ class BaseContextRetrievalTool(BaseTool):
             List of (context, score) tuples
         """
         context_type_str = self.CONTEXT_TYPE.value
-        built_filters = self._build_filters(filters)
+        built_filters = await self._build_filters(filters)
 
         if query:
             # Semantic search with query (with multi-user filtering)
             vectorize = Vectorize(text=query)
-            return self.storage.search(
+            return await self.storage.search(
                 query=vectorize,
                 context_types=[context_type_str],
                 filters=built_filters,
@@ -126,7 +126,7 @@ class BaseContextRetrievalTool(BaseTool):
             )
         else:
             # Filter-only retrieval without query (with multi-user filtering)
-            results_dict = self.storage.get_all_processed_contexts(
+            results_dict = await self.storage.get_all_processed_contexts(
                 context_types=[context_type_str],
                 limit=top_k,
                 filter=built_filters,
@@ -255,7 +255,7 @@ class BaseContextRetrievalTool(BaseTool):
             "required": [],
         }
 
-    def execute(self, **kwargs) -> List[Dict[str, Any]]:
+    async def execute(self, **kwargs) -> List[Dict[str, Any]]:
         """
         Execute context retrieval
 
@@ -291,7 +291,7 @@ class BaseContextRetrievalTool(BaseTool):
 
         try:
             # Execute search
-            search_results = self._execute_search(query=query, filters=filters, top_k=top_k)
+            search_results = await self._execute_search(query=query, filters=filters, top_k=top_k)
 
             # Format and return results
             return self._format_results(search_results)

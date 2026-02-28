@@ -175,7 +175,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             max_retries=2,
         )
 
-    def execute(self, context: TaskContext) -> TaskResult:
+    async def execute(self, context: TaskContext) -> TaskResult:
         """
         Execute hierarchy summary generation for a user.
         为用户执行层级摘要生成。
@@ -208,7 +208,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         yesterday = today - datetime.timedelta(days=1)
         yesterday_str = yesterday.isoformat()  # e.g. "2026-02-20"
         try:
-            daily_result = self._generate_daily_summary(user_id, yesterday_str)
+            daily_result = await self._generate_daily_summary(user_id, yesterday_str)
             if daily_result:
                 generated_summaries.append(f"daily:{yesterday_str}")
                 logger.info(f"Daily summary generated for user={user_id}, date={yesterday_str}")
@@ -223,7 +223,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         iso_year, iso_week, _ = prev_week_day.isocalendar()
         week_str = f"{iso_year}-W{iso_week:02d}"
         try:
-            weekly_result = self._generate_weekly_summary(user_id, week_str)
+            weekly_result = await self._generate_weekly_summary(user_id, week_str)
             if weekly_result:
                 generated_summaries.append(f"weekly:{week_str}")
                 logger.info(f"Weekly summary generated for user={user_id}, week={week_str}")
@@ -238,7 +238,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         last_day_prev_month = first_of_month - datetime.timedelta(days=1)
         month_str = last_day_prev_month.strftime("%Y-%m")  # e.g. "2026-01"
         try:
-            monthly_result = self._generate_monthly_summary(user_id, month_str)
+            monthly_result = await self._generate_monthly_summary(user_id, month_str)
             if monthly_result:
                 generated_summaries.append(f"monthly:{month_str}")
                 logger.info(f"Monthly summary generated for user={user_id}, month={month_str}")
@@ -514,7 +514,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         return batches
 
-    def _batch_summarize_and_merge(
+    async def _batch_summarize_and_merge(
         self,
         contexts: List[ProcessedContext],
         level: int,
@@ -543,7 +543,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         if total_tokens <= _MAX_INPUT_TOKENS:
             # Normal path — fits in a single LLM call
-            return self._call_llm_for_summary(
+            return await self._call_llm_for_summary(
                 formatted_content=formatted_text,
                 level=level,
                 time_bucket=time_bucket,
@@ -560,7 +560,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         for idx, batch in enumerate(batches):
             batch_text = format_fn(batch)
             batch_info = f"{idx + 1}/{len(batches)}"
-            sub_summary = self._call_llm_for_summary(
+            sub_summary = await self._call_llm_for_summary(
                 formatted_content=batch_text,
                 level=level,
                 time_bucket=time_bucket,
@@ -581,13 +581,13 @@ class HierarchySummaryTask(BasePeriodicTask):
         merged_text = "\n\n---\n\n".join(
             f"[Part {i + 1}]\n{s}" for i, s in enumerate(sub_summaries)
         )
-        return self._call_llm_for_merge(
+        return await self._call_llm_for_merge(
             sub_summaries_text=merged_text,
             level=level,
             time_bucket=time_bucket,
         )
 
-    def _batch_summarize_weekly(
+    async def _batch_summarize_weekly(
         self,
         l1_contexts: List[ProcessedContext],
         l0_events_by_day: Dict[str, List[ProcessedContext]],
@@ -609,7 +609,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         total_tokens = _estimate_tokens(formatted_text) + _PROMPT_OVERHEAD_TOKENS
 
         if total_tokens <= _MAX_INPUT_TOKENS:
-            return self._call_llm_for_summary(
+            return await self._call_llm_for_summary(
                 formatted_content=formatted_text,
                 level=2,
                 time_bucket=time_bucket,
@@ -638,7 +638,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             group_l0 = {d: l0_events_by_day[d] for d in day_group if d in l0_events_by_day}
             group_text = self._format_weekly_hierarchical(group_l1, group_l0)
             batch_info = f"{idx + 1}/{len(day_groups)}"
-            sub_summary = self._call_llm_for_summary(
+            sub_summary = await self._call_llm_for_summary(
                 formatted_content=group_text,
                 level=2,
                 time_bucket=time_bucket,
@@ -656,13 +656,13 @@ class HierarchySummaryTask(BasePeriodicTask):
         merged_text = "\n\n---\n\n".join(
             f"[Part {i + 1}]\n{s}" for i, s in enumerate(sub_summaries)
         )
-        return self._call_llm_for_merge(
+        return await self._call_llm_for_merge(
             sub_summaries_text=merged_text,
             level=2,
             time_bucket=time_bucket,
         )
 
-    def _batch_summarize_monthly(
+    async def _batch_summarize_monthly(
         self,
         l2_contexts: List[ProcessedContext],
         l1_by_week: Dict[str, List[ProcessedContext]],
@@ -684,7 +684,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         total_tokens = _estimate_tokens(formatted_text) + _PROMPT_OVERHEAD_TOKENS
 
         if total_tokens <= _MAX_INPUT_TOKENS:
-            return self._call_llm_for_summary(
+            return await self._call_llm_for_summary(
                 formatted_content=formatted_text,
                 level=3,
                 time_bucket=time_bucket,
@@ -712,7 +712,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             group_l1 = {w: l1_by_week[w] for w in week_group if w in l1_by_week}
             group_text = self._format_monthly_hierarchical(group_l2, group_l1)
             batch_info = f"{idx + 1}/{len(week_groups)}"
-            sub_summary = self._call_llm_for_summary(
+            sub_summary = await self._call_llm_for_summary(
                 formatted_content=group_text,
                 level=3,
                 time_bucket=time_bucket,
@@ -730,7 +730,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         merged_text = "\n\n---\n\n".join(
             f"[Part {i + 1}]\n{s}" for i, s in enumerate(sub_summaries)
         )
-        return self._call_llm_for_merge(
+        return await self._call_llm_for_merge(
             sub_summaries_text=merged_text,
             level=3,
             time_bucket=time_bucket,
@@ -738,7 +738,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     # ── Private methods for each hierarchy level ──
 
-    def _generate_daily_summary(self, user_id: str, date_str: str) -> Optional[ProcessedContext]:
+    async def _generate_daily_summary(self, user_id: str, date_str: str) -> Optional[ProcessedContext]:
         """
         Generate a daily summary (Level 1) from Level 0 raw events.
         从 Level 0 原始事件生成每日摘要 (Level 1)。
@@ -757,7 +757,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Check if daily summary already exists for this date
         # 检查该日期的日摘要是否已存在
-        existing = storage.search_hierarchy(
+        existing = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=1,
             time_bucket_start=date_str,
@@ -787,7 +787,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             "event_time_ts": {"$gte": day_start_ts, "$lte": day_end_ts},
             "hierarchy_level": {"$gte": 0, "$lte": 0},
         }
-        l0_dict = storage.get_all_processed_contexts(
+        l0_dict = await storage.get_all_processed_contexts(
             context_types=[ContextType.EVENT.value],
             limit=500,
             filter=l0_filters,
@@ -802,7 +802,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Generate summary via LLM with batch overflow handling
         # 通过 LLM 生成摘要，支持 batch 溢出处理
-        summary_text = self._batch_summarize_and_merge(
+        summary_text = await self._batch_summarize_and_merge(
             contexts=contexts,
             level=1,
             time_bucket=date_str,
@@ -814,7 +814,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Store the summary
         # 存储摘要
-        return self._store_summary(
+        return await self._store_summary(
             user_id=user_id,
             summary_text=summary_text,
             level=1,
@@ -822,7 +822,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             children_ids=children_ids,
         )
 
-    def _generate_weekly_summary(self, user_id: str, week_str: str) -> Optional[ProcessedContext]:
+    async def _generate_weekly_summary(self, user_id: str, week_str: str) -> Optional[ProcessedContext]:
         """
         Generate a weekly summary (Level 2) from Level 1 daily summaries + Level 0 raw events.
         从 Level 1 日摘要 + Level 0 原始事件生成每周摘要 (Level 2)。
@@ -844,7 +844,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Check if weekly summary already exists
         # 检查周摘要是否已存在
-        existing = storage.search_hierarchy(
+        existing = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=2,
             time_bucket_start=week_str,
@@ -866,7 +866,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Query Level 1 daily summaries for the week
         # 查询该周的 Level 1 日摘要
-        l1_results = storage.search_hierarchy(
+        l1_results = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=1,
             time_bucket_start=week_start.isoformat(),
@@ -903,7 +903,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             "event_time_ts": {"$gte": week_start_ts, "$lte": week_end_ts},
             "hierarchy_level": {"$gte": 0, "$lte": 0},
         }
-        l0_dict = storage.get_all_processed_contexts(
+        l0_dict = await storage.get_all_processed_contexts(
             context_types=[ContextType.EVENT.value],
             limit=500,
             filter=l0_filters,
@@ -930,7 +930,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Generate summary with hierarchical content and overflow handling
         # 使用分层内容和溢出处理生成摘要
-        summary_text = self._batch_summarize_weekly(
+        summary_text = await self._batch_summarize_weekly(
             l1_contexts=l1_contexts,
             l0_events_by_day=l0_events_by_day,
             time_bucket=week_str,
@@ -939,7 +939,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.warning(f"LLM returned empty summary for weekly {week_str}")
             return None
 
-        return self._store_summary(
+        return await self._store_summary(
             user_id=user_id,
             summary_text=summary_text,
             level=2,
@@ -947,7 +947,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             children_ids=children_ids,
         )
 
-    def _generate_monthly_summary(self, user_id: str, month_str: str) -> Optional[ProcessedContext]:
+    async def _generate_monthly_summary(self, user_id: str, month_str: str) -> Optional[ProcessedContext]:
         """
         Generate a monthly summary (Level 3) from Level 2 weekly summaries + Level 1 daily summaries.
         从 Level 2 周摘要 + Level 1 日摘要生成月摘要 (Level 3)。
@@ -969,7 +969,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Check if monthly summary already exists
         # 检查月摘要是否已存在
-        existing = storage.search_hierarchy(
+        existing = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=3,
             time_bucket_start=month_str,
@@ -1008,7 +1008,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         for wk in sorted(weeks_in_month):
             # Fetch L2 weekly summary
-            wk_results = storage.search_hierarchy(
+            wk_results = await storage.search_hierarchy(
                 context_type=ContextType.EVENT.value,
                 hierarchy_level=2,
                 time_bucket_start=wk,
@@ -1025,7 +1025,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             wk_start = datetime.date.fromisocalendar(int(wk_year), int(wk_num), 1)
             wk_end = wk_start + datetime.timedelta(days=6)
 
-            l1_results = storage.search_hierarchy(
+            l1_results = await storage.search_hierarchy(
                 context_type=ContextType.EVENT.value,
                 hierarchy_level=1,
                 time_bucket_start=wk_start.isoformat(),
@@ -1047,7 +1047,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Generate summary with hierarchical content and overflow handling
         # 使用分层内容和溢出处理生成摘要
-        summary_text = self._batch_summarize_monthly(
+        summary_text = await self._batch_summarize_monthly(
             l2_contexts=all_weekly_contexts,
             l1_by_week=l1_summaries_by_week,
             time_bucket=month_str,
@@ -1056,7 +1056,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.warning(f"LLM returned empty summary for monthly {month_str}")
             return None
 
-        return self._store_summary(
+        return await self._store_summary(
             user_id=user_id,
             summary_text=summary_text,
             level=3,
@@ -1064,7 +1064,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             children_ids=children_ids,
         )
 
-    def _call_llm_for_summary(
+    async def _call_llm_for_summary(
         self,
         formatted_content: str,
         level: int,
@@ -1138,7 +1138,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         messages.append({"role": "user", "content": user_content})
 
         try:
-            response = generate_with_messages(messages, enable_executor=False)
+            response = await generate_with_messages(messages, enable_executor=False)
             if response:
                 return response.strip()
             else:
@@ -1148,7 +1148,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.exception(f"LLM call failed for {prompt_key}: {e}")
             return None
 
-    def _call_llm_for_merge(
+    async def _call_llm_for_merge(
         self,
         sub_summaries_text: str,
         level: int,
@@ -1203,7 +1203,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         messages.append({"role": "user", "content": user_content})
 
         try:
-            response = generate_with_messages(messages, enable_executor=False)
+            response = await generate_with_messages(messages, enable_executor=False)
             if response:
                 return response.strip()
             else:
@@ -1213,7 +1213,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.exception(f"LLM merge call failed for {merge_key}: {e}")
             return None
 
-    def _store_summary(
+    async def _store_summary(
         self,
         user_id: str,
         summary_text: str,
@@ -1297,7 +1297,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         # Generate embedding vector
         # 生成嵌入向量
         try:
-            do_vectorize(vectorize)
+            await do_vectorize(vectorize)
         except Exception as e:
             logger.warning(f"Failed to generate embedding for {level_name} summary: {e}")
             # Continue without embedding — still useful for hierarchy queries
@@ -1320,7 +1320,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         # Upsert to storage
         # 写入存储
         try:
-            result = storage.upsert_processed_context(context)
+            result = await storage.upsert_processed_context(context)
             if result:
                 logger.info(
                     f"Stored {level_name} summary id={summary_id}, "
@@ -1400,12 +1400,12 @@ def create_hierarchy_handler():
     为调度器创建层级摘要处理函数。
 
     Returns:
-        Handler function compatible with TaskScheduler.
-        与 TaskScheduler 兼容的处理函数。
+        Async handler function compatible with TaskScheduler.
+        与 TaskScheduler 兼容的异步处理函数。
     """
     task = HierarchySummaryTask()
 
-    def handler(
+    async def handler(
         user_id: str,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
@@ -1421,7 +1421,7 @@ def create_hierarchy_handler():
             logger.warning(f"Invalid context for hierarchy summary: user_id={user_id}")
             return False
 
-        result = task.execute(context)
+        result = await task.execute(context)
         return result.success
 
     return handler

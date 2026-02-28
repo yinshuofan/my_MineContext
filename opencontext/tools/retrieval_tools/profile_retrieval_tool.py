@@ -99,7 +99,7 @@ class ProfileRetrievalTool(BaseTool):
             "additionalProperties": False,
         }
 
-    def execute(self, **kwargs) -> Dict[str, Any]:
+    async def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute the requested profile/entity retrieval operation."""
         operation = kwargs.get("operation")
         user_id = kwargs.get("user_id")
@@ -127,7 +127,7 @@ class ProfileRetrievalTool(BaseTool):
             }
 
         try:
-            return handler(kwargs)
+            return await handler(kwargs)
         except Exception as e:
             logger.error(f"ProfileRetrievalTool failed - operation={operation}: {e}", exc_info=True)
             return {"success": False, "error": str(e), "operation": operation}
@@ -139,14 +139,14 @@ class ProfileRetrievalTool(BaseTool):
             raise RuntimeError("Storage not initialized")
         return storage
 
-    def _handle_get_profile(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_get_profile(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Fetch user profile from relational DB."""
         user_id = params["user_id"]
         device_id = params.get("device_id", "default")
         agent_id = params.get("agent_id", "default")
 
         storage = self._get_storage()
-        profile = storage.get_profile(user_id, device_id, agent_id)
+        profile = await storage.get_profile(user_id, device_id, agent_id)
 
         if not profile:
             return {
@@ -158,7 +158,7 @@ class ProfileRetrievalTool(BaseTool):
 
         return {"success": True, "data": profile, "operation": "get_profile"}
 
-    def _handle_find_entity(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_find_entity(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Look up a specific entity by exact name."""
         user_id = params["user_id"]
         device_id = params.get("device_id", "default")
@@ -174,7 +174,7 @@ class ProfileRetrievalTool(BaseTool):
             }
 
         storage = self._get_storage()
-        entity = storage.get_entity(
+        entity = await storage.get_entity(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -191,7 +191,7 @@ class ProfileRetrievalTool(BaseTool):
 
         return {"success": True, "data": entity, "operation": "find_entity"}
 
-    def _handle_search_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_search_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Search entities by text query with fuzzy matching."""
         user_id = params["user_id"]
         device_id = params.get("device_id", "default")
@@ -209,7 +209,7 @@ class ProfileRetrievalTool(BaseTool):
         top_k = min(max(params.get("top_k", 5), 1), 100)
 
         storage = self._get_storage()
-        results = storage.search_entities(
+        results = await storage.search_entities(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -224,7 +224,7 @@ class ProfileRetrievalTool(BaseTool):
             "count": len(results),
         }
 
-    def _handle_list_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_list_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """List entities with optional type filtering."""
         user_id = params["user_id"]
         device_id = params.get("device_id", "default")
@@ -233,7 +233,7 @@ class ProfileRetrievalTool(BaseTool):
         top_k = min(max(params.get("top_k", 5), 1), 100)
 
         storage = self._get_storage()
-        results = storage.list_entities(
+        results = await storage.list_entities(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,

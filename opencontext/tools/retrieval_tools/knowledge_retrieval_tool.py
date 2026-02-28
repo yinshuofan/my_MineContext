@@ -97,7 +97,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
 
         return base_params
 
-    def _search_l0_events(
+    async def _search_l0_events(
         self,
         query: str,
         filters: ContextRetrievalFilter,
@@ -115,11 +115,11 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             List of (context, score) tuples for matching L0 events.
         """
         try:
-            built_filters = self._build_filters(filters)
+            built_filters = await self._build_filters(filters)
             built_filters["hierarchy_level"] = 0
 
             vectorize = Vectorize(text=query)
-            return self.storage.search(
+            return await self.storage.search(
                 query=vectorize,
                 context_types=[ContextType.EVENT.value],
                 filters=built_filters,
@@ -132,7 +132,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             logger.warning(f"L0 event search failed: {e}")
             return []
 
-    def execute(self, **kwargs) -> List[Dict[str, Any]]:
+    async def execute(self, **kwargs) -> List[Dict[str, Any]]:
         """
         Execute knowledge retrieval with supplementary L0 event search.
 
@@ -179,14 +179,14 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
 
         try:
             # Step 1: Search KNOWLEDGE contexts (standard base-class search)
-            knowledge_results: List[Tuple[ProcessedContext, float]] = self._execute_search(
+            knowledge_results: List[Tuple[ProcessedContext, float]] = await self._execute_search(
                 query=query, filters=filters, top_k=top_k
             )
 
             # Step 2: Search L0 EVENT contexts (only when a query is provided)
             event_results: List[Tuple[ProcessedContext, float]] = []
             if query:
-                event_results = self._search_l0_events(query=query, filters=filters, top_k=top_k)
+                event_results = await self._search_l0_events(query=query, filters=filters, top_k=top_k)
 
             # Step 3: Merge and deduplicate by context ID, keeping higher scores
             merged: Dict[str, Tuple[ProcessedContext, float]] = {}

@@ -45,7 +45,7 @@ async def read_contexts(
     types = []
     if type:
         types.append(type)
-    contexts_dict = get_storage().get_all_processed_contexts(
+    contexts_dict = await get_storage().get_all_processed_contexts(
         context_types=list(types), limit=limit + 1, offset=offset, need_vector=False
     )
     contexts = []

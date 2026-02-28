@@ -8,7 +8,9 @@
 Folder monitoring component that monitors local folder changes and generates context capture events.
 """
 
+import asyncio
 import hashlib
+import inspect
 import os
 import threading
 import time
@@ -247,14 +249,29 @@ class FolderMonitorCapture(BaseCaptureComponent):
         if event["event_type"] == "file_deleted":
             file_path = event["file_path"]
             logger.info(f"File deleted, cleaning up context: {file_path}")
-            deleted_count = self._cleanup_file_context(file_path)
+            deleted_count = self._cleanup_file_context_sync(file_path)
             logger.info(f"Cleaned up {deleted_count} context entries for deleted file: {file_path}")
 
-    def _cleanup_file_context(self, file_path: str) -> int:
+    def _cleanup_file_context_sync(self, file_path: str) -> int:
+        """Sync wrapper to call async cleanup from thread context."""
+        try:
+            loop = asyncio.get_running_loop()
+            future = asyncio.run_coroutine_threadsafe(
+                self._cleanup_file_context(file_path), loop
+            )
+            return future.result(timeout=30)
+        except RuntimeError:
+            # No running event loop — fall back to asyncio.run
+            return asyncio.run(self._cleanup_file_context(file_path))
+        except Exception as e:
+            logger.exception(f"Failed to run async cleanup for file {file_path}: {e}")
+            return 0
+
+    async def _cleanup_file_context(self, file_path: str) -> int:
         """Clean up processed contexts associated with a deleted file."""
         try:
             # Find contexts by file_path
-            contexts_dict = self._storage.get_all_processed_contexts(
+            contexts_dict = await self._storage.get_all_processed_contexts(
                 context_types=[ContextType.DOCUMENT],
                 filter={
                     "knowledge_file_path": file_path,
@@ -266,7 +283,6 @@ class FolderMonitorCapture(BaseCaptureComponent):
             count = 0
             # Iterate over context types and their context lists
             for context_type, contexts in contexts_dict.items():
-                # 二次校验
                 if context_type != ContextType.DOCUMENT:
                     continue
                 for ctx in contexts:
@@ -277,7 +293,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
 
                     if ctx_id:
                         # Delete using id and the correct context_type
-                        if self._storage.delete_processed_context(
+                        if await self._storage.delete_processed_context(
                             id=ctx_id, context_type=context_type
                         ):
                             count += 1

@@ -1,10 +1,9 @@
-import asyncio
 import datetime
 from typing import Any, Dict, List, Optional
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
-from opencontext.llm.global_vlm_client import generate_with_messages_async
+from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import (
     ContextProperties,
     ExtractedData,
@@ -41,36 +40,17 @@ class TextChatProcessor(BaseContextProcessor):
             and context.content_format == ContentFormat.TEXT
         )
 
-    def process(self, context: RawContextProperties) -> bool:
-        """
-        同步入口方法。
-        智能检测当前运行环境，兼容同步和异步调用。
-        """
+    async def process(self, context: RawContextProperties) -> bool:
+        """Process chat context asynchronously."""
         logger.debug(f"Processing chat context: {context}")
         try:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop and loop.is_running():
-                loop.create_task(self._process_and_callback(context))
-            else:
-                asyncio.run(self._process_and_callback(context))
-
+            processed_list = await self._process_async(context)
+            if processed_list and self._callback:
+                await self._callback(processed_list)
             return True
         except Exception as e:
             logger.error(f"Failed to process chat context: {e}")
             return False
-
-    async def _process_and_callback(self, context: RawContextProperties):
-        """执行异步处理并调用回调"""
-        try:
-            processed_list = await self._process_async(context)
-            if processed_list and self._callback:
-                self._callback(processed_list)
-        except Exception as e:
-            logger.error(f"Error in async processing task: {e}")
 
     async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
         # 1. 获取 Prompt
@@ -94,7 +74,7 @@ class TextChatProcessor(BaseContextProcessor):
         logger.debug(f"LLM messages: {messages}")
 
         # 3. 调用 LLM
-        response = await generate_with_messages_async(messages)
+        response = await generate_with_messages(messages)
         logger.debug(f"LLM response: {response}")
 
         # 4. 解析结果

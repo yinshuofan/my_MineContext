@@ -47,8 +47,8 @@ Key fields: `_config: Dict`, `_running: bool`, `_capture_thread: Thread`, `_stop
 | `initialize` | `(config: Dict[str, Any]) -> bool` | Validates config, calls `_initialize_impl` |
 | `start` | `() -> bool` | Calls `_start_impl`, optionally starts `_capture_loop` thread |
 | `stop` | `(graceful: bool = True) -> bool` | Stops thread (5s join timeout), calls `_stop_impl` |
-| `capture` | `() -> List[RawContextProperties]` | Calls `_capture_impl`, invokes callback if results exist |
-| `set_callback` | `(callback: Callable[[List[RawContextProperties]], None])` | Sets data callback |
+| `capture` | `() -> List[RawContextProperties]` | Calls `_capture_impl`, invokes callback if results exist (supports both sync and async callbacks) |
+| `set_callback` | `(callback: Callable[[List[RawContextProperties]], None])` | Sets data callback (may be sync or async) |
 | `get_status` | `() -> Dict[str, Any]` | Base status merged with `_get_status_impl()` |
 | `get_statistics` | `() -> Dict[str, Any]` | Base stats merged with `_get_statistics_impl()` |
 | `validate_config` | `(config: Dict[str, Any]) -> bool` | Base checks + `_validate_config_impl()` |
@@ -103,7 +103,7 @@ Monitors local folders for file changes via periodic polling with SHA-256 hash c
 - `source_type`: `ContextSource.LOCAL_FILE`
 - Runs its own `_monitor_loop` thread (separate from base capture thread)
 - Detects: `file_created`, `file_updated`, `file_deleted`
-- On delete, calls `_cleanup_file_context()` to remove associated vector DB entries via `UnifiedStorage`
+- On delete, calls `async _cleanup_file_context()` (bridged from sync thread via `run_coroutine_threadsafe`) to remove associated vector DB entries via `UnifiedStorage`
 - File type support derived from `DocumentProcessor.get_supported_formats()`
 
 | Method | Signature | Description |
@@ -126,7 +126,7 @@ Stateless chat message buffer backed by Redis. Buffers messages per `(user_id, d
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `push_message` (async) | `(role, content, user_id, device_id, agent_id)` | Appends to Redis list; flushes if `>= buffer_size` |
-| `process_messages_directly` | `(messages, user_id, device_id, agent_id)` | Bypasses buffer, sends immediately |
+| `process_messages_directly` (async) | `(messages, user_id, device_id, agent_id)` | Bypasses buffer, sends immediately via async callback |
 | `flush_user_buffer` (async) | `(user_id, device_id, agent_id)` | Manual flush for a specific user |
 | `get_user_buffer_length` (async) | `(user_id, device_id, agent_id) -> int` | Current buffer count |
 | `get_buffer_stats` (async) | `() -> Dict[str, Any]` | Redis connectivity and buffer stats |
@@ -167,10 +167,10 @@ BaseCaptureComponent invokes self._callback(results)
 Processing pipeline (registered via set_callback)
 ```
 
-For **TextChatCapture**, the flow is different:
+For **TextChatCapture**, the flow is different (all async):
 ```
 push_message() --> Redis buffer --> threshold reached --> _flush_buffer()
-       --> _create_and_send_context() --> self._callback([raw_context])
+       --> await _create_and_send_context() --> await self._callback([raw_context])
 ```
 
 For **FolderMonitorCapture** and **VaultDocumentMonitor**, a separate monitor thread detects changes and queues events in `_document_events`. The base capture loop (or manual `capture()` call) dequeues and processes them.
@@ -220,6 +220,7 @@ To add a new capture component:
 - All subclasses must implement the four `_*_impl` abstract methods. Optional `_get_*_impl` methods default to no-op/empty dict.
 - `BaseCaptureComponent` manages the capture thread internally. Subclasses that need their own background thread (like `FolderMonitorCapture`, `VaultDocumentMonitor`) should create it in `_start_impl` and stop it in `_stop_impl`, using a separate `threading.Event`.
 - The `_callback` is the only bridge to the processing pipeline. Always check `if self._callback` before calling it.
-- `TextChatCapture` is the only component with async methods (`push_message`, `flush_user_buffer`, etc.). All others are purely synchronous.
+- `TextChatCapture` has async methods (`push_message`, `flush_user_buffer`, `process_messages_directly`, `_create_and_send_context`, etc.).
 - `WebLinkCapture` overrides the base `capture()` method to accept a `urls` parameter. This is the only subclass that changes the base method's signature.
-- `FolderMonitorCapture._cleanup_file_context()` directly calls `UnifiedStorage` to delete vector entries for deleted files. This is the only capture component that writes to storage.
+- `FolderMonitorCapture._cleanup_file_context()` is async and uses `await` on `UnifiedStorage` calls to delete vector entries for deleted files. It is bridged from sync thread context via `_cleanup_file_context_sync()` using `asyncio.run_coroutine_threadsafe`. This is the only capture component that writes to storage.
+- `BaseCaptureComponent.capture()` detects async callbacks via `inspect.isawaitable()` and schedules them on the running event loop when invoked from sync context (e.g., capture loop threads).

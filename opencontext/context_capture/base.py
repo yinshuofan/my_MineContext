@@ -10,6 +10,8 @@ Base capture component class implementing common functionality from ICaptureComp
 """
 
 import abc
+import asyncio
+import inspect
 import threading
 import time
 from datetime import datetime
@@ -205,7 +207,15 @@ class BaseCaptureComponent(ICaptureComponent):
             # If callback function is set and data was captured, call the callback function
             if self._callback and result:
                 try:
-                    self._callback(result)
+                    cb_result = self._callback(result)
+                    if inspect.isawaitable(cb_result):
+                        # Callback is async — schedule on the running event loop
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(cb_result)
+                        except RuntimeError:
+                            # No running loop (sync context) — run via new loop
+                            asyncio.run(cb_result)
                 except Exception as e:
                     logger.exception(
                         f"{self._name}: Callback function execution exception: {str(e)}"

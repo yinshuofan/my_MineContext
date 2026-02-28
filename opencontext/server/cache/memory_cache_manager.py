@@ -41,15 +41,7 @@ class UserMemoryCacheManager:
 
     def __init__(self):
         self._config = self._load_config()
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._build_semaphore: Optional[asyncio.Semaphore] = None
-
-    def _capture_loop(self) -> None:
-        """Capture the event loop reference when called from async context."""
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            pass
 
     def _get_build_semaphore(self) -> asyncio.Semaphore:
         """Lazily create the build semaphore."""
@@ -97,7 +89,6 @@ class UserMemoryCacheManager:
         if not user_id or not items:
             return
 
-        self._capture_loop()
         cache = await get_cache()
         key = self._accessed_key(user_id, device_id, agent_id)
         now = time.time()
@@ -177,7 +168,6 @@ class UserMemoryCacheManager:
         force_refresh: bool = False,
     ) -> UserMemoryCacheResponse:
         """Get the user's memory cache with stampede prevention."""
-        self._capture_loop()
         cache = await get_cache()
         snapshot_key = self._snapshot_key(user_id, device_id, agent_id)
 
@@ -352,9 +342,8 @@ class UserMemoryCacheManager:
 
         # Parallel queries
         tasks = {
-            "profile": asyncio.to_thread(storage.get_profile, user_id, device_id, agent_id),
-            "entities": asyncio.to_thread(
-                storage.list_entities,
+            "profile": storage.get_profile(user_id, device_id, agent_id),
+            "entities": storage.list_entities(
                 user_id,
                 device_id,
                 agent_id,
@@ -362,8 +351,7 @@ class UserMemoryCacheManager:
                 self._config["max_entities"],
                 0,
             ),
-            "today_events": asyncio.to_thread(
-                storage.get_all_processed_contexts,
+            "today_events": storage.get_all_processed_contexts(
                 [ContextType.EVENT.value],
                 max_events_today,
                 0,
@@ -374,8 +362,7 @@ class UserMemoryCacheManager:
                 False,
                 user_id,
             ),
-            "daily_summaries": asyncio.to_thread(
-                storage.search_hierarchy,
+            "daily_summaries": storage.search_hierarchy(
                 ContextType.EVENT.value,
                 1,  # L1
                 period_start,
@@ -383,8 +370,7 @@ class UserMemoryCacheManager:
                 user_id,
                 days,
             ),
-            "recent_docs": asyncio.to_thread(
-                storage.get_all_processed_contexts,
+            "recent_docs": storage.get_all_processed_contexts(
                 [ContextType.DOCUMENT.value],
                 self._config["max_recent_documents"],
                 0,
@@ -392,8 +378,7 @@ class UserMemoryCacheManager:
                 False,
                 user_id,
             ),
-            "recent_knowledge": asyncio.to_thread(
-                storage.get_all_processed_contexts,
+            "recent_knowledge": storage.get_all_processed_contexts(
                 [ContextType.KNOWLEDGE.value],
                 self._config["max_recent_knowledge"],
                 0,

@@ -305,7 +305,7 @@ async def push_document(
             )
 
         err_msg = await asyncio.wait_for(
-            asyncio.to_thread(opencontext.add_document, file_path=file_path),
+            opencontext.add_document(file_path=file_path),
             timeout=60.0,
         )
 
@@ -345,7 +345,7 @@ async def upload_document_file(
             content = await file.read()
             f.write(content)
 
-        err_msg = opencontext.add_document(file_path=file_path)
+        err_msg = await opencontext.add_document(file_path=file_path)
 
         if err_msg:
             return convert_resp(code=400, status=400, message=err_msg)

@@ -86,12 +86,11 @@ class IPeriodicTask(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def execute(self, context: TaskContext) -> TaskResult:
+    async def execute(self, context: TaskContext) -> TaskResult:
         """
         Execute the task.
 
         This is the main entry point for task execution.
-        Should be implemented as a synchronous method.
 
         Args:
             context: Task execution context containing user info and metadata
@@ -163,9 +162,9 @@ class BasePeriodicTask(IPeriodicTask):
             description=self._description,
         )
 
-    def execute(self, context: TaskContext) -> TaskResult:
+    async def execute(self, context: TaskContext) -> TaskResult:
         """
-        Default synchronous execution.
+        Default async execution.
 
         Override this method in subclasses.
         """

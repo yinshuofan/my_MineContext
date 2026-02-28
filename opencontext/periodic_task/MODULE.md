@@ -44,17 +44,17 @@ Execution context passed to every task. Created by handler factory functions.
 | `name` | `@property -> str` | Unique task type name |
 | `description` | `@property -> str` | Human-readable description |
 | `default_config` | `@property -> TaskConfig` | Default `TaskConfig` for registration |
-| `execute` | `(context: TaskContext) -> TaskResult` | Synchronous execution (main entry) |
+| `execute` | `async (context: TaskContext) -> TaskResult` | Async execution (main entry) |
 | `validate_context` | `(context: TaskContext) -> bool` | Pre-execution validation (default: `True`) |
 
 ### BasePeriodicTask
 
-Concrete base implementing `IPeriodicTask`. Subclasses override `execute()`.
+Concrete base implementing `IPeriodicTask`. Subclasses override `async execute()`.
 
 **Constructor**: `__init__(name, description="", trigger_mode=TriggerMode.USER_ACTIVITY, interval=1800, timeout=300, task_ttl=7200, max_retries=3)`
 
 - `default_config` property builds a `TaskConfig` from constructor args
-- `execute()` raises `NotImplementedError`
+- `async execute()` raises `NotImplementedError`
 
 ### MemoryCompressionTask
 
@@ -70,9 +70,9 @@ Deduplicates similar knowledge contexts for a specific user.
 **Constructor**: `__init__(context_merger=None, interval=172800, timeout=300)`
 
 - `set_context_merger(context_merger) -> None` -- late injection
-- `execute(context)` -- calls `context_merger.periodic_memory_compression_for_user(user_id, device_id, agent_id, interval_seconds)` or falls back to `periodic_memory_compression(interval_seconds)`
+- `async execute(context)` -- calls `context_merger.periodic_memory_compression_for_user(user_id, device_id, agent_id, interval_seconds)` or falls back to `periodic_memory_compression(interval_seconds)`
 
-**Factory**: `create_compression_handler(context_merger) -> TaskHandler`
+**Factory**: `create_compression_handler(context_merger) -> async TaskHandler`
 
 ### DataCleanupTask
 
@@ -88,10 +88,10 @@ Global retention-based cleanup. Delegates to `ContextMerger.intelligent_memory_c
 **Constructor**: `__init__(context_merger=None, storage=None, interval=86400, timeout=600, retention_days=30)`
 
 - `set_context_merger(context_merger) -> None` / `set_storage(storage) -> None` -- late injection
-- `execute(context)` -- tries `context_merger.intelligent_memory_cleanup()`, then `cleanup_contexts_by_type()`, then falls back to storage `cleanup_expired_data()` or `delete_old_contexts()`
+- `async execute(context)` -- tries `context_merger.intelligent_memory_cleanup()`, then `cleanup_contexts_by_type()`, then falls back to storage `cleanup_expired_data()` or `delete_old_contexts()`
 - Handler receives `(None, None, None)` from periodic scheduler -- uses `"global"` as user_id
 
-**Factory**: `create_cleanup_handler(context_merger=None, storage=None, retention_days=30) -> TaskHandler`
+**Factory**: `create_cleanup_handler(context_merger=None, storage=None, retention_days=30) -> async TaskHandler`
 
 ### HierarchySummaryTask
 
@@ -110,16 +110,16 @@ Generates hierarchical time-based summaries (L1 daily, L2 weekly, L3 monthly) fo
 
 No external dependency injection -- uses `get_storage()` and LLM globals directly.
 
-**Core flow in `execute(context)`**:
+**Core flow in `async execute(context)`**:
 1. Generate L1 daily summary for yesterday
 2. Generate L2 weekly summary for the most recent completed ISO week
 3. Generate L3 monthly summary for the most recent completed month
 
-Each `_generate_{level}_summary()` method:
-1. Checks for existing summary via `storage.search_hierarchy()` (idempotent dedup)
-2. Queries child-level data from storage
+Each `async _generate_{level}_summary()` method:
+1. Checks for existing summary via `await storage.search_hierarchy()` (idempotent dedup)
+2. Queries child-level data from storage (all `await`ed)
 3. Formats content, handles token overflow via batch splitting
-4. Calls LLM, stores result as `ProcessedContext`
+4. Calls LLM (`await generate_with_messages()`), stores result as `ProcessedContext`
 
 **Content formatting methods** (all `@staticmethod`):
 
@@ -135,9 +135,9 @@ Constants: `_MAX_INPUT_TOKENS = 60000`, `_BATCH_TOKEN_TARGET = 25000`, `_PROMPT_
 
 | Method | Level | Batching strategy |
 |--------|-------|-------------------|
-| `_batch_summarize_and_merge(contexts, level, time_bucket, format_fn)` | L1 | Split by token budget per context |
-| `_batch_summarize_weekly(l1_contexts, l0_events_by_day, time_bucket)` | L2 | Split by day-groups (3 days per batch) |
-| `_batch_summarize_monthly(l2_contexts, l1_by_week, time_bucket)` | L3 | Split by week-groups (2 weeks per batch) |
+| `async _batch_summarize_and_merge(contexts, level, time_bucket, format_fn)` | L1 | Split by token budget per context |
+| `async _batch_summarize_weekly(l1_contexts, l0_events_by_day, time_bucket)` | L2 | Split by day-groups (3 days per batch) |
+| `async _batch_summarize_monthly(l2_contexts, l1_by_week, time_bucket)` | L3 | Split by week-groups (2 weeks per batch) |
 
 Each overflow handler: format -> check tokens -> if over limit, split into batches -> generate sub-summaries -> merge via `_call_llm_for_merge()`.
 
@@ -145,14 +145,14 @@ Each overflow handler: format -> check tokens -> if over limit, split into batch
 
 | Method | Purpose |
 |--------|---------|
-| `_call_llm_for_summary(formatted_content, level, time_bucket, is_partial?, batch_info?)` | Generate summary from formatted content |
-| `_call_llm_for_merge(sub_summaries_text, level, time_bucket)` | Merge partial sub-summaries into one |
+| `async _call_llm_for_summary(formatted_content, level, time_bucket, is_partial?, batch_info?)` | Generate summary from formatted content via `await generate_with_messages()` |
+| `async _call_llm_for_merge(sub_summaries_text, level, time_bucket)` | Merge partial sub-summaries into one via `await generate_with_messages()` |
 
 Prompt resolution: prompt group `"hierarchy_summary"` from YAML -> `{level}_summary` / `{level}_partial_summary` / `{level}_merge` keys -> fallback to `_FALLBACK_PROMPTS` dict.
 
-**Storage**: `_store_summary(user_id, summary_text, level, time_bucket, children_ids) -> Optional[ProcessedContext]` -- builds `ProcessedContext` with hierarchy fields, generates embedding via `do_vectorize()`, calls `storage.upsert_processed_context()`.
+**Storage**: `async _store_summary(user_id, summary_text, level, time_bucket, children_ids) -> Optional[ProcessedContext]` -- builds `ProcessedContext` with hierarchy fields, generates embedding via `await do_vectorize()`, calls `await storage.upsert_processed_context()`.
 
-**Factory**: `create_hierarchy_handler() -> TaskHandler`
+**Factory**: `create_hierarchy_handler() -> async TaskHandler`
 
 ## Class Hierarchy
 
@@ -178,10 +178,10 @@ cli.py / opencontext.py startup
 ### Task execution (triggered by scheduler)
 
 ```
-RedisTaskScheduler._process_task_type() or _process_periodic_tasks()
-  └─> handler(user_id, device_id, agent_id)  -- the closure from create_*_handler()
+RedisTaskScheduler._execute_task() or _process_periodic_tasks()
+  └─> await handler(user_id, device_id, agent_id)  -- the async closure from create_*_handler()
         ├─ Build TaskContext(user_id, device_id, agent_id, task_type)
-        ├─ task.execute(context) -> TaskResult
+        ├─ await task.execute(context) -> TaskResult
         └─> return result.success
 ```
 
@@ -231,7 +231,7 @@ execute(context)
 
 ## Conventions and Constraints
 
-- **Handlers must be synchronous**: The scheduler calls handlers via `run_in_executor()`. The `create_*_handler()` factories return sync closures that call `task.execute()`.
+- **Handlers are async**: The scheduler awaits handlers directly. The `create_*_handler()` factories return async closures that `await task.execute()`.
 - **`validate_context` is called by `create_hierarchy_handler()` only**: `HierarchySummaryTask` overrides `validate_context()` to require non-empty `user_id`, and its handler calls it before `execute()`. Other handlers do not call `validate_context()`.
 - **Idempotent summary generation**: `HierarchySummaryTask` checks for existing summaries before generating. Safe to re-trigger.
 - **Late dependency injection**: `MemoryCompressionTask` and `DataCleanupTask` accept `context_merger`/`storage` via constructor or `set_*()` methods. `HierarchySummaryTask` uses globals (`get_storage()`, LLM singletons).
@@ -257,8 +257,8 @@ class MyTask(BasePeriodicTask):
             timeout=timeout,
         )
 
-    def execute(self, context: TaskContext) -> TaskResult:
-        # Implementation here
+    async def execute(self, context: TaskContext) -> TaskResult:
+        # Implementation here (async — can await storage/LLM calls)
         return TaskResult.ok("Done")
 
     def validate_context(self, context: TaskContext) -> bool:
@@ -266,12 +266,13 @@ class MyTask(BasePeriodicTask):
 
 def create_my_handler():
     task = MyTask()
-    def handler(user_id, device_id, agent_id):
+    async def handler(user_id, device_id, agent_id):
         ctx = TaskContext(user_id=user_id, device_id=device_id,
                           agent_id=agent_id, task_type="my_task")
         if not task.validate_context(ctx):
             return False
-        return task.execute(ctx).success
+        result = await task.execute(ctx)
+        return result.success
     return handler
 ```
 

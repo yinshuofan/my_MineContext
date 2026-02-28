@@ -52,7 +52,7 @@ class FastSearchStrategy(BaseSearchStrategy):
 
         # Step 1: Pre-generate embedding once, share across all vector searches
         vectorize = Vectorize(text=query)
-        await asyncio.to_thread(do_vectorize, vectorize)
+        await do_vectorize(vectorize)
         t_embed = time.perf_counter()
         logger.info(f"[fast-search] embedding: {(t_embed - t0)*1000:.0f}ms")
 
@@ -63,13 +63,12 @@ class FastSearchStrategy(BaseSearchStrategy):
         tasks = {}
 
         if ContextType.PROFILE.value in context_types and user_id:
-            tasks["profile"] = asyncio.to_thread(
-                storage.get_profile, user_id, device_id or "default", agent_id or "default"
+            tasks["profile"] = storage.get_profile(
+                user_id, device_id or "default", agent_id or "default"
             )
 
         if ContextType.ENTITY.value in context_types and user_id:
-            tasks["entity"] = asyncio.to_thread(
-                storage.search_entities,
+            tasks["entity"] = storage.search_entities(
                 user_id,
                 device_id or "default",
                 agent_id or "default",
@@ -78,8 +77,7 @@ class FastSearchStrategy(BaseSearchStrategy):
             )
 
         if ContextType.DOCUMENT.value in context_types:
-            tasks["document"] = asyncio.to_thread(
-                storage.search,
+            tasks["document"] = storage.search(
                 vectorize,
                 top_k,
                 [ContextType.DOCUMENT.value],
@@ -92,8 +90,7 @@ class FastSearchStrategy(BaseSearchStrategy):
         if ContextType.EVENT.value in context_types:
             event_filters = dict(time_filters) if time_filters else {}
             event_filters["hierarchy_level"] = {"$gte": 0, "$lte": 0}  # Only L0 raw events
-            tasks["event"] = asyncio.to_thread(
-                storage.search,
+            tasks["event"] = storage.search(
                 vectorize,
                 top_k,
                 [ContextType.EVENT.value],
@@ -104,8 +101,7 @@ class FastSearchStrategy(BaseSearchStrategy):
             )
 
         if ContextType.KNOWLEDGE.value in context_types:
-            tasks["knowledge"] = asyncio.to_thread(
-                storage.search,
+            tasks["knowledge"] = storage.search(
                 vectorize,
                 top_k,
                 [ContextType.KNOWLEDGE.value],
@@ -193,8 +189,7 @@ class FastSearchStrategy(BaseSearchStrategy):
         parent_map: Dict[str, ProcessedContext] = {}
         if parent_ids:
             storage = get_storage()
-            parents = await asyncio.to_thread(
-                storage.get_contexts_by_ids,
+            parents = await storage.get_contexts_by_ids(
                 list(parent_ids),
                 ContextType.EVENT.value,
             )

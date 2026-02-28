@@ -187,7 +187,7 @@ class HierarchicalEventTool(BaseTool):
         dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
         return dt.strftime("%Y-%m")
 
-    def _search_summaries(
+    async def _search_summaries(
         self,
         level: int,
         time_bucket_start: Optional[str],
@@ -197,7 +197,7 @@ class HierarchicalEventTool(BaseTool):
     ) -> List[Tuple[ProcessedContext, float]]:
         """Search summary contexts at a given hierarchy level."""
         try:
-            return self.storage.search_hierarchy(
+            return await self.storage.search_hierarchy(
                 context_type=self.CONTEXT_TYPE.value,
                 hierarchy_level=level,
                 time_bucket_start=time_bucket_start,
@@ -209,7 +209,7 @@ class HierarchicalEventTool(BaseTool):
             logger.warning(f"search_hierarchy L{level} failed: {e}")
             return []
 
-    def _drill_down_children(
+    async def _drill_down_children(
         self,
         parent_contexts: List[Tuple[ProcessedContext, float]],
         user_id: Optional[str] = None,
@@ -243,7 +243,7 @@ class HierarchicalEventTool(BaseTool):
 
             # Fetch children in batch
             try:
-                children = self.storage.get_contexts_by_ids(
+                children = await self.storage.get_contexts_by_ids(
                     ids=children_ids,
                     context_type=self.CONTEXT_TYPE.value,
                 )
@@ -274,7 +274,7 @@ class HierarchicalEventTool(BaseTool):
 
         return results
 
-    def _direct_l0_search(
+    async def _direct_l0_search(
         self,
         query: str,
         user_id: Optional[str],
@@ -293,7 +293,7 @@ class HierarchicalEventTool(BaseTool):
             search_filters["hierarchy_level"] = 0
 
             vectorize = Vectorize(text=query)
-            raw_results = self.storage.search(
+            raw_results = await self.storage.search(
                 query=vectorize,
                 context_types=[self.CONTEXT_TYPE.value],
                 filters=search_filters,
@@ -337,7 +337,7 @@ class HierarchicalEventTool(BaseTool):
 
     # ── Main execute ─────────────────────────────────────────────────
 
-    def execute(self, **kwargs) -> List[Dict[str, Any]]:
+    async def execute(self, **kwargs) -> List[Dict[str, Any]]:
         """
         Execute hierarchical event retrieval.
 
@@ -402,7 +402,7 @@ class HierarchicalEventTool(BaseTool):
                 (2, time_bucket_start_week, time_bucket_end_week),
                 (3, time_bucket_start_month, time_bucket_end_month),
             ]:
-                hits = self._search_summaries(
+                hits = await self._search_summaries(
                     level=level,
                     time_bucket_start=bucket_start,
                     time_bucket_end=bucket_end,
@@ -414,10 +414,10 @@ class HierarchicalEventTool(BaseTool):
             # Drill down from summaries to L0 events
             drilldown_results: List[Tuple[ProcessedContext, float, int]] = []
             if all_summary_hits:
-                drilldown_results = self._drill_down_children(all_summary_hits, user_id=user_id)
+                drilldown_results = await self._drill_down_children(all_summary_hits, user_id=user_id)
 
             # ── Path 2: Direct L0 semantic search (fallback) ─────────
-            direct_l0_results = self._direct_l0_search(
+            direct_l0_results = await self._direct_l0_search(
                 query=query,
                 user_id=user_id,
                 device_id=device_id,

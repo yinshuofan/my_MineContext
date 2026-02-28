@@ -11,7 +11,7 @@ import abc
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 
 class TriggerMode(str, Enum):
@@ -198,14 +198,16 @@ class ITaskScheduler(abc.ABC):
 
     @abc.abstractmethod
     def register_handler(
-        self, task_type: str, handler: Callable[[str, Optional[str], Optional[str]], bool]
+        self,
+        task_type: str,
+        handler: Callable[[str, Optional[str], Optional[str]], Awaitable[bool]],
     ) -> bool:
         """
-        Register a handler function for a task type.
+        Register an async handler function for a task type.
 
         Args:
             task_type: Name of the task type
-            handler: Function that takes (user_id, device_id, agent_id) and returns success bool
+            handler: Async function that takes (user_id, device_id, agent_id) and returns success bool
 
         Returns:
             True if registration successful
@@ -296,5 +298,5 @@ class ITaskScheduler(abc.ABC):
         pass
 
 
-# Type alias for task handler function
-TaskHandler = Callable[[str, Optional[str], Optional[str]], bool]
+# Type alias for async task handler function
+TaskHandler = Callable[[str, Optional[str], Optional[str]], Awaitable[bool]]

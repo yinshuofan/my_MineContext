@@ -38,7 +38,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
         # If no config is passed, use an empty dictionary (subclasses should get it from the global config themselves)
         self.config = config or {}
         self._is_initialized = False
-        self._callback: Optional[Callable[[List[ProcessedContext]], None]] = None
+        self._callback: Optional[Callable] = None
         self._processing_stats = {
             "processed_count": 0,
             "contexts_generated_count": 0,
@@ -118,7 +118,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
         pass
 
     @abstractmethod
-    def process(self, context: Any) -> List[ProcessedContext]:
+    async def process(self, context: Any) -> List[ProcessedContext]:
         """
         Process a single context and return processed results.
 
@@ -130,7 +130,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
         """
         pass
 
-    def batch_process(self, contexts: List[Any]) -> Dict[str, List[ProcessedContext]]:
+    async def batch_process(self, contexts: List[Any]) -> Dict[str, List[ProcessedContext]]:
         """
         Process multiple contexts in batch and group results by object ID.
 
@@ -140,29 +140,35 @@ class BaseContextProcessor(IContextProcessor, ABC):
         Returns:
             Dictionary mapping object IDs to lists of processed contexts
         """
+        import asyncio
+
         processed_by_object_id: Dict[str, List[ProcessedContext]] = {}
 
-        for context in contexts:
-            try:
-                if not self.can_process(context):
-                    continue
+        async def _process_one(context):
+            if not self.can_process(context):
+                return None, None
+            processed_contexts = await self.process(context)
+            if not processed_contexts:
+                return None, None
+            object_id = self._extract_object_id(context, processed_contexts)
+            return object_id, processed_contexts
 
-                processed_contexts = self.process(context)
-                if not processed_contexts:
-                    continue
+        tasks = [_process_one(ctx) for ctx in contexts]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # Group results by object ID
-                object_id = self._extract_object_id(context, processed_contexts)
-                if object_id not in processed_by_object_id:
-                    processed_by_object_id[object_id] = []
-                processed_by_object_id[object_id].extend(processed_contexts)
-
-                self._processing_stats["processed_count"] += 1
-                self._processing_stats["contexts_generated_count"] += len(processed_contexts)
-
-            except Exception as e:
+        for result in results:
+            if isinstance(result, Exception):
                 self._processing_stats["error_count"] += 1
-                logger.error(f"Error processing context in {self.get_name()}: {e}")
+                logger.error(f"Error processing context in {self.get_name()}: {result}")
+                continue
+            object_id, processed_contexts = result
+            if object_id is None:
+                continue
+            if object_id not in processed_by_object_id:
+                processed_by_object_id[object_id] = []
+            processed_by_object_id[object_id].extend(processed_contexts)
+            self._processing_stats["processed_count"] += 1
+            self._processing_stats["contexts_generated_count"] += len(processed_contexts)
 
         return processed_by_object_id
 
@@ -213,7 +219,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
             logger.error(f"Failed to reset statistics for {self.get_name()}: {e}")
             return False
 
-    def set_callback(self, callback: Optional[Callable[[List[ProcessedContext]], None]]) -> bool:
+    def set_callback(self, callback: Optional[Callable]) -> bool:
         """
         Set callback function to be called when processing is complete.
 
@@ -230,7 +236,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
             logger.error(f"Failed to set callback for {self.get_name()}: {e}")
             return False
 
-    def _invoke_callback(self, processed_contexts: List[ProcessedContext]) -> None:
+    async def _invoke_callback(self, processed_contexts: List[ProcessedContext]) -> None:
         """
         Invoke the callback function if it's set.
 
@@ -239,7 +245,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
         """
         if self._callback and processed_contexts:
             try:
-                self._callback(processed_contexts)
+                await self._callback(processed_contexts)
             except Exception as e:
                 logger.error(f"Error invoking callback in {self.get_name()}: {e}")
 

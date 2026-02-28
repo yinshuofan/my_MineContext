@@ -32,7 +32,7 @@ class BaseTool(ABC):
         """Get tool parameters definition"""
 
     @abstractmethod
-    def execute(self, **kwargs) -> Dict[str, Any]:
+    async def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute tool operation"""
 
     @classmethod

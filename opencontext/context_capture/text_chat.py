@@ -126,7 +126,7 @@ class TextChatCapture(BaseCaptureComponent):
             )
         return (None, None, None)
 
-    def _create_and_send_context(
+    async def _create_and_send_context(
         self,
         messages: List[Dict[str, Any]],
         user_id: Optional[str],
@@ -156,11 +156,11 @@ class TextChatCapture(BaseCaptureComponent):
             agent_id=agent_id,
         )
 
-        # 通过 BaseCaptureComponent 的机制上报数据
+        # 通过回调上报数据
         if self._callback:
-            self._callback([raw_context])
+            await self._callback([raw_context])
 
-    def process_messages_directly(
+    async def process_messages_directly(
         self,
         messages: List[Dict[str, Any]],
         user_id: Optional[str] = None,
@@ -176,7 +176,7 @@ class TextChatCapture(BaseCaptureComponent):
             device_id: 设备标识符
             agent_id: Agent标识符
         """
-        self._create_and_send_context(messages, user_id, device_id, agent_id)
+        await self._create_and_send_context(messages, user_id, device_id, agent_id)
 
     async def _flush_all_buffers(self):
         """刷新所有缓冲区（异步版本）"""
@@ -202,7 +202,7 @@ class TextChatCapture(BaseCaptureComponent):
                         try:
                             messages = await self._redis_cache.lrange_json(key, 0, -1)
                             if messages:
-                                self._create_and_send_context(
+                                await self._create_and_send_context(
                                     messages, user_id, device_id, agent_id
                                 )
                                 await self._redis_cache.delete(key)
@@ -324,7 +324,7 @@ class TextChatCapture(BaseCaptureComponent):
                     return
 
                 # 创建 RawContext
-                self._create_and_send_context(messages, user_id, device_id, agent_id)
+                await self._create_and_send_context(messages, user_id, device_id, agent_id)
 
                 # 清空缓冲区
                 await self._redis_cache.delete(buffer_key)

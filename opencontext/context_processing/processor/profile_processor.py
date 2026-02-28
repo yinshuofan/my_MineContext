@@ -18,7 +18,7 @@ from opencontext.utils.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
-def refresh_profile(
+async def refresh_profile(
     new_content: str,
     new_summary: Optional[str],
     new_keywords: Optional[List[str]],
@@ -54,14 +54,14 @@ def refresh_profile(
     storage = get_storage()
 
     try:
-        existing = storage.get_profile(
+        existing = await storage.get_profile(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
         )
 
         if existing:
-            merged = _merge_profile_with_llm(existing, {
+            merged = await _merge_profile_with_llm(existing, {
                 "content": new_content,
                 "summary": new_summary,
                 "keywords": new_keywords or [],
@@ -70,7 +70,7 @@ def refresh_profile(
             })
 
             if merged:
-                return storage.upsert_profile(
+                return await storage.upsert_profile(
                     user_id=user_id,
                     device_id=device_id,
                     agent_id=agent_id,
@@ -85,7 +85,7 @@ def refresh_profile(
                 logger.warning("LLM merge failed, falling back to direct overwrite")
 
         # No existing profile or LLM merge failed — direct write
-        return storage.upsert_profile(
+        return await storage.upsert_profile(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -102,7 +102,7 @@ def refresh_profile(
         return False
 
 
-def _merge_profile_with_llm(
+async def _merge_profile_with_llm(
     existing: Dict[str, Any],
     new_data: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
@@ -150,7 +150,7 @@ def _merge_profile_with_llm(
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_prompt})
 
-        response = generate_with_messages(messages)
+        response = await generate_with_messages(messages)
         if not response:
             logger.warning("LLM returned empty response for profile merge")
             return None

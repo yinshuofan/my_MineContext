@@ -47,7 +47,7 @@ class BaseRetrievalTool(BaseTool):
         """Get storage from global singleton"""
         return get_storage()
 
-    def _build_filters(self, filters: RetrievalToolFilter) -> Dict[str, Any]:
+    async def _build_filters(self, filters: RetrievalToolFilter) -> Dict[str, Any]:
         """Build filter conditions"""
         build_filter = {}
         if filters.time_range is not None and filters.time_range.time_type:
@@ -59,7 +59,7 @@ class BaseRetrievalTool(BaseTool):
                 build_filter[time_type]["$lte"] = filters.time_range.end
         if filters.entities is not None and filters.entities:
             # Use Profile entity tool to handle entity unification
-            unify_result = self.profile_entity_tool.execute(
+            unify_result = await self.profile_entity_tool.execute(
                 entities=filters.entities, operation="match_entities", context_info=""
             )
             if unify_result.get("success"):
@@ -75,22 +75,22 @@ class BaseRetrievalTool(BaseTool):
                 build_filter["entities"] = filters.entities
         return build_filter
 
-    def _execute_search(
+    async def _execute_search(
         self, query: str, context_types: List[str], filters: RetrievalToolFilter, top_k: int = 10
     ) -> List[Tuple[ProcessedContext, float]]:
         """Execute search operation"""
 
-        filters = self._build_filters(filters)
+        filters = await self._build_filters(filters)
 
         if query:
             # Semantic search
             vectorize = Vectorize(text=query)
-            return self.storage.search(
+            return await self.storage.search(
                 query=vectorize, context_types=context_types, filters=filters, top_k=top_k
             )
         else:
             # Pure filter query
-            results_dict = self.storage.get_all_processed_contexts(
+            results_dict = await self.storage.get_all_processed_contexts(
                 context_types=context_types, limit=top_k, filter=filters
             )
 
@@ -134,10 +134,10 @@ class BaseRetrievalTool(BaseTool):
 
         return formatted_results
 
-    def execute_with_error_handling(self, **kwargs) -> List[Dict[str, Any]]:
+    async def execute_with_error_handling(self, **kwargs) -> List[Dict[str, Any]]:
         """Execute method with error handling"""
         try:
-            return self.execute(**kwargs)
+            return await self.execute(**kwargs)
         except Exception as e:
             error_message = f"Error occurred while executing {self.get_name()}: {str(e)}"
             return [{"error": error_message}]

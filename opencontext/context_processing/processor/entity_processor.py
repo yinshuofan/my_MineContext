@@ -79,7 +79,7 @@ async def refresh_entities(
             entity_data.agent_id = agent_id
 
             # Check if entity already exists
-            existing = storage.get_entity(
+            existing = await storage.get_entity(
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
@@ -102,7 +102,7 @@ async def refresh_entities(
                 old_keywords = existing.get("keywords", [])
                 merged_keywords = list(set(old_keywords + entity_data.keywords))
 
-                storage.upsert_entity(
+                await storage.upsert_entity(
                     user_id=user_id,
                     device_id=device_id,
                     agent_id=agent_id,
@@ -116,7 +116,7 @@ async def refresh_entities(
                 )
             else:
                 # Create new entity
-                storage.upsert_entity(
+                await storage.upsert_entity(
                     user_id=user_id,
                     device_id=device_id,
                     agent_id=agent_id,

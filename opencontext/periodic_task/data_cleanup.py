@@ -69,7 +69,7 @@ class DataCleanupTask(BasePeriodicTask):
         """Set the storage backend instance"""
         self._storage = storage
 
-    def execute(self, context: TaskContext) -> TaskResult:
+    async def execute(self, context: TaskContext) -> TaskResult:
         """
         Execute data cleanup.
 
@@ -162,13 +162,15 @@ def create_cleanup_handler(
         retention_days: Number of days to retain data
 
     Returns:
-        Handler function compatible with TaskScheduler
+        Async handler function compatible with TaskScheduler
     """
     task = DataCleanupTask(
         context_merger=context_merger, storage=storage, retention_days=retention_days
     )
 
-    def handler(user_id: Optional[str], device_id: Optional[str], agent_id: Optional[str]) -> bool:
+    async def handler(
+        user_id: Optional[str], device_id: Optional[str], agent_id: Optional[str]
+    ) -> bool:
         # Global task, user info is not used
         context = TaskContext(
             user_id=user_id or "global",
@@ -176,7 +178,7 @@ def create_cleanup_handler(
             agent_id=agent_id,
             task_type="data_cleanup",
         )
-        result = task.execute(context)
+        result = await task.execute(context)
         return result.success
 
     return handler

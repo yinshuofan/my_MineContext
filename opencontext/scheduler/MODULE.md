@@ -165,9 +165,9 @@ Metrics are stored in an in-memory buffer and periodically persisted to the MySQ
 | `_executor_loop()` | `async` -- coordinator that creates one `_type_worker` per registered handler + one `_periodic_worker`, then `asyncio.gather`s them. On `CancelledError`, cascades cancel to all workers and awaits in-flight tasks |
 | `_type_worker(task_type)` | `async` -- independent per-type worker. Drain loop: acquires `_concurrency_sem` (1s timeout for shutdown responsiveness), calls `get_pending_task()`, fires off `_run_and_release` via `create_task` (fire-and-forget). Sleeps `check_interval` between drain cycles |
 | `_run_and_release(task_type, task_info)` | `async` -- wraps `_execute_task` in `try/finally: _concurrency_sem.release()` to guarantee semaphore release |
-| `_execute_task(task_type, task_info)` | `async` -- executes a single claimed task. Runs handler via `run_in_executor`, calls `complete_task`. Uses `lock_released` flag + `finally` block with `asyncio.shield` to ensure lock is always released even on `CancelledError` |
+| `_execute_task(task_type, task_info)` | `async` -- executes a single claimed task. Awaits async handler directly, calls `complete_task`. Uses `lock_released` flag + `finally` block with `asyncio.shield` to ensure lock is always released even on `CancelledError` |
 | `_periodic_worker()` | `async` -- independent loop wrapping `_process_periodic_tasks()` with `check_interval` sleep. Handles `CancelledError` for clean shutdown |
-| `_process_periodic_tasks()` | `async` -- iterates periodic task configs, checks `next_run`, acquires global lock, runs handler with `(None, None, None)` |
+| `_process_periodic_tasks()` | `async` -- iterates periodic task configs, checks `next_run`, acquires global lock, awaits async handler with `(None, None, None)` |
 
 **Global singleton functions**:
 - `get_scheduler() -> Optional[RedisTaskScheduler]`
@@ -177,8 +177,8 @@ Metrics are stored in an in-memory buffer and periodically persisted to the MySQ
 ### TaskHandler (type alias)
 
 ```python
-TaskHandler = Callable[[str, Optional[str], Optional[str]], bool]
-# Signature: (user_id, device_id, agent_id) -> success
+TaskHandler = Callable[[str, Optional[str], Optional[str]], Awaitable[bool]]
+# Signature: async (user_id, device_id, agent_id) -> success
 ```
 
 ## Class Hierarchy
@@ -225,7 +225,7 @@ Each _type_worker (independent per-type, concurrent execution):
     sleep(check_interval)
 
 _execute_task(task_type, task_info):
-  ├─ run_in_executor(handler, user_id, device_id, agent_id)
+  ├─ await handler(user_id, device_id, agent_id)  -- async handler called directly
   ├─ complete_task() -- update status, record last_exec (always), manage fail_count, release lock
   │     ├─ All Redis state updates in try block
   │     └─ release_lock() in finally -- lock always released even if state updates fail
@@ -281,7 +281,7 @@ _periodic_worker (independent loop, runs alongside _type_workers)
       ├─ Iterate config["tasks"] where trigger_mode == "periodic" and enabled
       ├─ Check next_run from Redis hash
       ├─ Acquire global lock (scheduler:lock:{type}:global)
-      ├─ run_in_executor(handler, None, None, None)  -- no user context
+      ├─ await handler(None, None, None)  -- async handler, no user context
       ├─ Release lock (asyncio.shield in finally), update next_run
       └─ On CancelledError: re-raise for clean shutdown
     sleep(check_interval)
@@ -302,7 +302,7 @@ _periodic_worker (independent loop, runs alongside _type_workers)
 
 ## Conventions and Constraints
 
-- **Handlers are synchronous**: The scheduler wraps them with `run_in_executor()`. Do not make handlers async.
+- **Handlers are async**: The scheduler awaits them directly on the event loop. All `create_*_handler()` factories return async closures.
 - **Periodic handlers receive `(None, None, None)`**: Tasks that need `user_id` must use `user_activity` trigger mode, not `periodic`.
 - **Disabled tasks silently skip**: If `enabled: false` in config, `_collect_task_types()` skips registration, and `schedule_user_task()` returns `False` with a warning log. No error is raised.
 - **Concurrent execution with global backpressure**: Each `_type_worker` drains its queue fully each cycle, firing off tasks concurrently via `create_task`. Total concurrency across all types is bounded by `_concurrency_sem` (default 5). Workers block on semaphore acquisition (1s timeout) before claiming tasks, providing natural backpressure.

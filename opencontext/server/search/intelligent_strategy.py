@@ -191,8 +191,8 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
         storage = get_storage()
 
         try:
-            profile_data = await asyncio.to_thread(
-                storage.get_profile, user_id, device_id or "default", agent_id or "default"
+            profile_data = await storage.get_profile(
+                user_id, device_id or "default", agent_id or "default"
             )
             if profile_data:
                 profile = ProfileResult(
@@ -208,8 +208,7 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
             logger.error(f"Profile lookup failed: {e}")
 
         try:
-            entity_list = await asyncio.to_thread(
-                storage.search_entities,
+            entity_list = await storage.search_entities(
                 user_id,
                 device_id or "default",
                 agent_id or "default",

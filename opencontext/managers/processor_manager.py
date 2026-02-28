@@ -8,7 +8,7 @@
 """
 Context processing manager for managing and coordinating context processing components
 """
-import concurrent.futures
+import asyncio
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
@@ -102,7 +102,7 @@ class ContextProcessorManager:
     def set_callback(self, callback: Callable[[List[Any]], None]) -> None:
         self._callback = callback
 
-    def process(self, initial_input: RawContextProperties):
+    async def process(self, initial_input: RawContextProperties):
         """
         Process single input through processing chain
         """
@@ -114,8 +114,6 @@ class ContextProcessorManager:
             )
             return False
 
-        # logger.debug(f"Selected preprocessing component for input {initial_input.object_id} (source: {initial_input.source}): {processor_name}")
-
         processor = self._processors.get(processor_name)
         if not processor or not processor.can_process(initial_input):
             logger.error(
@@ -124,31 +122,27 @@ class ContextProcessorManager:
             return False
 
         try:
-            return processor.process(initial_input)
+            return await processor.process(initial_input)
         except Exception as e:
             logger.exception(
                 f"Processing component '{processor_name}' encountered exception while processing data: {e}"
             )
             return False
 
-    def batch_process(
+    async def batch_process(
         self, initial_inputs: List[RawContextProperties]
     ) -> Dict[str, List[ProcessedContext]]:
         """Batch process raw context data"""
+        tasks = [self.process(initial_input) for initial_input in initial_inputs]
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
         results = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self._max_workers) as executor:
-            future_to_input = {
-                executor.submit(self.process, initial_input): initial_input
-                for initial_input in initial_inputs
-            }
-            for future in concurrent.futures.as_completed(future_to_input):
-                initial_input = future_to_input[future]
-                try:
-                    result = future.result()
-                    results[initial_input.object_id] = result
-                except Exception as exc:
-                    logger.exception(f"'{initial_input.object_id}' generated an exception: {exc}")
-                    results[initial_input.object_id] = []
+        for initial_input, result in zip(initial_inputs, raw_results):
+            if isinstance(result, Exception):
+                logger.exception(f"'{initial_input.object_id}' generated an exception: {result}")
+                results[initial_input.object_id] = []
+            else:
+                results[initial_input.object_id] = result
         return results
 
     def get_statistics(self) -> Dict[str, Any]:
