@@ -465,7 +465,6 @@ class UserMemoryCacheManager:
                     today_items.append(self._ctx_to_recent_item(ctx))
             today_items.sort(
                 key=lambda x: x.get("event_time") or x.get("create_time") or "",
-                reverse=True,
             )
             recent_memories["today_events"] = today_items[:max_events_today]
 
@@ -522,19 +521,23 @@ class UserMemoryCacheManager:
 
         create_time = None
         if props.create_time:
-            create_time = (
-                props.create_time.isoformat()
-                if hasattr(props.create_time, "isoformat")
-                else str(props.create_time)
-            )
+            if hasattr(props.create_time, "isoformat"):
+                dt = props.create_time
+                if dt.tzinfo is not None:
+                    dt = dt.replace(tzinfo=None)
+                create_time = dt.isoformat()
+            else:
+                create_time = str(props.create_time)
 
         event_time = None
         if props.event_time:
-            event_time = (
-                props.event_time.isoformat()
-                if hasattr(props.event_time, "isoformat")
-                else str(props.event_time)
-            )
+            if hasattr(props.event_time, "isoformat"):
+                dt = props.event_time
+                if dt.tzinfo is not None:
+                    dt = dt.replace(tzinfo=None)
+                event_time = dt.isoformat()
+            else:
+                event_time = str(props.event_time)
 
         return {
             "id": ctx.id,
