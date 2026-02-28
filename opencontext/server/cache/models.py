@@ -66,6 +66,7 @@ class SimpleTodayEvent(BaseModel):
 
     title: Optional[str] = None
     summary: Optional[str] = None
+    event_time: Optional[str] = None
 
 
 class UserMemoryCacheResponse(BaseModel):

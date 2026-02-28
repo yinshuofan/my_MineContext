@@ -588,6 +588,7 @@ class UserMemoryCacheManager:
             SimpleTodayEvent(
                 title=item.get("title"),
                 summary=item.get("summary"),
+                event_time=item.get("event_time"),
             )
             for item in rm_data.get("today_events", [])
         ]
