@@ -276,12 +276,8 @@ class RedisTaskScheduler(ITaskScheduler):
             if not result:
                 return None  # Queue empty or nothing due
 
-            user_key = (
-                result[0].decode("utf-8") if isinstance(result[0], bytes) else result[0]
-            )
-            score = float(
-                result[1].decode("utf-8") if isinstance(result[1], bytes) else result[1]
-            )
+            user_key = result[0].decode("utf-8") if isinstance(result[0], bytes) else result[0]
+            score = float(result[1].decode("utf-8") if isinstance(result[1], bytes) else result[1])
 
             # Orphan check: task hash expired but queue entry remained
             task_key = f"{self.TASK_PREFIX}{task_type}:{user_key}"
@@ -294,9 +290,7 @@ class RedisTaskScheduler(ITaskScheduler):
             # Acquire lock (safety net — protects against crashed previous execution
             # whose lock hasn't expired. Near-impossible with atomic pop but defensive.)
             lock_key = f"{self.LOCK_PREFIX}{task_type}:{user_key}"
-            lock_token = await self._redis.acquire_lock(
-                lock_key, timeout=timeout, blocking=False
-            )
+            lock_token = await self._redis.acquire_lock(lock_key, timeout=timeout, blocking=False)
             if not lock_token:
                 # Previous execution still holds lock; put task back for later
                 await self._redis.zadd(queue_key, {user_key: score})
@@ -368,9 +362,7 @@ class RedisTaskScheduler(ITaskScheduler):
             except (asyncio.CancelledError, Exception) as e:
                 logger.error(f"Failed to release lock for {task_type}:{user_key}: {e}")
 
-        logger.info(
-            f"Task {task_type} for {user_key} {'completed' if success else 'failed'}"
-        )
+        logger.info(f"Task {task_type} for {user_key} {'completed' if success else 'failed'}")
 
     async def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
         """Get configuration for a task type (async)"""
@@ -447,9 +439,7 @@ class RedisTaskScheduler(ITaskScheduler):
             )
             lock_released = True
         except asyncio.CancelledError:
-            logger.warning(
-                f"Task {task_type} for {task_info.user_key} cancelled during shutdown"
-            )
+            logger.warning(f"Task {task_type} for {task_info.user_key} cancelled during shutdown")
             raise  # Re-raise to let _executor_loop handle it
         except Exception as e:
             logger.exception(f"Task {task_type} failed for {task_info.user_key}: {e}")
@@ -527,9 +517,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 await self._redis.expire(periodic_key, interval * 3)
             finally:
                 try:
-                    await asyncio.shield(
-                        self._redis.release_lock(lock_key, lock_token)
-                    )
+                    await asyncio.shield(self._redis.release_lock(lock_key, lock_token))
                 except (asyncio.CancelledError, Exception) as e:
                     logger.error(f"Failed to release periodic lock for {task_type}: {e}")
 
@@ -554,14 +542,10 @@ class RedisTaskScheduler(ITaskScheduler):
         if self._executor_task and not self._executor_task.done():
             if timeout > 0:
                 try:
-                    await asyncio.wait_for(
-                        asyncio.shield(self._executor_task), timeout=timeout
-                    )
+                    await asyncio.wait_for(asyncio.shield(self._executor_task), timeout=timeout)
                     logger.info("Task scheduler stopped gracefully")
                 except asyncio.TimeoutError:
-                    logger.warning(
-                        f"Scheduler did not stop within {timeout}s, cancelling"
-                    )
+                    logger.warning(f"Scheduler did not stop within {timeout}s, cancelling")
                     self._executor_task.cancel()
                     try:
                         await self._executor_task

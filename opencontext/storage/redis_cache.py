@@ -757,9 +757,7 @@ class RedisCache:
             return False
         try:
             lock_key = self._make_key(f"lock:{lock_name}")
-            result = await self._async_client.eval(
-                _RELEASE_LOCK_LUA, 1, lock_key, token
-            )
+            result = await self._async_client.eval(_RELEASE_LOCK_LUA, 1, lock_key, token)
             return bool(result)
         except Exception as e:
             logger.error(f"Redis release_lock error: {e}")
