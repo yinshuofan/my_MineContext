@@ -85,15 +85,10 @@ class TextChatCapture(BaseCaptureComponent):
         if graceful and self._redis_cache:
             # 在停止时需要异步刷新，使用事件循环运行
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # 如果事件循环正在运行，创建任务
-                    asyncio.create_task(self._flush_all_buffers())
-                else:
-                    # 否则直接运行
-                    loop.run_until_complete(self._flush_all_buffers())
+                loop = asyncio.get_running_loop()
+                asyncio.run_coroutine_threadsafe(self._flush_all_buffers(), loop)
             except RuntimeError:
-                # 没有事件循环，创建新的
+                # No running loop — run via new loop
                 asyncio.run(self._flush_all_buffers())
         return True
 

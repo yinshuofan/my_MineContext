@@ -86,7 +86,7 @@ class MemoryCompressionTask(BasePeriodicTask):
             # Call the context merger's compression method
             # This method should be implemented in ContextMerger
             if hasattr(self._context_merger, "periodic_memory_compression_for_user"):
-                self._context_merger.periodic_memory_compression_for_user(
+                await self._context_merger.periodic_memory_compression_for_user(
                     user_id=user_id,
                     device_id=device_id,
                     agent_id=agent_id,
@@ -94,7 +94,7 @@ class MemoryCompressionTask(BasePeriodicTask):
                 )
             elif hasattr(self._context_merger, "periodic_memory_compression"):
                 # Fallback to old method signature
-                self._context_merger.periodic_memory_compression(interval_seconds=self._interval)
+                await self._context_merger.periodic_memory_compression(interval_seconds=self._interval)
             else:
                 return TaskResult.fail(
                     error="No compression method found",

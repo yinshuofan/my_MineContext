@@ -97,12 +97,12 @@ class DataCleanupTask(BasePeriodicTask):
             if self._context_merger:
                 if hasattr(self._context_merger, "intelligent_memory_cleanup"):
                     logger.info("Using intelligent memory cleanup from ContextMerger")
-                    self._context_merger.intelligent_memory_cleanup()
+                    await self._context_merger.intelligent_memory_cleanup()
                     cleanup_result = "intelligent_cleanup"
                 elif hasattr(self._context_merger, "cleanup_contexts_by_type"):
                     # Alternative method name
                     logger.info("Using cleanup_contexts_by_type from ContextMerger")
-                    self._context_merger.cleanup_contexts_by_type()
+                    await self._context_merger.cleanup_contexts_by_type()
                     cleanup_result = "type_cleanup"
 
             # Fallback: Use storage's simple cleanup methods

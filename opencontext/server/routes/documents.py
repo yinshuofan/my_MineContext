@@ -48,7 +48,7 @@ async def upload_document(
     Add document to processing queue via OpenContext.add_document()
     """
     try:
-        err_msg = opencontext.add_document(
+        err_msg = await opencontext.add_document(
             file_path=request.file_path,
         )
         if err_msg:

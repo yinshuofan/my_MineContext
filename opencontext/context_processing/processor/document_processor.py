@@ -211,42 +211,6 @@ class DocumentProcessor(BaseContextProcessor):
             record_processing_error(error_msg, processor_name=self.get_name(), context_count=1)
             return []
 
-    async def batch_process_async(
-        self,
-        raw_contexts: List[RawContextProperties],
-        user_id: str = "default",
-        device_id: str = "default",
-    ) -> List[ProcessedContext]:
-        """
-        Batch process multiple documents asynchronously.
-
-        Args:
-            raw_contexts: List of raw document contexts
-            user_id: User identifier
-            device_id: Device identifier
-
-        Returns:
-            List of all processed contexts
-        """
-        if not raw_contexts:
-            return []
-
-        logger.info(f"Batch processing {len(raw_contexts)} documents asynchronously")
-
-        # Process all documents concurrently
-        tasks = [self.process_async(ctx, user_id, device_id) for ctx in raw_contexts]
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        all_contexts = []
-        for idx, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"Document {idx} processing failed: {result}")
-            elif result:
-                all_contexts.extend(result)
-
-        return all_contexts
-
     def _process_structured_document(
         self, raw_context: RawContextProperties
     ) -> List[ProcessedContext]:

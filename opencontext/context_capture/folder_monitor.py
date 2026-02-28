@@ -10,7 +10,6 @@ Folder monitoring component that monitors local folder changes and generates con
 
 import asyncio
 import hashlib
-import inspect
 import os
 import threading
 import time

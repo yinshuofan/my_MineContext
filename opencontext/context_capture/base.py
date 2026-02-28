@@ -212,7 +212,7 @@ class BaseCaptureComponent(ICaptureComponent):
                         # Callback is async — schedule on the running event loop
                         try:
                             loop = asyncio.get_running_loop()
-                            loop.create_task(cb_result)
+                            asyncio.run_coroutine_threadsafe(cb_result, loop)
                         except RuntimeError:
                             # No running loop (sync context) — run via new loop
                             asyncio.run(cb_result)

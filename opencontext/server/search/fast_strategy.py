@@ -33,7 +33,7 @@ class FastSearchStrategy(BaseSearchStrategy):
     Fast search strategy — direct parallel search across all 5 types.
 
     - Zero LLM reasoning calls (only 1 embedding generation)
-    - All storage calls run in parallel via asyncio.to_thread()
+    - All storage calls run in parallel via asyncio.gather()
     - Events: search L0 directly, then batch-attach parent summaries
     """
 

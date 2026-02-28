@@ -71,13 +71,13 @@ class VectorSearchRequest(BaseModel):
 
 
 @router.post("/contexts/delete")
-def delete_context(
+async def delete_context(
     detail_request: ContextDetailRequest,
     opencontext: OpenContext = Depends(get_context_lab),
     _auth: str = auth_dependency,
 ):
     """Delete a processed context by its ID and context_type."""
-    success = opencontext.delete_context(detail_request.id, detail_request.context_type)
+    success = await opencontext.delete_context(detail_request.id, detail_request.context_type)
     if not success:
         raise HTTPException(status_code=404, detail="Context not found or failed to delete")
     return {"message": "Context deleted successfully"}
@@ -90,7 +90,7 @@ async def read_context_detail(
     opencontext: OpenContext = Depends(get_context_lab),
     _auth: str = auth_dependency,
 ):
-    context = opencontext.get_context(detail_request.id, detail_request.context_type)
+    context = await opencontext.get_context(detail_request.id, detail_request.context_type)
     if context is None:
         return templates.TemplateResponse(
             "error.html", {"request": request, "message": "Context not found"}, status_code=404
@@ -113,7 +113,7 @@ async def get_context_api(
     _auth: str = auth_dependency,
 ):
     """Get a single context by ID as JSON (used for tree lazy loading)."""
-    context = opencontext.get_context(context_id, context_type)
+    context = await opencontext.get_context(context_id, context_type)
     if context is None:
         raise HTTPException(status_code=404, detail="Context not found")
     model = ProcessedContextModel.from_processed_context(context, project_root)
@@ -144,7 +144,7 @@ async def vector_search(
     Supports multi-user filtering through user_id, device_id, and agent_id parameters.
     """
     try:
-        results = opencontext.search(
+        results = await opencontext.search(
             query=request.query,
             top_k=request.top_k,
             context_types=request.context_types,
