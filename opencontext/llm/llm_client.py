@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 class LLMProvider(Enum):
     OPENAI = "openai"
     DOUBAO = "doubao"
+    DASHSCOPE = "dashscope"
 
 
 class LLMType(Enum):
@@ -107,6 +108,9 @@ class LLMClient:
 
             if thinking:
                 if self.provider == LLMProvider.DOUBAO.value:
+                    if thinking == "disabled":
+                        create_params["reasoning_effort"] = "minimal"
+                elif self.provider == LLMProvider.DASHSCOPE.value:
                     create_params["extra_body"] = {"thinking": {"type": thinking}}
 
             # Stage: LLM API call
@@ -165,6 +169,9 @@ class LLMClient:
 
             if thinking:
                 if self.provider == LLMProvider.DOUBAO.value:
+                    if thinking == "disabled":
+                        create_params["reasoning_effort"] = "minimal"
+                elif self.provider == LLMProvider.DASHSCOPE.value:
                     create_params["extra_body"] = {"thinking": {"type": thinking}}
             # Stage: LLM API call
             api_start = time.time()
@@ -217,6 +224,9 @@ class LLMClient:
 
             if thinking:
                 if self.provider == LLMProvider.DOUBAO.value:
+                    if thinking == "disabled":
+                        create_params["reasoning_effort"] = "minimal"
+                elif self.provider == LLMProvider.DASHSCOPE.value:
                     create_params["extra_body"] = {"thinking": {"type": thinking}}
 
             stream = self.client.chat.completions.create(**create_params)
@@ -249,6 +259,9 @@ class LLMClient:
 
             if thinking:
                 if self.provider == LLMProvider.DOUBAO.value:
+                    if thinking == "disabled":
+                        create_params["reasoning_effort"] = "minimal"
+                elif self.provider == LLMProvider.DASHSCOPE.value:
                     create_params["extra_body"] = {"thinking": {"type": thinking}}
 
             stream = await async_client.chat.completions.create(**create_params)

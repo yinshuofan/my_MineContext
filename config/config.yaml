@@ -39,7 +39,7 @@ vlm_model:
   base_url: "${VLM_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
   api_key: "${VLM_API_KEY}"
   model: "${VLM_MODEL:doubao-seed-1-6-251015}"
-  provider: "openai"
+  provider: "doubao"
 
 # Embedding 配置（向量嵌入模型，用于语义检索）
 embedding_model:

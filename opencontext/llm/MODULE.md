@@ -33,7 +33,7 @@ Fields: `self.model`, `self.api_key`, `self.base_url`, `self.timeout` (default 3
 | `generate_with_messages_stream` | `(messages: List[Dict[str, Any]], **kwargs)` | Sync stream iterator |
 | `generate_with_messages_stream_async` | `(messages: List[Dict[str, Any]], **kwargs)` | Async generator yielding chunks |
 
-kwargs forwarded: `tools` (adds `tool_choice: "auto"`), `thinking` (Doubao-specific `extra_body`).
+kwargs forwarded: `tools` (adds `tool_choice: "auto"`), `thinking` (Doubao: `reasoning_effort=minimal`; Dashscope: `extra_body={"thinking": {"type": ...}}`).
 
 **Embedding methods** (require `LLMType.EMBEDDING`):
 
@@ -119,5 +119,5 @@ Thread-safe singleton. Wraps a `LLMClient(LLMType.CHAT)` configured from `get_co
 - Both singletons (`GlobalEmbeddingClient`, `GlobalVLMClient`) use double-checked locking with `threading.Lock`. `LLMClient` is a plain class, not a singleton. Do not bypass `get_instance()` for the singletons.
 - `LLMType` gates method access: calling `generate_embedding` on a `CHAT`-type client raises `ValueError`. Do not mix types.
 - Token usage is recorded via `record_token_usage` inside API call methods. The import is guarded by `try/except ImportError` for graceful degradation.
-- The `provider` field only affects `thinking` parameter handling (Doubao-specific `extra_body`). All other API calls use standard OpenAI format.
+- The `provider` field affects `thinking` parameter handling: Doubao uses `reasoning_effort=minimal`, Dashscope uses `extra_body={"thinking": {"type": ...}}`. All other API calls use standard OpenAI format.
 - `GlobalVLMClient._auto_initialize()` imports `ToolsExecutor` at call time to avoid circular imports. Do not move this to module level.
