@@ -156,7 +156,7 @@ redis:
 
 # User Memory Cache
 memory_cache:
-  snapshot_ttl: 300           # Snapshot cache TTL in seconds (default: 5 min)
+  snapshot_ttl: 3600          # Snapshot cache TTL in seconds (default: 1 hour)
   recent_days: 7              # Recent memories time window in days (default: 7)
   max_recently_accessed: 50   # Max items tracked in accessed hash
   max_today_events: 30        # Max today L0 events in cache
