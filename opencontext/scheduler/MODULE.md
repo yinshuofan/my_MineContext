@@ -181,7 +181,7 @@ Push endpoint
 
 _executor_loop (every check_interval seconds)
   └─> _process_task_type(task_type) for each registered handler
-        ├─ get_pending_task() -- ZRANGEBYSCORE for due tasks, acquire distributed lock
+        ├─ get_pending_task() -- Lua script atomic conditional pop (only if score <= now), orphan cleanup loop, acquire lock
         ├─ run_in_executor(handler, user_id, device_id, agent_id)
         └─ complete_task() -- update status, record last_exec (always), manage fail_count, release lock
 ```
