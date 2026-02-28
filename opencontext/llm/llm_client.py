@@ -37,12 +37,21 @@ class LLMClient:
         self.api_key = config.get("api_key")
         self.base_url = config.get("base_url")
         self.timeout = config.get("timeout", 300)
+        self.max_retries = config.get("max_retries", 3)
         self.provider = config.get("provider", LLMProvider.OPENAI.value)
         if not self.api_key or not self.base_url or not self.model:
             raise ValueError("API key, base URL, and model must be provided")
-        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout)
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
+        )
         self.async_client = AsyncOpenAI(
-            api_key=self.api_key, base_url=self.base_url, timeout=self.timeout
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
         )
 
     def generate(self, prompt: str, **kwargs) -> str:
@@ -339,6 +348,112 @@ class LLMClient:
             vectorize.get_vectorize_content(), **kwargs
         )
         return
+
+    def generate_embedding_batch(self, texts: List[str], **kwargs) -> List[List[float]]:
+        """Generate embeddings for multiple texts in a single API call (with internal chunking)."""
+        if not texts:
+            return []
+        if self.llm_type != LLMType.EMBEDDING:
+            raise ValueError(f"Unsupported LLM type for embedding generation: {self.llm_type}")
+
+        max_batch = kwargs.pop("max_batch_size", self.config.get("max_batch_size", 64))
+        output_dim = kwargs.get("output_dim", self.config.get("output_dim", 0))
+        all_embeddings: List[List[float]] = []
+
+        for i in range(0, len(texts), max_batch):
+            chunk = texts[i : i + max_batch]
+            try:
+                response = self.client.embeddings.create(model=self.model, input=chunk)
+                sorted_data = sorted(response.data, key=lambda d: d.index)
+                chunk_embeddings = [d.embedding for d in sorted_data]
+
+                if output_dim:
+                    chunk_embeddings = self._truncate_embeddings(chunk_embeddings, output_dim)
+
+                if hasattr(response, "usage") and response.usage:
+                    try:
+                        from opencontext.monitoring import record_token_usage
+
+                        record_token_usage(
+                            model=self.model,
+                            prompt_tokens=response.usage.prompt_tokens,
+                            completion_tokens=0,
+                            total_tokens=response.usage.total_tokens,
+                        )
+                    except ImportError:
+                        pass
+
+                all_embeddings.extend(chunk_embeddings)
+            except APIError as e:
+                logger.warning(
+                    f"Batch embedding failed for chunk ({len(chunk)} texts), "
+                    f"falling back to individual calls: {e}"
+                )
+                for text in chunk:
+                    all_embeddings.append(self.generate_embedding(text, **kwargs))
+
+        return all_embeddings
+
+    async def generate_embedding_batch_async(self, texts: List[str], **kwargs) -> List[List[float]]:
+        """Async version of generate_embedding_batch."""
+        if not texts:
+            return []
+        if self.llm_type != LLMType.EMBEDDING:
+            raise ValueError(f"Unsupported LLM type for embedding generation: {self.llm_type}")
+
+        max_batch = kwargs.pop("max_batch_size", self.config.get("max_batch_size", 64))
+        output_dim = kwargs.get("output_dim", self.config.get("output_dim", 0))
+        all_embeddings: List[List[float]] = []
+
+        for i in range(0, len(texts), max_batch):
+            chunk = texts[i : i + max_batch]
+            try:
+                response = await self.async_client.embeddings.create(model=self.model, input=chunk)
+                sorted_data = sorted(response.data, key=lambda d: d.index)
+                chunk_embeddings = [d.embedding for d in sorted_data]
+
+                if output_dim:
+                    chunk_embeddings = self._truncate_embeddings(chunk_embeddings, output_dim)
+
+                if hasattr(response, "usage") and response.usage:
+                    try:
+                        from opencontext.monitoring import record_token_usage
+
+                        record_token_usage(
+                            model=self.model,
+                            prompt_tokens=response.usage.prompt_tokens,
+                            completion_tokens=0,
+                            total_tokens=response.usage.total_tokens,
+                        )
+                    except ImportError:
+                        pass
+
+                all_embeddings.extend(chunk_embeddings)
+            except APIError as e:
+                logger.warning(
+                    f"Batch embedding async failed for chunk ({len(chunk)} texts), "
+                    f"falling back to individual calls: {e}"
+                )
+                for text in chunk:
+                    all_embeddings.append(await self.generate_embedding_async(text, **kwargs))
+
+        return all_embeddings
+
+    def _truncate_embeddings(
+        self, embeddings: List[List[float]], output_dim: int
+    ) -> List[List[float]]:
+        """Truncate embeddings to output_dim and re-normalize with L2 norm."""
+        import math
+
+        result = []
+        for embedding in embeddings:
+            if len(embedding) > output_dim:
+                embedding = embedding[:output_dim]
+                norm = math.sqrt(sum(x**2 for x in embedding))
+                if norm > 0:
+                    embedding = [x / norm for x in embedding]
+            result.append(embedding)
+        return result
 
     def validate(self) -> tuple[bool, str]:
         """
