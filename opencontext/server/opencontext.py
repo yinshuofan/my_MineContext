@@ -464,6 +464,24 @@ class OpenContext:
             logger.warning(f"Redis health check failed: {e}")
             health["redis"] = False
 
+        # Check scheduler status
+        try:
+            from opencontext.scheduler import get_scheduler
+
+            scheduler = get_scheduler()
+            if scheduler:
+                health["scheduler"] = {
+                    "initialized": True,
+                    "running": scheduler.is_running(),
+                    "in_flight_tasks": len(scheduler._in_flight),
+                    "registered_handlers": list(scheduler._task_handlers.keys()),
+                }
+            else:
+                health["scheduler"] = {"initialized": False, "running": False}
+        except Exception as e:
+            logger.warning(f"Scheduler health check failed: {e}")
+            health["scheduler"] = {"initialized": False, "error": str(e)}
+
         return health
 
 

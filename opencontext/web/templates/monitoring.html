@@ -57,6 +57,26 @@
         .time-range-selector {
             margin-bottom: 10px;
         }
+        .scheduler-section-divider {
+            border: 0;
+            border-top: 2px solid #dee2e6;
+            margin: 2rem 0;
+        }
+        .queue-badge {
+            font-size: 1rem;
+            min-width: 2.5rem;
+            display: inline-block;
+            text-align: center;
+        }
+        .scheduler-refresh-btn {
+            font-size: 0.85rem;
+        }
+        .scheduler-time-range .btn {
+            font-size: 0.8rem;
+        }
+        .failure-rate-cell {
+            font-weight: 600;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -211,6 +231,162 @@
                 </div>
             </div>
         </div>
+
+        <!-- ========== 定时任务调度器 ========== -->
+        <hr class="scheduler-section-divider">
+        <div class="row mt-3 mb-4">
+            <div class="col-12 d-flex justify-content-between align-items-center">
+                <h2 class="mb-0">定时任务调度器</h2>
+                <button class="btn btn-outline-primary btn-sm scheduler-refresh-btn" onclick="refreshSchedulerData()">
+                    <span class="loading spinner-border spinner-border-sm" id="schedulerLoading" role="status"></span>
+                    刷新调度器数据
+                </button>
+            </div>
+        </div>
+
+        <!-- 调度器概览卡片 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card metric-card border-primary">
+                    <div class="card-body text-center">
+                        <div class="metric-value text-primary" id="schedulerTotalExec">-</div>
+                        <small class="metric-label">执行总数（24h）</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card border-success">
+                    <div class="card-body text-center">
+                        <div class="metric-value" id="schedulerSuccessRate">-</div>
+                        <small class="metric-label">成功率</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card border-info">
+                    <div class="card-body text-center">
+                        <div class="metric-value text-info" id="schedulerAvgDuration">-</div>
+                        <small class="metric-label">平均耗时</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card border-warning">
+                    <div class="card-body text-center">
+                        <div class="metric-value text-warning" id="schedulerQueueDepth">-</div>
+                        <small class="metric-label">队列深度</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 队列深度面板 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">队列深度（实时）</h5>
+                        <small class="text-muted" id="queueLastUpdate">每10秒自动刷新</small>
+                    </div>
+                    <div class="card-body">
+                        <div id="queueDepthContainer">加载中...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 任务执行历史 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">任务执行历史</h5>
+                        <div class="btn-group scheduler-time-range" role="group">
+                            <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched1h" value="1">
+                            <label class="btn btn-outline-secondary btn-sm" for="sched1h">1h</label>
+                            <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched6h" value="6">
+                            <label class="btn btn-outline-secondary btn-sm" for="sched6h">6h</label>
+                            <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched24h" value="24" checked>
+                            <label class="btn btn-outline-secondary btn-sm" for="sched24h">24h</label>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover" id="taskHistoryTable">
+                                <thead>
+                                    <tr>
+                                        <th>任务类型</th>
+                                        <th class="text-center">总数</th>
+                                        <th class="text-center">成功</th>
+                                        <th class="text-center">失败</th>
+                                        <th class="text-center">失败率</th>
+                                        <th class="text-center">平均耗时(ms)</th>
+                                        <th class="text-center">最大耗时(ms)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="taskHistoryBody">
+                                    <tr><td colspan="7" class="text-center">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 最近失败记录 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">最近失败记录（最多10条）</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>时间</th>
+                                        <th>任务类型</th>
+                                        <th>用户标识</th>
+                                        <th>错误信息</th>
+                                        <th class="text-center">耗时(ms)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recentFailuresBody">
+                                    <tr><td colspan="5" class="text-center">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 调度器健康状态 -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">调度器健康状态</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <p><strong>运行状态：</strong><span id="schedulerRunningStatus">加载中...</span></p>
+                            </div>
+                            <div class="col-md-4">
+                                <p><strong>在飞任务数：</strong><span id="schedulerInFlight">-</span></p>
+                            </div>
+                            <div class="col-md-4">
+                                <p><strong>已注册处理器：</strong></p>
+                                <div id="schedulerHandlers">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -237,6 +413,17 @@
                     loadContextData();
                 });
             });
+
+            // 监听调度器时间范围切换
+            document.querySelectorAll('input[name="schedulerTimeRange"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    currentSchedulerTimeRange = parseInt(this.value);
+                    loadSchedulerData();
+                });
+            });
+
+            // 队列深度每10秒自动刷新
+            queueRefreshInterval = setInterval(loadQueueDepths, 10000);
         });
 
         async function refreshAllData() {
@@ -280,6 +467,10 @@
                 // 获取处理错误（最近1天，最多20条）
                 const processingErrors = await fetchData('/api/monitoring/processing-errors?hours=24&top=20');
                 updateProcessingErrorsChart(processingErrors.data);
+
+                // 获取调度器数据
+                await loadSchedulerData();
+                await loadQueueDepths();
 
             } catch (error) {
                 console.error('Failed to load monitoring data:', error);
@@ -600,6 +791,226 @@
             setTimeout(() => {
                 alertDiv.remove();
             }, 5000);
+        }
+
+        // ========== 定时任务调度器 ==========
+        let currentSchedulerTimeRange = 24;
+        let queueRefreshInterval = null;
+
+        async function refreshSchedulerData() {
+            const loading = document.getElementById('schedulerLoading');
+            loading.classList.add('active');
+            try {
+                await loadSchedulerData();
+                await loadQueueDepths();
+            } finally {
+                loading.classList.remove('active');
+            }
+        }
+
+        async function loadSchedulerData() {
+            try {
+                const [schedulerResp, healthResp, failuresResp] = await Promise.all([
+                    fetchData(`/api/monitoring/scheduler?hours=${currentSchedulerTimeRange}`),
+                    fetchData('/api/health'),
+                    fetchData(`/api/monitoring/scheduler/failures?hours=${currentSchedulerTimeRange}`)
+                ]);
+
+                const data = schedulerResp.data;
+                const schedulerHealth = (healthResp.components || healthResp.data?.components || {}).scheduler || {};
+
+                updateSchedulerOverview(data);
+                updateTaskHistory(data);
+                updateRecentFailures(data.recent_failures || []);
+                updateSchedulerHealth(schedulerHealth);
+            } catch (error) {
+                console.error('Failed to load scheduler data:', error);
+            }
+        }
+
+        async function loadQueueDepths() {
+            try {
+                const resp = await fetchData('/api/monitoring/scheduler/queues');
+                const queues = resp.data.queues || {};
+                updateQueueDepths(queues);
+
+                // 更新概览卡片中的队列深度总数
+                const totalDepth = Object.values(queues).reduce((sum, v) => sum + v, 0);
+                document.getElementById('schedulerQueueDepth').textContent = totalDepth.toLocaleString();
+
+                document.getElementById('queueLastUpdate').textContent =
+                    '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
+            } catch (error) {
+                console.error('Failed to load queue depths:', error);
+            }
+        }
+
+        function updateSchedulerOverview(data) {
+            // 执行总数
+            document.getElementById('schedulerTotalExec').textContent =
+                (data.total_executions || 0).toLocaleString();
+
+            // 成功率
+            const totalExec = data.total_executions || 0;
+            let successCount = 0;
+            let totalDurationMs = 0;
+            let taskCount = 0;
+
+            const byTask = data.by_task_type || {};
+            for (const key of Object.keys(byTask)) {
+                successCount += byTask[key].success_count || 0;
+                totalDurationMs += byTask[key].total_duration_ms || 0;
+                taskCount += byTask[key].count || 0;
+            }
+
+            const successRate = totalExec > 0 ? (successCount / totalExec * 100) : 0;
+            const rateEl = document.getElementById('schedulerSuccessRate');
+            rateEl.textContent = totalExec > 0 ? successRate.toFixed(1) + '%' : '-';
+
+            // 成功率颜色
+            rateEl.className = 'metric-value';
+            if (totalExec === 0) {
+                rateEl.classList.add('text-muted');
+            } else if (successRate > 95) {
+                rateEl.classList.add('text-success');
+            } else if (successRate > 80) {
+                rateEl.classList.add('text-warning');
+            } else {
+                rateEl.classList.add('text-danger');
+            }
+
+            // 平均耗时
+            const avgDuration = taskCount > 0 ? totalDurationMs / taskCount : 0;
+            const durationEl = document.getElementById('schedulerAvgDuration');
+            if (taskCount === 0) {
+                durationEl.textContent = '-';
+            } else if (avgDuration >= 1000) {
+                durationEl.textContent = (avgDuration / 1000).toFixed(1) + 's';
+            } else {
+                durationEl.textContent = Math.round(avgDuration) + 'ms';
+            }
+        }
+
+        function updateQueueDepths(queues) {
+            const container = document.getElementById('queueDepthContainer');
+            const taskTypes = Object.keys(queues);
+
+            if (taskTypes.length === 0) {
+                container.innerHTML = '<span class="text-muted">暂无队列数据</span>';
+                return;
+            }
+
+            let html = '<div class="d-flex flex-wrap gap-3">';
+            for (const taskType of taskTypes) {
+                const count = queues[taskType];
+                let badgeClass = 'bg-success';
+                if (count > 5) {
+                    badgeClass = 'bg-danger';
+                } else if (count > 0) {
+                    badgeClass = 'bg-warning text-dark';
+                }
+                html += `<div class="d-flex align-items-center gap-2">
+                    <span>${taskType}</span>
+                    <span class="badge ${badgeClass} queue-badge">${count}</span>
+                </div>`;
+            }
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function updateTaskHistory(data) {
+            const tbody = document.getElementById('taskHistoryBody');
+            const byTask = data.by_task_type || {};
+            const taskTypes = Object.keys(byTask);
+
+            if (taskTypes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">暂无执行记录</td></tr>';
+                return;
+            }
+
+            let html = '';
+            for (const taskType of taskTypes) {
+                const info = byTask[taskType];
+                const count = info.count || 0;
+                const success = info.success_count || 0;
+                const failure = info.failure_count || 0;
+                const failureRate = count > 0 ? (failure / count * 100) : 0;
+                const avgDur = info.avg_duration_ms != null ? Math.round(info.avg_duration_ms) : '-';
+                const maxDur = info.max_duration_ms != null ? Math.round(info.max_duration_ms) : '-';
+
+                let rateClass = 'text-success';
+                if (failureRate >= 20) {
+                    rateClass = 'text-danger';
+                } else if (failureRate >= 5) {
+                    rateClass = 'text-warning';
+                }
+
+                html += `<tr>
+                    <td>${taskType}</td>
+                    <td class="text-center">${count}</td>
+                    <td class="text-center">${success}</td>
+                    <td class="text-center">${failure}</td>
+                    <td class="text-center failure-rate-cell ${rateClass}">${failureRate.toFixed(1)}%</td>
+                    <td class="text-center">${avgDur}</td>
+                    <td class="text-center">${maxDur}</td>
+                </tr>`;
+            }
+            tbody.innerHTML = html;
+        }
+
+        function updateRecentFailures(failures) {
+            const tbody = document.getElementById('recentFailuresBody');
+
+            if (!failures || failures.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-success">暂无失败记录</td></tr>';
+                return;
+            }
+
+            const display = failures.slice(0, 10);
+            let html = '';
+            for (const f of display) {
+                const ts = f.timestamp ? new Date(f.timestamp).toLocaleString('zh-CN') : '-';
+                const taskType = f.task_type || '-';
+                const userKey = f.user_key || '-';
+                const errMsg = f.error_message || '-';
+                const dur = f.duration_ms != null ? f.duration_ms : '-';
+
+                html += `<tr>
+                    <td><small>${ts}</small></td>
+                    <td><small>${taskType}</small></td>
+                    <td><small>${userKey}</small></td>
+                    <td><small class="text-break">${errMsg}</small></td>
+                    <td class="text-center">${dur}</td>
+                </tr>`;
+            }
+            tbody.innerHTML = html;
+        }
+
+        function updateSchedulerHealth(health) {
+            // 运行状态
+            const statusEl = document.getElementById('schedulerRunningStatus');
+            if (health.running) {
+                statusEl.innerHTML = '<span class="badge bg-success">运行中</span>';
+            } else if (health.initialized === false) {
+                statusEl.innerHTML = '<span class="badge bg-secondary">未初始化</span>';
+            } else {
+                statusEl.innerHTML = '<span class="badge bg-danger">已停止</span>';
+            }
+
+            // 在飞任务数
+            const inFlightEl = document.getElementById('schedulerInFlight');
+            inFlightEl.textContent = health.in_flight_tasks != null ? health.in_flight_tasks : '-';
+
+            // 已注册处理器
+            const handlersEl = document.getElementById('schedulerHandlers');
+            const handlers = health.registered_handlers || [];
+            if (handlers.length === 0) {
+                handlersEl.innerHTML = '<span class="text-muted">无</span>';
+            } else {
+                handlersEl.innerHTML = handlers
+                    .map(h => `<span class="badge bg-secondary me-1 mb-1">${h}</span>`)
+                    .join('');
+            }
         }
     </script>
 </body>

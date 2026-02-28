@@ -211,3 +211,66 @@ async def get_processing_errors(
         return {"success": True, "data": errors}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get processing errors: {str(e)}")
+
+
+@router.get("/scheduler")
+async def get_scheduler_metrics(
+    hours: int = Query(24, ge=1, le=168, description="Statistics time range (hours)"),
+    _auth: str = auth_dependency,
+):
+    """Get scheduler task execution summary"""
+    try:
+        monitor = get_monitor()
+        summary = monitor.get_scheduler_summary(hours=hours)
+        return {"success": True, "data": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get scheduler metrics: {str(e)}")
+
+
+@router.get("/scheduler/queues")
+async def get_scheduler_queue_depths(
+    _auth: str = auth_dependency,
+):
+    """Get current queue depths for all scheduler task types (real-time from Redis)"""
+    try:
+        from opencontext.scheduler import get_scheduler
+
+        scheduler = get_scheduler()
+        if not scheduler:
+            return {"success": True, "data": {"queues": {}, "message": "Scheduler not initialized"}}
+
+        queues = await scheduler.get_queue_depths()
+        return {"success": True, "data": {"queues": queues}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get queue depths: {str(e)}")
+
+
+@router.get("/scheduler/failures")
+async def get_scheduler_failures(
+    hours: int = Query(1, ge=1, le=24, description="Time range (hours)"),
+    _auth: str = auth_dependency,
+):
+    """Get scheduler failure rates and recent errors (for external alerting)"""
+    try:
+        monitor = get_monitor()
+        summary = monitor.get_scheduler_summary(hours=hours)
+
+        failure_data = {
+            "time_range_hours": hours,
+            "total_executions": summary["total_executions"],
+            "by_task_type": {},
+            "recent_failures": summary["recent_failures"],
+        }
+
+        for task_type, stats in summary["by_task_type"].items():
+            count = stats["count"]
+            failures = stats["failure_count"]
+            failure_data["by_task_type"][task_type] = {
+                "total": count,
+                "failures": failures,
+                "failure_rate": round(failures / count, 4) if count > 0 else 0,
+            }
+
+        return {"success": True, "data": failure_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get scheduler failures: {str(e)}")

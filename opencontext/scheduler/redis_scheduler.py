@@ -485,6 +485,9 @@ class RedisTaskScheduler(ITaskScheduler):
             return
 
         lock_released = False
+        exec_start = time.time()
+        exec_success = False
+        exec_error = ""
         try:
             logger.info(f"Executing {task_type} for {task_info.user_key}")
 
@@ -498,11 +501,14 @@ class RedisTaskScheduler(ITaskScheduler):
                 task_type, task_info.user_key, task_info.lock_token or "", success
             )
             lock_released = True
+            exec_success = success
         except asyncio.CancelledError:
             logger.warning(f"Task {task_type} for {task_info.user_key} cancelled during shutdown")
+            exec_error = "cancelled_during_shutdown"
             raise  # Re-raise so _run_and_release's finally still fires
         except Exception as e:
             logger.exception(f"Task {task_type} failed for {task_info.user_key}: {e}")
+            exec_error = str(e)
         finally:
             if not lock_released:
                 # Use asyncio.shield() so complete_task runs as an independent task,
@@ -519,6 +525,22 @@ class RedisTaskScheduler(ITaskScheduler):
                         f"Failed to release lock during cleanup for "
                         f"{task_type}:{task_info.user_key}: {cleanup_err}"
                     )
+
+            # Record execution metrics
+            duration_ms = int((time.time() - exec_start) * 1000)
+            try:
+                from opencontext.monitoring import record_scheduler_execution
+
+                record_scheduler_execution(
+                    task_type=task_type,
+                    user_key=task_info.user_key,
+                    success=exec_success,
+                    duration_ms=duration_ms,
+                    trigger_mode="user_activity",
+                    error_message=exec_error,
+                )
+            except Exception:
+                pass  # Never let monitoring break the scheduler
 
     async def _periodic_worker(self) -> None:
         """Independent worker loop for periodic (global) tasks."""
@@ -568,6 +590,9 @@ class RedisTaskScheduler(ITaskScheduler):
             if not lock_token:
                 continue
 
+            exec_start = time.time()
+            exec_success = False
+            exec_error = ""
             try:
                 # Update state
                 interval = task_config.get("interval", 3600)
@@ -584,11 +609,13 @@ class RedisTaskScheduler(ITaskScheduler):
 
                 await self._redis.hset(periodic_key, "status", "idle")
                 await self._redis.expire(periodic_key, interval * 3)
+                exec_success = True
             except asyncio.CancelledError:
                 logger.warning(f"Periodic task {task_type} cancelled during shutdown")
                 raise
             except Exception as e:
                 logger.exception(f"Periodic task {task_type} failed: {e}")
+                exec_error = str(e)
                 await self._redis.hset(periodic_key, "status", "failed")
                 await self._redis.expire(periodic_key, interval * 3)
             finally:
@@ -596,6 +623,22 @@ class RedisTaskScheduler(ITaskScheduler):
                     await asyncio.shield(self._redis.release_lock(lock_key, lock_token))
                 except (asyncio.CancelledError, Exception) as e:
                     logger.error(f"Failed to release periodic lock for {task_type}: {e}")
+
+                # Record execution metrics
+                duration_ms = int((time.time() - exec_start) * 1000)
+                try:
+                    from opencontext.monitoring import record_scheduler_execution
+
+                    record_scheduler_execution(
+                        task_type=task_type,
+                        user_key="global",
+                        success=exec_success,
+                        duration_ms=duration_ms,
+                        trigger_mode="periodic",
+                        error_message=exec_error,
+                    )
+                except Exception:
+                    pass
 
     async def stop(self, timeout: float = 30.0) -> None:
         """
@@ -649,6 +692,14 @@ class RedisTaskScheduler(ITaskScheduler):
 
         self._executor_task = None
         logger.info("Task scheduler stopped")
+
+    async def get_queue_depths(self) -> Dict[str, int]:
+        """Get current queue depth for each registered task type."""
+        depths = {}
+        for task_type in self._task_handlers:
+            queue_key = f"{self.QUEUE_PREFIX}{task_type}"
+            depths[task_type] = await self._redis.zcard(queue_key)
+        return depths
 
     def is_running(self) -> bool:
         """Check if the scheduler is running"""

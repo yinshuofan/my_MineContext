@@ -7,6 +7,7 @@
 System Monitor - Collects and manages various system metrics
 """
 
+import json
 import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -73,6 +74,19 @@ class ProcessingError:
     timestamp: datetime = field(default_factory=datetime.now)
 
 
+@dataclass
+class SchedulerMetrics:
+    """Scheduler task execution metrics"""
+
+    task_type: str
+    user_key: str
+    success: bool
+    duration_ms: int
+    trigger_mode: str
+    error_message: str = ""
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
 class Monitor:
     """System Monitor"""
 
@@ -97,6 +111,9 @@ class Monitor:
 
         # Processing error records (keep last 50 records)
         self._processing_errors: deque = deque(maxlen=50)
+
+        # Scheduler execution history (keep last 1000 records)
+        self._scheduler_history: deque = deque(maxlen=1000)
 
         # Start time
         self._start_time = datetime.now()
@@ -556,6 +573,123 @@ class Monitor:
                 "time_range_hours": hours,
             }
 
+    def record_scheduler_execution(
+        self,
+        task_type: str,
+        user_key: str,
+        success: bool,
+        duration_ms: int,
+        trigger_mode: str = "user_activity",
+        error_message: str = "",
+    ):
+        """Record scheduler task execution metrics"""
+        with self._lock:
+            self._scheduler_history.append(
+                SchedulerMetrics(
+                    task_type=task_type,
+                    user_key=user_key,
+                    success=success,
+                    duration_ms=duration_ms,
+                    trigger_mode=trigger_mode,
+                    error_message=error_message,
+                )
+            )
+        # Persist to MySQL via existing stage_timing table
+        status = "success" if success else "error"
+        self.record_processing_stage(
+            stage_name=f"scheduler:{task_type}",
+            duration_ms=duration_ms,
+            status=status,
+            metadata=json.dumps({"user_key": user_key, "trigger_mode": trigger_mode}),
+        )
+
+    def get_scheduler_summary(self, hours: int = 24) -> Dict[str, Any]:
+        """Get scheduler execution summary"""
+        cutoff_time = datetime.now() - timedelta(hours=hours)
+
+        with self._lock:
+            recent_metrics = [m for m in self._scheduler_history if m.timestamp >= cutoff_time]
+
+            summary: Dict[str, Any] = {
+                "total_executions": len(recent_metrics),
+                "by_task_type": {},
+                "by_trigger_mode": {},
+                "recent_failures": [],
+            }
+
+            if not recent_metrics:
+                return summary
+
+            task_type_stats: Dict[str, Dict[str, Any]] = defaultdict(
+                lambda: {
+                    "count": 0,
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "total_duration_ms": 0,
+                    "avg_duration_ms": 0,
+                    "max_duration_ms": 0,
+                    "min_duration_ms": float("inf"),
+                }
+            )
+            trigger_mode_stats: Dict[str, Dict[str, int]] = defaultdict(
+                lambda: {"count": 0, "success_count": 0, "failure_count": 0}
+            )
+
+            failures = []
+
+            for m in recent_metrics:
+                # Stats by task type
+                ts = task_type_stats[m.task_type]
+                ts["count"] += 1
+                ts["total_duration_ms"] += m.duration_ms
+                if m.duration_ms > ts["max_duration_ms"]:
+                    ts["max_duration_ms"] = m.duration_ms
+                if m.duration_ms < ts["min_duration_ms"]:
+                    ts["min_duration_ms"] = m.duration_ms
+                if m.success:
+                    ts["success_count"] += 1
+                else:
+                    ts["failure_count"] += 1
+
+                # Stats by trigger mode
+                tm = trigger_mode_stats[m.trigger_mode]
+                tm["count"] += 1
+                if m.success:
+                    tm["success_count"] += 1
+                else:
+                    tm["failure_count"] += 1
+
+                # Collect failures
+                if not m.success:
+                    failures.append(m)
+
+            # Calculate averages and fix min for empty types
+            for stats in task_type_stats.values():
+                if stats["count"] > 0:
+                    stats["avg_duration_ms"] = int(stats["total_duration_ms"] / stats["count"])
+                if stats["min_duration_ms"] == float("inf"):
+                    stats["min_duration_ms"] = 0
+                del stats["total_duration_ms"]  # Don't expose internal accumulator
+
+            # Recent failures (last 10, newest first)
+            failures.sort(key=lambda x: x.timestamp, reverse=True)
+            recent_failures = [
+                {
+                    "task_type": f.task_type,
+                    "user_key": f.user_key,
+                    "error_message": f.error_message,
+                    "duration_ms": f.duration_ms,
+                    "timestamp": f.timestamp.isoformat(),
+                }
+                for f in failures[:10]
+            ]
+
+            summary["by_task_type"] = dict(task_type_stats)
+            summary["by_trigger_mode"] = dict(trigger_mode_stats)
+            summary["recent_failures"] = recent_failures
+
+            return summary
+
     def get_retrieval_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get retrieval performance summary"""
         cutoff_time = datetime.now() - timedelta(hours=hours)
@@ -618,6 +752,7 @@ class Monitor:
             "processing": self.get_processing_summary(hours=24),
             "stage_timing": self.get_stage_timing_summary(hours=24),
             "data_stats_24h": self.get_data_stats_summary(hours=24),
+            "scheduler": self.get_scheduler_summary(hours=24),
             "last_updated": datetime.now().isoformat(),
         }
 
@@ -698,3 +833,17 @@ def increment_data_count(
 ):
     """Global function: Increment data count"""
     get_monitor().increment_data_count(data_type, count, context_type, metadata)
+
+
+def record_scheduler_execution(
+    task_type: str,
+    user_key: str,
+    success: bool,
+    duration_ms: int,
+    trigger_mode: str = "user_activity",
+    error_message: str = "",
+):
+    """Global function: Record scheduler task execution metrics"""
+    get_monitor().record_scheduler_execution(
+        task_type, user_key, success, duration_ms, trigger_mode, error_message
+    )

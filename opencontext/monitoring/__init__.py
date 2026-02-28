@@ -18,6 +18,7 @@ from .monitor import (
     record_processing_metrics,
     record_processing_stage,
     record_retrieval_metrics,
+    record_scheduler_execution,
     record_token_usage,
 )
 
@@ -32,5 +33,6 @@ __all__ = [
     "record_processing_stage",
     "increment_context_count",
     "increment_data_count",
+    "record_scheduler_execution",
     "MetricsCollector",
 ]

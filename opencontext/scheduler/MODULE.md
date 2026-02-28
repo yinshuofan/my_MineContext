@@ -139,6 +139,23 @@ Implements `ITaskScheduler`. Stores all state in Redis via `RedisCache`.
 
 **Properties**: `user_key_builder -> UserKeyBuilder`
 
+**Public methods (beyond ITaskScheduler)**:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `get_queue_depths` | `async () -> Dict[str, int]` | Returns a mapping of `task_type` to pending task count. Iterates all registered task types and calls Redis `zcard` on each `scheduler:queue:{type}` sorted set. Useful for monitoring queue backlog in real time |
+
+**Observability instrumentation**:
+
+`_execute_task()` and `_process_periodic_tasks()` record execution metrics after each task completes (success or failure). They call `record_scheduler_execution()` from the monitoring module with the following fields:
+- `task_type` -- registered task type name
+- `user_key` -- composite user key (or `"global"` for periodic tasks)
+- `success` -- boolean indicating whether the handler returned `True`
+- `duration_ms` -- wall-clock execution time in milliseconds
+- `trigger_mode` -- `"user_activity"` or `"periodic"`
+
+Metrics are stored in an in-memory buffer and periodically persisted to the MySQL `monitoring_stage_timing` table using `stage_name="scheduler:{task_type}"`. This enables the `/api/monitoring/scheduler*` endpoints to query historical execution data.
+
 **Key internal methods**:
 
 | Method | Description |

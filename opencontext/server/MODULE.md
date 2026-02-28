@@ -307,6 +307,9 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 | POST | `/api/monitoring/refresh-context-stats` | `refresh_context_type_stats` | Refresh cache |
 | GET | `/api/monitoring/health` | `monitoring_health` | Monitoring health |
 | GET | `/api/monitoring/processing-errors` | `get_processing_errors` | Processing errors Top N |
+| GET | `/api/monitoring/scheduler` | `get_scheduler_summary` | Scheduler execution summary (query param: `hours`, default 24) |
+| GET | `/api/monitoring/scheduler/queues` | `get_scheduler_queue_depths` | Real-time queue depths for all task types from Redis `zcard` |
+| GET | `/api/monitoring/scheduler/failures` | `get_scheduler_failures` | Scheduler failure rates and recent errors (query param: `hours`, default 1) for alerting |
 
 ### Settings Routes (`/api/*`)
 

@@ -464,6 +464,21 @@ curl -X GET "http://localhost:1733/api/monitoring/processing-errors?hours=1&top=
 # -H "X-API-Key: your-api-key"
 
 
+# === Scheduler Monitoring ===
+
+# Get scheduler execution summary (last 24 hours)
+curl -X GET "http://localhost:1733/api/monitoring/scheduler?hours=24"
+# -H "X-API-Key: your-api-key"
+
+# Get real-time queue depths for all task types
+curl -X GET "http://localhost:1733/api/monitoring/scheduler/queues"
+# -H "X-API-Key: your-api-key"
+
+# Get scheduler failure rates and recent errors (last 1 hour, for alerting)
+curl -X GET "http://localhost:1733/api/monitoring/scheduler/failures?hours=1"
+# -H "X-API-Key: your-api-key"
+
+
 # ============================================================================
 # 13. Settings - Model
 # ============================================================================
