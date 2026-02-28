@@ -46,6 +46,14 @@ python -m py_compile opencontext/path/to/file.py
 
 The specific number of agents, their query focus, and team composition should be determined by the actual task — the table above is guidance, not a rigid rule.
 
+### Architecture-first design
+
+When proposing code changes, **evaluate whether the solution fits the project's architecture** — not just whether it works. The simplest modification is not always the best one. Consider:
+
+- **Layer boundaries**: Does the change respect the separation between generic infrastructure (e.g., `RedisCache` as thin wrapper) and domain logic (e.g., scheduler's task lifecycle)? Don't leak domain concepts into generic layers, and don't duplicate infrastructure in domain code.
+- **Multi-instance deployment**: This service may run as multiple instances behind a load balancer. Any code touching shared state (Redis, MySQL) must be safe under concurrent access. Think about: race conditions, lock contention, atomic operations, and whether "read-then-write" sequences need to be made atomic (e.g., via Lua scripts or database transactions).
+- **Existing patterns**: Before introducing a new approach, check how similar problems are already solved in the codebase. Follow established conventions unless there's a clear reason to deviate.
+
 ### What to explore
 
 - Source files directly related to the task
@@ -67,12 +75,7 @@ All data flows through a unified `ProcessedContext` model, but each type has its
 | `event` | APPEND | Vector DB | Immutable activity records, meetings, status changes. Never modified after creation |
 | `knowledge` | APPEND_MERGE | Vector DB | Reusable concepts, procedures, patterns. Similar entries merged to avoid duplication |
 
-Defined in `opencontext/models/enums.py`:
-- `ContextType` enum — the 5 types
-- `UpdateStrategy` enum — OVERWRITE, APPEND, APPEND_MERGE
-- `CONTEXT_UPDATE_STRATEGIES` dict — type → strategy mapping
-- `CONTEXT_STORAGE_BACKENDS` dict — type → `"document_db"` or `"vector_db"`
-- `ContextDescriptions` dict — rich descriptions with `key_indicators`, `examples`, `classification_priority` (used by LLM prompts for classification)
+Defined in `opencontext/models/enums.py`: `ContextType`, `UpdateStrategy`, `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `ContextDescriptions`.
 
 ### Data Pipeline
 
@@ -96,100 +99,27 @@ Input → Processor → ProcessedContext → _handle_processed_context (routes b
 
 ### Hierarchical Event Indexing
 
-Events support a 4-level time-based hierarchy for efficient historical retrieval:
-- **L0** — raw individual events
-- **L1** — daily summaries (`time_bucket: "2026-02-21"`)
-- **L2** — weekly summaries (`time_bucket: "2026-W08"`)
-- **L3** — monthly summaries (`time_bucket: "2026-02"`)
+Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (daily summaries) → **L2** (weekly) → **L3** (monthly). Summaries are generated per-user via `user_activity` scheduler trigger when data is pushed. See `periodic_task/MODULE.md` for generation details and `tools/MODULE.md` for retrieval algorithm.
 
-Key fields on `ContextProperties`: `hierarchy_level`, `parent_id`, `children_ids`, `time_bucket`.
+### Key Components Overview
 
-`HierarchicalEventTool` retrieval algorithm: search L1-L3 summaries top-down → drill through `children_ids` to L0 → merge with direct L0 semantic search as fallback → deduplicate by ID keeping higher score.
-
-**Summary generation** (`hierarchy_summary.py`) uses `user_activity` trigger mode — summaries are scheduled per-user when data is pushed (via `_schedule_user_hierarchy_summary()` in `push.py`), not generated globally on a fixed schedule. This ensures:
-- Only active users get summaries (no wasted LLM calls for inactive users)
-- Tasks are processed sequentially by the scheduler (one per 10s cycle), providing natural rate limiting
-- Each execution tries to generate the most recent completed daily/weekly/monthly summary, with idempotent dedup checks preventing regeneration
-- Enabled by default (`HIERARCHY_SUMMARY_ENABLED` defaults to `true`); set to `false` to disable
-
-**Hierarchical content inclusion**: Higher-level summaries include content from multiple levels for richer context:
-- L2 (weekly) summaries use both L1 daily summaries AND L0 raw events
-- L3 (monthly) summaries use both L2 weekly summaries AND L1 daily summaries
-
-**Token overflow handling**: When input content exceeds `_MAX_INPUT_TOKENS` (60K), the system automatically splits into batches, generates sub-summaries per batch, then merges via LLM. Weekly batches split by day-groups, monthly by week-groups, to maintain temporal coherence.
-
-### Retrieval Tools
-
-4 type-aligned tools registered in `opencontext/tools/tool_definitions.py`:
-
-| Tool | Types Searched | Backend | Strategy |
-|------|---------------|---------|----------|
-| `ProfileEntityTool` | profile, entity | Relational DB | Exact name lookup + text search |
-| `DocumentRetrievalTool` | document | Vector DB | Semantic similarity search |
-| `KnowledgeRetrievalTool` | knowledge, event (L0) | Vector DB | Semantic similarity search |
-| `HierarchicalEventTool` | event (all levels) | Vector DB | Summary drill-down + L0 fallback |
-
-### Unified Search API (`POST /api/search`)
-
-Two strategies available via `opencontext/server/search/`:
-
-- **Fast** (`fast_strategy.py`): Zero LLM calls. Single embedding generation shared across all parallel storage queries via `asyncio.to_thread()`. Events filtered to L0 only, with parent summaries batch-attached.
-- **Intelligent** (`intelligent_strategy.py`): LLM-driven agentic search. Uses `LLMContextStrategy` to select and execute retrieval tools. More accurate but slower.
-
-Both return `TypedResults` with `profile`, `entities`, `documents`, `events`, `knowledge` fields.
-
-Search results are automatically tracked as "recently accessed" via fire-and-forget `asyncio.create_task()` in the search route (see Memory Cache below).
-
-### Memory Cache (`GET /api/memory-cache`)
-
-Provides a single-call snapshot of a user's complete memory state, designed for downstream services that need quick access without running full searches. Located in `opencontext/server/cache/`.
-
-**Three sections returned:**
-1. **Profile + Entities** — from relational DB (cached in snapshot)
-2. **Recently Accessed** — memories returned in past searches; stored in Redis Hash, always read real-time (not part of snapshot)
-3. **Recent Memories** — hierarchical: today's L0 events + past N days' L1 daily summaries + recent documents/knowledge (cached in snapshot)
-
-**Caching architecture (snapshot vs accessed are separate):**
-
-| Data | Storage | Update Trigger | Read Mode |
-|------|---------|---------------|-----------|
-| Snapshot (profile + entities + recent memories) | Redis JSON String, 5-min TTL | Invalidated on push/write | Cache hit → return; miss → rebuild from DB |
-| Recently Accessed | Redis Hash, 7-day TTL | Updated on every search | Always real-time from Redis |
-
-**Key design decisions:**
-- **Stampede prevention**: Distributed lock (`RedisCache.acquire_lock()`) + double-check pattern in `get_user_memory_cache()`. Lock timeout falls back to building without caching (duplicate build OK, better than failing).
-- **Auto-invalidation**: `_invalidate_user_cache()` in `opencontext.py` fires after profile/entity/vector writes. Uses `asyncio.run_coroutine_threadsafe()` to bridge sync→async (see pitfall below).
-- **Parallel snapshot build**: 6 concurrent `asyncio.to_thread()` queries via `asyncio.gather()`.
-- **Singleton manager**: `get_memory_cache_manager()` in `memory_cache_manager.py`. All callers (route, search hook, opencontext.py invalidation) use the same instance.
-
-Config section in `config/config.yaml`: `memory_cache` (snapshot_ttl, recent_days, max_recently_accessed, etc.).
+| Component | Location | Details |
+|-----------|----------|---------|
+| Retrieval Tools (4 type-aligned) | `opencontext/tools/` | `tools/MODULE.md` |
+| Search API (fast/intelligent strategies) | `opencontext/server/search/` | `server/MODULE.md` |
+| Memory Cache (user memory snapshot) | `opencontext/server/cache/` | `server/MODULE.md` |
+| Scheduling (user_activity / periodic) | `opencontext/scheduler/` | `scheduler/MODULE.md` |
+| Data Models | `opencontext/models/context.py` | `models/MODULE.md` |
+| LLM Clients (embedding, VLM, text) | `opencontext/llm/` | `llm/MODULE.md` |
 
 ### Storage Access
 
-**Always use `get_storage()` from `opencontext/storage/global_storage.py`** to get the `UnifiedStorage` instance. This returns the object with all profile/entity/hierarchy methods.
-
-Do NOT use `GlobalStorage.get_instance()` or `get_global_storage()` — these return the raw `GlobalStorage` wrapper which lacks `upsert_profile()`, `get_entity()`, `search_hierarchy()`, etc.
-
-### Concurrency and Connection Management
-
-The server is async-first (FastAPI + uvicorn) but many storage operations are synchronous. Key patterns:
-
-- **ThreadPoolExecutor**: `lifespan()` in `cli.py` sets a 50-worker executor as the default for `asyncio.to_thread()`. The executor is stored and `shutdown(wait=False)` on lifespan exit.
-- **MySQL**: SQLAlchemy `QueuePool` (pool_size=20, max_overflow=10). `_get_connection()` is a `@contextmanager` that auto-returns connections. Health-check ping on checkout via SQLAlchemy event listener.
-- **SQLite**: `threading.local()` for per-thread connections. `_get_connection()` lazily creates a new connection per thread with WAL journal mode. **All method-level DB access must go through `self._get_connection()`** — only `initialize()` and `close()` may use `self.connection` directly.
-- **Async timeout**: Push/search endpoints wrap processing in `asyncio.wait_for(..., timeout=60.0)`.
-
-### Request Tracing
-
-`RequestIDMiddleware` (`opencontext/server/middleware/request_id.py`) generates an 8-char UUID per request (or accepts `X-Request-ID` header). Stored in `contextvars.ContextVar`, injected into all loguru log records via a patcher. Use `from opencontext.server.middleware.request_id import request_id_var` to access in any code path.
+**Always use `get_storage()` from `opencontext/storage/global_storage.py`** to get the `UnifiedStorage` instance. Do NOT use `GlobalStorage.get_instance()` or `get_global_storage()` — these return the raw wrapper which lacks profile/entity/hierarchy methods.
 
 ### Server Layer
 
-- **Entry point**: `opencontext/cli.py` → `opencontext start`
-- **Framework**: FastAPI on Uvicorn, port 1733
+- **Entry point**: `opencontext/cli.py` → `opencontext start` → FastAPI on Uvicorn, port 1733
 - **Orchestrator**: `opencontext/server/opencontext.py` → `OpenContext`
-- **Auth**: API key via `X-API-Key` header, disabled by default
-- **Health check**: `check_components_health()` checks config, storage, llm, document_db, redis. MySQL uses context manager `with backend._get_connection()`, SQLite executes `SELECT 1`.
 
 ### Key API Endpoints
 
@@ -201,44 +131,13 @@ The server is async-first (FastAPI + uvicorn) but many storage operations are sy
 | `/api/search` | POST | Unified search (`strategy: "fast"` or `"intelligent"`) |
 | `/api/memory-cache` | GET | User memory snapshot |
 
-Request body uses OpenAI message format: `messages: [{role, content: [{type: "text", text: "..."}]}]`. The 3-key identifier `(user_id, device_id, agent_id)` is optional on all push endpoints, defaulting to `"default"`. Pydantic Field constraints (`min_length`, `max_length`) match DB column sizes (user_id: 255, device_id/agent_id: 100).
-
-### Key Data Models (`opencontext/models/context.py`)
-
-- `ProcessedContext` — the universal intermediate format all processors produce
-- `ContextProperties` — includes `hierarchy_level`, `parent_id`, `children_ids`, `time_bucket`, `source_file_key`, `enable_merge`
-- `ProfileData` — relational DB model for user profiles (PK: `user_id + device_id + agent_id`)
-- `EntityData` — relational DB model for entities (unique key: `user_id + device_id + agent_id + entity_name`)
-- `ProcessedContextModel` — API response model, must mirror all fields from `ContextProperties` that should be exposed
-
-### LLM Integration (`opencontext/llm/`)
-
-Three global singletons accessed via `get_instance()`:
-- `GlobalEmbeddingClient` — text embeddings (Volcengine Doubao default)
-- `GlobalVLMClient` — vision/image understanding
-- `LLMClient` — text generation
-
-All use OpenAI-compatible API format.
+Request body uses OpenAI message format. The 3-key identifier `(user_id, device_id, agent_id)` is optional on all push endpoints, defaulting to `"default"`.
 
 ### Prompts (`config/prompts_en.yaml`, `config/prompts_zh.yaml`)
 
 LLM prompts for extraction, classification, merging, and hierarchy summarization. Loaded by `PromptManager`. When modifying the type system, all prompts referencing context types must be updated in both language files.
 
-### Scheduling (`opencontext/periodic_task/`, `opencontext/scheduler/`)
-
-`RedisTaskScheduler` (async, stateless, Redis-backed) supports two trigger modes:
-
-| Mode | Trigger | Use Case |
-|------|---------|----------|
-| `user_activity` | Scheduled per-user on data push, with configurable delay (`interval`) and dedup (`last_exec` check) | Tasks that should only run for active users |
-| `periodic` | Global timer, runs at fixed intervals regardless of user activity | System-wide maintenance tasks |
-
-Registered tasks:
-- `MemoryCompressionTask` (`user_activity`) — deduplicates similar contexts (knowledge type only)
-- `DataCleanupTask` (`periodic`) — retention-based cleanup
-- `HierarchySummaryTask` (`user_activity`) — generates L1/L2/L3 event summaries, scheduled from push endpoints via `_schedule_user_hierarchy_summary()` in `push.py`
-
-Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
+> The above is a high-level architectural overview. For implementation details, method signatures, and extension patterns, see the corresponding `MODULE.md` in each module directory.
 
 ## Configuration
 
@@ -259,55 +158,48 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 These are real bugs encountered during development. Check for them when modifying related code.
 
 ### All profile/entity operations require the 3-key identifier `(user_id, device_id, agent_id)`
-Every storage method for profiles and entities (`upsert_profile`, `get_profile`, `get_entity`, `search_entities`, `list_entities`, etc.) requires all three identifiers. `device_id` and `agent_id` default to `"default"` for backward compatibility. When adding new code that calls these methods, always pass all three — omitting `device_id` or `agent_id` causes positional argument mismatches (e.g., `entity_name` gets interpreted as `device_id`). The same applies to `ProfileEntityTool`, `ProfileRetrievalTool`, memory cache manager, and search strategies. Redis cache keys also use all three: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
-
-### Storage singleton confusion
-`get_storage()` returns `UnifiedStorage` (has profile/entity/hierarchy methods). `GlobalStorage.get_instance()` and `get_global_storage()` return `GlobalStorage` (lacks those methods). Always use `get_storage()` from `opencontext.storage.global_storage`.
+Every storage method for profiles and entities requires all three identifiers. `device_id` and `agent_id` default to `"default"`. Omitting them causes positional argument mismatches (e.g., `entity_name` gets interpreted as `device_id`). The same applies to tools, cache manager, and search strategies. Redis cache keys also use all three: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
 
 ### Qdrant Range filter only supports numeric/datetime
-Qdrant's `models.Range(gte=..., lte=...)` does NOT work on string fields like `time_bucket`. Use in-code string comparison filtering instead (over-fetch with `top_k * 3`, then filter). See `qdrant_backend.py` `search_by_hierarchy()` for the pattern.
+Qdrant's `models.Range(gte=..., lte=...)` does NOT work on string fields like `time_bucket`. Use in-code string comparison filtering instead (over-fetch with `top_k * 3`, then filter). See `qdrant_backend.py` `search_by_hierarchy()`.
 
 ### ProcessedContextModel must declare all exposed fields
 If you add a field to `ContextProperties` and want it in API responses, you must also declare it on `ProcessedContextModel` and update `from_processed_context()`. Missing declarations cause silent Pydantic field drops.
 
-### MySQL lastrowid is 0 for VARCHAR primary keys
-`cursor.lastrowid` only returns meaningful values for auto-increment integer PKs. For UUID/VARCHAR PKs (like the entities table), always SELECT back the persisted ID instead of relying on lastrowid.
+### MySQL pitfalls
+- **lastrowid is 0 for VARCHAR primary keys**: Always SELECT back the persisted ID for UUID/VARCHAR PKs.
+- **InnoDB composite key length limit**: utf8mb4 max key length is 3072 bytes (`VARCHAR(N)` uses `N*4`). Current composite unique key total: 710 chars, just under the 768-char limit.
 
 ### Use timezone-aware datetime everywhere
-`datetime.utcfromtimestamp()` is deprecated in Python 3.12+. Use `datetime.fromtimestamp(ts, tz=datetime.timezone.utc)` instead. The same applies to `datetime.utcnow()` — use `datetime.now(tz=datetime.timezone.utc)`.
+`datetime.utcfromtimestamp()` and `datetime.utcnow()` are deprecated in Python 3.12+. Use `datetime.fromtimestamp(ts, tz=datetime.timezone.utc)` and `datetime.now(tz=datetime.timezone.utc)`.
 
 ### Context merger only handles knowledge type
-The merger (`context_merger.py`) now only processes `knowledge` contexts. Profile/entity use relational DB overwrite, document uses delete+insert, event is immutable append. Do not route non-knowledge types through the merger.
+The merger (`context_merger.py`) only processes `knowledge` contexts. Do not route non-knowledge types through the merger.
 
 ### Prompt files must stay in sync
-`config/prompts_en.yaml` and `config/prompts_zh.yaml` must have identical keys. When adding/removing context types or changing classification logic, update both files and all `ContextDescriptions` in `enums.py`.
+`config/prompts_en.yaml` and `config/prompts_zh.yaml` must have identical keys. Update both files and `ContextDescriptions` in `enums.py` when changing classification logic.
 
 ### EntityData.relationships stored in metadata JSON
-The `relationships` field on `EntityData` is not a separate DB column — it's serialized inside the `metadata` JSON column. Keep this in mind when querying relationships.
+The `relationships` field on `EntityData` is not a separate DB column — it's serialized inside the `metadata` JSON column.
 
 ### Database connections are not thread-safe — use `_get_connection()` everywhere
-Both MySQL and SQLite backends use `threading.local()` for per-thread connections. `_get_connection()` is the only safe way to access connections from method-level code. In SQLite, `self.connection` is only for `initialize()` (setup) and `close()` (teardown) — all other methods must call `self._get_connection()` for cursor/commit/rollback. This was a major bug: 102 call sites originally used `self.connection` directly, causing thread-safety issues under `asyncio.to_thread()`.
+Both MySQL and SQLite backends use `threading.local()` for per-thread connections. `_get_connection()` is the only safe way to access connections from method-level code. In SQLite, `self.connection` is only for `initialize()` and `close()`.
 
 ### VikingDB hierarchy_level filter requires range format
-VikingDB stores `hierarchy_level` as float32. Equality checks like `"hierarchy_level": 0` don't work. Use range format: `{"$gte": 0, "$lte": 0}`. This applies to all numeric filters in VikingDB.
+VikingDB stores `hierarchy_level` as float32. Equality checks don't work. Use range format: `{"$gte": 0, "$lte": 0}`.
 
 ### Context type routing must match CONTEXT_STORAGE_BACKENDS
-`_handle_processed_context()` in `opencontext.py` routes profile/entity to MySQL and others to VikingDB. If you bypass this (e.g., calling `batch_upsert_processed_context()` for all types), profile/entity data will be stored in VikingDB instead of MySQL, making it unretrievable by the profile/entity search paths.
+`_handle_processed_context()` routes profile/entity to relational DB and others to vector DB. Bypassing this (e.g., calling `batch_upsert_processed_context()` for all types) makes profile/entity data unretrievable.
 
 ### Use `run_coroutine_threadsafe` not `create_task` from sync blocking code
-When sync code runs inside the event loop thread (e.g., `_handle_processed_context` via `asyncio.to_thread`), `loop.create_task()` schedules the coroutine but never reliably wakes the event loop to execute it. Use `asyncio.run_coroutine_threadsafe(coro, loop)` instead — it calls `loop.call_soon_threadsafe()` internally, which writes to the event loop's self-pipe to wake it. The `_capture_loop()` pattern stores the loop reference from async entry points so sync callers can access it later.
+When sync code runs via `asyncio.to_thread`, `loop.create_task()` doesn't reliably wake the event loop. Use `asyncio.run_coroutine_threadsafe(coro, loop)` instead. The `_capture_loop()` pattern stores the loop reference from async entry points.
 
-### Scheduler `periodic` mode passes `user_id=None` — not for per-user tasks
-`RedisTaskScheduler._process_periodic_tasks()` calls handlers with `(None, None, None)`. Any task whose `validate_context()` requires a non-null `user_id` will silently fail. Use `user_activity` trigger mode for per-user tasks; `periodic` is only for global system tasks (like `DataCleanupTask`). This was the root cause of `HierarchySummaryTask` never executing — it was configured as `periodic` but required `user_id`.
+### Scheduler pitfalls
+- **`periodic` mode passes `user_id=None`**: Any task requiring non-null `user_id` will silently fail. Use `user_activity` trigger mode for per-user tasks; `periodic` is only for global system tasks.
+- **Disabled tasks cause silent failures**: `schedule_user_task()` silently returns `False` if the task type isn't registered (enabled). The push endpoint continues normally — no error is raised.
 
-### Scheduler task type must be registered (enabled) or `schedule_user_task` silently fails
-`schedule_user_task()` calls `get_task_config()` which looks up the task type in Redis. If the task's `enabled` flag is `false` in config, `_collect_task_types()` skips registration, and `get_task_config()` returns `None`, causing `schedule_user_task()` to log a warning and return `False`. The push endpoint continues normally — no error is raised. `HIERARCHY_SUMMARY_ENABLED` now defaults to `true`; set to `false` to explicitly disable the task.
-
-### MySQL InnoDB composite key length limit
-InnoDB with utf8mb4 has a max key length of 3072 bytes. Each `VARCHAR(N)` uses `N*4` bytes in a key. Composite unique keys must keep total VARCHAR length under 768 chars. Current column sizes: `user_id VARCHAR(255)`, `device_id VARCHAR(100)`, `agent_id VARCHAR(100)`, `entity_name VARCHAR(255)` — total 710, just under the limit.
-
-### Hierarchy summary weekly/monthly generation is idempotent, not day-gated
-`execute()` always tries to generate summaries for the most recent completed week and month (not just on Mondays/1st of month). The existing dedup check (`search_hierarchy` for existing summaries) prevents regeneration. This design allows `user_activity` triggered tasks to generate weekly/monthly summaries whenever the user next becomes active, rather than requiring execution on a specific day.
+### Hierarchy summary generation is idempotent, not day-gated
+`execute()` always tries to generate summaries for the most recent completed period. The existing dedup check (`search_hierarchy`) prevents regeneration. This allows generation whenever the user next becomes active.
 
 ## Extending the System
 
