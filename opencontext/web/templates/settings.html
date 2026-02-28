@@ -3,468 +3,641 @@
 {% block content %}
 <div class="container-fluid">
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">系统设置</h1>
+        <h1 class="h2">System Settings</h1>
     </div>
 
     <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="model-tab" data-bs-toggle="tab" data-bs-target="#model" type="button" role="tab">
-                <i class="bi bi-cpu"></i> 模型配置
+                <i class="bi bi-cpu"></i> Model Config
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="capture-tab" data-bs-toggle="tab" data-bs-target="#capture" type="button" role="tab">
-                <i class="bi bi-camera"></i> 截图捕获
+                <i class="bi bi-inbox"></i> Capture Config
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="processing-tab" data-bs-toggle="tab" data-bs-target="#processing" type="button" role="tab">
-                <i class="bi bi-gear"></i> 处理配置
+                <i class="bi bi-gear"></i> Processing Config
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="generation-tab" data-bs-toggle="tab" data-bs-target="#generation" type="button" role="tab">
-                <i class="bi bi-robot"></i> 内容生成
+            <button class="nav-link" id="scheduler-tab" data-bs-toggle="tab" data-bs-target="#scheduler" type="button" role="tab">
+                <i class="bi bi-clock"></i> Scheduler &amp; Cache
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button" role="tab">
-                <i class="bi bi-code-square"></i> Prompts管理
+                <i class="bi bi-code-square"></i> Prompts
             </button>
         </li>
     </ul>
 
     <div class="tab-content" id="settingsTabContent">
-        <!-- 模型配置 -->
+
+        <!-- ==================== Tab 1: Model Config ==================== -->
         <div class="tab-pane fade show active" id="model" role="tabpanel">
             <div class="row mt-4">
-                <div class="col-md-8">
-                    <h4>LLM 模型配置</h4>
-                    <form id="modelForm">
-                        <div class="mb-3">
-                            <label for="modelPlatform" class="form-label">模型平台</label>
-                            <select class="form-select" id="modelPlatform" required>
-                                <option value="openai">OpenAI</option>
-                                <option value="anthropic">Anthropic</option>
-                                <option value="doubao">豆包</option>
-                                <option value="qwen">通义千问</option>
-                            </select>
+                <div class="col-md-10">
+                    <!-- LLM Text Model -->
+                    <div class="card mb-4">
+                        <div class="card-header"><strong>LLM Text Model</strong></div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="llm_provider" class="form-label">Provider</label>
+                                    <select class="form-select" id="llm_provider">
+                                        <option value="openai">OpenAI</option>
+                                        <option value="doubao">Doubao</option>
+                                        <option value="dashscope">DashScope</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="llm_model" class="form-label">Model</label>
+                                    <input type="text" class="form-control" id="llm_model" placeholder="e.g. gpt-4o">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="llm_max_concurrent" class="form-label">Max Concurrent</label>
+                                    <input type="number" class="form-control" id="llm_max_concurrent" min="1">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="llm_base_url" class="form-label">Base URL</label>
+                                    <input type="text" class="form-control" id="llm_base_url" placeholder="https://api.openai.com/v1">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="llm_api_key" class="form-label">API Key</label>
+                                    <input type="password" class="form-control" id="llm_api_key">
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-info" onclick="validateModelSection('llm')">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
                         </div>
-                        <div class="mb-3">
-                            <label for="modelId" class="form-label">模型 ID</label>
-                            <input type="text" class="form-control" id="modelId" placeholder="例如: gpt-5" required>
+                    </div>
+
+                    <!-- VLM Model -->
+                    <div class="card mb-4">
+                        <div class="card-header"><strong>VLM (Vision Language Model)</strong></div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="vlm_provider" class="form-label">Provider</label>
+                                    <select class="form-select" id="vlm_provider">
+                                        <option value="openai">OpenAI</option>
+                                        <option value="doubao">Doubao</option>
+                                        <option value="dashscope">DashScope</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="vlm_model" class="form-label">Model</label>
+                                    <input type="text" class="form-control" id="vlm_model" placeholder="e.g. gpt-4o">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="vlm_max_concurrent" class="form-label">Max Concurrent</label>
+                                    <input type="number" class="form-control" id="vlm_max_concurrent" min="1">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="vlm_base_url" class="form-label">Base URL</label>
+                                    <input type="text" class="form-control" id="vlm_base_url" placeholder="https://api.openai.com/v1">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="vlm_api_key" class="form-label">API Key</label>
+                                    <input type="password" class="form-control" id="vlm_api_key">
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-info" onclick="validateModelSection('vlm_model')">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
                         </div>
-                        <div class="mb-3">
-                            <label for="baseUrl" class="form-label">Base URL</label>
-                            <input type="text" class="form-control" id="baseUrl" placeholder="例如: https://api.openai.com/v1" required>
+                    </div>
+
+                    <!-- Embedding Model -->
+                    <div class="card mb-4">
+                        <div class="card-header"><strong>Embedding Model</strong></div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-3 mb-3">
+                                    <label for="emb_provider" class="form-label">Provider</label>
+                                    <select class="form-select" id="emb_provider">
+                                        <option value="openai">OpenAI</option>
+                                        <option value="doubao">Doubao</option>
+                                        <option value="dashscope">DashScope</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label for="emb_model" class="form-label">Model</label>
+                                    <input type="text" class="form-control" id="emb_model" placeholder="e.g. text-embedding-3-large">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label for="emb_max_concurrent" class="form-label">Max Concurrent</label>
+                                    <input type="number" class="form-control" id="emb_max_concurrent" min="1">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label for="emb_output_dim" class="form-label">Output Dim</label>
+                                    <input type="number" class="form-control" id="emb_output_dim" min="1">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="emb_base_url" class="form-label">Base URL</label>
+                                    <input type="text" class="form-control" id="emb_base_url" placeholder="https://api.openai.com/v1">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="emb_api_key" class="form-label">API Key</label>
+                                    <input type="password" class="form-control" id="emb_api_key">
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-info" onclick="validateModelSection('embedding_model')">
+                                <i class="bi bi-check-circle"></i> Test Connection
+                            </button>
                         </div>
-                        <div class="mb-3">
-                            <label for="apiKey" class="form-label">API Key</label>
-                            <input type="password" class="form-control" id="apiKey" required>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-primary" onclick="saveAllModels()">
+                            <i class="bi bi-save"></i> Save All
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="loadModelSettings()">
+                            <i class="bi bi-arrow-clockwise"></i> Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== Tab 2: Capture Config ==================== -->
+        <div class="tab-pane fade" id="capture" role="tabpanel">
+            <div class="row mt-4">
+                <div class="col-md-10">
+                    <form id="captureForm">
+                        <div class="mb-3 form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="capture_enabled">
+                            <label class="form-check-label fw-bold" for="capture_enabled">Enable Capture</label>
                         </div>
 
-                        <h4 class="mt-4">Embedding 模型配置</h4>
-                        <div class="mb-3">
-                            <label for="embeddingModelId" class="form-label">Embedding 模型 ID</label>
-                            <input type="text" class="form-control" id="embeddingModelId" placeholder="例如: text-embedding-ada-002" required>
-                        </div>
-                        <div class="mb-3 form-check">
-                            <input type="checkbox" class="form-check-input" id="separateEmbedding" onchange="toggleEmbeddingConfig()">
-                            <label class="form-check-label" for="separateEmbedding">使用独立的 Embedding 配置</label>
-                        </div>
-                        <div id="embeddingConfigSection" style="display: none;">
-                            <div class="mb-3">
-                                <label for="embeddingModelPlatform" class="form-label">Embedding 平台</label>
-                                <select class="form-select" id="embeddingModelPlatform">
-                                    <option value="openai">OpenAI</option>
-                                    <option value="doubao">豆包</option>
-                                </select>
+                        <!-- Text Chat Capture -->
+                        <div class="card mb-4">
+                            <div class="card-header"><strong>Text Chat Capture</strong></div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="text_chat_enabled">
+                                        <label class="form-check-label" for="text_chat_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="text_chat_buffer_size" class="form-label">Buffer Size</label>
+                                        <input type="number" class="form-control" id="text_chat_buffer_size" min="1">
+                                    </div>
+                                </div>
                             </div>
-                            <div class="mb-3">
-                                <label for="embeddingBaseUrl" class="form-label">Embedding Base URL</label>
-                                <input type="text" class="form-control" id="embeddingBaseUrl" placeholder="例如: https://api.openai.com/v1">
+                        </div>
+
+                        <!-- Folder Monitor -->
+                        <div class="card mb-4">
+                            <div class="card-header"><strong>Folder Monitor</strong></div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="folder_monitor_enabled">
+                                        <label class="form-check-label" for="folder_monitor_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="folder_monitor_interval" class="form-label">Monitor Interval (s)</label>
+                                        <input type="number" class="form-control" id="folder_monitor_interval" min="1">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="folder_monitor_max_file_size" class="form-label">Max File Size (MB)</label>
+                                        <input type="number" class="form-control" id="folder_monitor_max_file_size" min="1">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <div class="form-check form-switch mt-4">
+                                            <input class="form-check-input" type="checkbox" id="folder_monitor_recursive">
+                                            <label class="form-check-label" for="folder_monitor_recursive">Recursive</label>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="folder_monitor_initial_scan">
+                                            <label class="form-check-label" for="folder_monitor_initial_scan">Initial Scan</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="folder_monitor_paths" class="form-label">Watch Folder Paths (one per line)</label>
+                                    <textarea class="form-control" id="folder_monitor_paths" rows="3" placeholder="/path/to/folder1&#10;/path/to/folder2"></textarea>
+                                </div>
                             </div>
-                            <div class="mb-3">
-                                <label for="embeddingApiKey" class="form-label">Embedding API Key</label>
-                                <input type="password" class="form-control" id="embeddingApiKey">
+                        </div>
+
+                        <!-- Vault Document Monitor -->
+                        <div class="card mb-4">
+                            <div class="card-header"><strong>Vault Document Monitor</strong></div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="vault_enabled">
+                                        <label class="form-check-label" for="vault_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="vault_interval" class="form-label">Monitor Interval (s)</label>
+                                        <input type="number" class="form-control" id="vault_interval" min="1">
+                                    </div>
+                                    <div class="col-md-4 mb-3 form-check form-switch mt-4">
+                                        <input class="form-check-input" type="checkbox" id="vault_initial_scan">
+                                        <label class="form-check-label" for="vault_initial_scan">Initial Scan</label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="bi bi-save"></i> 保存配置
-                            </button>
-                            <button type="button" class="btn btn-secondary" onclick="loadModelSettings()">
-                                <i class="bi bi-arrow-clockwise"></i> 重置
-                            </button>
-                            <button type="button" class="btn btn-info" onclick="validateModelConfig()">
-                                <i class="bi bi-check-circle"></i> 测试连接
-                            </button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save</button>
+                            <button type="button" class="btn btn-secondary" onclick="loadCaptureSettings()"><i class="bi bi-arrow-clockwise"></i> Reset</button>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
 
-        <!-- 截图捕获设置 -->
-        <div class="tab-pane fade" id="capture" role="tabpanel">
-            <div class="row mt-4">
-                <div class="col-md-8">
-                    <h4>截图捕获设置 (后端功能，与应用端冲突)</h4>
-                    <form id="captureForm">
-                        <div class="mb-3 form-check">
-                            <input type="checkbox" class="form-check-input" id="screenshot_enabled">
-                            <label class="form-check-label" for="screenshot_enabled">启用截图捕获</label>
-                        </div>
-                        <div class="mb-3">
-                            <label for="screenshot_interval" class="form-label">截图间隔（秒）</label>
-                            <input type="number" class="form-control" id="screenshot_interval" min="1">
-                        </div>
-                        <div class="mb-3">
-                            <label for="screenshot_path" class="form-label">存储路径</label>
-                            <input type="text" class="form-control" id="screenshot_path" placeholder="例如: ./screenshots">
-                        </div>
-
-                        <!-- 文档监控设置 - 已隐藏 -->
-                        <div style="display: none;">
-                            <h4 class="mt-4">文档监控设置</h4>
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="vault_enabled">
-                                <label class="form-check-label" for="vault_enabled">启用文档监控</label>
-                            </div>
-                            <div class="mb-3">
-                                <label for="vault_interval" class="form-label">监控间隔（秒）</label>
-                                <input type="number" class="form-control" id="vault_interval" min="1">
-                            </div>
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="vault_initial_scan">
-                                <label class="form-check-label" for="vault_initial_scan">初始扫描</label>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-save"></i> 保存设置
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="loadCaptureSettings()">
-                            <i class="bi bi-arrow-clockwise"></i> 重置
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- 处理配置 -->
+        <!-- ==================== Tab 3: Processing Config ==================== -->
         <div class="tab-pane fade" id="processing" role="tabpanel">
             <div class="row mt-4">
-                <div class="col-md-8">
+                <div class="col-md-10">
                     <form id="processingForm">
-                        <!-- 文档处理 - 已隐藏 -->
-                        <div style="display: none;">
-                            <h4>文档处理</h4>
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="doc_enabled">
-                                <label class="form-check-label" for="doc_enabled">启用文档处理</label>
-                            </div>
-                            <div class="mb-3">
-                                <label for="doc_batch_size" class="form-label">批处理大小</label>
-                                <input type="number" class="form-control" id="doc_batch_size" min="1" max="100">
-                            </div>
-                            <div class="mb-3">
-                                <label for="doc_batch_timeout" class="form-label">批处理超时（秒）</label>
-                                <input type="number" class="form-control" id="doc_batch_timeout" min="1" max="60">
+                        <div class="mb-3 form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="processing_enabled">
+                            <label class="form-check-label fw-bold" for="processing_enabled">Enable Processing</label>
+                        </div>
+
+                        <!-- Text Chat Processor -->
+                        <div class="card mb-4">
+                            <div class="card-header"><strong>Text Chat Processor</strong></div>
+                            <div class="card-body">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="text_chat_proc_enabled">
+                                    <label class="form-check-label" for="text_chat_proc_enabled">Enabled</label>
+                                </div>
                             </div>
                         </div>
 
-                        <h4>截图处理</h4>
-                        <div class="mb-3 form-check">
-                            <input type="checkbox" class="form-check-input" id="screenshot_proc_enabled">
-                            <label class="form-check-label" for="screenshot_proc_enabled">启用截图处理</label>
-                        </div>
-                        <div class="mb-3">
-                            <label for="screenshot_batch_size" class="form-label">批处理大小</label>
-                            <input type="number" class="form-control" id="screenshot_batch_size" min="1" max="100">
-                        </div>
-                        <div class="mb-3">
-                            <label for="screenshot_max_size" class="form-label">最大图片尺寸</label>
-                            <input type="number" class="form-control" id="screenshot_max_size" min="100" max="4096">
-                        </div>
-
-                        <!-- 上下文合并 - 已隐藏 -->
-                        <div style="display: none;">
-                            <h4 class="mt-4">上下文合并</h4>
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="merger_enabled">
-                                <label class="form-check-label" for="merger_enabled">启用上下文合并</label>
-                            </div>
-                            <div class="mb-3">
-                                <label for="merger_threshold" class="form-label">相似度阈值（0-1）</label>
-                                <input type="number" class="form-control" id="merger_threshold" min="0" max="1" step="0.01">
+                        <!-- Document Processor -->
+                        <div class="card mb-4">
+                            <div class="card-header"><strong>Document Processor</strong></div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="doc_proc_enabled">
+                                        <label class="form-check-label" for="doc_proc_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="doc_proc_batch_size" class="form-label">Batch Size</label>
+                                        <input type="number" class="form-control" id="doc_proc_batch_size" min="1">
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="doc_proc_batch_timeout" class="form-label">Batch Timeout (s)</label>
+                                        <input type="number" class="form-control" id="doc_proc_batch_timeout" min="1">
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-save"></i> 保存设置
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="loadProcessingSettings()">
-                            <i class="bi bi-arrow-clockwise"></i> 重置
-                        </button>
+                        <!-- Screenshot Processor -->
+                        <div class="card mb-4">
+                            <div class="card-header"><strong>Screenshot Processor</strong></div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="screenshot_proc_enabled">
+                                        <label class="form-check-label" for="screenshot_proc_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="screenshot_hash_threshold" class="form-label">Hash Threshold</label>
+                                        <input type="number" class="form-control" id="screenshot_hash_threshold" min="0" max="64">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="screenshot_batch_size" class="form-label">Batch Size</label>
+                                        <input type="number" class="form-control" id="screenshot_batch_size" min="1">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="screenshot_batch_timeout" class="form-label">Batch Timeout (s)</label>
+                                        <input type="number" class="form-control" id="screenshot_batch_timeout" min="1">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label for="screenshot_max_raw_props" class="form-label">Max Raw Properties</label>
+                                        <input type="number" class="form-control" id="screenshot_max_raw_props" min="1">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="screenshot_max_image_size" class="form-label">Max Image Size (px)</label>
+                                        <input type="number" class="form-control" id="screenshot_max_image_size" min="100">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="screenshot_resize_quality" class="form-label">Resize Quality</label>
+                                        <input type="number" class="form-control" id="screenshot_resize_quality" min="1" max="100">
+                                    </div>
+                                    <div class="col-md-3 mb-3 form-check form-switch mt-4">
+                                        <input class="form-check-input" type="checkbox" id="screenshot_enabled_delete">
+                                        <label class="form-check-label" for="screenshot_enabled_delete">Delete After Process</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Context Merger (Knowledge) -->
+                        <div class="card mb-4">
+                            <div class="card-header"><strong>Knowledge Merger</strong></div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="merger_enabled">
+                                        <label class="form-check-label" for="merger_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="merger_threshold" class="form-label">Similarity Threshold</label>
+                                        <input type="number" class="form-control" id="merger_threshold" min="0" max="1" step="0.01">
+                                    </div>
+                                    <div class="col-md-4 mb-3 form-check form-switch mt-4">
+                                        <input class="form-check-input" type="checkbox" id="merger_intelligent">
+                                        <label class="form-check-label" for="merger_intelligent">Intelligent Merging</label>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="merger_memory_mgmt">
+                                        <label class="form-check-label" for="merger_memory_mgmt">Memory Management</label>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="merger_retention_days" class="form-label">Retention Days</label>
+                                        <input type="number" class="form-control" id="merger_retention_days" min="1">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="merger_sim_threshold" class="form-label">Knowledge Sim Threshold</label>
+                                        <input type="number" class="form-control" id="merger_sim_threshold" min="0" max="1" step="0.01">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="merger_max_merge_count" class="form-label">Max Merge Count</label>
+                                        <input type="number" class="form-control" id="merger_max_merge_count" min="1">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Document Processing Parameters -->
+                        <div class="card mb-4">
+                            <div class="card-header"><strong>Document Processing Parameters</strong></div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="docproc_batch_size" class="form-label">VLM Batch Size</label>
+                                        <input type="number" class="form-control" id="docproc_batch_size" min="1">
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="docproc_dpi" class="form-label">PDF DPI</label>
+                                        <input type="number" class="form-control" id="docproc_dpi" min="72" max="600">
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="docproc_text_threshold" class="form-label">Text Threshold/Page</label>
+                                        <input type="number" class="form-control" id="docproc_text_threshold" min="0">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save</button>
+                            <button type="button" class="btn btn-secondary" onclick="loadProcessingSettings()"><i class="bi bi-arrow-clockwise"></i> Reset</button>
+                        </div>
                     </form>
                 </div>
             </div>
         </div>
 
-        <!-- 内容生成 -->
-        <div class="tab-pane fade" id="generation" role="tabpanel">
+        <!-- ==================== Tab 4: Scheduler & Cache ==================== -->
+        <div class="tab-pane fade" id="scheduler" role="tabpanel">
             <div class="row mt-4">
-                <div class="col-md-8">
-                    <form id="generationForm">
+                <div class="col-md-10">
+                    <form id="schedulerCacheForm">
+                        <!-- Scheduler -->
+                        <h4>Scheduler</h4>
+                        <div class="mb-3 form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="scheduler_enabled">
+                            <label class="form-check-label fw-bold" for="scheduler_enabled">Enable Scheduler</label>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-4 mb-3">
+                                <label for="executor_check_interval" class="form-label">Check Interval (s)</label>
+                                <input type="number" class="form-control" id="executor_check_interval" min="1">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="executor_max_concurrent" class="form-label">Max Concurrent</label>
+                                <input type="number" class="form-control" id="executor_max_concurrent" min="1">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="executor_lock_timeout" class="form-label">Lock Timeout (s)</label>
+                                <input type="number" class="form-control" id="executor_lock_timeout" min="1">
+                            </div>
+                        </div>
+
+                        <!-- memory_compression task -->
                         <div class="card mb-3">
+                            <div class="card-header"><strong>Memory Compression</strong></div>
                             <div class="card-body">
-                                <h5 class="card-title">活动摘要</h5>
-                                <div class="mb-3 form-check">
-                                    <input type="checkbox" class="form-check-input" id="activity_enabled">
-                                    <label class="form-check-label" for="activity_enabled">启用活动摘要</label>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="activity_interval" class="form-label">生成间隔（秒）</label>
-                                    <input type="number" class="form-control" id="activity_interval" min="600">
-                                    <small class="text-muted">推荐: 900-1800秒 (15-30分钟)</small>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="task_mc_enabled">
+                                        <label class="form-check-label" for="task_mc_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="task_mc_trigger" class="form-label">Trigger Mode</label>
+                                        <select class="form-select" id="task_mc_trigger">
+                                            <option value="user_activity">user_activity</option>
+                                            <option value="periodic">periodic</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="task_mc_interval" class="form-label">Interval (s)</label>
+                                        <input type="number" class="form-control" id="task_mc_interval" min="1">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="task_mc_ttl" class="form-label">Task TTL (s)</label>
+                                        <input type="number" class="form-control" id="task_mc_ttl" min="1">
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
+                        <!-- data_cleanup task -->
                         <div class="card mb-3">
+                            <div class="card-header"><strong>Data Cleanup</strong></div>
                             <div class="card-body">
-                                <h5 class="card-title">智能提示</h5>
-                                <div class="mb-3 form-check">
-                                    <input type="checkbox" class="form-check-input" id="tips_enabled">
-                                    <label class="form-check-label" for="tips_enabled">启用智能提示</label>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="tips_interval" class="form-label">生成间隔（秒）</label>
-                                    <input type="number" class="form-control" id="tips_interval" min="1800">
-                                    <small class="text-muted">推荐: 3600-7200秒 (1-2小时)</small>
+                                <div class="row">
+                                    <div class="col-md-2 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="task_dc_enabled">
+                                        <label class="form-check-label" for="task_dc_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-2 mb-3">
+                                        <label for="task_dc_trigger" class="form-label">Trigger</label>
+                                        <select class="form-select" id="task_dc_trigger">
+                                            <option value="periodic">periodic</option>
+                                            <option value="user_activity">user_activity</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2 mb-3">
+                                        <label for="task_dc_interval" class="form-label">Interval (s)</label>
+                                        <input type="number" class="form-control" id="task_dc_interval" min="1">
+                                    </div>
+                                    <div class="col-md-2 mb-3">
+                                        <label for="task_dc_timeout" class="form-label">Timeout (s)</label>
+                                        <input type="number" class="form-control" id="task_dc_timeout" min="1">
+                                    </div>
+                                    <div class="col-md-2 mb-3">
+                                        <label for="task_dc_retention" class="form-label">Retention Days</label>
+                                        <input type="number" class="form-control" id="task_dc_retention" min="1">
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
+                        <!-- hierarchy_summary task -->
                         <div class="card mb-3">
+                            <div class="card-header"><strong>Hierarchy Summary</strong></div>
                             <div class="card-body">
-                                <h5 class="card-title">待办事项</h5>
-                                <div class="mb-3 form-check">
-                                    <input type="checkbox" class="form-check-input" id="todos_enabled">
-                                    <label class="form-check-label" for="todos_enabled">启用待办事项</label>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3 form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="task_hs_enabled">
+                                        <label class="form-check-label" for="task_hs_enabled">Enabled</label>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="task_hs_trigger" class="form-label">Trigger Mode</label>
+                                        <select class="form-select" id="task_hs_trigger">
+                                            <option value="user_activity">user_activity</option>
+                                            <option value="periodic">periodic</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="task_hs_interval" class="form-label">Interval (s)</label>
+                                        <input type="number" class="form-control" id="task_hs_interval" min="1">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="task_hs_timeout" class="form-label">Timeout (s)</label>
+                                        <input type="number" class="form-control" id="task_hs_timeout" min="1">
+                                    </div>
                                 </div>
-                                <div class="mb-3">
-                                    <label for="todos_interval" class="form-label">生成间隔（秒）</label>
-                                    <input type="number" class="form-control" id="todos_interval" min="1800">
-                                    <small class="text-muted">推荐: 1800-3600秒 (30-60分钟)</small>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label for="task_hs_ttl" class="form-label">Task TTL (s)</label>
+                                        <input type="number" class="form-control" id="task_hs_ttl" min="1">
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="card mb-3">
-                            <div class="card-body">
-                                <h5 class="card-title">日报生成</h5>
-                                <div class="mb-3 form-check">
-                                    <input type="checkbox" class="form-check-input" id="report_enabled">
-                                    <label class="form-check-label" for="report_enabled">启用日报生成</label>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="report_time" class="form-label">生成时间</label>
-                                    <input type="time" class="form-control" id="report_time">
-                                    <small class="text-muted">每天固定时间生成日报</small>
-                                </div>
+                        <hr class="my-4">
+
+                        <!-- Memory Cache -->
+                        <h4>Memory Cache</h4>
+                        <div class="row mb-4">
+                            <div class="col-md-3 mb-3">
+                                <label for="cache_snapshot_ttl" class="form-label">Snapshot TTL (s)</label>
+                                <input type="number" class="form-control" id="cache_snapshot_ttl" min="1">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="cache_recent_days" class="form-label">Recent Days</label>
+                                <input type="number" class="form-control" id="cache_recent_days" min="1">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="cache_max_recently" class="form-label">Max Recently Accessed</label>
+                                <input type="number" class="form-control" id="cache_max_recently" min="1">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="cache_max_today_events" class="form-label">Max Today Events</label>
+                                <input type="number" class="form-control" id="cache_max_today_events" min="1">
+                            </div>
+                        </div>
+                        <div class="row mb-4">
+                            <div class="col-md-3 mb-3">
+                                <label for="cache_max_documents" class="form-label">Max Recent Documents</label>
+                                <input type="number" class="form-control" id="cache_max_documents" min="1">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="cache_max_knowledge" class="form-label">Max Recent Knowledge</label>
+                                <input type="number" class="form-control" id="cache_max_knowledge" min="1">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="cache_accessed_ttl" class="form-label">Accessed TTL (s)</label>
+                                <input type="number" class="form-control" id="cache_accessed_ttl" min="1">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="cache_max_entities" class="form-label">Max Entities</label>
+                                <input type="number" class="form-control" id="cache_max_entities" min="1">
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-save"></i> 保存设置
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="loadGenerationSettings()">
-                            <i class="bi bi-arrow-clockwise"></i> 重置
-                        </button>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save</button>
+                            <button type="button" class="btn btn-secondary" onclick="loadSchedulerCacheSettings()"><i class="bi bi-arrow-clockwise"></i> Reset</button>
+                        </div>
                     </form>
                 </div>
             </div>
         </div>
 
-        <!-- Prompts管理 -->
+        <!-- ==================== Tab 5: Prompts ==================== -->
         <div class="tab-pane fade" id="prompts" role="tabpanel">
             <div class="row mt-4">
                 <div class="col-md-12">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div class="d-flex align-items-center gap-3">
-                            <h4 class="mb-0">Prompts管理</h4>
+                            <h4 class="mb-0">Prompts</h4>
                             <select class="form-select form-select-sm" style="width: 200px;" id="promptLanguage" onchange="changePromptLanguage()">
-                                <option value="zh">中文 (zh)</option>
+                                <option value="zh">Chinese (zh)</option>
                                 <option value="en">English (en)</option>
                             </select>
                         </div>
                         <div class="btn-group">
                             <button class="btn btn-primary" onclick="saveAllPrompts()">
-                                <i class="bi bi-save"></i> 保存全部
+                                <i class="bi bi-save"></i> Save All
                             </button>
                             <button class="btn btn-secondary" onclick="exportPrompts()">
-                                <i class="bi bi-download"></i> 导出
+                                <i class="bi bi-download"></i> Export
                             </button>
                             <label class="btn btn-secondary" for="importFile">
-                                <i class="bi bi-upload"></i> 导入
+                                <i class="bi bi-upload"></i> Import
                             </label>
                             <input type="file" id="importFile" accept=".yaml,.yml" style="display:none" onchange="importPrompts(event)">
                             <button class="btn btn-warning" onclick="resetAllSettings()">
-                                <i class="bi bi-arrow-counterclockwise"></i> 重置全部
+                                <i class="bi bi-arrow-counterclockwise"></i> Reset All
                             </button>
                         </div>
                     </div>
 
-                    <!-- Debug助手配置 -->
-                    <div class="card mb-4">
-                        <div class="card-header bg-info text-white">
-                            <i class="bi bi-bug"></i> Debug助手配置
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="form-check form-switch mb-3">
-                                        <input class="form-check-input" type="checkbox" id="debugEnabled">
-                                        <label class="form-check-label" for="debugEnabled">
-                                            <strong>启用Debug模式</strong>
-                                            <br><small class="text-muted">启用后会保存生成过程的详细信息(messages和responses),便于调试和重新生成</small>
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="debugOutputPath" class="form-label">Debug输出路径</label>
-                                    <input type="text" class="form-control" id="debugOutputPath" placeholder="${CONTEXT_PATH:.}/debug/generation">
-                                    <small class="text-muted">保存debug文件的目录</small>
-                                </div>
-                            </div>
-                            <button class="btn btn-sm btn-primary mt-2" onclick="saveDebugConfig()">
-                                <i class="bi bi-save"></i> 保存Debug配置
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Prompts分类 -->
-                    <h5 class="mb-3">内容生成Prompts</h5>
-                    <div class="accordion" id="promptsAccordion">
-                        <!-- 智能提示生成 -->
-                        <div class="accordion-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#tipsPrompts">
-                                    📝 智能提示生成 (smart_tip_generation)
-                                    <span class="badge bg-secondary ms-2">用于生成工作提示和建议</span>
-                                </button>
-                            </h2>
-                            <div id="tipsPrompts" class="accordion-collapse collapse show" data-bs-parent="#promptsAccordion">
-                                <div class="accordion-body">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">System Prompt</label>
-                                        <textarea class="form-control font-monospace" id="tips_system" rows="8"></textarea>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">User Prompt Template</label>
-                                        <textarea class="form-control font-monospace" id="tips_user" rows="8"></textarea>
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-sm btn-primary" onclick="savePromptCategory('smart_tip_generation')">
-                                            <i class="bi bi-save"></i> 保存
-                                        </button>
-                                        <button class="btn btn-sm btn-secondary" onclick="viewHistory('smart_tip_generation')">
-                                            📜 查看历史记录
-                                        </button>
+                    <div class="row">
+                        <!-- Left: Prompt Tree -->
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">Prompt Tree</div>
+                                <div class="card-body p-0">
+                                    <div id="promptTree" class="list-group list-group-flush" style="max-height: 600px; overflow-y: auto;">
                                     </div>
                                 </div>
                             </div>
                         </div>
-
-                        <!-- 待办事项提取 -->
-                        <div class="accordion-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#todosPrompts">
-                                    ✅ 待办事项提取 (todo_extraction)
-                                    <span class="badge bg-secondary ms-2">从上下文中提取待办事项</span>
-                                </button>
-                            </h2>
-                            <div id="todosPrompts" class="accordion-collapse collapse" data-bs-parent="#promptsAccordion">
-                                <div class="accordion-body">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">System Prompt</label>
-                                        <textarea class="form-control font-monospace" id="todos_system" rows="8"></textarea>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">User Prompt Template</label>
-                                        <textarea class="form-control font-monospace" id="todos_user" rows="8"></textarea>
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-sm btn-primary" onclick="savePromptCategory('todo_extraction')">
-                                            <i class="bi bi-save"></i> 保存
-                                        </button>
-                                        <button class="btn btn-sm btn-secondary" onclick="viewHistory('todo_extraction')">
-                                            📜 查看历史记录
-                                        </button>
-                                    </div>
+                        <!-- Right: Editor -->
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <span id="currentPromptKey" class="text-muted">Select a prompt from the tree</span>
                                 </div>
-                            </div>
-                        </div>
-
-                        <!-- 日报生成 -->
-                        <div class="accordion-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#reportPrompts">
-                                    📊 日报生成 (generation_report)
-                                    <span class="badge bg-secondary ms-2">生成每日工作总结报告</span>
-                                </button>
-                            </h2>
-                            <div id="reportPrompts" class="accordion-collapse collapse" data-bs-parent="#promptsAccordion">
-                                <div class="accordion-body">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">System Prompt</label>
-                                        <textarea class="form-control font-monospace" id="report_system" rows="8"></textarea>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">User Prompt Template</label>
-                                        <textarea class="form-control font-monospace" id="report_user" rows="8"></textarea>
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-sm btn-primary" onclick="savePromptCategory('generation_report')">
-                                            <i class="bi bi-save"></i> 保存
-                                        </button>
-                                        <button class="btn btn-sm btn-secondary" onclick="viewHistory('generation_report')">
-                                            📜 查看历史记录
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 实时活动监控 -->
-                        <div class="accordion-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#activityPrompts">
-                                    🔄 实时活动监控 (realtime_activity_monitor)
-                                    <span class="badge bg-secondary ms-2">生成活动记录和总结</span>
-                                </button>
-                            </h2>
-                            <div id="activityPrompts" class="accordion-collapse collapse" data-bs-parent="#promptsAccordion">
-                                <div class="accordion-body">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">System Prompt</label>
-                                        <textarea class="form-control font-monospace" id="activity_system" rows="8"></textarea>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">User Prompt Template</label>
-                                        <textarea class="form-control font-monospace" id="activity_user" rows="8"></textarea>
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-sm btn-primary" onclick="savePromptCategory('realtime_activity_monitor')">
-                                            <i class="bi bi-save"></i> 保存
-                                        </button>
-                                        <button class="btn btn-sm btn-secondary" onclick="viewHistory('realtime_activity_monitor')">
-                                            📜 查看历史记录
-                                        </button>
-                                    </div>
+                                <div class="card-body">
+                                    <textarea class="form-control font-monospace" id="promptEditor" rows="20" placeholder="Select a prompt key to edit..."></textarea>
+                                    <button class="btn btn-primary mt-3" onclick="saveCurrentPrompt()">
+                                        <i class="bi bi-save"></i> Save Current
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -472,91 +645,18 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- 历史记录Modal -->
-<div class="modal fade" id="historyModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">历史生成记录 - <span id="historyCategory"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-4">
-                        <h6>历史记录列表</h6>
-                        <div id="historyList" style="max-height: 500px; overflow-y: auto;">
-                            <!-- 动态填充 -->
-                        </div>
-                    </div>
-                    <div class="col-md-8">
-                        <h6>详细信息</h6>
-                        <div id="historyDetail">
-                            <p class="text-muted">请选择一条历史记录</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                <button type="button" class="btn btn-success" id="exportBtn" onclick="exportHistoryRecord()" disabled>
-                    <i class="bi bi-download"></i> 导出记录
-                </button>
-                <button type="button" class="btn btn-primary" id="regenerateBtn" onclick="regenerateWithCurrent()" disabled>
-                    <i class="bi bi-arrow-clockwise"></i> 使用当前Prompt重新生成
-                </button>
-                <button type="button" class="btn btn-info" id="compareBtn" onclick="compareResults()" disabled>
-                    <i class="bi bi-file-diff"></i> 对比结果
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 对比结果Modal -->
-<div class="modal fade" id="compareModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="bi bi-file-diff"></i> 结果对比</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="mb-0"><span class="badge bg-secondary">原始结果</span></h6>
-                        </div>
-                        <pre id="originalResult" class="border p-3 bg-light" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 0.875rem;"></pre>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="mb-0"><span class="badge bg-success">重新生成结果</span></h6>
-                        </div>
-                        <pre id="newResult" class="border p-3 bg-light" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 0.875rem;"></pre>
-                    </div>
-                </div>
-                <div class="alert alert-info mt-3 mb-0">
-                    <i class="bi bi-info-circle"></i> <strong>提示：</strong>左侧为历史记录中的原始结果，右侧为使用当前Prompt重新生成的结果
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-            </div>
-        </div>
     </div>
 </div>
 
 <div class="toast-container position-fixed bottom-0 end-0 p-3">
     <div id="settingsToast" class="toast" role="alert">
         <div class="toast-header">
-            <strong class="me-auto">系统设置</strong>
+            <strong class="me-auto">Settings</strong>
             <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
         </div>
         <div class="toast-body" id="toastMessage">
-            操作成功
+            OK
         </div>
     </div>
 </div>
@@ -564,55 +664,4 @@
 
 {% block scripts %}
 <script src="/static/js/settings.js"></script>
-<script>
-// 导出历史记录
-window.exportHistoryRecord = async function() {
-    if (!selectedHistoryFile || !currentCategory) {
-        showToast('请先选择一条历史记录', true);
-        return;
-    }
-
-    const exportBtn = document.getElementById('exportBtn');
-    const originalBtnText = exportBtn.innerHTML;
-
-    try {
-        exportBtn.disabled = true;
-        exportBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>导出中...';
-
-        const response = await fetch(`/api/settings/prompts/history/${currentCategory}/${selectedHistoryFile}`);
-        const data = await response.json();
-
-        if (data.code === 0 && data.data) {
-            const exportData = {
-                category: currentCategory,
-                filename: selectedHistoryFile,
-                timestamp: data.data.timestamp,
-                messages: data.data.messages,
-                response: data.data.response
-            };
-
-            const jsonStr = JSON.stringify(exportData, null, 2);
-            const blob = new Blob([jsonStr], { type: 'application/json' });
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = selectedHistoryFile || 'export.json';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(downloadUrl);
-            }, 100);
-        } else {
-            showToast('导出失败: ' + (data.message || '未知错误'), true);
-        }
-    } catch (error) {
-        console.error('导出错误:', error);
-        showToast('导出失败: ' + error.message, true);
-    } finally {
-        exportBtn.disabled = false;
-        exportBtn.innerHTML = originalBtnText;
-    }
-};
-</script>
 {% endblock %}

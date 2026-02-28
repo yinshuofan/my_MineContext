@@ -4,7 +4,7 @@
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Model settings API routes"""
+"""Settings API routes — model settings, general settings, prompts"""
 
 import io
 import threading
@@ -29,30 +29,44 @@ _config_lock = threading.Lock()
 # ==================== Data Models ====================
 
 
-class ModelSettingsVO(BaseModel):
-    """Model settings with optional separate embedding configuration"""
+class LLMModelConfig(BaseModel):
+    """Flat model config for a single LLM/VLM/Embedding client"""
 
-    modelPlatform: str
-    modelId: str
-    baseUrl: str
-    apiKey: str
-    embeddingModelId: str
-    embeddingBaseUrl: str | None = None
-    embeddingApiKey: str | None = None
-    embeddingModelPlatform: str | None = None
+    provider: str = ""
+    model: str = ""
+    base_url: str = ""
+    api_key: str = ""
+    max_concurrent: int | None = None
 
 
-class GetModelSettingsResponse(BaseModel):
-    config: ModelSettingsVO
+class EmbeddingModelConfig(LLMModelConfig):
+    """Embedding model config with extra output_dim"""
+
+    output_dim: int | None = None
 
 
-class UpdateModelSettingsRequest(BaseModel):
-    config: ModelSettingsVO
+class AllModelSettingsVO(BaseModel):
+    """All 3 model configs returned by GET"""
+
+    llm: LLMModelConfig | None = None
+    vlm_model: LLMModelConfig | None = None
+    embedding_model: EmbeddingModelConfig | None = None
 
 
-class UpdateModelSettingsResponse(BaseModel):
-    success: bool
-    message: str
+class AllModelSettingsUpdateRequest(BaseModel):
+    """Partial update — only non-None sections are saved"""
+
+    llm: LLMModelConfig | None = None
+    vlm_model: LLMModelConfig | None = None
+    embedding_model: EmbeddingModelConfig | None = None
+
+
+class ValidateModelRequest(BaseModel):
+    """Validate one or more model sections"""
+
+    llm: LLMModelConfig | None = None
+    vlm_model: LLMModelConfig | None = None
+    embedding_model: EmbeddingModelConfig | None = None
 
 
 # ==================== Helper Functions ====================
@@ -61,133 +75,190 @@ class UpdateModelSettingsResponse(BaseModel):
 def _build_llm_config(
     base_url: str, api_key: str, model: str, provider: str, llm_type: LLMType, **kwargs
 ) -> dict:
-    """Build LLM config dict"""
+    """Build LLM config dict for LLMClient instantiation"""
     config = {"base_url": base_url, "api_key": api_key, "model": model, "provider": provider}
-
-    # Add optional parameters
     if "timeout" in kwargs:
         config["timeout"] = kwargs["timeout"]
-
     if llm_type == LLMType.EMBEDDING:
         config["output_dim"] = kwargs.get("output_dim", 2048)
     return config
 
 
-# ==================== API Endpoints ====================
+def _flatten_llm_config(config: dict) -> LLMModelConfig:
+    """Flatten nested llm config {provider, config: {api_key, ...}} → flat LLMModelConfig"""
+    nested = config.get("config", {})
+    return LLMModelConfig(
+        provider=config.get("provider", ""),
+        model=nested.get("model", ""),
+        base_url=nested.get("base_url", ""),
+        api_key=nested.get("api_key", ""),
+        max_concurrent=nested.get("max_concurrent"),
+    )
+
+
+def _nest_llm_config(flat: LLMModelConfig) -> dict:
+    """Re-nest flat LLMModelConfig → {provider, config: {api_key, base_url, model, ...}}"""
+    inner = {
+        "api_key": flat.api_key,
+        "base_url": flat.base_url,
+        "model": flat.model,
+    }
+    if flat.max_concurrent is not None:
+        inner["max_concurrent"] = flat.max_concurrent
+    return {"provider": flat.provider, "config": inner}
+
+
+def _flat_to_dict(cfg: LLMModelConfig) -> dict:
+    """Convert flat LLMModelConfig → flat dict for vlm_model/embedding_model storage"""
+    d = {
+        "provider": cfg.provider,
+        "model": cfg.model,
+        "base_url": cfg.base_url,
+        "api_key": cfg.api_key,
+    }
+    if cfg.max_concurrent is not None:
+        d["max_concurrent"] = cfg.max_concurrent
+    if isinstance(cfg, EmbeddingModelConfig) and cfg.output_dim is not None:
+        d["output_dim"] = cfg.output_dim
+    return d
+
+
+# ==================== Model Settings API ====================
 
 
 @router.get("/api/model_settings/get")
 async def get_model_settings(_auth: str = auth_dependency):
-    """Get current model configuration"""
+    """Get all 3 model configurations (llm, vlm, embedding)"""
     try:
         config = GlobalConfig.get_instance().get_config()
         if not config:
-            return convert_resp(code=500, status=500, message="配置未初始化")
+            return convert_resp(code=500, status=500, message="Configuration not initialized")
 
+        llm_cfg = config.get("llm", {})
         vlm_cfg = config.get("vlm_model", {})
         emb_cfg = config.get("embedding_model", {})
 
-        settings = ModelSettingsVO(
-            modelPlatform=vlm_cfg.get("provider", ""),
-            modelId=vlm_cfg.get("model", ""),
-            baseUrl=vlm_cfg.get("base_url", ""),
-            apiKey=vlm_cfg.get("api_key", ""),
-            embeddingModelId=emb_cfg.get("model", ""),
-            embeddingBaseUrl=emb_cfg.get("base_url", ""),
-            embeddingApiKey=emb_cfg.get("api_key", ""),
-            embeddingModelPlatform=emb_cfg.get("provider", ""),
+        settings = AllModelSettingsVO(
+            llm=_flatten_llm_config(llm_cfg),
+            vlm_model=LLMModelConfig(
+                provider=vlm_cfg.get("provider", ""),
+                model=vlm_cfg.get("model", ""),
+                base_url=vlm_cfg.get("base_url", ""),
+                api_key=vlm_cfg.get("api_key", ""),
+                max_concurrent=vlm_cfg.get("max_concurrent"),
+            ),
+            embedding_model=EmbeddingModelConfig(
+                provider=emb_cfg.get("provider", ""),
+                model=emb_cfg.get("model", ""),
+                base_url=emb_cfg.get("base_url", ""),
+                api_key=emb_cfg.get("api_key", ""),
+                max_concurrent=emb_cfg.get("max_concurrent"),
+                output_dim=emb_cfg.get("output_dim"),
+            ),
         )
 
-        return convert_resp(data=GetModelSettingsResponse(config=settings).model_dump())
+        return convert_resp(data=settings.model_dump())
 
     except Exception as e:
         logger.exception(f"Failed to get model settings: {e}")
-        return convert_resp(code=500, status=500, message=f"获取模型设置失败: {str(e)}")
+        return convert_resp(code=500, status=500, message=f"Failed to get model settings: {str(e)}")
 
 
 @router.post("/api/model_settings/update")
-async def update_model_settings(request: UpdateModelSettingsRequest, _auth: str = auth_dependency):
+async def update_model_settings(
+    request: AllModelSettingsUpdateRequest, _auth: str = auth_dependency
+):
     """Update model configuration and reinitialize LLM clients"""
     with _config_lock:
         try:
-            cfg = request.config
-
-            # Use API keys directly from frontend
-            vlm_key = cfg.apiKey
-            emb_key = cfg.embeddingApiKey or vlm_key
-
-            # Resolve embedding URL and provider
-            emb_url = cfg.embeddingBaseUrl or cfg.baseUrl
-            emb_provider = cfg.embeddingModelPlatform or cfg.modelPlatform
-
-            # Validation
-            if not vlm_key:
-                return convert_resp(code=400, status=400, message="VLM API key cannot be empty")
-            if not emb_key:
-                return convert_resp(
-                    code=400, status=400, message="Embedding API key cannot be empty"
-                )
-            if not cfg.modelId:
-                return convert_resp(code=400, status=400, message="VLM model ID cannot be empty")
-            if not cfg.embeddingModelId:
-                return convert_resp(
-                    code=400, status=400, message="Embedding model ID cannot be empty"
-                )
-
-            # Validate VLM
-            vlm_config = _build_llm_config(
-                cfg.baseUrl, vlm_key, cfg.modelId, cfg.modelPlatform, LLMType.CHAT, timeout=15
-            )
-            vlm_valid, vlm_msg = LLMClient(llm_type=LLMType.CHAT, config=vlm_config).validate()
-            if not vlm_valid:
-                return convert_resp(
-                    code=400, status=400, message=f"VLM validation failed: {vlm_msg}"
-                )
-
-            # Validate Embedding
-            emb_config = _build_llm_config(
-                emb_url, emb_key, cfg.embeddingModelId, emb_provider, LLMType.EMBEDDING, timeout=15
-            )
-            emb_valid, emb_msg = LLMClient(llm_type=LLMType.EMBEDDING, config=emb_config).validate()
-            if not emb_valid:
-                return convert_resp(
-                    code=400, status=400, message=f"Embedding validation failed: {emb_msg}"
-                )
-
-            # Save configuration (without timeout limit)
-            vlm_config_save = _build_llm_config(
-                cfg.baseUrl, vlm_key, cfg.modelId, cfg.modelPlatform, LLMType.CHAT
-            )
-            emb_config_save = _build_llm_config(
-                emb_url, emb_key, cfg.embeddingModelId, emb_provider, LLMType.EMBEDDING
-            )
-
-            new_settings = {"vlm_model": vlm_config_save, "embedding_model": emb_config_save}
-
             config_mgr = GlobalConfig.get_instance().get_config_manager()
             if not config_mgr:
                 return convert_resp(code=500, status=500, message="Config manager not initialized")
+
+            new_settings: dict = {}
+
+            # --- LLM text model ---
+            # No global singleton client for LLM text, so no reinitialize needed.
+            # Config is read fresh from GlobalConfig at each usage point.
+            if request.llm is not None:
+                cfg = request.llm
+                if cfg.api_key and cfg.model:
+                    llm_config = _build_llm_config(
+                        cfg.base_url,
+                        cfg.api_key,
+                        cfg.model,
+                        cfg.provider,
+                        LLMType.CHAT,
+                        timeout=15,
+                    )
+                    llm_valid, llm_msg = LLMClient(
+                        llm_type=LLMType.CHAT, config=llm_config
+                    ).validate()
+                    if not llm_valid:
+                        return convert_resp(
+                            code=400, status=400, message=f"LLM validation failed: {llm_msg}"
+                        )
+                new_settings["llm"] = _nest_llm_config(request.llm)
+
+            # --- VLM ---
+            if request.vlm_model is not None:
+                cfg = request.vlm_model
+                vlm_config = _build_llm_config(
+                    cfg.base_url, cfg.api_key, cfg.model, cfg.provider, LLMType.CHAT, timeout=15
+                )
+                vlm_valid, vlm_msg = LLMClient(
+                    llm_type=LLMType.CHAT, config=vlm_config
+                ).validate()
+                if not vlm_valid:
+                    return convert_resp(
+                        code=400, status=400, message=f"VLM validation failed: {vlm_msg}"
+                    )
+                new_settings["vlm_model"] = _flat_to_dict(cfg)
+
+            # --- Embedding ---
+            if request.embedding_model is not None:
+                cfg = request.embedding_model
+                emb_config = _build_llm_config(
+                    cfg.base_url,
+                    cfg.api_key,
+                    cfg.model,
+                    cfg.provider,
+                    LLMType.EMBEDDING,
+                    timeout=15,
+                    output_dim=cfg.output_dim or 2048,
+                )
+                emb_valid, emb_msg = LLMClient(
+                    llm_type=LLMType.EMBEDDING, config=emb_config
+                ).validate()
+                if not emb_valid:
+                    return convert_resp(
+                        code=400, status=400, message=f"Embedding validation failed: {emb_msg}"
+                    )
+                new_settings["embedding_model"] = _flat_to_dict(cfg)
+
+            if not new_settings:
+                return convert_resp(code=400, status=400, message="No model settings provided")
 
             if not config_mgr.save_user_settings(new_settings):
                 return convert_resp(code=500, status=500, message="Failed to save settings")
 
             config_mgr.load_config(config_mgr.get_config_path())
 
-            # Reinitialize clients
-            if not GlobalVLMClient.get_instance().reinitialize():
-                return convert_resp(
-                    code=500, status=500, message="Failed to reinitialize VLM client"
-                )
-            if not GlobalEmbeddingClient.get_instance().reinitialize():
-                return convert_resp(
-                    code=500, status=500, message="Failed to reinitialize embedding client"
-                )
+            # Reinitialize clients that were updated
+            if "vlm_model" in new_settings:
+                if not GlobalVLMClient.get_instance().reinitialize():
+                    return convert_resp(
+                        code=500, status=500, message="Failed to reinitialize VLM client"
+                    )
+            if "embedding_model" in new_settings:
+                if not GlobalEmbeddingClient.get_instance().reinitialize():
+                    return convert_resp(
+                        code=500, status=500, message="Failed to reinitialize embedding client"
+                    )
 
             logger.info("Model settings updated successfully")
             return convert_resp(
-                data=UpdateModelSettingsResponse(
-                    success=True, message="Model settings updated successfully"
-                ).model_dump()
+                data={"success": True, "message": "Model settings updated successfully"}
             )
 
         except Exception as e:
@@ -196,54 +267,60 @@ async def update_model_settings(request: UpdateModelSettingsRequest, _auth: str 
 
 
 @router.post("/api/model_settings/validate")
-async def validate_llm_config(request: UpdateModelSettingsRequest, _auth: str = auth_dependency):
-    """Validate LLM configuration from frontend (without saving)"""
+async def validate_llm_config(request: ValidateModelRequest, _auth: str = auth_dependency):
+    """Validate LLM configuration without saving"""
     try:
-        cfg = request.config
+        errors = []
+        validated_count = 0
 
-        # Use API keys directly from frontend
-        vlm_key = cfg.apiKey
-        emb_key = cfg.embeddingApiKey or vlm_key
+        if request.llm is not None:
+            cfg = request.llm
+            if cfg.api_key and cfg.model:
+                validated_count += 1
+                llm_config = _build_llm_config(
+                    cfg.base_url, cfg.api_key, cfg.model, cfg.provider, LLMType.CHAT, timeout=15
+                )
+                valid, msg = LLMClient(llm_type=LLMType.CHAT, config=llm_config).validate()
+                if not valid:
+                    errors.append(f"LLM: {msg}")
 
-        # Resolve embedding URL and provider
-        emb_url = cfg.embeddingBaseUrl or cfg.baseUrl
-        emb_provider = cfg.embeddingModelPlatform or cfg.modelPlatform
+        if request.vlm_model is not None:
+            cfg = request.vlm_model
+            if cfg.api_key and cfg.model:
+                validated_count += 1
+                vlm_config = _build_llm_config(
+                    cfg.base_url, cfg.api_key, cfg.model, cfg.provider, LLMType.CHAT, timeout=15
+                )
+                valid, msg = LLMClient(llm_type=LLMType.CHAT, config=vlm_config).validate()
+                if not valid:
+                    errors.append(f"VLM: {msg}")
 
-        # Validation
-        if not vlm_key:
-            return convert_resp(code=400, status=400, message="VLM API key cannot be empty")
-        if not emb_key:
-            return convert_resp(code=400, status=400, message="Embedding API key cannot be empty")
-        if not cfg.modelId:
-            return convert_resp(code=400, status=400, message="VLM model ID cannot be empty")
-        if not cfg.embeddingModelId:
-            return convert_resp(code=400, status=400, message="Embedding model ID cannot be empty")
+        if request.embedding_model is not None:
+            cfg = request.embedding_model
+            if cfg.api_key and cfg.model:
+                validated_count += 1
+                emb_config = _build_llm_config(
+                    cfg.base_url,
+                    cfg.api_key,
+                    cfg.model,
+                    cfg.provider,
+                    LLMType.EMBEDDING,
+                    timeout=15,
+                    output_dim=cfg.output_dim or 2048,
+                )
+                valid, msg = LLMClient(llm_type=LLMType.EMBEDDING, config=emb_config).validate()
+                if not valid:
+                    errors.append(f"Embedding: {msg}")
 
-        # Build configs for validation (without saving)
-        vlm_config = _build_llm_config(
-            cfg.baseUrl, vlm_key, cfg.modelId, cfg.modelPlatform, LLMType.CHAT, timeout=15
-        )
-        emb_config = _build_llm_config(
-            emb_url, emb_key, cfg.embeddingModelId, emb_provider, LLMType.EMBEDDING, timeout=15
-        )
+        if errors:
+            return convert_resp(code=400, status=400, message="; ".join(errors))
 
-        # Validate VLM
-        vlm_valid, vlm_msg = LLMClient(llm_type=LLMType.CHAT, config=vlm_config).validate()
+        if validated_count == 0:
+            return convert_resp(
+                code=400, status=400, message="No credentials provided — fill in API key and model"
+            )
 
-        # Validate Embedding
-        emb_valid, emb_msg = LLMClient(llm_type=LLMType.EMBEDDING, config=emb_config).validate()
-
-        # Build error message
-        if not vlm_valid or not emb_valid:
-            errors = []
-            if not vlm_valid:
-                errors.append(f"VLM: {vlm_msg}")
-            if not emb_valid:
-                errors.append(f"Embedding: {emb_msg}")
-            error_msg = "; ".join(errors)
-            return convert_resp(code=400, status=400, message=error_msg)
-
-        return convert_resp(code=0, status=200, message="连接测试成功！VLM和Embedding模型均正常")
+        return convert_resp(code=0, status=200, message="Connection test passed")
 
     except Exception as e:
         logger.exception(f"Validation failed: {e}")
@@ -254,11 +331,26 @@ async def validate_llm_config(request: UpdateModelSettingsRequest, _auth: str = 
 
 
 class GeneralSettingsRequest(BaseModel):
-    """General system settings request"""
+    """General system settings request — all sections optional"""
 
     capture: dict | None = None
     processing: dict | None = None
     logging: dict | None = None
+    document_processing: dict | None = None
+    scheduler: dict | None = None
+    memory_cache: dict | None = None
+    tools: dict | None = None
+
+
+_GENERAL_SETTINGS_KEYS = [
+    "capture",
+    "processing",
+    "logging",
+    "document_processing",
+    "scheduler",
+    "memory_cache",
+    "tools",
+]
 
 
 @router.get("/api/settings/general")
@@ -269,12 +361,7 @@ async def get_general_settings(_auth: str = auth_dependency):
         if not config:
             return convert_resp(code=500, status=500, message="Configuration not initialized")
 
-        settings = {
-            "capture": config.get("capture", {}),
-            "processing": config.get("processing", {}),
-            "logging": config.get("logging", {}),
-        }
-
+        settings = {key: config.get(key, {}) for key in _GENERAL_SETTINGS_KEYS}
         return convert_resp(data=settings)
 
     except Exception as e:
@@ -293,23 +380,18 @@ async def update_general_settings(request: GeneralSettingsRequest, _auth: str = 
             if not config_mgr:
                 return convert_resp(code=500, status=500, message="Config manager not initialized")
 
-            # Build settings dict
             settings = {}
-            if request.capture is not None:
-                settings["capture"] = request.capture
-            if request.processing is not None:
-                settings["processing"] = request.processing
-            if request.logging is not None:
-                settings["logging"] = request.logging
+            req_dict = request.model_dump(exclude_none=True)
+            for key in _GENERAL_SETTINGS_KEYS:
+                if key in req_dict:
+                    settings[key] = req_dict[key]
 
             if not settings:
                 return convert_resp(code=400, status=400, message="No settings provided")
 
-            # Save to user_setting.yaml
             if not config_mgr.save_user_settings(settings):
                 return convert_resp(code=500, status=500, message="Failed to save settings")
 
-            # Reload config
             config_mgr.load_config(config_mgr.get_config_path())
 
             logger.info("General settings updated successfully")
@@ -373,7 +455,6 @@ async def import_prompts(file: UploadFile = File(...), _auth: str = auth_depende
         if not prompt_mgr:
             return convert_resp(code=500, status=500, message="Prompt manager not initialized")
 
-        # Read file content
         content = await file.read()
         yaml_content = content.decode("utf-8")
 
@@ -400,7 +481,6 @@ async def export_prompts(_auth: str = auth_dependency):
         if not yaml_content:
             return convert_resp(code=500, status=500, message="Failed to export prompts")
 
-        # Return as downloadable file
         language = GlobalConfig.get_instance().get_language()
         filename = f"prompts_{language}.yaml"
 
@@ -436,7 +516,6 @@ class LanguageChangeRequest(BaseModel):
 async def change_prompt_language(request: LanguageChangeRequest, _auth: str = auth_dependency):
     """Change prompt language"""
     try:
-        # Update language setting and reload prompts
         success = GlobalConfig.get_instance().set_language(request.language)
 
         if not success:
@@ -462,13 +541,11 @@ async def reset_settings(_auth: str = auth_dependency):
 
             success = True
 
-            # Reset user settings
             if config_mgr:
                 if not config_mgr.reset_user_settings():
                     success = False
                     logger.error("Failed to reset user settings")
 
-            # Reset user prompts
             if prompt_mgr:
                 if not prompt_mgr.reset_user_prompts():
                     success = False
@@ -482,4 +559,6 @@ async def reset_settings(_auth: str = auth_dependency):
 
         except Exception as e:
             logger.exception(f"Failed to reset settings: {e}")
-            return convert_resp(code=500, status=500, message=f"Failed to reset settings: {str(e)}")
+            return convert_resp(
+                code=500, status=500, message=f"Failed to reset settings: {str(e)}"
+            )
