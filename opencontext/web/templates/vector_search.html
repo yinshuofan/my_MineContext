@@ -16,56 +16,59 @@
                         <label for="query" class="form-label">查询内容</label>
                         <textarea class="form-control" id="query" rows="3" placeholder="输入要检索的内容..."></textarea>
                     </div>
-                    
+
+                    <div class="mb-3">
+                        <label class="form-label">检索策略</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="strategy" id="strategyFast" value="fast" checked>
+                                <label class="form-check-label" for="strategyFast">快速检索</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="strategy" id="strategyIntelligent" value="intelligent">
+                                <label class="form-check-label" for="strategyIntelligent">智能检索</label>
+                            </div>
+                        </div>
+                        <div class="form-text">快速检索: 向量相似度搜索；智能检索: LLM 驱动的多轮搜索</div>
+                    </div>
+
                     <div class="mb-3">
                         <label for="topK" class="form-label">返回数量 (Top-K)</label>
                         <input type="number" class="form-control" id="topK" value="10" min="1" max="100">
                     </div>
-                    
+
                     <div class="mb-3">
                         <label class="form-label">上下文类型</label>
                         <div id="contextTypes">
                             <!-- 动态加载上下文类型选择框 -->
                         </div>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="startTime" class="form-label">开始时间</label>
                         <input type="datetime-local" class="form-control" id="startTime">
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="endTime" class="form-label">结束时间</label>
                         <input type="datetime-local" class="form-control" id="endTime">
                     </div>
-                    
-                    <div class="mb-3">
-                        <label for="entities" class="form-label">实体过滤</label>
-                        <input type="text" class="form-control" id="entities" placeholder="用逗号分隔多个实体">
-                        <div class="form-text">例如: entity1,entity2,entity3</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="keywords" class="form-label">关键词过滤</label>
-                        <input type="text" class="form-control" id="keywords" placeholder="用逗号分隔多个关键词">
-                        <div class="form-text">例如: keyword1,keyword2,keyword3</div>
-                    </div>
-                    
+
                     <div class="mb-3">
                         <label for="userId" class="form-label">用户ID</label>
                         <input type="text" class="form-control" id="userId" placeholder="输入用户ID">
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="deviceId" class="form-label">设备ID</label>
                         <input type="text" class="form-control" id="deviceId" placeholder="输入设备ID">
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="agentId" class="form-label">代理ID</label>
                         <input type="text" class="form-control" id="agentId" placeholder="输入代理ID">
                     </div>
-                    
+
                     <button type="submit" class="btn btn-primary w-100">
                         <span class="spinner-border spinner-border-sm d-none" role="status" id="loadingSpinner"></span>
                         <span id="searchButtonText">开始检索</span>
@@ -74,7 +77,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-8">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -82,6 +85,7 @@
                 <span class="badge bg-secondary" id="resultCount">0 条结果</span>
             </div>
             <div class="card-body">
+                <div id="searchMetadata" class="d-none mb-3"></div>
                 <div id="searchResults">
                     <div class="text-muted text-center py-5">
                         <i data-feather="search" class="mb-3" style="width: 48px; height: 48px;"></i>
@@ -100,7 +104,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     // 加载上下文类型
     loadContextTypes();
-    
+
     // 绑定表单提交事件
     document.getElementById('vectorSearchForm').addEventListener('submit', handleSearch);
 });
@@ -109,10 +113,10 @@ async function loadContextTypes() {
     try {
         const response = await fetch('/api/context_types');
         const contextTypes = await response.json();
-        
+
         const container = document.getElementById('contextTypes');
         container.innerHTML = '';
-        
+
         // 添加"全选"选项
         const selectAllDiv = document.createElement('div');
         selectAllDiv.className = 'form-check mb-2';
@@ -123,12 +127,12 @@ async function loadContextTypes() {
             </label>
         `;
         container.appendChild(selectAllDiv);
-        
+
         // 添加分隔线
         const hr = document.createElement('hr');
         hr.className = 'my-2';
         container.appendChild(hr);
-        
+
         // 添加各个上下文类型
         contextTypes.forEach(type => {
             const div = document.createElement('div');
@@ -141,13 +145,13 @@ async function loadContextTypes() {
             `;
             container.appendChild(div);
         });
-        
+
         // 绑定全选逻辑
         document.getElementById('selectAllContextTypes').addEventListener('change', function() {
             const checkboxes = document.querySelectorAll('.context-type-checkbox');
             checkboxes.forEach(cb => cb.checked = this.checked);
         });
-        
+
         // 绑定单个选择框逻辑
         document.querySelectorAll('.context-type-checkbox').forEach(cb => {
             cb.addEventListener('change', function() {
@@ -158,7 +162,7 @@ async function loadContextTypes() {
                 selectAllCb.indeterminate = !allChecked && anyChecked;
             });
         });
-        
+
     } catch (error) {
         console.error('Failed to load context types:', error);
         document.getElementById('contextTypes').innerHTML = '<div class="alert alert-warning">无法加载上下文类型</div>';
@@ -167,66 +171,52 @@ async function loadContextTypes() {
 
 async function handleSearch(event) {
     event.preventDefault();
-    
-    const formData = new FormData(event.target);
+
     const query = document.getElementById('query').value.trim();
+    const strategy = document.querySelector('input[name="strategy"]:checked').value;
     const topK = parseInt(document.getElementById('topK').value) || 10;
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
-    const entities = document.getElementById('entities').value;
-    const keywords = document.getElementById('keywords').value;
     const userId = document.getElementById('userId').value.trim();
     const deviceId = document.getElementById('deviceId').value.trim();
     const agentId = document.getElementById('agentId').value.trim();
-    
+
     // 获取选中的上下文类型
     const selectedContextTypes = Array.from(document.querySelectorAll('.context-type-checkbox:checked'))
         .map(cb => cb.value);
-    
+
     if (selectedContextTypes.length === 0) {
         alert('请至少选择一个上下文类型');
         return;
     }
-    
+
     // 显示加载状态
     setLoading(true);
-    
-    try {
-        // 构建过滤器
-        const filters = {};
-        if (startTime) {
-            filters.create_time_ts = filters.create_time_ts || {};
-            filters.create_time_ts.$gte = new Date(startTime).getTime() / 1000;
-        }
-        if (endTime) {
-            filters.create_time_ts = filters.create_time_ts || {};
-            filters.create_time_ts.$lte = new Date(endTime).getTime() / 1000;
-        }
-        if (entities) {
-            const entityList = entities.split(',').map(e => e.trim()).filter(e => e);
-            if (entityList.length > 0) {
-                filters.entities = {"$in": entityList};
-            }
-        }
-        if (keywords) {
-            const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k);
-            if (keywordList.length > 0) {
-                filters.keywords = {"$in": keywordList};
-            }
-        }
 
+    try {
         // 构建请求体
         const requestBody = {
             query: query,
+            strategy: strategy,
             top_k: topK,
             context_types: selectedContextTypes,
-            filters: filters,
             user_id: userId || undefined,
             device_id: deviceId || undefined,
             agent_id: agentId || undefined
         };
 
-        const response = await fetch('/api/vector_search', {
+        // 构建时间范围
+        if (startTime || endTime) {
+            requestBody.time_range = {};
+            if (startTime) {
+                requestBody.time_range.start = Math.floor(new Date(startTime).getTime() / 1000);
+            }
+            if (endTime) {
+                requestBody.time_range.end = Math.floor(new Date(endTime).getTime() / 1000);
+            }
+        }
+
+        const response = await fetch('/api/search', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -234,13 +224,18 @@ async function handleSearch(event) {
             body: JSON.stringify(requestBody)
         });
         const data = await response.json();
-        
+
         if (!response.ok) {
             throw new Error(data.detail || data.message || '检索失败');
         }
-        
-        displayResults(data.data.results || []);
-        
+
+        if (!data.success) {
+            throw new Error(data.message || '检索失败');
+        }
+
+        displayMetadata(data.metadata);
+        displayResults(data.results);
+
     } catch (error) {
         console.error('Search error:', error);
         displayError(error.message);
@@ -253,7 +248,7 @@ function setLoading(loading) {
     const spinner = document.getElementById('loadingSpinner');
     const buttonText = document.getElementById('searchButtonText');
     const submitButton = document.querySelector('#vectorSearchForm button[type="submit"]');
-    
+
     if (loading) {
         spinner.classList.remove('d-none');
         buttonText.textContent = '检索中...';
@@ -265,13 +260,42 @@ function setLoading(loading) {
     }
 }
 
+const STRATEGY_LABELS = { fast: '快速检索', intelligent: '智能检索' };
+const TYPE_LABELS = { profile: '用户画像', entity: '实体', document: '文档', event: '事件', knowledge: '知识' };
+const TYPE_ICONS = { profile: 'user', entity: 'users', document: 'file-text', event: 'calendar', knowledge: 'book' };
+
+function displayMetadata(metadata) {
+    const container = document.getElementById('searchMetadata');
+    if (!metadata) {
+        container.classList.add('d-none');
+        return;
+    }
+    container.classList.remove('d-none');
+    const strategyLabel = STRATEGY_LABELS[metadata.strategy] || metadata.strategy;
+    container.innerHTML = `
+        <div class="d-flex gap-3 text-muted small flex-wrap">
+            <span>策略: <strong>${strategyLabel}</strong></span>
+            <span>结果总数: <strong>${metadata.total_results}</strong></span>
+            <span>耗时: <strong>${metadata.search_time_ms.toFixed(0)} ms</strong></span>
+        </div>
+    `;
+}
+
 function displayResults(results) {
     const container = document.getElementById('searchResults');
     const resultCount = document.getElementById('resultCount');
-    
-    resultCount.textContent = `${results.length} 条结果`;
-    
-    if (results.length === 0) {
+
+    // 统计总结果数
+    let total = 0;
+    if (results.profile) total += 1;
+    total += (results.entities || []).length;
+    total += (results.documents || []).length;
+    total += (results.events || []).length;
+    total += (results.knowledge || []).length;
+
+    resultCount.textContent = `${total} 条结果`;
+
+    if (total === 0) {
         container.innerHTML = `
             <div class="text-muted text-center py-5">
                 <i data-feather="search" class="mb-3" style="width: 48px; height: 48px;"></i>
@@ -281,49 +305,113 @@ function displayResults(results) {
         feather.replace();
         return;
     }
-    
+
     let html = '';
-    results.forEach((result, index) => {
-        const context = result.context;
-        const score = result.score;
-        const createTime = new Date(context.properties.create_time).toLocaleString('zh-CN');
-        
-        html += `
-            <div class="border rounded mb-3 p-3">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <h6 class="mb-1">
-                        <a href="#" onclick="viewContext('${context.id}', '${context.extracted_data.context_type}')" class="text-decoration-none">${context.extracted_data.title || '未命名'}</a>
-                    </h6>
-                    <div class="text-end">
-                        <span class="badge bg-primary">${score.toFixed(4)}</span>
-                        <small class="text-muted d-block">${context.extracted_data.context_type}</small>
-                    </div>
-                </div>
-                
-                <p class="text-muted small mb-2">${context.extracted_data.summary || '无摘要'}</p>
-                
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <small class="text-muted">创建时间: ${createTime}</small>
-                    </div>
-                    <div>
-                        <button onclick="viewContext('${context.id}', '${context.extracted_data.context_type}')" class="btn btn-sm btn-outline-primary">查看详情</button>
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-    
+
+    // Profile
+    if (results.profile) {
+        html += renderSection('profile', [results.profile], renderProfileItem);
+    }
+
+    // Entities
+    if (results.entities && results.entities.length > 0) {
+        html += renderSection('entity', results.entities, renderEntityItem);
+    }
+
+    // Documents
+    if (results.documents && results.documents.length > 0) {
+        html += renderSection('document', results.documents, renderVectorItem);
+    }
+
+    // Events
+    if (results.events && results.events.length > 0) {
+        html += renderSection('event', results.events, renderVectorItem);
+    }
+
+    // Knowledge
+    if (results.knowledge && results.knowledge.length > 0) {
+        html += renderSection('knowledge', results.knowledge, renderVectorItem);
+    }
+
     container.innerHTML = html;
     feather.replace();
 }
 
+function renderSection(type, items, renderFn) {
+    const label = TYPE_LABELS[type] || type;
+    const icon = TYPE_ICONS[type] || 'box';
+    let html = `
+        <div class="mb-4">
+            <h6 class="text-muted mb-3 d-flex align-items-center gap-2">
+                <i data-feather="${icon}" style="width: 16px; height: 16px;"></i>
+                ${label}
+                <span class="badge bg-secondary">${items.length}</span>
+            </h6>
+    `;
+    items.forEach(item => { html += renderFn(item); });
+    html += '</div>';
+    return html;
+}
+
+function renderProfileItem(profile) {
+    const keywords = (profile.keywords || []).map(k => `<span class="badge bg-info me-1">${escapeHtml(k)}</span>`).join('');
+    return `
+        <div class="border rounded mb-2 p-3">
+            <p class="mb-2">${escapeHtml(profile.content || '无内容')}</p>
+            ${keywords ? `<div>${keywords}</div>` : ''}
+        </div>
+    `;
+}
+
+function renderEntityItem(entity) {
+    const typeBadge = entity.entity_type ? `<span class="badge bg-secondary me-2">${escapeHtml(entity.entity_type)}</span>` : '';
+    return `
+        <div class="border rounded mb-2 p-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="mb-0">
+                    ${typeBadge}${escapeHtml(entity.entity_name)}
+                </h6>
+                <span class="badge bg-primary">${entity.score.toFixed(4)}</span>
+            </div>
+            <p class="text-muted small mb-0">${escapeHtml(entity.summary || entity.content || '无描述')}</p>
+        </div>
+    `;
+}
+
+function renderVectorItem(result) {
+    const createTime = result.create_time ? new Date(result.create_time).toLocaleString('zh-CN') : '';
+    const contextType = result.context_type || '';
+    return `
+        <div class="border rounded mb-2 p-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="mb-1">
+                    <a href="#" onclick="viewContext('${result.id}', '${contextType}'); return false;" class="text-decoration-none">${escapeHtml(result.title || '未命名')}</a>
+                </h6>
+                <span class="badge bg-primary">${result.score.toFixed(4)}</span>
+            </div>
+            <p class="text-muted small mb-2">${escapeHtml(result.summary || '无摘要')}</p>
+            <div class="d-flex justify-content-between align-items-center">
+                ${createTime ? `<small class="text-muted">创建时间: ${createTime}</small>` : '<span></span>'}
+                <button onclick="viewContext('${result.id}', '${contextType}')" class="btn btn-sm btn-outline-primary">查看详情</button>
+            </div>
+        </div>
+    `;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 function displayError(message) {
     const container = document.getElementById('searchResults');
+    const metaContainer = document.getElementById('searchMetadata');
+    metaContainer.classList.add('d-none');
     container.innerHTML = `
         <div class="alert alert-danger">
             <i data-feather="alert-circle" class="me-2"></i>
-            检索出错: ${message}
+            检索出错: ${escapeHtml(message)}
         </div>
     `;
     feather.replace();
@@ -341,7 +429,7 @@ async function viewContext(contextId, contextType) {
                 context_type: contextType
             })
         });
-        
+
         if (response.ok) {
             const html = await response.text();
             document.open();
