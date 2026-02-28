@@ -77,7 +77,8 @@ class GlobalConfig:
 
         try:
             # Try to load the configuration automatically
-            self._initialized = self.initialize("config/config.yaml")
+            config_path = os.environ.get("OPENCONTEXT_CONFIG_PATH", "config/config.yaml")
+            self._initialized = self.initialize(config_path)
             if not self._initialized:
                 logger.error(
                     "GlobalConfig auto-initialization: no config file found, using defaults"

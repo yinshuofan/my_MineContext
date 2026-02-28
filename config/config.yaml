@@ -2,216 +2,202 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # OpenContext Configuration File
+# 使用 ${ENV_VAR:default} 语法引用环境变量，冒号后为默认值
 
-# General switch
-enabled: true
-
-# Logging configuration
+# ============================================================
+# 日志配置
+# ============================================================
 logging:
-  level: DEBUG # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
-  log_path: "${CONTEXT_PATH:.}/logs/opencontext.log" # Log file path
+  level: DEBUG # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_path: "${CONTEXT_PATH:.}/logs/opencontext.log" # 日志文件路径
 
+# 用户设置文件路径（运行时自动生成，保存语言偏好等用户自定义项）
 user_setting_path: "${CONTEXT_PATH:.}/config/user_setting.yaml"
 
-# Service mode configuration (for containerized deployment)
-service_mode:
-  enabled: true  # Enable stateless service mode
-  require_redis: true  # Redis is required in service mode
-  require_external_storage: true  # External storage (MySQL/DashVector) is required
-
-# 文档处理配置
+# ============================================================
+# 文档处理配置（PDF/图片 → VLM 识别时的参数）
+# 被 document_processor.py 读取
+# ============================================================
 document_processing:
-  enabled: true
-  batch_size: 3        # Number of images processed by VLM at once (recommended 2-5)
-  max_image_size: 1024 # Maximum image size (pixels), larger sizes increase accuracy but also API costs
-  dpi: 200             # DPI for converting PDF to images (recommended 150-300)
+  batch_size: 3        # VLM 单次处理图片数量（建议 2-5）
+  dpi: 200             # PDF 转图片的 DPI（建议 150-300）
+  text_threshold_per_page: 50 # 扫描件判定阈值：每页文字少于此值视为扫描件（需 VLM 处理）
 
-  # Page-by-page detection configuration (to optimize VLM usage)
-  text_threshold_per_page: 50 # Scanned document threshold: pages with fewer characters than this value are considered scanned documents (requires VLM)
-
-# config/config.yaml
-
+# ============================================================
+# LLM 配置（文本生成模型）
+# 使用 OpenAI 兼容接口，支持火山引擎/豆包等
+# ============================================================
 llm:
-  enabled: true
-  provider: "openai"  # MineContext uses 'openai' client for Volcengine/Doubao too
+  provider: "openai" # 客户端类型，统一使用 openai 兼容接口
   config:
-    # ⚠️ MUST FILL IN YOUR KEY HERE
-    api_key: "${LLM_API_KEY}" 
+    api_key: "${LLM_API_KEY}" # 必填
     base_url: "${LLM_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
-    model: "${LLM_MODEL:doubao-seed-1-6-251015}" 
-    temperature: 0.1
-    max_tokens: 4096
+    model: "${LLM_MODEL:doubao-seed-1-6-251015}"
 
+# VLM 配置（视觉语言模型，用于图片/截图理解）
 vlm_model:
   base_url: "${VLM_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
   api_key: "${VLM_API_KEY}"
   model: "${VLM_MODEL:doubao-seed-1-6-251015}"
   provider: "openai"
 
+# Embedding 配置（向量嵌入模型，用于语义检索）
 embedding_model:
   base_url: "${EMBEDDING_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
   api_key: "${EMBEDDING_API_KEY}"
   model: "${EMBEDDING_MODEL:doubao-embedding-large-text-240915}"
   provider: "openai"
-  output_dim: 2048
+  output_dim: 2048 # 嵌入维度，须与向量库 dimension 一致
 
-# Context capture module
+# ============================================================
+# 上下文采集模块
+# 各子模块可独立启停，enabled=false 则跳过初始化
+# ============================================================
 capture:
-  enabled: "${CAPTURE_ENABLED:true}"
-  # Screenshot capture
-  screenshot:
-    enabled: "${SCREENSHOT_CAPTURE_ENABLED:false}"
-    capture_interval: 5 # Screenshot interval (seconds)
-    storage_path: "${CONTEXT_PATH:.}/screenshots" # Screenshot save directory
+  enabled: "${CAPTURE_ENABLED:true}" # 采集总开关
+  # 文本聊天采集
   text_chat:
     enabled: "${TEXT_CHAT_CAPTURE_ENABLED:true}"
-    buffer_size: 10
+    buffer_size: 10 # 消息缓冲数量，积累到此数量后批量送入处理器
 
-  # Folder monitoring
+  # 文件夹监控（监听指定目录的文件变更）
   folder_monitor:
     enabled: false
-    monitor_interval: 30 # Monitor interval (seconds)
+    monitor_interval: 30 # 扫描间隔（秒）
     watch_folder_paths:
       - "${CONTEXT_PATH:.}/persist/Documents"
-
     recursive: true
-    max_file_size: 104857600 # Maximum file size to process (bytes), default: 100MB
-    initial_scan: true
+    max_file_size: 104857600 # 最大处理文件大小（字节），默认 100MB
+    initial_scan: true # 启动时是否扫描已有文件
 
-  # File monitoring
-  file_monitor:
-    enabled: false
-    recursive: true
-    initial_scan: true
-    monitor_paths: "./doc"
-    capture_interval: 30 # File monitoring interval (seconds)
-    ignore_patterns:
-      - "**/node_modules/**"
-      - "**/.git/**"
-
-  # Vaults document monitoring
+  # Vault 文档监控（Obsidian 等笔记工具的文档同步）
   vault_document_monitor:
     enabled: false
-    monitor_interval: 30 # Monitoring interval (seconds)
-    initial_scan: true # Whether to perform an initial scan
+    monitor_interval: 30 # 监控间隔（秒）
+    initial_scan: true # 启动时是否执行初始扫描
 
-# Context processing module
+# ============================================================
+# 上下文处理模块
+# 处理采集到的原始数据，提取结构化记忆
+# ============================================================
 processing:
-  enabled: "${PROCESSING_ENABLED:true}"
-  # Document processor configuration
+  enabled: "${PROCESSING_ENABLED:true}" # 处理总开关
+  # 文本聊天处理器（从对话中提取 profile/entity/event/knowledge）
   text_chat_processor:
     enabled: "${TEXT_CHAT_PROCESSOR_ENABLED:true}"
+  # 文档处理器（处理上传文件和网页链接）
   document_processor:
     enabled: "${DOCUMENT_PROCESSOR_ENABLED:false}"
-    batch_size: 5
-    batch_timeout: 30
+    batch_size: 5      # 批处理大小
+    batch_timeout: 30  # 批处理超时（秒）
+  # 截图处理器（处理屏幕截图，需配合截图采集使用）
   screenshot_processor:
     enabled: "${SCREENSHOT_PROCESSOR_ENABLED:false}"
-    dedup_cache_size: 30
-    similarity_hash_threshold: 7
-    batch_size: 20 # Increase batch size to improve throughput
-    batch_timeout: 10 # Reduce timeout to improve response speed
-    max_image_size: 1920 # Limit image size to reduce memory usage
-    resize_quality: 85 # Balance quality and performance
-    enabled_delete: true
-    max_raw_properties: 5
+    similarity_hash_threshold: 7   # 感知哈希去重阈值
+    batch_size: 20                 # 批处理大小
+    batch_timeout: 10              # 批处理超时（秒）
+    max_raw_properties: 5          # 最大原始属性数
+    max_image_size: 1920           # 图片最大尺寸（像素）
+    resize_quality: 85             # 缩放质量（1-100）
+    enabled_delete: true           # 处理后是否删除原始截图
 
-  # Context merger configuration
+  # 知识合并器（对 knowledge 类型记忆做相似度去重和合并）
   context_merger:
     enabled: "${CONTEXT_MERGER_ENABLED:true}"
-    # Basic configuration
-    # similarity_threshold: 0.90
-    # associative_similarity_threshold: 0.6
-    similarity_threshold: 0.01
-    associative_similarity_threshold: 0.01
+    similarity_threshold: 0.01       # 合并相似度阈值
+    use_intelligent_merging: false   # 是否启用 LLM 智能合并策略
+    enable_memory_management: true   # 是否启用记忆管理（过期清理等）
 
-    # Intelligent merging configuration
-    use_intelligent_merging: false # Enable intelligent strategy merging
-    enable_memory_management: true # Enable memory management
-    cleanup_interval_hours: 24 # Cleanup check interval
-
-    # Cross-type association configuration
-    enable_cross_type_processing: true # Enable cross-type processing
-    conversion_confidence_threshold: 0.8 # Conversion confidence threshold
-    max_conversions_per_session: 10 # Maximum conversions per session
-
-    # Type-specific configuration
-    # Profile type configuration
-    ENTITY_CONTEXT_similarity_threshold: 0.85
-    ENTITY_CONTEXT_retention_days: 365
-    ENTITY_CONTEXT_max_merge_count: 5
-
+# ============================================================
+# Redis 配置
+# 用于分布式锁、任务调度、缓存。多实例部署必需
+# ============================================================
 redis:
   enabled: true
   host: "${REDIS_HOST:localhost}"
   port: ${REDIS_PORT:6379}
   password: "${REDIS_PASSWORD:}"
   db: ${REDIS_DB:0}
-  key_prefix: "opencontext:"
-  # Connection pool settings
+  key_prefix: "opencontext:" # Redis key 前缀，避免与其他服务冲突
+  # 连接池配置
   max_connections: 10
   socket_timeout: 5.0
   socket_connect_timeout: 5.0
   retry_on_timeout: true
 
-# User Memory Cache
+# ============================================================
+# 用户记忆缓存配置
+# 缓存用户的记忆快照（profile + entities + 近期事件/文档/知识）
+# 由 memory_cache_manager.py 读取，数据存储在 Redis 中
+# ============================================================
 memory_cache:
-  snapshot_ttl: 300           # Snapshot cache TTL in seconds (default: 5 min)
-  recent_days: 7              # Recent memories time window in days (default: 7)
-  max_recently_accessed: 50   # Max items tracked in accessed hash
-  max_today_events: 30        # Max today L0 events in cache
-  max_recent_documents: 10    # Max recent documents in cache
-  max_recent_knowledge: 10    # Max recent knowledge in cache
-  accessed_ttl: 604800        # Accessed tracking hash TTL in seconds (default: 7 days)
-  max_entities: 20            # Max entities in cache response
+  snapshot_ttl: 300           # 快照缓存 TTL（秒），默认 5 分钟
+  recent_days: 7              # "近期"记忆的时间窗口（天）
+  max_recently_accessed: 50   # 最近访问记录的最大追踪条数
+  max_today_events: 30        # 缓存中今日事件的最大条数
+  max_recent_documents: 10    # 缓存中近期文档的最大条数
+  max_recent_knowledge: 10    # 缓存中近期知识的最大条数
+  accessed_ttl: 604800        # 访问记录的 TTL（秒），默认 7 天
+  max_entities: 20            # 缓存中实体的最大条数
 
-# Context storage module
+# ============================================================
+# 存储模块
+# 双后端架构：向量库（语义检索）+ 关系型库（profile/entity）
+# ============================================================
 storage:
   enabled: true
   backends:
-    # Vector database configuration - Choose either ChromaDB or Qdrant
-    # ChromaDB (default)
-    # - name: "default_vector"
-    #   storage_type: "vector_db"
-    #   backend: "chromadb"
-    #   config:
-    #     mode: "local" # Options: "local", "server"
-    #     path: "${CONTEXT_PATH:.}/persist/chromadb"
-    #     collection_prefix: "opencontext"
+    # ----------------------------------------------------------
+    # 向量数据库 — 存储 document/event/knowledge 的嵌入向量
+    # 三选一：VikingDB / ChromaDB / Qdrant
+    # ----------------------------------------------------------
 
-    # VikingDB database configuration
+    # VikingDB（火山引擎托管向量库）
     - name: "default_vector"
-      storage_type: "vector_db" 
+      storage_type: "vector_db"
       backend: "vikingdb"
       default: true
       config:
         access_key_id: "${VIKINGDB_ACCESS_KEY_ID}"
         secret_access_key: "${VIKINGDB_SECRET_ACCESS_KEY}"
         region: "${VIKINGDB_REGION:cn-beijing}"
-        dimension: 2048
-        max_connections: 100           # 最大连接数
+        dimension: 2048               # 须与 embedding_model.output_dim 一致
+        max_connections: 100           # HTTP 连接池最大连接数
         max_connections_per_host: 20   # 每主机最大连接数
-        collection_name: "opencontext"  # 可选，默认 opencontext
-        index_name: "opencontext_index"  # 可选，默认 opencontext_index
+        collection_name: "opencontext"
+        index_name: "opencontext_index"
 
-    # Qdrant (alternative vector database)
-    # Uncomment to use Qdrant instead of ChromaDB:
+    # ChromaDB（本地向量库，开发调试用）
+    # - name: "default_vector"
+    #   storage_type: "vector_db"
+    #   backend: "chromadb"
+    #   default: true
+    #   config:
+    #     mode: "local"
+    #     path: "${CONTEXT_PATH:.}/persist/chromadb"
+    #     collection_prefix: "opencontext"
+
+    # Qdrant（本地/远程向量库）
     # - name: "default_vector"
     #   storage_type: "vector_db"
     #   backend: "qdrant"
+    #   default: true
     #   config:
-    #     # Vector size MUST match your embedding model's output dimension
-    #     vector_size: 1536 # Set this to match embedding_model.output_dim above (line 37)
-    #
-    #     # Local mode (uses file-based storage):
+    #     vector_size: 2048  # 须与 embedding_model.output_dim 一致
+    #     # 本地模式:
     #     path: "${CONTEXT_PATH:.}/persist/qdrant"
-    #
-    #     # Server mode (comment out 'path' above and uncomment the settings below):
+    #     # 远程模式（注释掉上面的 path，取消下面的注释）:
     #     # host: "localhost"
     #     # port: 6333
     #     # https: false
-    #     # api_key: "${QDRANT_API_KEY}"  # Optional: API key for authentication
+    #     # api_key: "${QDRANT_API_KEY}"
 
+    # ----------------------------------------------------------
+    # 关系型数据库 — 存储 profile/entity 及上下文元数据
+    # 二选一：MySQL / SQLite
+    # ----------------------------------------------------------
+
+    # MySQL（生产环境推荐）
     - name: "document_store"
       storage_type: "document_db"
       backend: "mysql"
@@ -224,31 +210,41 @@ storage:
         database: "${MYSQL_DATABASE:opencontext}"
         charset: "utf8mb4"
 
+    # SQLite（本地开发用，无需额外服务）
     # - name: "document_store"
     #   storage_type: "document_db"
     #   backend: "sqlite"
+    #   default: true
     #   config:
     #     path: "${CONTEXT_PATH:.}/persist/sqlite/app.db"
 
-# Context consumption module
-# Set to false to disable all consumption components (tips, todos, activity, report)
-# This also prevents creation of todo collection in vector databases
-# 服务器模式下不应该开启消费组件。
+# ============================================================
+# 消费模块
+# 控制 tips/todos/activity/report 等消费组件，
+# 同时影响是否在向量库中创建 todo collection。
+# 服务器模式下建议关闭
+# ============================================================
 consumption:
   enabled: "${CONSUMPTION_ENABLED:false}"
 
-# web server
+# ============================================================
+# Web 服务器配置
+# CLI 的 --host / --port 参数会覆盖此处的值
+# ============================================================
 web:
   host: "0.0.0.0"
   port: 1733
   enabled: "${WEB_ENABLED:true}"
 
-# API authentication configuration
+# ============================================================
+# API 认证配置
+# 生产环境建议开启，开发环境可关闭
+# ============================================================
 api_auth:
-  enabled: false # Enable authentication in production environment for security
+  enabled: false
   api_keys:
     - "${CONTEXT_API_KEY:test}"
-  excluded_paths:
+  excluded_paths: # 不需要认证的路径
     - "/health"
     - "/api/health"
     - "/api/auth/status"
@@ -263,12 +259,18 @@ api_auth:
     - "/assistant"
     - "/vaults"
 
-# Prompts configuration
+# ============================================================
+# Prompt 语言配置
+# 控制 LLM prompt 模板使用中文还是英文
+# 对应文件: config/prompts_zh.yaml 或 config/prompts_en.yaml
+# ============================================================
 prompts:
-  language: "zh"
+  language: "zh" # 选项: zh, en
 
+# ============================================================
+# 工具配置
+# ============================================================
 tools:
-  # Operation tools configuration
   operation_tools:
     web_search_tool:
       enabled: true
@@ -277,51 +279,48 @@ tools:
         max_results: 5
         timeout: 10
 
-# Task scheduler configuration (for periodic tasks)
+# ============================================================
+# 任务调度器配置
+# 基于 Redis 的分布式任务调度，支持 user_activity 和 periodic 两种触发模式
+# ============================================================
 scheduler:
   enabled: "${SCHEDULER_ENABLED:true}"
-  
-  # User key configuration (determines how user tasks are identified)
+
+  # 用户 key 配置（决定任务如何按用户隔离）
   user_key_config:
-    use_user_id: true      # Always true (required)
-    use_device_id: true    # Set to false to ignore device_id
-    use_agent_id: true     # Set to false to switch to 2-key mode (user_id:device_id)
+    use_user_id: true      # 始终为 true（必需）
+    use_device_id: true    # 设为 false 则忽略 device_id
+    use_agent_id: true     # 设为 false 则切换为 2-key 模式
     default_device_id: "default"
     default_agent_id: "default"
-  
-  # Executor configuration
+
+  # 执行器配置
   executor:
-    check_interval: 10     # How often to check for due tasks (seconds)
-    max_concurrent: ${SCHEDULER_EXECUTOR_MAX_CONCURRENT:5}
-    lock_timeout: 300      # Distributed lock timeout (seconds)
-  
-  # Task definitions
+    check_interval: 10     # 检查待执行任务的间隔（秒）
+    max_concurrent: ${SCHEDULER_EXECUTOR_MAX_CONCURRENT:5} # 最大并发任务数
+    lock_timeout: 300      # 分布式锁超时（秒）
+
+  # 任务定义
   tasks:
-    # Memory compression task (triggered by user activity)
+    # 记忆压缩任务 — 用户活动触发，合并相似知识条目
     memory_compression:
       enabled: "${MEMORY_COMPRESSION_TASK_ENABLED:true}"
-      trigger_mode: "user_activity"  # Options: user_activity, periodic
-      # interval: 1800        # Delay after user activity (seconds)
-      interval: 30        # Delay after user activity (seconds)
-      task_ttl: 7200        # Task state TTL (seconds)
-    
-    # Data cleanup task (periodic)
+      trigger_mode: "user_activity" # 触发模式: user_activity（用户推送后延迟执行）, periodic（定时执行）
+      interval: 30         # 用户活动后的延迟（秒）
+      task_ttl: 7200       # 任务状态 TTL（秒）
+
+    # 数据清理任务 — 定时清理过期数据
     data_cleanup:
       enabled: false
       trigger_mode: "periodic"
-      # interval: 86400       # Run every 24 hours
-      interval: 60       # Run every 5 minutes
-      retention_days: 30    # Keep data for 30 days
+      interval: 60         # 执行间隔（秒）
+      retention_days: 30   # 数据保留天数
 
-    # Hierarchy summary task (generates daily/weekly/monthly event summaries)
-    # Triggered by user activity (data push), runs at most once per 24h per user
+    # 事件层级摘要任务 — 生成日/周/月事件摘要（L1/L2/L3）
+    # 用户推送数据后触发，每用户每 24h 最多执行一次
     hierarchy_summary:
       enabled: "${HIERARCHY_SUMMARY_ENABLED:true}"
       trigger_mode: "user_activity"
-      interval: 86400         # 24h delay after user push, then generate summaries
-      timeout: 600            # 10 min timeout for LLM calls
-      task_ttl: 172800        # 48h TTL for task pickup window
-
-# Intelligent completion service configuration
-completion:
-  enabled: false
+      interval: 86400      # 用户活动后延迟 24h
+      timeout: 600         # LLM 调用超时（秒）
+      task_ttl: 172800     # 任务状态 TTL 48h
