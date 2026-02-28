@@ -466,6 +466,7 @@ class RedisTaskScheduler(ITaskScheduler):
                     periodic_key,
                     {"last_run": str(now), "next_run": str(now + interval), "status": "running"},
                 )
+                await self._redis.expire(periodic_key, interval * 3)
 
                 # Execute task
                 logger.info(f"Executing periodic task: {task_type}")
@@ -473,9 +474,11 @@ class RedisTaskScheduler(ITaskScheduler):
                 await loop.run_in_executor(None, handler, None, None, None)
 
                 await self._redis.hset(periodic_key, "status", "idle")
+                await self._redis.expire(periodic_key, interval * 3)
             except Exception as e:
                 logger.exception(f"Periodic task {task_type} failed: {e}")
                 await self._redis.hset(periodic_key, "status", "failed")
+                await self._redis.expire(periodic_key, interval * 3)
             finally:
                 await self._redis.release_lock(lock_key, lock_token)
 
