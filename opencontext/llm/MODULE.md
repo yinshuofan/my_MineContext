@@ -21,7 +21,7 @@ Low-level client wrapping `openai.OpenAI` and `openai.AsyncOpenAI`. Instantiated
 ```python
 def __init__(self, llm_type: LLMType, config: Dict[str, Any])
 ```
-Fields: `self.model`, `self.api_key`, `self.base_url`, `self.timeout` (default 300), `self.provider` (default `"openai"`), `self.client` (sync), `self.async_client` (async).
+Fields: `self.model`, `self.api_key`, `self.base_url`, `self.timeout` (default 300), `self.max_retries` (default 3, SDK built-in retry for 429/5xx with exponential backoff), `self.provider` (default `"openai"`), `self.client` (sync), `self.async_client` (async).
 
 **Chat methods** (require `LLMType.CHAT`):
 
@@ -39,12 +39,14 @@ kwargs forwarded: `tools` (adds `tool_choice: "auto"`), `thinking` (Doubao: `rea
 
 | Method | Signature | Returns |
 |--------|-----------|---------|
-| `generate_embedding` | `(text: str, **kwargs) -> List[float]` | Embedding vector |
+| `generate_embedding` | `(text: str, **kwargs) -> List[float]` | Single-text embedding vector |
 | `generate_embedding_async` | `(text: str, **kwargs) -> List[float]` | Same, awaitable |
+| `generate_embedding_batch` | `(texts: List[str], **kwargs) -> List[List[float]]` | Batch embedding; internally chunks by `max_batch_size` (default 64, configurable); falls back to individual calls on error |
+| `generate_embedding_batch_async` | `(texts: List[str], **kwargs) -> List[List[float]]` | Same, awaitable |
 | `vectorize` | `(vectorize: Vectorize, **kwargs) -> None` | Sets `vectorize.vector` in-place |
 | `vectorize_async` | `(vectorize: Vectorize, **kwargs) -> None` | Same, awaitable |
 
-Both embedding methods apply optional `output_dim` truncation with L2 re-normalization.
+All embedding methods apply optional `output_dim` truncation with L2 re-normalization. Batch methods sort responses by `response.data[i].index` (OpenAI API does not guarantee response ordering). Config key: `max_batch_size` (default 64).
 
 **Validation:**
 ```python
@@ -67,10 +69,14 @@ Thread-safe singleton (double-checked locking). Wraps a single `LLMClient(LLMTyp
 | `is_initialized` | `() -> bool` | Whether inner client is set |
 | `reinitialize` | `(new_config: Optional[Dict] = None) -> bool` | Thread-safe hot-reload from config |
 | `do_embedding` | `(text: str, **kwargs) -> List[float]` | Delegates to inner client |
-| `do_vectorize` | `(vectorize: Vectorize, **kwargs) -> None` | Sync vectorize |
-| `do_vectorize_async` | `(vectorize: Vectorize, **kwargs) -> None` | Async vectorize |
+| `do_vectorize` | `(vectorize: Vectorize, **kwargs) -> None` | Sync vectorize (single item) |
+| `do_vectorize_async` | `(vectorize: Vectorize, **kwargs) -> None` | Async vectorize (single item) |
+| `do_vectorize_batch` | `(vectorizes: Sequence[Vectorize], **kwargs) -> None` | Batch vectorize; filters already-vectorized items, calls batch API, maps results back |
+| `do_vectorize_batch_async` | `(vectorizes: Sequence[Vectorize], **kwargs) -> None` | Same, awaitable |
 
-**Module-level convenience functions:** `is_initialized()`, `do_embedding()`, `do_vectorize()`, `do_vectorize_async()` -- all delegate to `GlobalEmbeddingClient.get_instance()`.
+**Module-level convenience functions:** `is_initialized()`, `do_embedding()`, `do_vectorize()`, `do_vectorize_async()`, `do_vectorize_batch()`, `do_vectorize_batch_async()` -- all delegate to `GlobalEmbeddingClient.get_instance()`.
+
+**Usage guidance:** Use `do_vectorize_batch()` for write paths (batch_upsert in storage backends) where multiple contexts need vectorization. Use `do_vectorize()` for single-item paths (search query vectorization).
 
 ### `GlobalVLMClient` (`global_vlm_client.py`)
 
@@ -110,7 +116,7 @@ Thread-safe singleton. Wraps a `LLMClient(LLMType.CHAT)` configured from `get_co
 
 **Depended on by:**
 - `opencontext/context_processing/` -- uses `GlobalEmbeddingClient` for vectorization, `GlobalVLMClient` for text/screenshot analysis
-- `opencontext/storage/backends/` -- vector backends call `do_vectorize()` for auto-vectorization when context lacks a vector
+- `opencontext/storage/backends/` -- vector backends call `do_vectorize_batch()` for batch pre-vectorization in `batch_upsert_processed_context()`, and `do_vectorize()` as single-item fallback in `_ensure_vectorized()`
 - `opencontext/server/` -- health checks call `validate()`; search strategies use embedding client; settings routes reinitialize clients
 - `opencontext/periodic_task/hierarchy_summary.py` -- uses LLM for summary generation
 

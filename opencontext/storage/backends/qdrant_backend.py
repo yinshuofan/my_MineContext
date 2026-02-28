@@ -12,7 +12,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from qdrant_client import QdrantClient, models
 
-from opencontext.llm.global_embedding_client import do_vectorize
+from opencontext.llm.global_embedding_client import do_vectorize, do_vectorize_batch
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
 from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
@@ -204,6 +204,13 @@ class QdrantBackend(IVectorStorageBackend):
                     f"No collection found for context_type '{context_type}', skipping storage"
                 )
                 continue
+
+            # Batch pre-vectorize all contexts (fewer API calls)
+            vectorizes = [
+                c.vectorize for c in type_contexts if c.vectorize and not c.vectorize.vector
+            ]
+            if vectorizes:
+                do_vectorize_batch(vectorizes)
 
             points = []
             point_to_context_id = {}
@@ -397,9 +404,7 @@ class QdrantBackend(IVectorStorageBackend):
                         break
 
             except Exception as e:
-                logger.exception(
-                    f"Failed to scroll contexts from {context_type} collection: {e}"
-                )
+                logger.exception(f"Failed to scroll contexts from {context_type} collection: {e}")
                 continue
 
     def delete_processed_context(self, id: str, context_type: str) -> bool:

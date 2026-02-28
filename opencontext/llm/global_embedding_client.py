@@ -10,7 +10,7 @@ Provides global access to embedding client instances
 """
 
 import threading
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from opencontext.config.global_config import get_config
 from opencontext.llm.llm_client import LLMClient, LLMType
@@ -122,6 +122,52 @@ class GlobalEmbeddingClient:
         await self._embedding_client.vectorize_async(vectorize, **kwargs)
         return
 
+    def do_vectorize_batch(self, vectorizes: Sequence[Vectorize], **kwargs):
+        """
+        Vectorize multiple Vectorize objects in batch (fewer API calls).
+        """
+        needs_embedding = []
+        indices = []
+        for i, v in enumerate(vectorizes):
+            if v.vector:
+                continue
+            text = v.get_vectorize_content()
+            if not text:
+                continue
+            needs_embedding.append(text)
+            indices.append(i)
+
+        if not needs_embedding:
+            return
+
+        vectors = self._embedding_client.generate_embedding_batch(needs_embedding, **kwargs)
+        for idx, vector in zip(indices, vectors):
+            vectorizes[idx].vector = vector
+
+    async def do_vectorize_batch_async(self, vectorizes: Sequence[Vectorize], **kwargs):
+        """
+        Async version of do_vectorize_batch.
+        """
+        needs_embedding = []
+        indices = []
+        for i, v in enumerate(vectorizes):
+            if v.vector:
+                continue
+            text = v.get_vectorize_content()
+            if not text:
+                continue
+            needs_embedding.append(text)
+            indices.append(i)
+
+        if not needs_embedding:
+            return
+
+        vectors = await self._embedding_client.generate_embedding_batch_async(
+            needs_embedding, **kwargs
+        )
+        for idx, vector in zip(indices, vectors):
+            vectorizes[idx].vector = vector
+
 
 def is_initialized() -> bool:
     return GlobalEmbeddingClient.get_instance().is_initialized()
@@ -137,3 +183,13 @@ def do_vectorize(vectorize_obj: Vectorize, **kwargs):
 
 async def do_vectorize_async(vectorize_obj: Vectorize, **kwargs):
     return await GlobalEmbeddingClient.get_instance().do_vectorize_async(vectorize_obj, **kwargs)
+
+
+def do_vectorize_batch(vectorize_objs: Sequence[Vectorize], **kwargs):
+    return GlobalEmbeddingClient.get_instance().do_vectorize_batch(vectorize_objs, **kwargs)
+
+
+async def do_vectorize_batch_async(vectorize_objs: Sequence[Vectorize], **kwargs):
+    return await GlobalEmbeddingClient.get_instance().do_vectorize_batch_async(
+        vectorize_objs, **kwargs
+    )
