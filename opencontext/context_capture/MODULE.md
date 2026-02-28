@@ -125,7 +125,7 @@ Stateless chat message buffer backed by Redis. Buffers messages per `(user_id, d
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `push_message` (async) | `(role, content, user_id, device_id, agent_id)` | Appends to Redis list; flushes if `>= buffer_size` |
+| `push_message` (async) | `(role, content, user_id, device_id, agent_id)` | Atomic RPUSH+EXPIRE+LLEN via Lua script (`rpush_expire_llen`); flushes if `>= buffer_size` |
 | `process_messages_directly` (async) | `(messages, user_id, device_id, agent_id)` | Bypasses buffer, sends immediately via async callback |
 | `flush_user_buffer` (async) | `(user_id, device_id, agent_id)` | Manual flush for a specific user |
 | `get_user_buffer_length` (async) | `(user_id, device_id, agent_id) -> int` | Current buffer count |
@@ -169,9 +169,11 @@ Processing pipeline (registered via set_callback)
 
 For **TextChatCapture**, the flow is different (all async):
 ```
-push_message() --> Redis buffer --> threshold reached --> _flush_buffer()
+push_message() --> rpush_expire_llen (atomic Lua: RPUSH+EXPIRE+LLEN, 1 round-trip)
+       --> threshold reached --> _flush_buffer()
        --> await _create_and_send_context() --> await self._callback([raw_context])
 ```
+Note: `_ensure_redis()` only checks that `_redis_cache is not None` (no PING); actual connectivity issues surface on the first Redis operation.
 
 For **FolderMonitorCapture** and **VaultDocumentMonitor**, a separate monitor thread detects changes and queues events in `_document_events`. The base capture loop (or manual `capture()` call) dequeues and processes them.
 
@@ -207,7 +209,7 @@ To add a new capture component:
 - `opencontext.models.enums` -- `ContextSource`, `ContentFormat`, `ContextType`
 - `opencontext.storage.global_storage` -- `get_storage()` (used by `FolderMonitorCapture`, `VaultDocumentMonitor`)
 - `opencontext.context_processing.processor.document_processor` -- `DocumentProcessor.get_supported_formats()` (used by `FolderMonitorCapture`)
-- `opencontext.storage.redis_cache` -- `RedisCacheConfig`, `get_redis_cache` (used by `TextChatCapture`)
+- `opencontext.storage.redis_cache` -- `RedisCacheConfig`, `get_redis_cache`, `rpush_expire_llen` (used by `TextChatCapture`)
 - `opencontext.utils.logger` -- `LogManager.get_logger()` (used by `screenshot.py` instead of the standard `get_logger` from `logging_utils`)
 - External: `mss` (screenshot), `crawl4ai` (web markdown), `playwright` (web PDF), `PIL` (image processing)
 

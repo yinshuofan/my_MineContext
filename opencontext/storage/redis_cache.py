@@ -20,6 +20,7 @@ import asyncio
 import json
 import threading
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Union
@@ -31,6 +32,14 @@ logger = get_logger(__name__)
 # Global Redis client instance
 _redis_client: Optional["RedisCache"] = None
 _redis_lock = threading.Lock()
+
+# Lua script for atomic RPUSH + EXPIRE + LLEN in a single round-trip.
+# Used by text_chat push_message to reduce 3 Redis calls to 1.
+_RPUSH_EXPIRE_LLEN_LUA = """
+redis.call('RPUSH', KEYS[1], ARGV[1])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+return redis.call('LLEN', KEYS[1])
+"""
 
 # Lua script for atomic lock release: only DEL if the caller still owns the lock.
 # Prevents releasing a lock that expired and was re-acquired by another instance.
@@ -53,11 +62,40 @@ class RedisCacheConfig:
     db: int = 0
     key_prefix: str = "opencontext:"
     default_ttl: int = 3600  # 1 hour
-    max_connections: int = 10
+    max_connections: int = 50
     socket_timeout: float = 5.0
     socket_connect_timeout: float = 5.0
     retry_on_timeout: bool = True
     decode_responses: bool = True
+
+
+class _PrefixedPipeline:
+    """Minimal pipeline wrapper that auto-prefixes keys."""
+
+    def __init__(self, pipe, prefix: str):
+        self._pipe = pipe
+        self._prefix = prefix
+
+    def _k(self, key: str) -> str:
+        return f"{self._prefix}{key}"
+
+    def hset(self, key: str, field=None, value=None, mapping=None):
+        if mapping is not None:
+            self._pipe.hset(self._k(key), mapping=mapping)
+        elif field is not None and value is not None:
+            self._pipe.hset(self._k(key), field, value)
+        return self
+
+    def expire(self, key: str, ttl: int):
+        self._pipe.expire(self._k(key), ttl)
+        return self
+
+    def zadd(self, key: str, mapping: dict):
+        self._pipe.zadd(self._k(key), mapping)
+        return self
+
+    async def execute(self):
+        return await self._pipe.execute()
 
 
 class RedisCache:
@@ -103,7 +141,7 @@ class RedisCache:
         try:
             import redis.asyncio as aioredis
 
-            self._async_client = aioredis.Redis(
+            pool = aioredis.BlockingConnectionPool(
                 host=self.config.host,
                 port=self.config.port,
                 password=self.config.password,
@@ -113,7 +151,9 @@ class RedisCache:
                 socket_connect_timeout=self.config.socket_connect_timeout,
                 retry_on_timeout=self.config.retry_on_timeout,
                 max_connections=self.config.max_connections,
+                timeout=5,  # seconds to wait for an idle connection
             )
+            self._async_client = aioredis.Redis(connection_pool=pool)
 
             # Test connection
             await self._async_client.ping()
@@ -134,9 +174,12 @@ class RedisCache:
 
     async def _ensure_async_client(self) -> bool:
         """Ensure async client is connected."""
-        if not self._async_connected:
+        if self._async_connected:
+            return True
+        async with self._async_lock:
+            if self._async_connected:
+                return True
             return await self._connect_async()
-        return True
 
     async def is_connected(self) -> bool:
         """Check if async Redis is connected."""
@@ -362,6 +405,20 @@ class RedisCache:
         if not json_values:
             return 0
         return await self.rpush(key, *json_values)
+
+    async def rpush_expire_llen(self, key: str, value: str, ttl: int) -> int:
+        """Atomic RPUSH + EXPIRE + LLEN in a single round-trip via Lua script."""
+        if not await self._ensure_async_client():
+            return 0
+        try:
+            full_key = self._make_key(key)
+            result = await self._async_client.eval(
+                _RPUSH_EXPIRE_LLEN_LUA, 1, full_key, value, str(ttl)
+            )
+            return int(result)
+        except Exception as e:
+            logger.error(f"Redis rpush_expire_llen error: {e}")
+            return 0
 
     async def lpush_json(self, key: str, *values: Any) -> int:
         """Push JSON values to the left of a list."""
@@ -801,6 +858,26 @@ class RedisCache:
         except Exception as e:
             logger.error(f"Redis INFO error: {e}")
             return {}
+
+    # =========================================================================
+    # Pipeline Support
+    # =========================================================================
+
+    @asynccontextmanager
+    async def pipeline(self, transaction: bool = False):
+        """Get a Redis pipeline with auto-prefixed keys.
+
+        Usage:
+            async with cache.pipeline() as pipe:
+                pipe.hset("key", mapping={...})
+                pipe.expire("key", 3600)
+                pipe.zadd("queue", {"member": 1.0})
+                results = await pipe.execute()
+        """
+        if not await self._ensure_async_client():
+            raise RuntimeError("Redis not connected")
+        async with self._async_client.pipeline(transaction=transaction) as pipe:
+            yield _PrefixedPipeline(pipe, self.config.key_prefix)
 
     # =========================================================================
     # Connection Cleanup

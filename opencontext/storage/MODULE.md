@@ -169,17 +169,25 @@ Async-only Redis client. Configured via `RedisCacheConfig` dataclass:
 | `db` | `int` | `0` |
 | `key_prefix` | `str` | `"opencontext:"` |
 | `default_ttl` | `int` | `3600` |
-| `max_connections` | `int` | `10` |
+| `max_connections` | `int` | `50` |
 | `socket_timeout` | `float` | `5.0` |
 | `socket_connect_timeout` | `float` | `5.0` |
 | `retry_on_timeout` | `bool` | `True` |
 | `decode_responses` | `bool` | `True` |
 
-Operation groups: basic KV, JSON KV, lists (with JSON variants), hashes (with JSON variants), sets, sorted sets, atomic incr/decr, distributed locks.
+**Connection pool**: Uses `redis.asyncio.BlockingConnectionPool` — when the pool is full, callers queue and wait (up to 5s timeout) instead of getting an immediate `ConnectionError`. This provides back-pressure under high concurrency. The `_ensure_async_client()` method uses `async with self._async_lock` with double-checked locking to prevent race conditions on first connection.
+
+Operation groups: basic KV, JSON KV, lists (with JSON variants), hashes (with JSON variants), sets, sorted sets, atomic incr/decr, distributed locks, Lua scripts, pipelines.
 
 Key lock methods:
 - `acquire_lock(lock_name, timeout=10, blocking=True, blocking_timeout=5.0) -> Optional[str]` -- returns token
 - `release_lock(lock_name, token) -> bool` -- only releases if token matches
+
+Lua script methods:
+- `rpush_expire_llen(key, value, ttl) -> int` -- atomic RPUSH + EXPIRE + LLEN in a single round-trip. Returns new list length. Used by `TextChatCapture.push_message()` to reduce 3 Redis calls to 1.
+
+Pipeline support:
+- `pipeline(transaction=False)` -- async context manager yielding a `_PrefixedPipeline` (auto-prefixes keys). Supports `hset()`, `expire()`, `zadd()`, `execute()`. Used by `RedisTaskScheduler.schedule_user_task()` to batch writes.
 
 ### InMemoryCache -- `redis_cache.py`
 

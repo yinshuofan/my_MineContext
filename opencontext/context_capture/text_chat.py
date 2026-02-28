@@ -67,14 +67,11 @@ class TextChatCapture(BaseCaptureComponent):
 
     async def _ensure_redis(self):
         """确保 Redis 连接可用 (async)"""
-        if not self._redis_cache:
-            raise RuntimeError(
-                "Redis cache not configured. TextChatCapture requires Redis in stateless mode."
-            )
-        if not await self._redis_cache.is_connected():
-            raise RuntimeError(
-                "Redis connection not available. TextChatCapture requires Redis in stateless mode."
-            )
+        if self._redis_cache is not None:
+            return
+        raise RuntimeError(
+            "Redis cache not configured. TextChatCapture requires Redis in stateless mode."
+        )
 
     def _start_impl(self) -> bool:
         logger.info("TextChatCapture started (stateless mode).")
@@ -272,14 +269,11 @@ class TextChatCapture(BaseCaptureComponent):
         buffer_key = self._make_buffer_key(user_id, device_id, agent_id)
 
         try:
-            # 将消息推入 Redis 列表
-            await self._redis_cache.rpush_json(buffer_key, message)
-
-            # 设置/刷新 TTL
-            await self._redis_cache.expire(buffer_key, self._buffer_ttl)
-
-            # 检查缓冲区大小
-            buffer_len = await self._redis_cache.llen(buffer_key)
+            # Atomic RPUSH + EXPIRE + LLEN in a single Redis round-trip
+            message_json = json.dumps(message, ensure_ascii=False, default=str)
+            buffer_len = await self._redis_cache.rpush_expire_llen(
+                buffer_key, message_json, self._buffer_ttl
+            )
 
             if buffer_len >= self._buffer_size:
                 logger.info(

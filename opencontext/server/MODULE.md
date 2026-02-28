@@ -422,10 +422,10 @@ HTTP Request
 Buffer mode (`process_mode="buffer"`):
 ```
 push_chat()
-  -> for msg in messages: text_chat.push_message()  # async Redis buffer
+  -> for msg in messages: text_chat.push_message()  # atomic Lua (rpush+expire+llen, 1 Redis call per msg)
   -> if flush_immediately: text_chat.flush_user_buffer()
-  -> _schedule_user_compression()       # scheduler.schedule_user_task("memory_compression")
-  -> _schedule_user_hierarchy_summary() # scheduler.schedule_user_task("hierarchy_summary")
+  -> BackgroundTasks: _schedule_user_compression()       # scheduler.schedule_user_task("memory_compression")
+  -> BackgroundTasks: _schedule_user_hierarchy_summary() # scheduler.schedule_user_task("hierarchy_summary")
 ```
 
 Direct mode (`process_mode="direct"`):
@@ -435,6 +435,8 @@ push_chat()
   -> BackgroundTasks: _schedule_user_compression()
   -> BackgroundTasks: _schedule_user_hierarchy_summary()
 ```
+
+Both modes use `BackgroundTasks` for scheduling — the scheduling runs after the response is sent, not inline.
 
 When buffer flushes or direct processing runs:
 ```
@@ -516,7 +518,7 @@ OpenContext._handle_processed_context()
 
 6. **Cache invalidation uses `run_coroutine_threadsafe`** because `_handle_processed_context` runs in a thread pool via `asyncio.to_thread()`. Using `loop.create_task()` from a thread would silently fail. The `_capture_loop()` pattern stores the event loop reference.
 
-7. **Push endpoints schedule tasks after data capture**: `_schedule_user_compression()` and `_schedule_user_hierarchy_summary()` are fire-and-forget and must not fail the request.
+7. **Push endpoints schedule tasks via BackgroundTasks**: Both buffer and direct modes use `background_tasks.add_task()` for `_schedule_user_compression()` and `_schedule_user_hierarchy_summary()`. Scheduling runs post-response and must not fail the request.
 
 8. **`active_streams` dict in `agent_chat.py`** is process-local in-memory state for interrupt flags. Not shared across workers in multi-process mode.
 

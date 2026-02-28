@@ -76,8 +76,8 @@ class RedisTaskScheduler(ITaskScheduler):
 
         # Read from executor sub-key, matching the actual YAML structure
         executor_config = self._config.get("executor", {})
-        self._check_interval = executor_config.get("check_interval", 10)
-        self._max_concurrent = executor_config.get("max_concurrent", 5)
+        self._check_interval = int(executor_config.get("check_interval", 10))
+        self._max_concurrent = int(executor_config.get("max_concurrent", 5))
 
         # Initialize user key builder
         user_key_config = UserKeyConfig.from_dict(self._config.get("user_key_config", {}))
@@ -85,6 +85,9 @@ class RedisTaskScheduler(ITaskScheduler):
 
         # Task handlers registry (in-memory, each instance has its own)
         self._task_handlers: Dict[str, TaskHandler] = {}
+
+        # In-memory cache for task configs (set at register_task_type, immutable after startup)
+        self._task_config_cache: Dict[str, TaskConfig] = {}
 
         # Running state
         self._running = False
@@ -131,6 +134,7 @@ class RedisTaskScheduler(ITaskScheduler):
         try:
             key = f"{self.TASK_TYPE_PREFIX}{config.name}"
             await self._redis.hmset(key, config.to_dict())
+            self._task_config_cache[config.name] = config
             logger.info(f"Registered task type: {config.name}")
             return True
         except Exception as e:
@@ -188,10 +192,12 @@ class RedisTaskScheduler(ITaskScheduler):
         if existing:
             status = existing.get("status", "")
             if status in (TaskStatus.PENDING.value, TaskStatus.RUNNING.value):
-                # Task already exists, update activity time and refresh TTL
+                # Task already exists, update activity time and refresh TTL (pipeline: 1 round-trip)
                 now = int(time.time())
-                await self._redis.hset(task_key, "last_activity", str(now))
-                await self._redis.expire(task_key, task_ttl)
+                async with self._redis.pipeline() as pipe:
+                    pipe.hset(task_key, field="last_activity", value=str(now))
+                    pipe.expire(task_key, task_ttl)
+                    await pipe.execute()
                 logger.debug(f"Task {task_type} already exists for {user_key}")
                 return False
 
@@ -243,12 +249,12 @@ class RedisTaskScheduler(ITaskScheduler):
             retry_count=0,
         )
 
-        # Write task state
-        await self._redis.hmset(task_key, task_info.to_dict())
-        await self._redis.expire(task_key, task_ttl)
-
-        # Add to task queue (sorted set with scheduled_at as score)
-        await self._redis.zadd(queue_key, {user_key: scheduled_at})
+        # Write task state + add to queue in a single pipeline round-trip
+        async with self._redis.pipeline() as pipe:
+            pipe.hset(task_key, mapping=task_info.to_dict())
+            pipe.expire(task_key, task_ttl)
+            pipe.zadd(queue_key, {user_key: scheduled_at})
+            await pipe.execute()
 
         logger.info(
             f"Scheduled {task_type} task for {user_key}, " f"will execute at {scheduled_at}"
@@ -373,12 +379,17 @@ class RedisTaskScheduler(ITaskScheduler):
         logger.info(f"Task {task_type} for {user_key} {'completed' if success else 'failed'}")
 
     async def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
-        """Get configuration for a task type (async)"""
+        """Get configuration for a task type (async). Reads from in-memory cache first."""
+        if task_type in self._task_config_cache:
+            return self._task_config_cache[task_type]
+        # Fallback to Redis (e.g., config registered by another instance)
         key = f"{self.TASK_TYPE_PREFIX}{task_type}"
         data = await self._redis.hgetall(key)
         if not data:
             return None
-        return TaskConfig.from_dict(data)
+        config = TaskConfig.from_dict(data)
+        self._task_config_cache[task_type] = config
+        return config
 
     async def start(self) -> None:
         """Start the scheduler background executor"""

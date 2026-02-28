@@ -226,12 +226,14 @@ async def push_chat(
 
             await asyncio.wait_for(_push_all_messages(), timeout=60.0)
 
-            await _schedule_user_compression(
+            background_tasks.add_task(
+                _schedule_user_compression,
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,
             )
-            await _schedule_user_hierarchy_summary(
+            background_tasks.add_task(
+                _schedule_user_hierarchy_summary,
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,

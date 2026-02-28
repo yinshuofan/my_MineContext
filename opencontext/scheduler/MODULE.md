@@ -89,7 +89,7 @@ Async interface for task scheduling. All methods except `register_handler()` and
 | `schedule_user_task` | `async (task_type: str, user_id: str, device_id?: str, agent_id?: str) -> bool` | Schedule a user_activity task |
 | `get_pending_task` | `async (task_type: str) -> Optional[TaskInfo]` | Get and lock a due task |
 | `complete_task` | `async (task_type: str, user_key: str, lock_token: str, success: bool) -> None` | Mark done, release lock |
-| `get_task_config` | `async (task_type: str) -> Optional[TaskConfig]` | Read task type config from Redis |
+| `get_task_config` | `async (task_type: str) -> Optional[TaskConfig]` | Read task config from in-memory cache, falling back to Redis |
 | `start` | `async () -> None` | Start background executor loop |
 | `stop` | `async (timeout: float = 30.0) -> None` | Stop scheduler gracefully; waits up to `timeout` seconds, then force-cancels |
 | `is_running` | `() -> bool` | Check running state |
@@ -125,6 +125,7 @@ Implements `ITaskScheduler`. Stores all state in Redis via `RedisCache`.
 | `_max_concurrent` | `int` | Max concurrent fire-and-forget tasks across all types. Read from `config["executor"]["max_concurrent"]`, default `5` |
 | `_concurrency_sem` | `Optional[asyncio.Semaphore]` | Initialized in `_executor_loop` with value `_max_concurrent`. Acquired before claiming a task, released after execution completes (in `_run_and_release`) |
 | `_in_flight` | `Set[asyncio.Task]` | Tracks all fire-and-forget `_run_and_release` tasks currently executing. Used during shutdown to await lock cleanup |
+| `_task_config_cache` | `Dict[str, TaskConfig]` | In-memory cache of task configs, populated at `register_task_type()` time. `get_task_config()` reads from this first, falling back to Redis for configs registered by other instances |
 
 **Redis key prefixes**:
 | Prefix | Purpose |
@@ -198,13 +199,13 @@ IUserKeyBuilder (ABC)
 ```
 Push endpoint
   └─> scheduler.schedule_user_task(task_type, user_id, device_id, agent_id)
-        ├─ get_task_config() -- returns None if task type not registered/enabled (silent skip)
+        ├─ get_task_config() -- reads in-memory cache first, falls back to Redis; returns None if not registered (silent skip)
         ├─ Check trigger_mode == USER_ACTIVITY
         ├─ build_key() -> user_key
-        ├─ Check existing task in Redis (skip if PENDING/RUNNING)
+        ├─ Check existing task in Redis (skip if PENDING/RUNNING; update via pipeline: HSET+EXPIRE in 1 round-trip)
         ├─ Check last_exec time (skip if within interval)
         ├─ Check fail_count >= max_retries (skip if exceeded; auto-resets via TTL)
-        └─ Create TaskInfo, write to Redis hash + add to sorted set (score = now + interval)
+        └─ Create TaskInfo, write via pipeline: HSET+EXPIRE+ZADD in 1 round-trip
 
 _executor_loop (coordinator)
   └─> asyncio.gather(
