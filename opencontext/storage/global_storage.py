@@ -58,9 +58,6 @@ class GlobalStorage:
             GlobalStorage: Global storage manager singleton instance
         """
         instance = cls()
-        # If not initialized yet, try auto-initialization
-        if not instance._auto_initialized and instance._storage is None:
-            instance._auto_initialize()
         return instance
 
     @classmethod
@@ -70,7 +67,7 @@ class GlobalStorage:
             cls._instance = None
             cls._initialized = False
 
-    def _auto_initialize(self):
+    async def _auto_initialize(self):
         """Auto-initialize storage manager"""
         if self._auto_initialized:
             return
@@ -84,7 +81,7 @@ class GlobalStorage:
                 backend_configs = storage_config.get("backends", [])
                 if backend_configs:
                     storage = UnifiedStorage()
-                    if storage.initialize():
+                    if await storage.initialize():
                         self._storage = storage
                         logger.info("GlobalStorage auto-initialized successfully")
                     else:
@@ -99,6 +96,11 @@ class GlobalStorage:
         except Exception as e:
             logger.error(f"GlobalStorage auto-initialization failed: {e}")
             self._auto_initialized = True  # Prevent repeated attempts
+
+    async def ensure_initialized(self):
+        """Ensure storage is initialized (async). Call this before first use."""
+        if not self._auto_initialized and self._storage is None:
+            await self._auto_initialize()
 
     def get_storage(self) -> Optional[UnifiedStorage]:
         """
@@ -120,31 +122,31 @@ class GlobalStorage:
 
     # Convenience methods - directly call common UnifiedStorage methods
 
-    def upsert_processed_context(self, context: ProcessedContext) -> bool:
+    async def upsert_processed_context(self, context: ProcessedContext) -> bool:
         """Store processed context"""
         if not self._storage:
             raise RuntimeError("Storage not initialized")
-        return self._storage.upsert_processed_context(context)
+        return await self._storage.upsert_processed_context(context)
 
-    def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> bool:
+    async def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> bool:
         """Batch store processed contexts"""
         if not self._storage:
             raise RuntimeError("Storage not initialized")
-        return self._storage.batch_upsert_processed_context(contexts)
+        return await self._storage.batch_upsert_processed_context(contexts)
 
-    def get_processed_context(
+    async def get_processed_context(
         self, doc_id: str, context_type: ContextType
     ) -> Optional[ProcessedContext]:
         """Get processed context"""
         if not self._storage:
             raise RuntimeError("Storage not initialized")
-        return self._storage.get_processed_context(doc_id, context_type)
+        return await self._storage.get_processed_context(doc_id, context_type)
 
-    def delete_processed_context(self, doc_id: str, context_type: ContextType) -> bool:
+    async def delete_processed_context(self, doc_id: str, context_type: ContextType) -> bool:
         """Delete processed context"""
         if not self._storage:
             raise RuntimeError("Storage not initialized")
-        return self._storage.delete_processed_context(doc_id, context_type)
+        return await self._storage.delete_processed_context(doc_id, context_type)
 
 
 # Convenience functions

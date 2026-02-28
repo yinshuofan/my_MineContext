@@ -49,6 +49,8 @@ dependencies = [
     "cryptography>=46.0.3",
     "apscheduler>=3.10.0",
     "sqlalchemy>=2.0.0",
+    "asyncmy>=0.2.11",
+    "aiosqlite>=0.22.1",
 ]
 
 [project.optional-dependencies]

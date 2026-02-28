@@ -10,7 +10,7 @@ OpenContext module: llm_client
 from enum import Enum
 from typing import Any, Dict, List
 
-from openai import APIError, AsyncOpenAI, OpenAI
+from openai import APIError, AsyncOpenAI
 
 from opencontext.models.context import Vectorize
 from opencontext.monitoring import record_processing_stage
@@ -42,124 +42,34 @@ class LLMClient:
         self.provider = config.get("provider", LLMProvider.OPENAI.value)
         if not self.api_key or not self.base_url or not self.model:
             raise ValueError("API key, base URL, and model must be provided")
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=self.timeout,
-            max_retries=self.max_retries,
-        )
-        self.async_client = AsyncOpenAI(
+        self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
             timeout=self.timeout,
             max_retries=self.max_retries,
         )
 
-    def generate(self, prompt: str, **kwargs) -> str:
-        messages = [{"role": "user", "content": prompt}]
-        return self.generate_with_messages(messages, **kwargs)
-
-    def generate_with_messages(self, messages: List[Dict[str, Any]], **kwargs):
+    async def generate_with_messages(self, messages: List[Dict[str, Any]], **kwargs):
         if self.llm_type == LLMType.CHAT:
-            return self._openai_chat_completion(messages, **kwargs)
+            return await self._openai_chat_completion(messages, **kwargs)
         else:
             raise ValueError(f"Unsupported LLM type for message generation: {self.llm_type}")
 
-    async def generate_with_messages_async(self, messages: List[Dict[str, Any]], **kwargs):
-        if self.llm_type == LLMType.CHAT:
-            return await self._openai_chat_completion_async(messages, **kwargs)
-        else:
-            raise ValueError(f"Unsupported LLM type for message generation: {self.llm_type}")
-
-    def generate_with_messages_stream(self, messages: List[Dict[str, Any]], **kwargs):
-        """Stream generate response"""
-        if self.llm_type == LLMType.CHAT:
-            return self._openai_chat_completion_stream(messages, **kwargs)
-        else:
-            raise ValueError(f"Unsupported LLM type for stream generation: {self.llm_type}")
-
-    async def generate_with_messages_stream_async(self, messages: List[Dict[str, Any]], **kwargs):
+    async def generate_with_messages_stream(self, messages: List[Dict[str, Any]], **kwargs):
         """Async stream generate response"""
         if self.llm_type == LLMType.CHAT:
-            return self._openai_chat_completion_stream_async(messages, **kwargs)
+            async for chunk in self._openai_chat_completion_stream(messages, **kwargs):
+                yield chunk
         else:
             raise ValueError(f"Unsupported LLM type for stream generation: {self.llm_type}")
 
-    def generate_embedding(self, text: str, **kwargs) -> List[float]:
+    async def generate_embedding(self, text: str, **kwargs) -> List[float]:
         if self.llm_type == LLMType.EMBEDDING:
-            return self._openai_embedding(text, **kwargs)
+            return await self._openai_embedding(text, **kwargs)
         else:
             raise ValueError(f"Unsupported LLM type for embedding generation: {self.llm_type}")
 
-    async def generate_embedding_async(self, text: str, **kwargs) -> List[float]:
-        if self.llm_type == LLMType.EMBEDDING:
-            return await self._openai_embedding_async(text, **kwargs)
-        else:
-            raise ValueError(f"Unsupported LLM type for embedding generation: {self.llm_type}")
-
-    def _openai_chat_completion(self, messages: List[Dict[str, Any]], **kwargs):
-        import time
-
-        request_start = time.time()
-        try:
-            # Stage: LLM request preparation
-
-            tools = kwargs.get("tools", None)
-            thinking = kwargs.get("thinking", None)
-
-            create_params = {
-                "model": self.model,
-                "messages": messages,
-            }
-            if tools:
-                create_params["tools"] = tools
-                create_params["tool_choice"] = "auto"
-
-            if thinking:
-                if self.provider == LLMProvider.DOUBAO.value:
-                    if thinking == "disabled":
-                        create_params["reasoning_effort"] = "minimal"
-                elif self.provider == LLMProvider.DASHSCOPE.value:
-                    create_params["extra_body"] = {"thinking": {"type": thinking}}
-
-            # Stage: LLM API call
-            api_start = time.time()
-            response = self.client.chat.completions.create(**create_params)
-
-            record_processing_stage(
-                "chat_cost", int((time.time() - api_start) * 1000), status="success"
-            )
-
-            # Stage: Response parsing
-            parse_start = time.time()
-
-            # Record token usage
-            if hasattr(response, "usage") and response.usage:
-                try:
-                    from opencontext.monitoring import record_token_usage
-
-                    record_token_usage(
-                        model=self.model,
-                        prompt_tokens=response.usage.prompt_tokens,
-                        completion_tokens=response.usage.completion_tokens,
-                        total_tokens=response.usage.total_tokens,
-                    )
-                except ImportError:
-                    pass  # Monitoring module not installed or initialized
-
-            return response
-        except APIError as e:
-            logger.error(f"OpenAI API error: {e}")
-            # Record failure
-            try:
-                record_processing_stage(
-                    "chat_cost", int((time.time() - request_start) * 1000), status="failure"
-                )
-            except ImportError:
-                pass
-            raise
-
-    async def _openai_chat_completion_async(self, messages: List[Dict[str, Any]], **kwargs):
+    async def _openai_chat_completion(self, messages: List[Dict[str, Any]], **kwargs):
         """Async chat completion"""
         import time
 
@@ -184,7 +94,7 @@ class LLMClient:
                     create_params["extra_body"] = {"thinking": {"type": thinking}}
             # Stage: LLM API call
             api_start = time.time()
-            response = await self.async_client.chat.completions.create(**create_params)
+            response = await self.client.chat.completions.create(**create_params)
 
             record_processing_stage(
                 "chat_cost", int((time.time() - api_start) * 1000), status="success"
@@ -216,47 +126,12 @@ class LLMClient:
                 pass
             raise
 
-    def _openai_chat_completion_stream(self, messages: List[Dict[str, Any]], **kwargs):
-        """Sync stream chat completion"""
-        try:
-            tools = kwargs.get("tools", None)
-            thinking = kwargs.get("thinking", None)
-
-            create_params = {
-                "model": self.model,
-                "messages": messages,
-                "stream": True,
-            }
-            if tools:
-                create_params["tools"] = tools
-                create_params["tool_choice"] = "auto"
-
-            if thinking:
-                if self.provider == LLMProvider.DOUBAO.value:
-                    if thinking == "disabled":
-                        create_params["reasoning_effort"] = "minimal"
-                elif self.provider == LLMProvider.DASHSCOPE.value:
-                    create_params["extra_body"] = {"thinking": {"type": thinking}}
-
-            stream = self.client.chat.completions.create(**create_params)
-            return stream
-        except APIError as e:
-            logger.error(f"OpenAI API stream error: {e}")
-            raise
-
-    async def _openai_chat_completion_stream_async(self, messages: List[Dict[str, Any]], **kwargs):
+    async def _openai_chat_completion_stream(self, messages: List[Dict[str, Any]], **kwargs):
         """Async stream chat completion - async generator"""
         try:
             tools = kwargs.get("tools", None)
             thinking = kwargs.get("thinking", None)
 
-            # Create async client
-            from openai import AsyncOpenAI
-
-            async_client = AsyncOpenAI(
-                api_key=self.api_key, base_url=self.base_url, timeout=self.timeout
-            )
-
             create_params = {
                 "model": self.model,
                 "messages": messages,
@@ -273,7 +148,7 @@ class LLMClient:
                 elif self.provider == LLMProvider.DASHSCOPE.value:
                     create_params["extra_body"] = {"thinking": {"type": thinking}}
 
-            stream = await async_client.chat.completions.create(**create_params)
+            stream = await self.client.chat.completions.create(**create_params)
 
             # Return stream object directly, it's already an async iterator
             async for chunk in stream:
@@ -282,9 +157,9 @@ class LLMClient:
             logger.error(f"OpenAI API async stream error: {e}")
             raise
 
-    def _openai_embedding(self, text: str, **kwargs) -> List[float]:
+    async def _openai_embedding(self, text: str, **kwargs) -> List[float]:
         try:
-            response = self.client.embeddings.create(model=self.model, input=[text])
+            response = await self.client.embeddings.create(model=self.model, input=[text])
             embedding = response.data[0].embedding
 
             # Record token usage
@@ -315,54 +190,15 @@ class LLMClient:
             logger.error(f"OpenAI API error during embedding: {e}")
             raise
 
-    async def _openai_embedding_async(self, text: str, **kwargs) -> List[float]:
-        try:
-            response = await self.async_client.embeddings.create(model=self.model, input=[text])
-            embedding = response.data[0].embedding
-
-            # Record token usage
-            if hasattr(response, "usage") and response.usage:
-                try:
-                    from opencontext.monitoring import record_token_usage
-
-                    record_token_usage(
-                        model=self.model,
-                        prompt_tokens=response.usage.prompt_tokens,
-                        completion_tokens=0,  # embedding has no completion tokens
-                        total_tokens=response.usage.total_tokens,
-                    )
-                except ImportError:
-                    pass  # Monitoring module not installed or initialized
-
-            output_dim = kwargs.get("output_dim", self.config.get("output_dim", 0))
-            if output_dim and len(embedding) > output_dim:
-                import math
-
-                embedding = embedding[:output_dim]
-                norm = math.sqrt(sum(x**2 for x in embedding))
-                if norm > 0:
-                    embedding = [x / norm for x in embedding]
-
-            return embedding
-        except APIError as e:
-            logger.error(f"OpenAI API error during embedding: {e}")
-            raise
-
-    def vectorize(self, vectorize: Vectorize, **kwargs):
+    async def vectorize(self, vectorize: Vectorize, **kwargs):
         if vectorize.vector:
             return
-        vectorize.vector = self.generate_embedding(vectorize.get_vectorize_content(), **kwargs)
-        return
-
-    async def vectorize_async(self, vectorize: Vectorize, **kwargs):
-        if vectorize.vector:
-            return
-        vectorize.vector = await self.generate_embedding_async(
+        vectorize.vector = await self.generate_embedding(
             vectorize.get_vectorize_content(), **kwargs
         )
         return
 
-    def generate_embedding_batch(self, texts: List[str], **kwargs) -> List[List[float]]:
+    async def generate_embedding_batch(self, texts: List[str], **kwargs) -> List[List[float]]:
         """Generate embeddings for multiple texts in a single API call (with internal chunking)."""
         if not texts:
             return []
@@ -376,52 +212,7 @@ class LLMClient:
         for i in range(0, len(texts), max_batch):
             chunk = texts[i : i + max_batch]
             try:
-                response = self.client.embeddings.create(model=self.model, input=chunk)
-                sorted_data = sorted(response.data, key=lambda d: d.index)
-                chunk_embeddings = [d.embedding for d in sorted_data]
-
-                if output_dim:
-                    chunk_embeddings = self._truncate_embeddings(chunk_embeddings, output_dim)
-
-                if hasattr(response, "usage") and response.usage:
-                    try:
-                        from opencontext.monitoring import record_token_usage
-
-                        record_token_usage(
-                            model=self.model,
-                            prompt_tokens=response.usage.prompt_tokens,
-                            completion_tokens=0,
-                            total_tokens=response.usage.total_tokens,
-                        )
-                    except ImportError:
-                        pass
-
-                all_embeddings.extend(chunk_embeddings)
-            except APIError as e:
-                logger.warning(
-                    f"Batch embedding failed for chunk ({len(chunk)} texts), "
-                    f"falling back to individual calls: {e}"
-                )
-                for text in chunk:
-                    all_embeddings.append(self.generate_embedding(text, **kwargs))
-
-        return all_embeddings
-
-    async def generate_embedding_batch_async(self, texts: List[str], **kwargs) -> List[List[float]]:
-        """Async version of generate_embedding_batch."""
-        if not texts:
-            return []
-        if self.llm_type != LLMType.EMBEDDING:
-            raise ValueError(f"Unsupported LLM type for embedding generation: {self.llm_type}")
-
-        max_batch = kwargs.pop("max_batch_size", self.config.get("max_batch_size", 64))
-        output_dim = kwargs.get("output_dim", self.config.get("output_dim", 0))
-        all_embeddings: List[List[float]] = []
-
-        for i in range(0, len(texts), max_batch):
-            chunk = texts[i : i + max_batch]
-            try:
-                response = await self.async_client.embeddings.create(model=self.model, input=chunk)
+                response = await self.client.embeddings.create(model=self.model, input=chunk)
                 sorted_data = sorted(response.data, key=lambda d: d.index)
                 chunk_embeddings = [d.embedding for d in sorted_data]
 
@@ -448,7 +239,7 @@ class LLMClient:
                     f"falling back to individual calls: {e}"
                 )
                 for text in chunk:
-                    all_embeddings.append(await self.generate_embedding_async(text, **kwargs))
+                    all_embeddings.append(await self.generate_embedding(text, **kwargs))
 
         return all_embeddings
 
@@ -468,7 +259,7 @@ class LLMClient:
             result.append(embedding)
         return result
 
-    def validate(self) -> tuple[bool, str]:
+    async def validate(self) -> tuple[bool, str]:
         """
         Validate LLM configuration by making a simple API call.
 
@@ -549,23 +340,10 @@ class LLMClient:
 
         try:
             if self.llm_type == LLMType.CHAT:
-                # Test with an image input - 20x20 pixel PNG with clear red square pattern
-                # This is a small but visible test image to validate vision capabilities
-                # tiny_image_base64 = "iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAMElEQVR42mP8z8DwHwMxgImBQjDwBo4aNWrUqFGjRlEEhtEwHDVq1KhRo0aNGgUAAN0/Af9dX6MgAAAAAElFTkSuQmCC"
-                # messages = [
-                #     {
-                #         "role": "user",
-                #         "content": [
-                #             {"type": "text", "text": "Hi"},
-                #             {
-                #                 "type": "image_url",
-                #                 "image_url": {"url": f"data:image/png;base64,{tiny_image_base64}"},
-                #             },
-                #         ],
-                #     }
-                # ]
                 messages = [{"role": "user", "content": "Hi"}]
-                response = self.client.chat.completions.create(model=self.model, messages=messages)
+                response = await self.client.chat.completions.create(
+                    model=self.model, messages=messages
+                )
                 if response.choices and len(response.choices) > 0:
                     return True, "Chat model validation successful"
                 else:
@@ -573,7 +351,7 @@ class LLMClient:
 
             elif self.llm_type == LLMType.EMBEDDING:
                 # Test with a simple text
-                response = self.client.embeddings.create(model=self.model, input=["test"])
+                response = await self.client.embeddings.create(model=self.model, input=["test"])
                 if response.data and len(response.data) > 0 and response.data[0].embedding:
                     return True, "Embedding model validation successful"
                 else:

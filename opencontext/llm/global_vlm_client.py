@@ -10,7 +10,6 @@ Provides global access to LLMManager instances
 """
 
 import asyncio
-import concurrent.futures
 import json
 import threading
 from typing import Any, Dict, Optional
@@ -111,84 +110,21 @@ class GlobalVLMClient:
                 return False
             return True
 
-    def generate_with_messages(
+    async def generate_with_messages(
         self, messages: list, enable_executor: bool = True, max_calls: int = 5, **kwargs
     ):
-        response = self._vlm_client.generate_with_messages(messages, **kwargs)
+        response = await self._vlm_client.generate_with_messages(messages, **kwargs)
         call_count = 0
         while enable_executor:
             call_count += 1
             if call_count > max_calls:
-                logger.warning(
-                    f"Reached maximum tool call limit ({max_calls}), stopping further calls"
-                )
                 messages.append(
                     {
                         "role": "system",
                         "content": f"System notice: Maximum tool call limit ({max_calls}) reached. Cannot execute more tool calls. Please answer the user's question directly without attempting more tool calls.",
                     }
                 )
-                response = self._vlm_client.generate_with_messages(messages, **kwargs)
-                break
-            message = response.choices[0].message
-            if not message.tool_calls:
-                break
-            messages.append(message)
-            tool_calls = message.tool_calls
-            tool_call_info = []
-            for tc in tool_calls:
-                function_name = tc.function.name
-                function_args = parse_json_from_response(tc.function.arguments)
-                tool_call_info.append((tc.id, function_name, function_args))
-            results = []
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future_to_tool = {
-                    executor.submit(self._tools_executor.run, function_name, function_args): (
-                        tool_id,
-                        function_name,
-                    )
-                    for tool_id, function_name, function_args in tool_call_info
-                }
-                for future in concurrent.futures.as_completed(future_to_tool):
-                    tool_id, function_name = future_to_tool[future]
-                    try:
-                        content = future.result()
-                        # logger.info(f"Tool call {function_name} successful, result: {content}")
-                        results.append((tool_id, function_name, content))
-                    except Exception as e:
-                        # logger.exception(f"Tool call {function_name} failed: {e}")
-                        results.append((tool_id, function_name, "failed"))
-            # logger.info(f"Tool call results: {results}")
-            for tool_id, function_name, content in results:
-                messages.append(
-                    {
-                        "role": "tool",
-                        "name": function_name,
-                        "content": json.dumps(content),
-                        "tool_call_id": tool_id,
-                    }
-                )
-            response = self._vlm_client.generate_with_messages(messages, **kwargs)
-
-        message = response.choices[0].message
-        return message.content
-
-    async def generate_with_messages_async(
-        self, messages: list, enable_executor: bool = True, max_calls: int = 5, **kwargs
-    ):
-        response = await self._vlm_client.generate_with_messages_async(messages, **kwargs)
-        call_count = 0
-        while enable_executor:
-            call_count += 1
-            if call_count > max_calls:
-                # logger.warning(f"Reached maximum tool call limit ({max_calls}), stopping further calls")
-                messages.append(
-                    {
-                        "role": "system",
-                        "content": f"System notice: Maximum tool call limit ({max_calls}) reached. Cannot execute more tool calls. Please answer the user's question directly without attempting more tool calls.",
-                    }
-                )
-                response = await self._vlm_client.generate_with_messages_async(messages, **kwargs)
+                response = await self._vlm_client.generate_with_messages(messages, **kwargs)
                 break
             message = response.choices[0].message
             if not message.tool_calls:
@@ -215,7 +151,6 @@ class GlobalVLMClient:
 
             # Collect results and add to message list
             for result, (tool_id, function_name) in zip(results, tool_call_info):
-                # logger.info(f"Tool call {function_name} successful, result: {result}")
                 messages.append(
                     {
                         "role": "tool",
@@ -226,7 +161,7 @@ class GlobalVLMClient:
                 )
 
             # Call LLM again
-            response = await self._vlm_client.generate_with_messages_async(messages, **kwargs)
+            response = await self._vlm_client.generate_with_messages(messages, **kwargs)
 
         message = response.choices[0].message
         return message.content
@@ -243,7 +178,7 @@ class GlobalVLMClient:
         Returns:
             Raw LLM response object, including possible tool_calls
         """
-        response = await self._vlm_client.generate_with_messages_async(
+        response = await self._vlm_client.generate_with_messages(
             messages, tools=tools, **kwargs
         )
         return response
@@ -252,7 +187,7 @@ class GlobalVLMClient:
         """
         Agent-specific streaming generation method
         """
-        async for chunk in self._vlm_client._openai_chat_completion_stream_async(
+        async for chunk in self._vlm_client._openai_chat_completion_stream(
             messages, tools=tools, **kwargs
         ):
             yield chunk
@@ -289,18 +224,10 @@ def is_initialized() -> bool:
     return GlobalVLMClient.get_instance()._auto_initialized
 
 
-def generate_with_messages(
+async def generate_with_messages(
     messages: list, enable_executor: bool = True, max_calls: int = 5, **kwargs
 ):
-    return GlobalVLMClient.get_instance().generate_with_messages(
-        messages, enable_executor, max_calls, **kwargs
-    )
-
-
-async def generate_with_messages_async(
-    messages: list, enable_executor: bool = True, max_calls: int = 5, **kwargs
-):
-    return await GlobalVLMClient.get_instance().generate_with_messages_async(
+    return await GlobalVLMClient.get_instance().generate_with_messages(
         messages, enable_executor, max_calls, **kwargs
     )
 

@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 from opencontext.models.context import ProcessedContext, Vectorize
 
@@ -21,8 +21,8 @@ from opencontext.models.context import ProcessedContext, Vectorize
 class StorageType(Enum):
     """Enumeration of supported storage types."""
 
-    VECTOR_DB = "vector_db"  # Vector databases: ChromaDB, Qdrant
-    DOCUMENT_DB = "document_db"  # Document databases: SQLite, MongoDB
+    VECTOR_DB = "vector_db"  # Vector databases: Qdrant, VikingDB
+    DOCUMENT_DB = "document_db"  # Document databases: SQLite, MySQL
 
 
 class DataType(Enum):
@@ -68,7 +68,7 @@ class IStorageBackend(ABC):
     """Storage backend interface"""
 
     @abstractmethod
-    def initialize(self, config: Dict[str, Any]) -> bool:
+    async def initialize(self, config: Dict[str, Any]) -> bool:
         """Initialize storage backend"""
 
     @abstractmethod
@@ -84,23 +84,23 @@ class IVectorStorageBackend(IStorageBackend):
     """Vector storage backend interface"""
 
     @abstractmethod
-    def get_collection_names(self) -> Optional[List[str]]:
+    async def get_collection_names(self) -> Optional[List[str]]:
         """Get all collection names in vector database"""
 
     @abstractmethod
-    def delete_contexts(self, ids: List[str], context_type: str) -> bool:
+    async def delete_contexts(self, ids: List[str], context_type: str) -> bool:
         """Delete contexts of specified type"""
 
     @abstractmethod
-    def upsert_processed_context(self, context: ProcessedContext) -> str:
+    async def upsert_processed_context(self, context: ProcessedContext) -> str:
         """Store processed context"""
 
     @abstractmethod
-    def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> List[str]:
+    async def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> List[str]:
         """Batch store processed contexts"""
 
     @abstractmethod
-    def get_all_processed_contexts(
+    async def get_all_processed_contexts(
         self,
         context_types: Optional[List[str]] = None,
         limit: int = 100,
@@ -124,7 +124,7 @@ class IVectorStorageBackend(IStorageBackend):
             agent_id: Agent identifier for multi-user filtering
         """
 
-    def scroll_processed_contexts(
+    async def scroll_processed_contexts(
         self,
         context_types: Optional[List[str]] = None,
         batch_size: int = 100,
@@ -133,7 +133,7 @@ class IVectorStorageBackend(IStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-    ) -> Generator[ProcessedContext, None, None]:
+    ) -> AsyncGenerator[ProcessedContext, None]:
         """Iterate over all contexts matching the criteria, yielding one at a time.
 
         Uses backend-native cursors where available (e.g., Qdrant scroll) to
@@ -153,12 +153,12 @@ class IVectorStorageBackend(IStorageBackend):
             ProcessedContext objects
         """
         if not context_types:
-            context_types = list(self.get_collection_names() or [])
+            context_types = list(await self.get_collection_names() or [])
 
         for context_type in context_types:
             offset = 0
             while True:
-                result = self.get_all_processed_contexts(
+                result = await self.get_all_processed_contexts(
                     context_types=[context_type],
                     limit=batch_size,
                     offset=offset,
@@ -171,21 +171,22 @@ class IVectorStorageBackend(IStorageBackend):
                 batch = result.get(context_type, [])
                 if not batch:
                     break
-                yield from batch
+                for item in batch:
+                    yield item
                 if len(batch) < batch_size:
                     break
                 offset += batch_size
 
     @abstractmethod
-    def get_processed_context(self, id: str, context_type: str) -> ProcessedContext:
+    async def get_processed_context(self, id: str, context_type: str) -> ProcessedContext:
         """Get specified context"""
 
     @abstractmethod
-    def delete_processed_context(self, id: str, context_type: str) -> bool:
+    async def delete_processed_context(self, id: str, context_type: str) -> bool:
         """Delete specified context"""
 
     @abstractmethod
-    def search(
+    async def search(
         self,
         query: Vectorize,
         top_k: int = 10,
@@ -208,7 +209,7 @@ class IVectorStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def upsert_todo_embedding(
+    async def upsert_todo_embedding(
         self,
         todo_id: int,
         content: str,
@@ -228,7 +229,7 @@ class IVectorStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def search_similar_todos(
+    async def search_similar_todos(
         self,
         query_embedding: List[float],
         top_k: int = 10,
@@ -246,7 +247,7 @@ class IVectorStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def delete_todo_embedding(self, todo_id: int) -> bool:
+    async def delete_todo_embedding(self, todo_id: int) -> bool:
         """Delete todo embedding from vector database
 
         Args:
@@ -257,15 +258,17 @@ class IVectorStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(self, context_type: str) -> int:
         """Get record count for specified context_type"""
 
     @abstractmethod
-    def get_all_processed_context_counts(self) -> Dict[str, int]:
+    async def get_all_processed_context_counts(self) -> Dict[str, int]:
         """Get record counts for all context_types"""
 
     @abstractmethod
-    def delete_by_source_file(self, source_file_key: str, user_id: Optional[str] = None) -> bool:
+    async def delete_by_source_file(
+        self, source_file_key: str, user_id: Optional[str] = None
+    ) -> bool:
         """Delete all chunks belonging to a source file (for document overwrite)
 
         Args:
@@ -277,7 +280,7 @@ class IVectorStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def search_by_hierarchy(
+    async def search_by_hierarchy(
         self,
         context_type: str,
         hierarchy_level: int,
@@ -301,7 +304,7 @@ class IVectorStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def get_by_ids(
+    async def get_by_ids(
         self, ids: List[str], context_type: Optional[str] = None
     ) -> List[ProcessedContext]:
         """Get contexts by their IDs
@@ -319,7 +322,7 @@ class IDocumentStorageBackend(IStorageBackend):
     """Document storage backend interface"""
 
     @abstractmethod
-    def insert_vaults(
+    async def insert_vaults(
         self,
         title: str,
         summary: str,
@@ -332,13 +335,13 @@ class IDocumentStorageBackend(IStorageBackend):
         """Insert vault"""
 
     @abstractmethod
-    def get_reports(
+    async def get_reports(
         self, limit: int = 100, offset: int = 0, is_deleted: bool = False
     ) -> List[Dict]:
         """Get reports"""
 
     @abstractmethod
-    def get_vaults(
+    async def get_vaults(
         self,
         limit: int = 100,
         offset: int = 0,
@@ -352,17 +355,15 @@ class IDocumentStorageBackend(IStorageBackend):
         """Get vaults"""
 
     @abstractmethod
-    def get_vault(self, vault_id: int) -> Optional[Dict]:
+    async def get_vault(self, vault_id: int) -> Optional[Dict]:
         """Get vault by ID"""
-        pass
 
     @abstractmethod
-    def update_vault(self, vault_id: int, **kwargs) -> bool:
+    async def update_vault(self, vault_id: int, **kwargs) -> bool:
         """Update vault"""
-        pass
 
     @abstractmethod
-    def insert_todo(
+    async def insert_todo(
         self,
         content: str,
         start_time: datetime = None,
@@ -375,7 +376,7 @@ class IDocumentStorageBackend(IStorageBackend):
         """Insert todo item"""
 
     @abstractmethod
-    def get_todos(
+    async def get_todos(
         self,
         status: int = None,
         limit: int = 100,
@@ -386,21 +387,23 @@ class IDocumentStorageBackend(IStorageBackend):
         """Get todo items"""
 
     @abstractmethod
-    def insert_tip(self, content: str) -> int:
+    async def insert_tip(self, content: str) -> int:
         """Insert tip"""
 
     @abstractmethod
-    def get_tips(self, limit: int = 100, offset: int = 0) -> List[Dict]:
+    async def get_tips(self, limit: int = 100, offset: int = 0) -> List[Dict]:
         """Get tips"""
 
     @abstractmethod
-    def update_todo_status(self, todo_id: int, status: int, end_time: datetime = None) -> bool:
+    async def update_todo_status(
+        self, todo_id: int, status: int, end_time: datetime = None
+    ) -> bool:
         """Update todo item status"""
 
     # ── Profile CRUD ──
 
     @abstractmethod
-    def upsert_profile(
+    async def upsert_profile(
         self,
         user_id: str,
         device_id: str = "default",
@@ -430,7 +433,7 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def get_profile(
+    async def get_profile(
         self, user_id: str, device_id: str = "default", agent_id: str = "default"
     ) -> Optional[Dict]:
         """Get user profile by composite key
@@ -445,7 +448,7 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def delete_profile(
+    async def delete_profile(
         self, user_id: str, device_id: str = "default", agent_id: str = "default"
     ) -> bool:
         """Delete user profile
@@ -462,7 +465,7 @@ class IDocumentStorageBackend(IStorageBackend):
     # ── Entity CRUD ──
 
     @abstractmethod
-    def upsert_entity(
+    async def upsert_entity(
         self,
         user_id: str,
         device_id: str = "default",
@@ -494,7 +497,7 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def get_entity(
+    async def get_entity(
         self,
         user_id: str,
         device_id: str = "default",
@@ -514,7 +517,7 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def list_entities(
+    async def list_entities(
         self,
         user_id: str,
         device_id: str = "default",
@@ -538,7 +541,7 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def search_entities(
+    async def search_entities(
         self,
         user_id: str,
         device_id: str = "default",
@@ -560,7 +563,7 @@ class IDocumentStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    def delete_entity(
+    async def delete_entity(
         self,
         user_id: str,
         device_id: str = "default",

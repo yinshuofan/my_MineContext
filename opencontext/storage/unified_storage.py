@@ -9,7 +9,7 @@ Unified storage system - unified management supporting multiple storage backends
 """
 
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from opencontext.models.context import ProcessedContext, Vectorize
 from opencontext.models.enums import ContextType
@@ -33,7 +33,6 @@ class StorageBackendFactory:
     def __init__(self):
         self._backends = {
             StorageType.VECTOR_DB: {
-                "chromadb": self._create_chromadb_backend,
                 "qdrant": self._create_qdrant_backend,
                 "vikingdb": self._create_vikingdb_backend,
             },
@@ -43,7 +42,7 @@ class StorageBackendFactory:
             },
         }
 
-    def create_backend(
+    async def create_backend(
         self, storage_type: StorageType, config: Dict[str, Any]
     ) -> Optional[IStorageBackend]:
         """Create storage backend"""
@@ -64,7 +63,7 @@ class StorageBackendFactory:
 
         try:
             backend = type_backends[backend_name](config)
-            if backend.initialize(config):
+            if await backend.initialize(config):
                 return backend
             else:
                 logger.error(f"Backend {backend_name} initialization failed")
@@ -72,11 +71,6 @@ class StorageBackendFactory:
         except Exception as e:
             logger.exception(f"Creating {backend_name} backend failed: {e}")
             return None
-
-    def _create_chromadb_backend(self, config: Dict[str, Any]):
-        from opencontext.storage.backends.chromadb_backend import ChromaDBBackend
-
-        return ChromaDBBackend()
 
     def _create_qdrant_backend(self, config: Dict[str, Any]):
         from opencontext.storage.backends.qdrant_backend import QdrantBackend
@@ -110,13 +104,13 @@ class UnifiedStorage:
         self._vector_backend: IVectorStorageBackend = None
         self._document_backend: IDocumentStorageBackend = None
 
-    def get_vector_collection_names(self) -> Optional[List[str]]:
+    async def get_vector_collection_names(self) -> Optional[List[str]]:
         """Get all collection names in vector database"""
         if not self._vector_backend:
             return None
-        return self._vector_backend.get_collection_names()
+        return await self._vector_backend.get_collection_names()
 
-    def initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """
         Initialize unified storage system
 
@@ -140,7 +134,7 @@ class UnifiedStorage:
 
             for config in backend_configs:
                 storage_type = StorageType(config["storage_type"])
-                backend = self._factory.create_backend(storage_type, config)
+                backend = await self._factory.create_backend(storage_type, config)
                 if backend:
                     # Set dedicated backend reference
                     if storage_type == StorageType.VECTOR_DB and isinstance(
@@ -176,7 +170,7 @@ class UnifiedStorage:
             return self._document_backend
         return None
 
-    def batch_upsert_processed_context(
+    async def batch_upsert_processed_context(
         self, contexts: List[ProcessedContext]
     ) -> Optional[List[str]]:
         """Batch store processed contexts to vector database"""
@@ -190,14 +184,14 @@ class UnifiedStorage:
 
         try:
             # Directly pass ProcessedContext to vector database
-            doc_ids = self._vector_backend.batch_upsert_processed_context(contexts)
+            doc_ids = await self._vector_backend.batch_upsert_processed_context(contexts)
             return doc_ids
 
         except Exception as e:
             logger.exception(f"Failed to store context: {e}")
             return None
 
-    def upsert_processed_context(self, context: ProcessedContext) -> Optional[str]:
+    async def upsert_processed_context(self, context: ProcessedContext) -> Optional[str]:
         """Store processed context to vector database"""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -209,23 +203,23 @@ class UnifiedStorage:
 
         try:
             # Directly pass ProcessedContext to vector database
-            doc_id = self._vector_backend.upsert_processed_context(context)
+            doc_id = await self._vector_backend.upsert_processed_context(context)
             return doc_id
 
         except Exception as e:
             logger.exception(f"Failed to store context: {e}")
             return None
 
-    def get_processed_context(self, id: str, context_type: str):
-        return self._vector_backend.get_processed_context(id, context_type)
+    async def get_processed_context(self, id: str, context_type: str):
+        return await self._vector_backend.get_processed_context(id, context_type)
 
-    def delete_processed_context(self, id: str, context_type: str):
-        return self._vector_backend.delete_processed_context(id, context_type)
+    async def delete_processed_context(self, id: str, context_type: str):
+        return await self._vector_backend.delete_processed_context(id, context_type)
 
-    def delete_batch_processed_contexts(self, ids: List[str], context_type: str):
-        return self._vector_backend.delete_contexts(ids, context_type)
+    async def delete_batch_processed_contexts(self, ids: List[str], context_type: str):
+        return await self._vector_backend.delete_contexts(ids, context_type)
 
-    def get_all_processed_contexts(
+    async def get_all_processed_contexts(
         self,
         context_types: Optional[List[str]] = None,
         limit: int = 100,
@@ -259,7 +253,7 @@ class UnifiedStorage:
         if not context_types:
             context_types = [ct.value for ct in ContextType]
         try:
-            return self._vector_backend.get_all_processed_contexts(
+            return await self._vector_backend.get_all_processed_contexts(
                 context_types=context_types,
                 limit=limit,
                 offset=offset,
@@ -273,7 +267,7 @@ class UnifiedStorage:
             logger.exception(f"Failed to query ProcessedContext: {e}")
             return {}
 
-    def scroll_processed_contexts(
+    async def scroll_processed_contexts(
         self,
         context_types: Optional[List[str]] = None,
         batch_size: int = 100,
@@ -282,7 +276,7 @@ class UnifiedStorage:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-    ) -> Generator[ProcessedContext, None, None]:
+    ) -> AsyncGenerator[ProcessedContext, None]:
         """Iterate over all contexts matching the criteria, yielding one at a time.
 
         Delegates to vector backend's scroll_processed_contexts.
@@ -299,7 +293,7 @@ class UnifiedStorage:
             context_types = [ct.value for ct in ContextType]
 
         try:
-            yield from self._vector_backend.scroll_processed_contexts(
+            async for item in self._vector_backend.scroll_processed_contexts(
                 context_types=context_types,
                 batch_size=batch_size,
                 filter=filter,
@@ -307,11 +301,12 @@ class UnifiedStorage:
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
-            )
+            ):
+                yield item
         except Exception as e:
             logger.exception(f"Failed to scroll ProcessedContexts: {e}")
 
-    def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(self, context_type: str) -> int:
         """Get record count for specified context_type"""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -322,12 +317,12 @@ class UnifiedStorage:
             return 0
 
         try:
-            return self._vector_backend.get_processed_context_count(context_type)
+            return await self._vector_backend.get_processed_context_count(context_type)
         except Exception as e:
             logger.exception(f"Failed to get {context_type} record count: {e}")
             return 0
 
-    def get_all_processed_context_counts(self) -> Dict[str, int]:
+    async def get_all_processed_context_counts(self) -> Dict[str, int]:
         """Get record count for all context_type"""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -338,7 +333,7 @@ class UnifiedStorage:
             return {}
 
         try:
-            return self._vector_backend.get_all_processed_context_counts()
+            return await self._vector_backend.get_all_processed_context_counts()
         except Exception as e:
             logger.exception(f"Failed to get all context_type record counts: {e}")
             return {}
@@ -350,7 +345,7 @@ class UnifiedStorage:
 
         return [ct.value for ct in ContextType]
 
-    def search(
+    async def search(
         self,
         query: Vectorize,
         top_k: int = 10,
@@ -381,7 +376,7 @@ class UnifiedStorage:
 
         try:
             # Execute vector search
-            search_results = self._vector_backend.search(
+            search_results = await self._vector_backend.search(
                 query=query,
                 top_k=top_k,
                 context_types=context_types,
@@ -409,7 +404,7 @@ class UnifiedStorage:
             logger.debug(f"Config check for consumption failed, defaulting to enabled: {e}")
             return True  # Default to enabled if config not available
 
-    def upsert_todo_embedding(
+    async def upsert_todo_embedding(
         self,
         todo_id: int,
         content: str,
@@ -424,9 +419,11 @@ class UnifiedStorage:
             logger.warning("Storage not initialized, cannot store todo embedding")
             return False
 
-        return self._vector_backend.upsert_todo_embedding(todo_id, content, embedding, metadata)
+        return await self._vector_backend.upsert_todo_embedding(
+            todo_id, content, embedding, metadata
+        )
 
-    def search_similar_todos(
+    async def search_similar_todos(
         self,
         query_embedding: List[float],
         top_k: int = 10,
@@ -440,11 +437,11 @@ class UnifiedStorage:
             logger.warning("Storage not initialized, cannot search todos")
             return []
 
-        return self._vector_backend.search_similar_todos(
+        return await self._vector_backend.search_similar_todos(
             query_embedding, top_k, similarity_threshold
         )
 
-    def delete_todo_embedding(self, todo_id: int) -> bool:
+    async def delete_todo_embedding(self, todo_id: int) -> bool:
         """Delete todo embedding from vector database"""
         if not self._is_consumption_enabled():
             logger.debug("Consumption disabled, skipping todo embedding delete")
@@ -453,9 +450,9 @@ class UnifiedStorage:
             logger.warning("Storage not initialized, cannot delete todo embedding")
             return False
 
-        return self._vector_backend.delete_todo_embedding(todo_id)
+        return await self._vector_backend.delete_todo_embedding(todo_id)
 
-    def get_document(self, doc_id: str) -> Optional[DocumentData]:
+    async def get_document(self, doc_id: str) -> Optional[DocumentData]:
         """Get document"""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -463,9 +460,9 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return None
-        return self._document_backend.get(doc_id)
+        return await self._document_backend.get(doc_id)
 
-    def query_documents(
+    async def query_documents(
         self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None
     ) -> Optional[QueryResult]:
         """Query documents"""
@@ -475,9 +472,9 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return None
-        return self._document_backend.query(query, limit, filters)
+        return await self._document_backend.query(query, limit, filters)
 
-    def delete_document(self, doc_id: str) -> bool:
+    async def delete_document(self, doc_id: str) -> bool:
         """Delete document"""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -485,11 +482,11 @@ class UnifiedStorage:
 
         # Try to delete from all backends
         if self._document_backend:
-            self._document_backend.delete(doc_id)
+            await self._document_backend.delete(doc_id)
             return True
         return False
 
-    def create_conversation(
+    async def create_conversation(
         self,
         page_name: str,
         user_id: Optional[str] = None,
@@ -505,14 +502,14 @@ class UnifiedStorage:
             logger.error("Document database backend not initialized")
             return None
 
-        return self._document_backend.create_conversation(
+        return await self._document_backend.create_conversation(
             page_name=page_name,
             user_id=user_id,
             title=title,
             metadata=metadata,
         )
 
-    def get_conversation(self, conversation_id: int) -> Optional[Dict[str, Any]]:
+    async def get_conversation(self, conversation_id: int) -> Optional[Dict[str, Any]]:
         """Query single conversation details."""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -522,9 +519,9 @@ class UnifiedStorage:
             logger.error("Document database backend not initialized")
             return None
 
-        return self._document_backend.get_conversation(conversation_id)
+        return await self._document_backend.get_conversation(conversation_id)
 
-    def get_conversation_list(
+    async def get_conversation_list(
         self,
         limit: int = 20,
         offset: int = 0,
@@ -541,7 +538,7 @@ class UnifiedStorage:
             logger.error("Document database backend not initialized")
             return {"items": [], "total": 0}
 
-        return self._document_backend.get_conversation_list(
+        return await self._document_backend.get_conversation_list(
             limit=limit,
             offset=offset,
             page_name=page_name,
@@ -549,7 +546,7 @@ class UnifiedStorage:
             status=status,
         )
 
-    def update_conversation(
+    async def update_conversation(
         self,
         conversation_id: int,
         title: Optional[str] = None,
@@ -564,13 +561,13 @@ class UnifiedStorage:
             logger.error("Document database backend not initialized")
             return None
 
-        return self._document_backend.update_conversation(
+        return await self._document_backend.update_conversation(
             conversation_id=conversation_id,
             title=title,
             status=status,
         )
 
-    def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
+    async def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
         """Soft delete conversation."""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -580,9 +577,9 @@ class UnifiedStorage:
             logger.error("Document database backend not initialized")
             return {"success": False, "id": conversation_id}
 
-        return self._document_backend.delete_conversation(conversation_id)
+        return await self._document_backend.delete_conversation(conversation_id)
 
-    def insert_vaults(
+    async def insert_vaults(
         self,
         title: str,
         summary: str,
@@ -599,11 +596,11 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return None
-        return self._document_backend.insert_vaults(
+        return await self._document_backend.insert_vaults(
             title, summary, content, document_type, tags, parent_id, is_folder
         )
 
-    def update_vault(
+    async def update_vault(
         self,
         vault_id: int,
         title: str = None,
@@ -632,9 +629,9 @@ class UnifiedStorage:
         if is_deleted is not None:
             kwargs["is_deleted"] = is_deleted
 
-        return self._document_backend.update_vault(vault_id, **kwargs)
+        return await self._document_backend.update_vault(vault_id, **kwargs)
 
-    def get_reports(
+    async def get_reports(
         self, limit: int = 100, offset: int = 0, is_deleted: bool = False
     ) -> List[Dict]:
         """Get report"""
@@ -644,9 +641,9 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return []
-        return self._document_backend.get_reports(limit, offset, is_deleted)
+        return await self._document_backend.get_reports(limit, offset, is_deleted)
 
-    def get_vaults(
+    async def get_vaults(
         self,
         limit: int = 100,
         offset: int = 0,
@@ -665,7 +662,7 @@ class UnifiedStorage:
         if not self._document_backend:
             return []
 
-        return self._document_backend.get_vaults(
+        return await self._document_backend.get_vaults(
             limit=limit,
             offset=offset,
             is_deleted=is_deleted,
@@ -676,16 +673,16 @@ class UnifiedStorage:
             updated_before=updated_before,
         )
 
-    def get_vault(self, vault_id: int) -> Optional[Dict]:
+    async def get_vault(self, vault_id: int) -> Optional[Dict]:
         """Get vaults by ID"""
         if not self._initialized:
             return None
 
         if not self._document_backend:
             return None
-        return self._document_backend.get_vault(vault_id)
+        return await self._document_backend.get_vault(vault_id)
 
-    def insert_todo(
+    async def insert_todo(
         self,
         content: str,
         start_time: datetime = None,
@@ -702,11 +699,11 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return None
-        return self._document_backend.insert_todo(
+        return await self._document_backend.insert_todo(
             content, start_time, end_time, status, urgency, assignee, reason
         )
 
-    def get_todos(
+    async def get_todos(
         self,
         status: int = None,
         limit: int = 100,
@@ -721,9 +718,9 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return []
-        return self._document_backend.get_todos(status, limit, offset, start_time, end_time)
+        return await self._document_backend.get_todos(status, limit, offset, start_time, end_time)
 
-    def insert_tip(self, content: str) -> int:
+    async def insert_tip(self, content: str) -> int:
         """Insert tip"""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -731,9 +728,9 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return None
-        return self._document_backend.insert_tip(content)
+        return await self._document_backend.insert_tip(content)
 
-    def get_tips(
+    async def get_tips(
         self,
         start_time: datetime = None,
         end_time: datetime = None,
@@ -747,9 +744,11 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return []
-        return self._document_backend.get_tips(start_time, end_time, limit, offset)
+        return await self._document_backend.get_tips(start_time, end_time, limit, offset)
 
-    def update_todo_status(self, todo_id: int, status: int, end_time: datetime = None) -> bool:
+    async def update_todo_status(
+        self, todo_id: int, status: int, end_time: datetime = None
+    ) -> bool:
         """Update todo item status"""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -757,20 +756,20 @@ class UnifiedStorage:
 
         if not self._document_backend:
             return False
-        return self._document_backend.update_todo_status(
+        return await self._document_backend.update_todo_status(
             todo_id=todo_id, status=status, end_time=end_time
         )
 
     # Monitoring data operations - delegated to document backend
-    def save_monitoring_token_usage(
+    async def save_monitoring_token_usage(
         self, model: str, prompt_tokens: int, completion_tokens: int, total_tokens: int
     ) -> bool:
         """Save token usage monitoring data"""
-        return self._document_backend.save_monitoring_token_usage(
+        return await self._document_backend.save_monitoring_token_usage(
             model, prompt_tokens, completion_tokens, total_tokens
         )
 
-    def save_monitoring_stage_timing(
+    async def save_monitoring_stage_timing(
         self,
         stage_name: str,
         duration_ms: int,
@@ -778,11 +777,11 @@ class UnifiedStorage:
         metadata: Optional[str] = None,
     ) -> bool:
         """Save stage timing monitoring data"""
-        return self._document_backend.save_monitoring_stage_timing(
+        return await self._document_backend.save_monitoring_stage_timing(
             stage_name, duration_ms, status, metadata
         )
 
-    def save_monitoring_data_stats(
+    async def save_monitoring_data_stats(
         self,
         data_type: str,
         count: int = 1,
@@ -790,40 +789,44 @@ class UnifiedStorage:
         metadata: Optional[str] = None,
     ) -> bool:
         """Save data statistics monitoring data"""
-        return self._document_backend.save_monitoring_data_stats(
+        return await self._document_backend.save_monitoring_data_stats(
             data_type, count, context_type, metadata
         )
 
-    def query_monitoring_token_usage(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_token_usage(self, hours: int = 24) -> List[Dict[str, Any]]:
         """Query token usage monitoring data"""
-        return self._document_backend.query_monitoring_token_usage(hours)
+        return await self._document_backend.query_monitoring_token_usage(hours)
 
-    def query_monitoring_stage_timing(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_stage_timing(self, hours: int = 24) -> List[Dict[str, Any]]:
         """Query stage timing monitoring data"""
-        return self._document_backend.query_monitoring_stage_timing(hours)
+        return await self._document_backend.query_monitoring_stage_timing(hours)
 
-    def query_monitoring_data_stats(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_data_stats(self, hours: int = 24) -> List[Dict[str, Any]]:
         """Query data statistics monitoring data"""
-        return self._document_backend.query_monitoring_data_stats(hours)
+        return await self._document_backend.query_monitoring_data_stats(hours)
 
-    def query_monitoring_data_stats_by_range(
+    async def query_monitoring_data_stats_by_range(
         self, start_time: Any, end_time: Any
     ) -> List[Dict[str, Any]]:
         """Query data statistics monitoring data by custom time range"""
-        return self._document_backend.query_monitoring_data_stats_by_range(start_time, end_time)
+        return await self._document_backend.query_monitoring_data_stats_by_range(
+            start_time, end_time
+        )
 
-    def query_monitoring_data_stats_trend(
+    async def query_monitoring_data_stats_trend(
         self, hours: int = 24, interval_hours: int = 1
     ) -> List[Dict[str, Any]]:
         """Query data statistics trend with time grouping"""
-        return self._document_backend.query_monitoring_data_stats_trend(hours, interval_hours)
+        return await self._document_backend.query_monitoring_data_stats_trend(
+            hours, interval_hours
+        )
 
-    def cleanup_old_monitoring_data(self, days: int = 7) -> bool:
+    async def cleanup_old_monitoring_data(self, days: int = 7) -> bool:
         """Clean up monitoring data older than specified days"""
-        return self._document_backend.cleanup_old_monitoring_data(days)
+        return await self._document_backend.cleanup_old_monitoring_data(days)
 
     # Message management operations - delegated to document backend
-    def create_message(
+    async def create_message(
         self,
         conversation_id: int,
         role: str,
@@ -837,7 +840,7 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        result = self._document_backend.create_message(
+        result = await self._document_backend.create_message(
             conversation_id=conversation_id,
             role=role,
             content=content,
@@ -849,7 +852,7 @@ class UnifiedStorage:
         # create_message returns a dict, extract the ID
         return result.get("id") if result else None
 
-    def create_streaming_message(
+    async def create_streaming_message(
         self,
         conversation_id: int,
         role: str,
@@ -860,7 +863,7 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        result = self._document_backend.create_streaming_message(
+        result = await self._document_backend.create_streaming_message(
             conversation_id=conversation_id,
             role=role,
             parent_message_id=parent_message_id,
@@ -869,7 +872,7 @@ class UnifiedStorage:
         # create_streaming_message returns a dict, extract the ID
         return result.get("id") if result else None
 
-    def update_message(
+    async def update_message(
         self,
         message_id: int,
         new_content: str,
@@ -880,74 +883,74 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        return self._document_backend.update_message(
+        return await self._document_backend.update_message(
             message_id=message_id,
             new_content=new_content,
             is_complete=is_complete,
             token_count=token_count,
         )
 
-    def append_message_content(
+    async def append_message_content(
         self, message_id: int, content_chunk: str, token_count: int = 0
     ) -> bool:
         """Append content to a streaming message"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.append_message_content(
+        return await self._document_backend.append_message_content(
             message_id=message_id, content_chunk=content_chunk, token_count=token_count
         )
 
-    def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
+    async def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
         """Update message metadata"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.update_message_metadata(
+        return await self._document_backend.update_message_metadata(
             message_id=message_id, metadata=metadata
         )
 
-    def mark_message_finished(
+    async def mark_message_finished(
         self, message_id: int, status: str = "completed", error_message: Optional[str] = None
     ) -> bool:
         """Mark a message as finished (completed, failed, or cancelled)"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.mark_message_finished(
+        return await self._document_backend.mark_message_finished(
             message_id=message_id, status=status, error_message=error_message
         )
 
-    def get_message(self, message_id: int) -> Optional[Dict[str, Any]]:
+    async def get_message(self, message_id: int) -> Optional[Dict[str, Any]]:
         """Get a single message"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        return self._document_backend.get_message(message_id)
+        return await self._document_backend.get_message(message_id)
 
-    def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
+    async def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
         """Get all messages for a conversation"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return []
-        return self._document_backend.get_conversation_messages(conversation_id)
+        return await self._document_backend.get_conversation_messages(conversation_id)
 
-    def delete_message(self, message_id: int) -> bool:
+    async def delete_message(self, message_id: int) -> bool:
         """Delete a message"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.delete_message(message_id)
+        return await self._document_backend.delete_message(message_id)
 
-    def interrupt_message(self, message_id: int) -> bool:
+    async def interrupt_message(self, message_id: int) -> bool:
         """Interrupt message generation (mark as cancelled)"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.interrupt_message(message_id)
+        return await self._document_backend.interrupt_message(message_id)
 
     # Message Thinking operations - delegated to document backend
-    def add_message_thinking(
+    async def add_message_thinking(
         self,
         message_id: int,
         content: str,
@@ -960,7 +963,7 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        return self._document_backend.add_message_thinking(
+        return await self._document_backend.add_message_thinking(
             message_id=message_id,
             content=content,
             stage=stage,
@@ -969,23 +972,23 @@ class UnifiedStorage:
             metadata=metadata,
         )
 
-    def get_message_thinking(self, message_id: int) -> List[Dict[str, Any]]:
+    async def get_message_thinking(self, message_id: int) -> List[Dict[str, Any]]:
         """Get all thinking records for a message"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return []
-        return self._document_backend.get_message_thinking(message_id)
+        return await self._document_backend.get_message_thinking(message_id)
 
-    def clear_message_thinking(self, message_id: int) -> bool:
+    async def clear_message_thinking(self, message_id: int) -> bool:
         """Clear all thinking records for a message"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.clear_message_thinking(message_id)
+        return await self._document_backend.clear_message_thinking(message_id)
 
     # ── Profile routing (→ relational DB) ──
 
-    def upsert_profile(
+    async def upsert_profile(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1001,7 +1004,7 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.upsert_profile(
+        return await self._document_backend.upsert_profile(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -1013,27 +1016,27 @@ class UnifiedStorage:
             metadata=metadata,
         )
 
-    def get_profile(
+    async def get_profile(
         self, user_id: str, device_id: str = "default", agent_id: str = "default"
     ) -> Optional[Dict]:
         """Get user profile → relational DB"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        return self._document_backend.get_profile(user_id, device_id, agent_id)
+        return await self._document_backend.get_profile(user_id, device_id, agent_id)
 
-    def delete_profile(
+    async def delete_profile(
         self, user_id: str, device_id: str = "default", agent_id: str = "default"
     ) -> bool:
         """Delete user profile → relational DB"""
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.delete_profile(user_id, device_id, agent_id)
+        return await self._document_backend.delete_profile(user_id, device_id, agent_id)
 
     # ── Entity routing (→ relational DB) ──
 
-    def upsert_entity(
+    async def upsert_entity(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1050,7 +1053,7 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return ""
-        return self._document_backend.upsert_entity(
+        return await self._document_backend.upsert_entity(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -1063,7 +1066,7 @@ class UnifiedStorage:
             metadata=metadata,
         )
 
-    def get_entity(
+    async def get_entity(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1074,9 +1077,9 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return None
-        return self._document_backend.get_entity(user_id, device_id, agent_id, entity_name)
+        return await self._document_backend.get_entity(user_id, device_id, agent_id, entity_name)
 
-    def list_entities(
+    async def list_entities(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1089,11 +1092,11 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return []
-        return self._document_backend.list_entities(
+        return await self._document_backend.list_entities(
             user_id, device_id, agent_id, entity_type, limit, offset
         )
 
-    def search_entities(
+    async def search_entities(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1105,11 +1108,11 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return []
-        return self._document_backend.search_entities(
+        return await self._document_backend.search_entities(
             user_id, device_id, agent_id, query_text, limit
         )
 
-    def delete_entity(
+    async def delete_entity(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1120,20 +1123,22 @@ class UnifiedStorage:
         if not self._initialized or not self._document_backend:
             logger.error("Storage not initialized")
             return False
-        return self._document_backend.delete_entity(user_id, device_id, agent_id, entity_name)
+        return await self._document_backend.delete_entity(user_id, device_id, agent_id, entity_name)
 
     # ── Document overwrite routing (→ vector DB) ──
 
-    def delete_document_chunks(self, source_file_key: str, user_id: Optional[str] = None) -> bool:
+    async def delete_document_chunks(
+        self, source_file_key: str, user_id: Optional[str] = None
+    ) -> bool:
         """Delete all chunks for a document (for overwrite) → vector DB"""
         if not self._initialized or not self._vector_backend:
             logger.error("Storage not initialized")
             return False
-        return self._vector_backend.delete_by_source_file(source_file_key, user_id)
+        return await self._vector_backend.delete_by_source_file(source_file_key, user_id)
 
     # ── Hierarchy routing (→ vector DB) ──
 
-    def search_hierarchy(
+    async def search_hierarchy(
         self,
         context_type: str,
         hierarchy_level: int,
@@ -1146,7 +1151,7 @@ class UnifiedStorage:
         if not self._initialized or not self._vector_backend:
             logger.error("Storage not initialized")
             return []
-        return self._vector_backend.search_by_hierarchy(
+        return await self._vector_backend.search_by_hierarchy(
             context_type=context_type,
             hierarchy_level=hierarchy_level,
             time_bucket_start=time_bucket_start,
@@ -1155,11 +1160,11 @@ class UnifiedStorage:
             top_k=top_k,
         )
 
-    def get_contexts_by_ids(
+    async def get_contexts_by_ids(
         self, ids: List[str], context_type: Optional[str] = None
     ) -> List[ProcessedContext]:
         """Get contexts by IDs → vector DB"""
         if not self._initialized or not self._vector_backend:
             logger.error("Storage not initialized")
             return []
-        return self._vector_backend.get_by_ids(ids, context_type)
+        return await self._vector_backend.get_by_ids(ids, context_type)

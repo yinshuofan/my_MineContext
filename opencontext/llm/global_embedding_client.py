@@ -98,31 +98,16 @@ class GlobalEmbeddingClient:
                 return False
             return True
 
-    def do_embedding(self, text: str, **kwargs) -> List[float]:
-        """
-        Get text embeddings
-        """
-        return self._embedding_client.generate_embedding(text, **kwargs)
-
-    def do_vectorize(self, vectorize: Vectorize, **kwargs):
+    async def do_vectorize(self, vectorize: Vectorize, **kwargs):
         """
         Vectorize a Vectorize object
         """
         if vectorize.vector:
             return
-        self._embedding_client.vectorize(vectorize, **kwargs)
+        await self._embedding_client.vectorize(vectorize, **kwargs)
         return
 
-    async def do_vectorize_async(self, vectorize: Vectorize, **kwargs):
-        """
-        Vectorize a Vectorize object asynchronously
-        """
-        if vectorize.vector:
-            return
-        await self._embedding_client.vectorize_async(vectorize, **kwargs)
-        return
-
-    def do_vectorize_batch(self, vectorizes: Sequence[Vectorize], **kwargs):
+    async def do_vectorize_batch(self, vectorizes: Sequence[Vectorize], **kwargs):
         """
         Vectorize multiple Vectorize objects in batch (fewer API calls).
         """
@@ -140,29 +125,7 @@ class GlobalEmbeddingClient:
         if not needs_embedding:
             return
 
-        vectors = self._embedding_client.generate_embedding_batch(needs_embedding, **kwargs)
-        for idx, vector in zip(indices, vectors):
-            vectorizes[idx].vector = vector
-
-    async def do_vectorize_batch_async(self, vectorizes: Sequence[Vectorize], **kwargs):
-        """
-        Async version of do_vectorize_batch.
-        """
-        needs_embedding = []
-        indices = []
-        for i, v in enumerate(vectorizes):
-            if v.vector:
-                continue
-            text = v.get_vectorize_content()
-            if not text:
-                continue
-            needs_embedding.append(text)
-            indices.append(i)
-
-        if not needs_embedding:
-            return
-
-        vectors = await self._embedding_client.generate_embedding_batch_async(
+        vectors = await self._embedding_client.generate_embedding_batch(
             needs_embedding, **kwargs
         )
         for idx, vector in zip(indices, vectors):
@@ -173,23 +136,11 @@ def is_initialized() -> bool:
     return GlobalEmbeddingClient.get_instance().is_initialized()
 
 
-def do_embedding(text: str, **kwargs) -> List[float]:
-    return GlobalEmbeddingClient.get_instance().do_embedding(text, **kwargs)
+async def do_vectorize(vectorize_obj: Vectorize, **kwargs):
+    return await GlobalEmbeddingClient.get_instance().do_vectorize(vectorize_obj, **kwargs)
 
 
-def do_vectorize(vectorize_obj: Vectorize, **kwargs):
-    return GlobalEmbeddingClient.get_instance().do_vectorize(vectorize_obj, **kwargs)
-
-
-async def do_vectorize_async(vectorize_obj: Vectorize, **kwargs):
-    return await GlobalEmbeddingClient.get_instance().do_vectorize_async(vectorize_obj, **kwargs)
-
-
-def do_vectorize_batch(vectorize_objs: Sequence[Vectorize], **kwargs):
-    return GlobalEmbeddingClient.get_instance().do_vectorize_batch(vectorize_objs, **kwargs)
-
-
-async def do_vectorize_batch_async(vectorize_objs: Sequence[Vectorize], **kwargs):
-    return await GlobalEmbeddingClient.get_instance().do_vectorize_batch_async(
+async def do_vectorize_batch(vectorize_objs: Sequence[Vectorize], **kwargs):
+    return await GlobalEmbeddingClient.get_instance().do_vectorize_batch(
         vectorize_objs, **kwargs
     )

@@ -10,10 +10,10 @@ SQLite document note storage backend implementation
 
 import json
 import os
-import sqlite3
-import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
+
+import aiosqlite
 
 from opencontext.storage.base_storage import (
     DataType,
@@ -35,11 +35,10 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     def __init__(self):
         self.db_path: Optional[str] = None
-        self.connection: Optional[sqlite3.Connection] = None
-        self._local = threading.local()
+        self._connection: Optional[aiosqlite.Connection] = None
         self._initialized = False
 
-    def initialize(self, config: Dict[str, Any]) -> bool:
+    async def initialize(self, config: Dict[str, Any]) -> bool:
         """Initialize SQLite database"""
         try:
             # Use path from configuration, default to ./persist/sqlite/app.db
@@ -48,15 +47,13 @@ class SQLiteBackend(IDocumentStorageBackend):
             # Ensure directory exists
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
-            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
-            self.connection.row_factory = sqlite3.Row  # Allow column name access
-            self.connection.execute("PRAGMA journal_mode=WAL")
-            # Make init thread's connection available via _get_connection()
-            self._local.connection = self.connection
+            self._connection = await aiosqlite.connect(self.db_path)
+            self._connection.row_factory = aiosqlite.Row
+            await self._connection.execute("PRAGMA journal_mode=WAL")
 
             # Create table structure
-            self._create_tables()
-            self._migrate_schema_v2()
+            await self._create_tables()
+            await self._migrate_schema_v2()
 
             self._initialized = True
             logger.info(f"SQLite backend initialized successfully, database path: {self.db_path}")
@@ -66,22 +63,12 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"SQLite backend initialization failed: {e}")
             return False
 
-    def _get_connection(self):
-        """Get a thread-local database connection."""
-        conn = getattr(self._local, "connection", None)
-        if conn is None:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            self._local.connection = conn
-        return conn
-
-    def _create_tables(self):
+    async def _create_tables(self):
         """Create database table structure"""
-        cursor = self._get_connection().cursor()
+        conn = self._connection
 
         # vaults table - reports
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS vaults (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +89,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Todo table - todo items
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS todo (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,27 +104,28 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         )
 
-        cursor.execute(
+        cursor = await conn.execute(
             """
             PRAGMA table_info(todo)
         """
         )
-        columns = [column[1] for column in cursor.fetchall()]
+        rows = await cursor.fetchall()
+        columns = [column[1] for column in rows]
         if "assignee" not in columns:
-            cursor.execute(
+            await conn.execute(
                 """
                 ALTER TABLE todo ADD COLUMN assignee TEXT
             """
             )
         if "reason" not in columns:
-            cursor.execute(
+            await conn.execute(
                 """
                 ALTER TABLE todo ADD COLUMN reason TEXT
             """
             )
 
         # Tips table - tips
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS tips (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,7 +136,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Profiles table - user profiles (composite key: user_id + device_id + agent_id)
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id TEXT NOT NULL,
@@ -168,7 +156,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Entities table - entity profiles (unique key: user_id + device_id + agent_id + entity_name)
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS entities (
                 id TEXT PRIMARY KEY,
@@ -191,7 +179,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         # Monitoring tables
         # Token usage tracking - keep 7 days of data
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS monitoring_token_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,7 +195,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Stage timing tracking - LLM API calls and processing stages
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS monitoring_stage_timing (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -228,7 +216,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Data statistics tracking - contexts and documents
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS monitoring_data_stats (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -244,7 +232,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Conversation tables
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS conversations (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,7 +247,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         )
 
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -281,57 +269,59 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # New table indexes
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vaults_created ON vaults (created_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vaults_type ON vaults (document_type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vaults_folder ON vaults (is_folder)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vaults_deleted ON vaults (is_deleted)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_todo_status ON todo (status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_todo_urgency ON todo (urgency)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_todo_created ON todo (created_at)")
-        cursor.execute(
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_vaults_created ON vaults (created_at)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_vaults_type ON vaults (document_type)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_vaults_folder ON vaults (is_folder)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_vaults_deleted ON vaults (is_deleted)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_todo_status ON todo (status)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_todo_urgency ON todo (urgency)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_todo_created ON todo (created_at)")
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_activity_time ON activity (start_time, end_time)"
         )
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tips_time ON tips (created_at)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_tips_time ON tips (created_at)")
 
         # Monitoring table indexes
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_monitoring_token_created ON monitoring_token_usage (created_at)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_monitoring_token_model ON monitoring_token_usage (model)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_monitoring_stage_created ON monitoring_stage_timing (created_at)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_monitoring_stage_name ON monitoring_stage_timing (stage_name)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_monitoring_data_created ON monitoring_data_stats (created_at)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_monitoring_data_type ON monitoring_data_stats (data_type)"
         )
 
         # Conversation/Message indexes
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status)")
-        cursor.execute(
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)"
+        )
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status)")
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_conversations_user_page ON conversations(user_id, page_name)"
         )
 
         # Entity indexes
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_entity_user ON entities (user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_entity_type ON entities (entity_type)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_entity_user ON entities (user_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_entity_type ON entities (entity_type)")
 
         # Message thinking table (stores thinking process for messages)
-        cursor.execute(
+        await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS message_thinking (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -348,33 +338,34 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Message thinking indexes
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_message_thinking_message_id ON message_thinking(message_id)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_message_thinking_stage ON message_thinking(message_id, stage)"
         )
-        cursor.execute(
+        await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_message_thinking_sequence ON message_thinking(message_id, sequence)"
         )
 
-        self._get_connection().commit()
+        await conn.commit()
 
         # Add default Quick Start document (only on first initialization)
-        self._insert_default_vault_document()
+        await self._insert_default_vault_document()
 
-    def _migrate_schema_v2(self):
+    async def _migrate_schema_v2(self):
         """Add device_id to profiles and device_id+agent_id to entities tables (idempotent)."""
-        cursor = self._get_connection().cursor()
+        conn = self._connection
 
         # Check if device_id exists in profiles
-        cursor.execute("PRAGMA table_info(profiles)")
-        profile_columns = [col[1] for col in cursor.fetchall()]
+        cursor = await conn.execute("PRAGMA table_info(profiles)")
+        rows = await cursor.fetchall()
+        profile_columns = [col[1] for col in rows]
 
         if "device_id" not in profile_columns:
             try:
-                cursor.execute("ALTER TABLE profiles RENAME TO profiles_old")
-                cursor.execute(
+                await conn.execute("ALTER TABLE profiles RENAME TO profiles_old")
+                await conn.execute(
                     """
                     CREATE TABLE profiles (
                         user_id TEXT NOT NULL,
@@ -392,7 +383,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                     )
                 """
                 )
-                cursor.execute(
+                await conn.execute(
                     """
                     INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords,
                                           entities, importance, metadata, created_at, updated_at)
@@ -401,21 +392,22 @@ class SQLiteBackend(IDocumentStorageBackend):
                     FROM profiles_old
                 """
                 )
-                cursor.execute("DROP TABLE profiles_old")
-                self._get_connection().commit()
+                await conn.execute("DROP TABLE profiles_old")
+                await conn.commit()
                 logger.info("Migration: rebuilt profiles table with device_id")
             except Exception as e:
-                self._get_connection().rollback()
+                await conn.rollback()
                 logger.error(f"Migration failed for profiles: {e}")
 
         # Check if device_id exists in entities
-        cursor.execute("PRAGMA table_info(entities)")
-        entity_columns = [col[1] for col in cursor.fetchall()]
+        cursor = await conn.execute("PRAGMA table_info(entities)")
+        rows = await cursor.fetchall()
+        entity_columns = [col[1] for col in rows]
 
         if "device_id" not in entity_columns or "agent_id" not in entity_columns:
             try:
-                cursor.execute("ALTER TABLE entities RENAME TO entities_old")
-                cursor.execute(
+                await conn.execute("ALTER TABLE entities RENAME TO entities_old")
+                await conn.execute(
                     """
                     CREATE TABLE entities (
                         id TEXT PRIMARY KEY,
@@ -435,7 +427,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                     )
                 """
                 )
-                cursor.execute(
+                await conn.execute(
                     """
                     INSERT INTO entities (id, user_id, device_id, agent_id, entity_name, entity_type,
                                           content, summary, keywords, aliases, metadata, created_at, updated_at)
@@ -444,20 +436,23 @@ class SQLiteBackend(IDocumentStorageBackend):
                     FROM entities_old
                 """
                 )
-                cursor.execute("DROP TABLE entities_old")
-                self._get_connection().commit()
+                await conn.execute("DROP TABLE entities_old")
+                await conn.commit()
                 logger.info("Migration: rebuilt entities table with device_id and agent_id")
             except Exception as e:
-                self._get_connection().rollback()
+                await conn.rollback()
                 logger.error(f"Migration failed for entities: {e}")
 
-    def _insert_default_vault_document(self):
+    async def _insert_default_vault_document(self):
         """Insert default Quick Start document"""
-        cursor = self._get_connection().cursor()
+        conn = self._connection
 
         # Check if Quick Start document already exists
-        cursor.execute("SELECT COUNT(*) FROM vaults WHERE title = 'Start With Tutorial'")
-        if cursor.fetchone()[0] > 0:
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM vaults WHERE title = 'Start With Tutorial'"
+        )
+        row = await cursor.fetchone()
+        if row[0] > 0:
             return
 
         try:
@@ -477,7 +472,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         # Insert default document
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 INSERT INTO vaults (title, summary, content, document_type, tags, is_folder, is_deleted)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -493,15 +488,15 @@ class SQLiteBackend(IDocumentStorageBackend):
                 ),
             )
             vault_id = cursor.lastrowid
-            self._get_connection().commit()
+            await conn.commit()
             logger.info("Default Quick Start document inserted")
 
         except Exception as e:
             logger.exception(f"Failed to insert default Quick Start document: {e}")
-            self._get_connection().rollback()
+            await conn.rollback()
 
     # Report table operations
-    def insert_vaults(
+    async def insert_vaults(
         self,
         title: str,
         summary: str,
@@ -515,9 +510,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 INSERT INTO vaults (title, summary, content, tags, parent_id, is_folder, document_type, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -536,24 +531,24 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
 
             vault_id = cursor.lastrowid
-            self._get_connection().commit()
+            await conn.commit()
             logger.info(f"Report inserted, ID: {vault_id}")
             return vault_id
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to insert report: {e}")
             raise
 
-    def get_reports(
+    async def get_reports(
         self, limit: int = 100, offset: int = 0, is_deleted: bool = False
     ) -> List[Dict]:
         """Get report list"""
         if not self._initialized:
             return []
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT id, title, summary, content, tags, parent_id, is_folder, is_deleted,
                        created_at, updated_at, document_type
@@ -565,14 +560,14 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (is_deleted, limit, offset),
             )
 
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             logger.info(f"Got report list successfully, {len(rows)} records")
             return [dict(row) for row in rows]
         except Exception as e:
             logger.exception(f"Failed to get report list: {e}")
             return []
 
-    def get_vaults(
+    async def get_vaults(
         self,
         limit: int = 100,
         offset: int = 0,
@@ -602,7 +597,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             # Build WHERE conditions and parameters
             where_clauses = ["is_deleted = ?"]
@@ -641,24 +636,23 @@ class SQLiteBackend(IDocumentStorageBackend):
                 LIMIT ? OFFSET ?
             """
 
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
+            cursor = await conn.execute(sql, params)
+            rows = await cursor.fetchall()
 
-            # logger.info(f"Got vaults list successfully, {len(rows)} records")
             return [dict(row) for row in rows]
 
         except Exception as e:
             logger.exception(f"Failed to get vaults list: {e}")
             return []
 
-    def get_vault(self, vault_id: int) -> Optional[Dict]:
+    async def get_vault(self, vault_id: int) -> Optional[Dict]:
         """Get vaults by ID"""
         if not self._initialized:
             return None
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT id, title, summary, content, tags, parent_id, is_folder, is_deleted,
                        created_at, updated_at, document_type
@@ -668,7 +662,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (vault_id,),
             )
 
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if row:
                 return dict(row)
             return None
@@ -676,12 +670,12 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get vaults: {e}")
             return None
 
-    def update_vault(self, vault_id: int, **kwargs) -> bool:
+    async def update_vault(self, vault_id: int, **kwargs) -> bool:
         """Update report"""
         if not self._initialized:
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             # Build dynamic update statement
             set_clauses = []
@@ -707,18 +701,18 @@ class SQLiteBackend(IDocumentStorageBackend):
             params.append(vault_id)
 
             sql = f"UPDATE vaults SET {', '.join(set_clauses)} WHERE id = ?"
-            cursor.execute(sql, params)
+            cursor = await conn.execute(sql, params)
 
             success = cursor.rowcount > 0
-            self._get_connection().commit()
+            await conn.commit()
             return success
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to update report: {e}")
             return False
 
     # Todo table operations
-    def insert_todo(
+    async def insert_todo(
         self,
         content: str,
         start_time: datetime = None,
@@ -732,9 +726,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 INSERT INTO todo (content, start_time, end_time, status, urgency, assignee, reason, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -752,15 +746,15 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
 
             todo_id = cursor.lastrowid
-            self._get_connection().commit()
+            await conn.commit()
             logger.info(f"Todo item inserted, ID: {todo_id}")
             return todo_id
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to insert todo item: {e}")
             raise
 
-    def get_todos(
+    async def get_todos(
         self,
         status: int = None,
         limit: int = 100,
@@ -771,7 +765,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         """Get todo item list"""
         if not self._initialized:
             return []
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             where_conditions = []
             params = []
@@ -786,7 +780,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 params.append(status)
             where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
             params.extend([limit, offset])
-            cursor.execute(
+            cursor = await conn.execute(
                 f"""
                 SELECT id, content, created_at, start_time, end_time, status, urgency, assignee, reason
                 FROM todo
@@ -796,23 +790,25 @@ class SQLiteBackend(IDocumentStorageBackend):
             """,
                 params,
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
             logger.exception(f"Failed to get todo item list: {e}")
             return []
 
-    def update_todo_status(self, todo_id: int, status: int, end_time: datetime = None) -> bool:
+    async def update_todo_status(
+        self, todo_id: int, status: int, end_time: datetime = None
+    ) -> bool:
         """Update todo item status"""
         if not self._initialized:
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             if status == 1 and end_time is None:
                 end_time = datetime.now()
 
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 UPDATE todo SET status = ?, end_time = ?
                 WHERE id = ?
@@ -821,22 +817,22 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
 
             success = cursor.rowcount > 0
-            self._get_connection().commit()
+            await conn.commit()
             return success
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to update todo item status: {e}")
             return False
 
     # Tips table operations
-    def insert_tip(self, content: str) -> int:
+    async def insert_tip(self, content: str) -> int:
         """Insert tip"""
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 INSERT INTO tips (content, created_at)
                 VALUES (?, ?)
@@ -845,15 +841,15 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
 
             tip_id = cursor.lastrowid
-            self._get_connection().commit()
+            await conn.commit()
             logger.info(f"Tip inserted, ID: {tip_id}")
             return tip_id
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to insert tip: {e}")
             raise
 
-    def get_tips(
+    async def get_tips(
         self,
         start_time: datetime = None,
         end_time: datetime = None,
@@ -864,7 +860,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             where_conditions = []
             params = []
@@ -879,7 +875,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
             params.extend([limit, offset])
 
-            cursor.execute(
+            cursor = await conn.execute(
                 f"""
                 SELECT id, content, created_at
                 FROM tips
@@ -890,7 +886,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 params,
             )
 
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
             logger.exception(f"Failed to get tip list: {e}")
@@ -898,7 +894,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     # ── Profile CRUD ──
 
-    def upsert_profile(
+    async def upsert_profile(
         self,
         user_id: str,
         device_id: str = "default",
@@ -914,14 +910,14 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             now = datetime.now()
             keywords_json = json.dumps(keywords or [], ensure_ascii=False)
             entities_json = json.dumps(entities or [], ensure_ascii=False)
             metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
 
-            cursor.execute(
+            await conn.execute(
                 """
                 INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords,
                                       entities, importance, metadata, created_at, updated_at)
@@ -949,26 +945,26 @@ class SQLiteBackend(IDocumentStorageBackend):
                     now,
                 ),
             )
-            self._get_connection().commit()
+            await conn.commit()
             logger.info(
                 f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}"
             )
             return True
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to upsert profile: {e}")
             return False
 
-    def get_profile(
+    async def get_profile(
         self, user_id: str, device_id: str = "default", agent_id: str = "default"
     ) -> Optional[Dict]:
         """Get user profile by composite key"""
         if not self._initialized:
             return None
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT user_id, device_id, agent_id, content, summary, keywords, entities,
                        importance, metadata, created_at, updated_at
@@ -977,7 +973,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (user_id, device_id, agent_id),
             )
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if row:
                 result = dict(row)
                 if isinstance(result.get("keywords"), str):
@@ -992,29 +988,29 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get profile: {e}")
             return None
 
-    def delete_profile(
+    async def delete_profile(
         self, user_id: str, device_id: str = "default", agent_id: str = "default"
     ) -> bool:
         """Delete user profile"""
         if not self._initialized:
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 "DELETE FROM profiles WHERE user_id = ? AND device_id = ? AND agent_id = ?",
                 (user_id, device_id, agent_id),
             )
-            self._get_connection().commit()
+            await conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to delete profile: {e}")
             return False
 
     # ── Entity CRUD ──
 
-    def upsert_entity(
+    async def upsert_entity(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1033,7 +1029,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         import uuid
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             now = datetime.now()
             entity_id = str(uuid.uuid4())
@@ -1042,15 +1038,15 @@ class SQLiteBackend(IDocumentStorageBackend):
             metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
 
             # Check if entity already exists to preserve its ID
-            cursor.execute(
+            cursor = await conn.execute(
                 "SELECT id FROM entities WHERE user_id = ? AND device_id = ? AND agent_id = ? AND entity_name = ?",
                 (user_id, device_id, agent_id, entity_name),
             )
-            existing = cursor.fetchone()
+            existing = await cursor.fetchone()
             if existing:
                 entity_id = existing["id"] if isinstance(existing, dict) else existing[0]
 
-            cursor.execute(
+            await conn.execute(
                 """
                 INSERT INTO entities (id, user_id, device_id, agent_id, entity_name, entity_type,
                                       content, summary, keywords, aliases, metadata,
@@ -1081,15 +1077,15 @@ class SQLiteBackend(IDocumentStorageBackend):
                     now,
                 ),
             )
-            self._get_connection().commit()
+            await conn.commit()
             logger.info(f"Entity upserted: {entity_name} for user_id={user_id}")
             return entity_id
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to upsert entity: {e}")
             raise
 
-    def get_entity(
+    async def get_entity(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1100,9 +1096,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
                        summary, keywords, aliases, metadata, created_at, updated_at
@@ -1111,7 +1107,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (user_id, device_id, agent_id, entity_name),
             )
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if row:
                 result = dict(row)
                 if isinstance(result.get("keywords"), str):
@@ -1126,7 +1122,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get entity: {e}")
             return None
 
-    def list_entities(
+    async def list_entities(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1139,7 +1135,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             where_clauses = ["user_id = ?", "device_id = ?", "agent_id = ?"]
             params: list = [user_id, device_id, agent_id]
@@ -1151,7 +1147,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             params.extend([limit, offset])
             where_sql = " AND ".join(where_clauses)
 
-            cursor.execute(
+            cursor = await conn.execute(
                 f"""
                 SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
                        summary, keywords, aliases, metadata, created_at, updated_at
@@ -1162,7 +1158,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 params,
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             results = []
             for row in rows:
                 result = dict(row)
@@ -1178,7 +1174,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to list entities: {e}")
             return []
 
-    def search_entities(
+    async def search_entities(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1190,10 +1186,10 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             like_pattern = f"%{query_text}%"
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
                        summary, keywords, aliases, metadata, created_at, updated_at
@@ -1205,7 +1201,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (user_id, device_id, agent_id, like_pattern, like_pattern, like_pattern, limit),
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             results = []
             for row in rows:
                 result = dict(row)
@@ -1221,7 +1217,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to search entities: {e}")
             return []
 
-    def delete_entity(
+    async def delete_entity(
         self,
         user_id: str,
         device_id: str = "default",
@@ -1232,16 +1228,16 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 "DELETE FROM entities WHERE user_id = ? AND device_id = ? AND agent_id = ? AND entity_name = ?",
                 (user_id, device_id, agent_id, entity_name),
             )
-            self._get_connection().commit()
+            await conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to delete entity: {e}")
             return False
 
@@ -1252,7 +1248,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         return StorageType.DOCUMENT_DB
 
     # Monitoring data operations
-    def save_monitoring_token_usage(
+    async def save_monitoring_token_usage(
         self, model: str, prompt_tokens: int, completion_tokens: int, total_tokens: int
     ) -> bool:
         """Save token usage monitoring data (aggregated by hour using UPSERT)"""
@@ -1260,14 +1256,14 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
         try:
-            cursor = self._get_connection().cursor()
+            conn = self._connection
 
             # Calculate time bucket (hour precision)
             now = datetime.now()
             time_bucket = now.strftime("%Y-%m-%d %H:00:00")
 
             # Use INSERT ... ON CONFLICT to update or insert
-            cursor.execute(
+            await conn.execute(
                 """
                 INSERT INTO monitoring_token_usage (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -1290,17 +1286,17 @@ class SQLiteBackend(IDocumentStorageBackend):
                 ),
             )
 
-            self._get_connection().commit()
+            await conn.commit()
             return True
         except Exception as e:
             logger.error(f"Failed to save token usage: {e}")
             try:
-                self._get_connection().rollback()
+                await conn.rollback()
             except Exception as e:
                 logger.debug(f"Rollback failed: {e}")
             return False
 
-    def save_monitoring_stage_timing(
+    async def save_monitoring_stage_timing(
         self,
         stage_name: str,
         duration_ms: int,
@@ -1312,14 +1308,14 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
         try:
-            cursor = self._get_connection().cursor()
+            conn = self._connection
 
             # Calculate time bucket (hour precision)
             now = datetime.now()
             time_bucket = now.strftime("%Y-%m-%d %H:00:00")
 
             # First, get existing stats if any
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT count, total_duration_ms, min_duration_ms, max_duration_ms, success_count, error_count
                 FROM monitoring_stage_timing
@@ -1327,7 +1323,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (time_bucket, stage_name),
             )
-            existing = cursor.fetchone()
+            existing = await cursor.fetchone()
 
             if existing:
                 # Update existing record with aggregated stats
@@ -1340,7 +1336,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 new_success = old_success + (1 if status == "success" else 0)
                 new_error = old_error + (0 if status == "success" else 1)
 
-                cursor.execute(
+                await conn.execute(
                     """
                     UPDATE monitoring_stage_timing
                     SET count = ?,
@@ -1366,7 +1362,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 )
             else:
                 # Insert new record
-                cursor.execute(
+                await conn.execute(
                     """
                     INSERT INTO monitoring_stage_timing
                     (time_bucket, stage_name, count, total_duration_ms, min_duration_ms, max_duration_ms, avg_duration_ms, success_count, error_count, metadata, created_at)
@@ -1386,17 +1382,17 @@ class SQLiteBackend(IDocumentStorageBackend):
                     ),
                 )
 
-            self._get_connection().commit()
+            await conn.commit()
             return True
         except Exception as e:
             logger.error(f"Failed to save stage timing: {e}")
             try:
-                self._get_connection().rollback()
+                await conn.rollback()
             except Exception as e:
                 logger.debug(f"Rollback failed: {e}")
             return False
 
-    def save_monitoring_data_stats(
+    async def save_monitoring_data_stats(
         self,
         data_type: str,
         count: int = 1,
@@ -1408,15 +1404,14 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
         try:
-            cursor = self._get_connection().cursor()
+            conn = self._connection
 
             # Calculate time bucket (hour precision)
             now = datetime.now()
             time_bucket = now.strftime("%Y-%m-%d %H:00:00")
 
             # Use INSERT ... ON CONFLICT to update or insert
-            # First, try to get existing count
-            cursor.execute(
+            await conn.execute(
                 """
                 INSERT INTO monitoring_data_stats (time_bucket, data_type, count, context_type, metadata, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -1426,17 +1421,17 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (time_bucket, data_type, count, context_type, metadata, now, count),
             )
 
-            self._get_connection().commit()
+            await conn.commit()
             return True
         except Exception as e:
             logger.error(f"Failed to save data stats: {e}")
             try:
-                self._get_connection().rollback()
+                await conn.rollback()
             except Exception as e:
                 logger.debug(f"Rollback failed: {e}")
             return False
 
-    def query_monitoring_token_usage(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_token_usage(self, hours: int = 24) -> List[Dict[str, Any]]:
         """Query token usage monitoring data"""
         if not self._initialized:
             return []
@@ -1444,8 +1439,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = datetime.now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            cursor = self._get_connection().cursor()
-            cursor.execute(
+            conn = self._connection
+            cursor = await conn.execute(
                 """
                 SELECT model, prompt_tokens, completion_tokens, total_tokens, time_bucket
                 FROM monitoring_token_usage
@@ -1454,7 +1449,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (cutoff_bucket,),
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             return [
                 {
                     "model": row[0],
@@ -1469,7 +1464,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query token usage: {e}")
             return []
 
-    def query_monitoring_stage_timing(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_stage_timing(self, hours: int = 24) -> List[Dict[str, Any]]:
         """Query stage timing monitoring data"""
         if not self._initialized:
             return []
@@ -1477,8 +1472,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = datetime.now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            cursor = self._get_connection().cursor()
-            cursor.execute(
+            conn = self._connection
+            cursor = await conn.execute(
                 """
                 SELECT stage_name, count, total_duration_ms, min_duration_ms, max_duration_ms, avg_duration_ms, success_count, error_count, time_bucket
                 FROM monitoring_stage_timing
@@ -1487,7 +1482,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (cutoff_bucket,),
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             return [
                 {
                     "stage_name": row[0],
@@ -1508,7 +1503,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query stage timing: {e}")
             return []
 
-    def query_monitoring_data_stats(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_data_stats(self, hours: int = 24) -> List[Dict[str, Any]]:
         """Query data statistics monitoring data"""
         if not self._initialized:
             return []
@@ -1516,8 +1511,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = datetime.now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            cursor = self._get_connection().cursor()
-            cursor.execute(
+            conn = self._connection
+            cursor = await conn.execute(
                 """
                 SELECT data_type, SUM(count) as total_count, context_type
                 FROM monitoring_data_stats
@@ -1526,7 +1521,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (cutoff_bucket,),
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             return [
                 {
                     "data_type": row[0],
@@ -1539,7 +1534,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query data stats: {e}")
             return []
 
-    def query_monitoring_data_stats_by_range(
+    async def query_monitoring_data_stats_by_range(
         self, start_time: datetime, end_time: datetime
     ) -> List[Dict[str, Any]]:
         """Query data statistics monitoring data by custom time range"""
@@ -1551,8 +1546,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             start_bucket = start_time.strftime("%Y-%m-%d %H:00:00")
             end_bucket = end_time.strftime("%Y-%m-%d %H:00:00")
 
-            cursor = self._get_connection().cursor()
-            cursor.execute(
+            conn = self._connection
+            cursor = await conn.execute(
                 """
                 SELECT data_type, SUM(count) as total_count, context_type
                 FROM monitoring_data_stats
@@ -1561,7 +1556,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (start_bucket, end_bucket),
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             return [
                 {
                     "data_type": row[0],
@@ -1574,7 +1569,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query data stats by range: {e}")
             return []
 
-    def query_monitoring_data_stats_trend(
+    async def query_monitoring_data_stats_trend(
         self, hours: int = 24, interval_hours: int = 1
     ) -> List[Dict[str, Any]]:
         """Query data statistics trend with time grouping
@@ -1592,10 +1587,10 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = datetime.now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            cursor = self._get_connection().cursor()
+            conn = self._connection
 
             # Query using time_bucket directly (already hourly grouped)
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT
                     time_bucket,
@@ -1609,7 +1604,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (cutoff_bucket,),
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             return [
                 {
                     "timestamp": row[0],
@@ -1623,7 +1618,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query data stats trend: {e}")
             return []
 
-    def cleanup_old_monitoring_data(self, days: int = 7) -> bool:
+    async def cleanup_old_monitoring_data(self, days: int = 7) -> bool:
         """Clean up monitoring data older than specified days"""
         if not self._initialized:
             return False
@@ -1631,39 +1626,39 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = datetime.now() - timedelta(days=days)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            cursor = self._get_connection().cursor()
+            conn = self._connection
 
             # Clean up token usage data (use time_bucket)
-            cursor.execute(
+            await conn.execute(
                 "DELETE FROM monitoring_token_usage WHERE time_bucket < ?",
                 (cutoff_bucket,),
             )
 
             # Clean up stage timing data (use time_bucket)
-            cursor.execute(
+            await conn.execute(
                 "DELETE FROM monitoring_stage_timing WHERE time_bucket < ?",
                 (cutoff_bucket,),
             )
 
             # Clean up data stats (use time_bucket)
-            cursor.execute(
+            await conn.execute(
                 "DELETE FROM monitoring_data_stats WHERE time_bucket < ?",
                 (cutoff_bucket,),
             )
 
-            self._get_connection().commit()
+            await conn.commit()
             logger.info(f"Cleaned up monitoring data older than {days} days")
             return True
         except Exception as e:
             logger.error(f"Failed to cleanup old monitoring data: {e}")
             try:
-                self._get_connection().rollback()
+                await conn.rollback()
             except Exception as e:
                 logger.debug(f"Rollback failed: {e}")
             return False
 
     # Conversation/Message operations
-    def create_conversation(
+    async def create_conversation(
         self,
         page_name: str,
         user_id: Optional[str] = None,
@@ -1676,12 +1671,12 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             now = datetime.now()
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 INSERT INTO conversations (page_name, user_id, title, metadata, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1690,24 +1685,24 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
 
             conversation_id = cursor.lastrowid
-            self._get_connection().commit()
+            await conn.commit()
             logger.info(f"Conversation created, ID: {conversation_id}")
-            return self.get_conversation(conversation_id)
+            return await self.get_conversation(conversation_id)
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to create conversation: {e}")
             return None
 
-    def get_conversation(self, conversation_id: int) -> Optional[Dict[str, Any]]:
+    async def get_conversation(self, conversation_id: int) -> Optional[Dict[str, Any]]:
         """
         Get a single conversation's details (4.1.2)
         """
         if not self._initialized:
             return None
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT id, title, user_id, page_name, status, metadata, created_at, updated_at
                 FROM conversations
@@ -1716,7 +1711,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (conversation_id,),
             )
 
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if row:
                 return dict(row)
             return None
@@ -1724,7 +1719,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get conversation: {e}")
             return None
 
-    def get_conversation_list(
+    async def get_conversation_list(
         self,
         limit: int = 20,
         offset: int = 0,
@@ -1738,7 +1733,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return {"items": [], "total": 0}
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             where_clauses = []
             params = []
@@ -1757,7 +1752,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             # Get total count
             count_params = params[:]
-            cursor.execute(
+            cursor = await conn.execute(
                 f"""
                 SELECT COUNT(*)
                 FROM conversations
@@ -1765,11 +1760,12 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 count_params,
             )
-            total = cursor.fetchone()[0]
+            row = await cursor.fetchone()
+            total = row[0]
 
             # Get items
             list_params = params + [limit, offset]
-            cursor.execute(
+            cursor = await conn.execute(
                 f"""
                 SELECT id, title, user_id, page_name, status, metadata, created_at, updated_at
                 FROM conversations
@@ -1779,7 +1775,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 list_params,
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             items = [dict(row) for row in rows]
 
             return {"items": items, "total": total}
@@ -1788,7 +1784,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get conversation list: {e}")
             return {"items": [], "total": 0}
 
-    def update_conversation(
+    async def update_conversation(
         self,
         conversation_id: int,
         title: Optional[str] = None,
@@ -1800,7 +1796,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             set_clauses = []
             params = []
@@ -1815,36 +1811,38 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             if not set_clauses:
                 # No change, return current
-                return self.get_conversation(conversation_id)
+                return await self.get_conversation(conversation_id)
 
             set_clauses.append("updated_at = ?")
             params.append(datetime.now())
             params.append(conversation_id)
 
             sql = f"UPDATE conversations SET {', '.join(set_clauses)} WHERE id = ?"
-            cursor.execute(sql, params)
+            cursor = await conn.execute(sql, params)
 
-            self._get_connection().commit()
+            await conn.commit()
 
             if cursor.rowcount > 0:
                 logger.info(f"Conversation {conversation_id} updated.")
-                return self.get_conversation(conversation_id)
+                return await self.get_conversation(conversation_id)
             else:
                 logger.warning(
                     f"Failed to update conversation {conversation_id}, row not found or no change."
                 )
                 return None
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to update conversation: {e}")
             return None
 
-    def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
+    async def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
         """
         Mark a conversation as deleted (4.1.5)
         """
         # Note: The spec uses 'delected', we'll update status to 'deleted'
-        updated_convo = self.update_conversation(conversation_id=conversation_id, status="deleted")
+        updated_convo = await self.update_conversation(
+            conversation_id=conversation_id, status="deleted"
+        )
         success = updated_convo is not None
         return {"success": success, "id": conversation_id}
 
@@ -1852,7 +1850,7 @@ class SQLiteBackend(IDocumentStorageBackend):
     # Conversation/Message operations (Continued)
     # -----------------------------------------------------------------
 
-    def get_message(
+    async def get_message(
         self, message_id: int, include_thinking: bool = True
     ) -> Optional[Dict[str, Any]]:
         """
@@ -1868,21 +1866,21 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT * FROM messages WHERE id = ?
                 """,
                 (message_id,),
             )
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if row:
                 message = dict(row)
 
                 # Include thinking records if requested
                 if include_thinking:
-                    message["thinking"] = self.get_message_thinking(message_id)
+                    message["thinking"] = await self.get_message_thinking(message_id)
 
                 return message
             return None
@@ -1890,7 +1888,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get message: {e}")
             return None
 
-    def create_message(
+    async def create_message(
         self,
         conversation_id: int,
         role: str,
@@ -1906,7 +1904,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             now = datetime.now()
             # Map is_complete to status and completed_at
@@ -1914,7 +1912,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             completed_at = now if is_complete else None
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 INSERT INTO messages (conversation_id, role, content, status, token_count,
                                       parent_message_id, metadata, completed_at, created_at, updated_at)
@@ -1936,20 +1934,20 @@ class SQLiteBackend(IDocumentStorageBackend):
             message_id = cursor.lastrowid
 
             # Update conversation's updated_at timestamp
-            cursor.execute(
+            await conn.execute(
                 "UPDATE conversations SET updated_at = ? WHERE id = ?",
                 (now, conversation_id),
             )
 
-            self._get_connection().commit()
+            await conn.commit()
             logger.info(f"Message created, ID: {message_id}")
-            return self.get_message(message_id)  # Return the created message
+            return await self.get_message(message_id)  # Return the created message
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to create message: {e}")
             return None
 
-    def create_streaming_message(
+    async def create_streaming_message(
         self,
         conversation_id: int,
         role: str,
@@ -1959,7 +1957,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         Create a new streaming message (initial content is empty, status is 'streaming') (4.2.3)
         """
-        return self.create_message(
+        return await self.create_message(
             conversation_id=conversation_id,
             role=role,
             content="",
@@ -1969,7 +1967,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             metadata=metadata,
         )
 
-    def update_message(
+    async def update_message(
         self,
         message_id: int,
         new_content: str,
@@ -1983,7 +1981,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             now = datetime.now()
             set_clauses = ["content = ?", "updated_at = ?"]
@@ -2006,10 +2004,10 @@ class SQLiteBackend(IDocumentStorageBackend):
             params.append(message_id)
 
             sql = f"UPDATE messages SET {', '.join(set_clauses)} WHERE id = ?"
-            cursor.execute(sql, params)
+            cursor = await conn.execute(sql, params)
 
             # Update conversation's updated_at
-            cursor.execute(
+            await conn.execute(
                 """
                 UPDATE conversations SET updated_at = ?
                 WHERE id = (SELECT conversation_id FROM messages WHERE id = ?)
@@ -2017,19 +2015,19 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (now, message_id),
             )
 
-            self._get_connection().commit()
+            await conn.commit()
 
             if cursor.rowcount > 0:
-                return self.get_message(message_id)
+                return await self.get_message(message_id)
             else:
                 logger.warning(f"Failed to update message {message_id}, not found.")
                 return None
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to update message: {e}")
             return None
 
-    def append_message_content(
+    async def append_message_content(
         self,
         message_id: int,
         content_chunk: str,
@@ -2041,13 +2039,13 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             now = datetime.now()
 
             # Use SQLite string concatenation ||
             # Also update status to 'streaming' if it was 'pending'
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 UPDATE messages
                 SET content = content || ?,
@@ -2064,7 +2062,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 return False
 
             # Update conversation's updated_at
-            cursor.execute(
+            await conn.execute(
                 """
                 UPDATE conversations SET updated_at = ?
                 WHERE id = (SELECT conversation_id FROM messages WHERE id = ?)
@@ -2072,26 +2070,26 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (now, message_id),
             )
 
-            self._get_connection().commit()
+            await conn.commit()
             return True
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to append message content: {e}")
             return False
 
-    def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
+    async def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
         """
         Update message metadata
         """
         if not self._initialized:
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             now = datetime.now()
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 UPDATE messages
                 SET metadata = ?, updated_at = ?
@@ -2101,14 +2099,14 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
 
             success = cursor.rowcount > 0
-            self._get_connection().commit()
+            await conn.commit()
             return success
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to update message metadata: {e}")
             return False
 
-    def mark_message_finished(
+    async def mark_message_finished(
         self, message_id: int, status: str = "completed", error_message: Optional[str] = None
     ) -> bool:
         """
@@ -2120,7 +2118,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if status not in ["completed", "failed", "cancelled"]:
             status = "completed"  # Default to completed
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             now = datetime.now()
 
@@ -2132,21 +2130,19 @@ class SQLiteBackend(IDocumentStorageBackend):
                 params.append(error_message)
 
             params.append(message_id)
-            # Only update if not already in that state
-            set_clauses.append("status != ?")
             params.append(status)
 
-            sql = f"UPDATE messages SET {', '.join(set_clauses)} WHERE id = ? AND {set_clauses[-1]}"
-            # Remove the last part from sql
-            sql = f"UPDATE messages SET {', '.join(set_clauses[:-1])} WHERE id = ? AND {set_clauses[-1]}"
+            sql = f"UPDATE messages SET {', '.join(set_clauses)} WHERE id = ? AND status != ?"
 
-            cursor.execute(sql, params)
+            cursor = await conn.execute(sql, params)
 
             success = cursor.rowcount > 0
             if not success:
                 # Check if it failed because it was already in the desired state
-                cursor.execute("SELECT status FROM messages WHERE id = ?", (message_id,))
-                row = cursor.fetchone()
+                check_cursor = await conn.execute(
+                    "SELECT status FROM messages WHERE id = ?", (message_id,)
+                )
+                row = await check_cursor.fetchone()
                 if row and row[0] == status:
                     success = True  # Already done, count as success
                 else:
@@ -2155,7 +2151,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                     )
 
             # Update conversation's updated_at
-            cursor.execute(
+            await conn.execute(
                 """
                 UPDATE conversations SET updated_at = ?
                 WHERE id = (SELECT conversation_id FROM messages WHERE id = ?)
@@ -2163,22 +2159,22 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (now, message_id),
             )
 
-            self._get_connection().commit()
+            await conn.commit()
             return success
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to mark message {status}: {e}")
             return False
 
-    def interrupt_message(self, message_id: int) -> bool:
+    async def interrupt_message(self, message_id: int) -> bool:
         """
         Interrupt a streaming message (marks as 'cancelled')
         """
-        return self.mark_message_finished(
+        return await self.mark_message_finished(
             message_id=message_id, status="cancelled", error_message="Message interrupted by user."
         )
 
-    def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
+    async def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
         """
         Get all messages for a specific conversation, ordered by creation time (4.2.7)
         Each message includes its thinking records if available.
@@ -2186,9 +2182,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT * FROM messages
                 WHERE conversation_id = ?
@@ -2196,20 +2192,20 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (conversation_id,),
             )
-            rows = cursor.fetchall()
-            # Convert sqlite3.Row objects to standard dicts and add thinking records
+            rows = await cursor.fetchall()
+            # Convert aiosqlite.Row objects to standard dicts and add thinking records
             messages = []
             for row in rows:
                 message = dict(row)
                 # Add thinking records for this message
-                message["thinking"] = self.get_message_thinking(message["id"])
+                message["thinking"] = await self.get_message_thinking(message["id"])
                 messages.append(message)
             return messages
         except Exception as e:
             logger.exception(f"Failed to get conversation messages: {e}")
             return []
 
-    def delete_message(self, message_id: int) -> bool:
+    async def delete_message(self, message_id: int) -> bool:
         """
         Delete a message from the database.
 
@@ -2223,19 +2219,19 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.warning("Storage not initialized")
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
-            self._get_connection().commit()
+            cursor = await conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+            await conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to delete message {message_id}: {e}")
             return False
 
     # Message Thinking Management Methods
 
-    def add_message_thinking(
+    async def add_message_thinking(
         self,
         message_id: int,
         content: str,
@@ -2262,19 +2258,20 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.warning("Storage not initialized")
             return None
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
             # Auto-increment sequence if not provided
             if sequence is None:
-                cursor.execute(
+                cursor = await conn.execute(
                     "SELECT COALESCE(MAX(sequence), -1) + 1 FROM message_thinking WHERE message_id = ?",
                     (message_id,),
                 )
-                sequence = cursor.fetchone()[0]
+                row = await cursor.fetchone()
+                sequence = row[0]
 
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 INSERT INTO message_thinking
                 (message_id, content, stage, progress, sequence, metadata)
@@ -2283,15 +2280,15 @@ class SQLiteBackend(IDocumentStorageBackend):
                 (message_id, content, stage, progress, sequence, meta_str),
             )
             thinking_id = cursor.lastrowid
-            self._get_connection().commit()
+            await conn.commit()
             logger.debug(f"Added thinking record {thinking_id} to message {message_id}")
             return thinking_id
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to add thinking to message {message_id}: {e}")
             return None
 
-    def get_message_thinking(self, message_id: int) -> List[Dict[str, Any]]:
+    async def get_message_thinking(self, message_id: int) -> List[Dict[str, Any]]:
         """
         Get all thinking records for a message, ordered by sequence.
 
@@ -2304,9 +2301,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute(
+            cursor = await conn.execute(
                 """
                 SELECT id, message_id, content, stage, progress, sequence, metadata, created_at
                 FROM message_thinking
@@ -2315,13 +2312,13 @@ class SQLiteBackend(IDocumentStorageBackend):
                 """,
                 (message_id,),
             )
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
             logger.exception(f"Failed to get thinking for message {message_id}: {e}")
             return []
 
-    def clear_message_thinking(self, message_id: int) -> bool:
+    async def clear_message_thinking(self, message_id: int) -> bool:
         """
         Clear all thinking records for a message.
 
@@ -2334,24 +2331,24 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
         try:
-            cursor.execute("DELETE FROM message_thinking WHERE message_id = ?", (message_id,))
-            self._get_connection().commit()
+            await conn.execute("DELETE FROM message_thinking WHERE message_id = ?", (message_id,))
+            await conn.commit()
             return True
         except Exception as e:
-            self._get_connection().rollback()
+            await conn.rollback()
             logger.exception(f"Failed to clear thinking for message {message_id}: {e}")
             return False
 
-    def query(
+    async def query(
         self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None
     ) -> QueryResult:
         """Query documents"""
         if not self._initialized:
             return QueryResult(documents=[], total_count=0)
 
-        cursor = self._get_connection().cursor()
+        conn = self._connection
 
         try:
             # Build query conditions
@@ -2393,7 +2390,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
 
             # Get documents
-            # Use text() for safe SQL composition with parameters
             base_sql = """
                 SELECT DISTINCT d.id, d.content, d.data_type, d.metadata, d.created_at, d.updated_at
                 FROM documents d
@@ -2409,16 +2405,17 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
             params.append(limit)
 
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
+            cursor = await conn.execute(sql, params)
+            rows = await cursor.fetchall()
 
             documents = []
             for row in rows:
                 # Get images for each document
-                cursor.execute(
+                img_cursor = await conn.execute(
                     "SELECT image_path FROM images WHERE document_id = ? ORDER BY id", (row["id"],)
                 )
-                images = [img_row[0] for img_row in cursor.fetchall()]
+                img_rows = await img_cursor.fetchall()
+                images = [img_row[0] for img_row in img_rows]
 
                 # Parse metadata
                 metadata = {}
@@ -2445,8 +2442,9 @@ class SQLiteBackend(IDocumentStorageBackend):
                 LEFT JOIN document_tags dt ON d.id = dt.document_id
                 WHERE """
             count_sql = count_base_sql + where_clause
-            cursor.execute(count_sql, params[:-1])  # Exclude limit parameter
-            total_count = cursor.fetchone()[0]
+            count_cursor = await conn.execute(count_sql, params[:-1])  # Exclude limit parameter
+            count_row = await count_cursor.fetchone()
+            total_count = count_row[0]
 
             return QueryResult(documents=documents, total_count=total_count)
 
@@ -2454,19 +2452,10 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"SQLite text search failed: {e}")
             return QueryResult(documents=[], total_count=0)
 
-    def close(self):
-        """Close the database connection and thread-local connections."""
-        # Close thread-local connection if different from main
-        local_conn = getattr(self._local, "connection", None)
-        if local_conn and local_conn is not self.connection:
-            try:
-                local_conn.close()
-            except Exception as e:
-                logger.debug(f"Error closing thread-local connection: {e}")
-        self._local.connection = None
-
-        if self.connection:
-            self.connection.close()
-            self.connection = None
+    async def close(self):
+        """Close the database connection."""
+        if self._connection:
+            await self._connection.close()
+            self._connection = None
         self._initialized = False
         logger.info("SQLite database connection closed")
