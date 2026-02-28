@@ -26,7 +26,7 @@ class ContextOperations:
     def __init__(self):
         self.storage = get_storage()
 
-    def get_all_contexts(
+    async def get_all_contexts(
         self,
         limit: int = 10,
         offset: int = 0,
@@ -36,30 +36,30 @@ class ContextOperations:
         """Get all processed contexts with pagination and filtering."""
         limit = min(limit, 1000)  # Prevent excessive memory usage
         if self.storage:
-            return self.storage.get_all_processed_contexts(
+            return await self.storage.get_all_processed_contexts(
                 limit=limit, offset=offset, filter=filter_criteria or {}, need_vector=need_vector
             )
         logger.warning("Storage is not initialized.")
         return {}
 
-    def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]:
+    async def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]:
         """Get a single processed context by ID and type."""
         if self.storage:
-            return self.storage.get_processed_context(doc_id, context_type)
+            return await self.storage.get_processed_context(doc_id, context_type)
         logger.warning("Storage is not initialized.")
         return None
 
-    def update_context(self, doc_id: str, context: ProcessedContext) -> bool:
+    async def update_context(self, doc_id: str, context: ProcessedContext) -> bool:
         """Update a processed context."""
         if self.storage:
-            return self.storage.upsert_processed_context(context)
+            return await self.storage.upsert_processed_context(context)
         logger.warning("Storage is not initialized.")
         return False
 
-    def delete_context(self, doc_id: str, context_type: str) -> bool:
+    async def delete_context(self, doc_id: str, context_type: str) -> bool:
         """Delete a processed context."""
         if self.storage:
-            return self.storage.delete_processed_context(doc_id, context_type)
+            return await self.storage.delete_processed_context(doc_id, context_type)
         logger.warning("Storage is not initialized.")
         return False
 
@@ -105,7 +105,7 @@ class ContextOperations:
             logger.error(error_msg)
             return error_msg
 
-    def search(
+    async def search(
         self,
         query: str,
         top_k: int = 10,
@@ -139,7 +139,7 @@ class ContextOperations:
             query_vectorize = Vectorize(text=query)
 
             # Execute vector search with multi-user filtering
-            search_results = self.storage.search(
+            search_results = await self.storage.search(
                 query=query_vectorize,
                 top_k=top_k,
                 context_types=context_types,

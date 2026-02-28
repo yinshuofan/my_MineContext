@@ -299,37 +299,37 @@ class OpenContext:
             return False
 
     # Delegate context operations to ContextOperations helper
-    def get_all_contexts(
+    async def get_all_contexts(
         self, limit: int = 10, offset: int = 0, filter_criteria: Optional[Dict[str, Any]] = None
     ) -> Dict[str, List[ProcessedContext]]:
         """Get all processed contexts."""
         if not self.context_operations:
             logger.warning("Context operations not initialized.")
             return {}
-        return self.context_operations.get_all_contexts(
+        return await self.context_operations.get_all_contexts(
             limit, offset, filter_criteria, need_vector=False
         )
 
-    def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]:
+    async def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]:
         """Get a single processed context."""
         if not self.context_operations:
             logger.warning("Context operations not initialized.")
             return None
-        return self.context_operations.get_context(doc_id, context_type)
+        return await self.context_operations.get_context(doc_id, context_type)
 
-    def update_context(self, doc_id: str, context: ProcessedContext) -> bool:
+    async def update_context(self, doc_id: str, context: ProcessedContext) -> bool:
         """Update a processed context."""
         if not self.context_operations:
             logger.warning("Context operations not initialized.")
             return False
-        return self.context_operations.update_context(doc_id, context)
+        return await self.context_operations.update_context(doc_id, context)
 
-    def delete_context(self, doc_id: str, context_type: str) -> bool:
+    async def delete_context(self, doc_id: str, context_type: str) -> bool:
         """Delete a processed context."""
         if not self.context_operations:
             logger.warning("Context operations not initialized.")
             return False
-        return self.context_operations.delete_context(doc_id, context_type)
+        return await self.context_operations.delete_context(doc_id, context_type)
 
     async def add_document(self, file_path: str) -> Optional[str]:
         """Add a document to the system."""
@@ -338,7 +338,7 @@ class OpenContext:
             return "Context operations not initialized"
         return await self.context_operations.add_document(file_path, self.add_context)
 
-    def search(
+    async def search(
         self,
         query: str,
         top_k: int = 10,
@@ -361,7 +361,7 @@ class OpenContext:
         """
         if not self.context_operations:
             raise RuntimeError("Context operations not initialized")
-        return self.context_operations.search(
+        return await self.context_operations.search(
             query,
             top_k,
             context_types,
