@@ -26,6 +26,18 @@ from opencontext.scheduler.base import (
 from opencontext.scheduler.user_key_builder import UserKeyBuilder
 from opencontext.storage.redis_cache import RedisCache
 
+# Lua script: atomically pop lowest-score member only if score <= max_score.
+# Returns {member, score} if a due task exists, nil otherwise.
+# Runs atomically on Redis server — no race window between check and remove.
+_CONDITIONAL_ZPOPMIN_LUA = """
+local result = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, 1)
+if #result == 0 then return nil end
+local member = result[1]
+local score = redis.call('ZSCORE', KEYS[1], member)
+redis.call('ZREM', KEYS[1], member)
+return {member, score}
+"""
+
 
 class RedisTaskScheduler(ITaskScheduler):
     """
@@ -49,6 +61,7 @@ class RedisTaskScheduler(ITaskScheduler):
     LAST_EXEC_PREFIX = "scheduler:last_exec:"
     LOCK_PREFIX = "scheduler:lock:"
     PERIODIC_PREFIX = "scheduler:periodic:"
+    FAIL_COUNT_PREFIX = "scheduler:fail_count:"
 
     def __init__(self, redis_cache: RedisCache, config: Optional[Dict[str, Any]] = None):
         """
@@ -185,6 +198,23 @@ class RedisTaskScheduler(ITaskScheduler):
                 )
                 return False
 
+        # Check consecutive failure count against max_retries
+        fail_count_key = f"{self.FAIL_COUNT_PREFIX}{task_type}:{user_key}"
+        fail_count_str = await self._redis.get(fail_count_key)
+        if fail_count_str:
+            fail_count = int(fail_count_str)
+            # Defensive: ensure TTL exists (protect against orphaned keys)
+            key_ttl = await self._redis.ttl(fail_count_key)
+            if key_ttl == -1:  # No expiry set — re-apply default
+                await self._redis.expire(fail_count_key, 86400)
+            if fail_count >= task_config.max_retries:
+                logger.debug(
+                    f"Skipping {task_type} for {user_key}, "
+                    f"consecutive failures ({fail_count}) >= "
+                    f"max_retries ({task_config.max_retries})"
+                )
+                return False
+
         # Create new task
         now = int(time.time())
         scheduled_at = now + interval
@@ -221,7 +251,9 @@ class RedisTaskScheduler(ITaskScheduler):
         """
         Get a pending task ready for execution (async).
 
-        Acquires a distributed lock to prevent duplicate execution.
+        Uses a Lua script for atomic conditional pop — only removes a task from
+        the queue if its scheduled time has arrived. Each instance claims a unique
+        task with no contention.
 
         Returns:
             TaskInfo if a task is available, None otherwise
@@ -234,29 +266,43 @@ class RedisTaskScheduler(ITaskScheduler):
         timeout = task_config.timeout
         now = int(time.time())
 
-        # Get all due tasks (score <= now)
-        tasks = await self._redis.zrangebyscore(queue_key, 0, now)
+        max_attempts = 20  # Bound orphan cleanup per cycle
 
-        for user_key in tasks:
-            # Try to acquire distributed lock
-            lock_key = f"{self.LOCK_PREFIX}{task_type}:{user_key}"
-            lock_token = await self._redis.acquire_lock(lock_key, timeout=timeout, blocking=False)
+        for _ in range(max_attempts):
+            # Atomically pop earliest task only if due (score <= now)
+            result = await self._redis.eval_lua(
+                _CONDITIONAL_ZPOPMIN_LUA, keys=[queue_key], args=[now]
+            )
+            if not result:
+                return None  # Queue empty or nothing due
 
-            if not lock_token:
-                # Another instance is processing, skip
+            user_key = result[0].decode("utf-8") if isinstance(result[0], bytes) else result[0]
+            score = float(result[1].decode("utf-8") if isinstance(result[1], bytes) else result[1])
+
+            # Orphan check: task hash expired but queue entry remained
+            task_key = f"{self.TASK_PREFIX}{task_type}:{user_key}"
+            task_exists = await self._redis.exists(task_key)
+            if not task_exists:
+                # Already removed by Lua, loop to next
+                logger.debug(f"Cleaned orphaned queue entry for {task_type}:{user_key}")
                 continue
 
-            # Update task status
-            task_key = f"{self.TASK_PREFIX}{task_type}:{user_key}"
+            # Acquire lock (safety net — protects against crashed previous execution
+            # whose lock hasn't expired. Near-impossible with atomic pop but defensive.)
+            lock_key = f"{self.LOCK_PREFIX}{task_type}:{user_key}"
+            lock_token = await self._redis.acquire_lock(lock_key, timeout=timeout, blocking=False)
+            if not lock_token:
+                # Previous execution still holds lock; put task back for later
+                await self._redis.zadd(queue_key, {user_key: score})
+                continue
+
+            # Mark as running
             await self._redis.hset(task_key, "status", TaskStatus.RUNNING.value)
 
-            # Remove from queue
-            await self._redis.zrem(queue_key, user_key)
-
-            # Parse user_key
+            # Parse user_key and return TaskInfo
             key_parts = self._user_key_builder.parse_key(user_key)
 
-            task_info = TaskInfo(
+            return TaskInfo(
                 task_type=task_type,
                 user_key=user_key,
                 user_id=key_parts.get("user_id") or "",
@@ -265,8 +311,6 @@ class RedisTaskScheduler(ITaskScheduler):
                 status=TaskStatus.RUNNING,
                 lock_token=lock_token,
             )
-
-            return task_info
 
         return None
 
@@ -277,20 +321,48 @@ class RedisTaskScheduler(ITaskScheduler):
         task_key = f"{self.TASK_PREFIX}{task_type}:{user_key}"
         lock_key = f"{self.LOCK_PREFIX}{task_type}:{user_key}"
         last_exec_key = f"{self.LAST_EXEC_PREFIX}{task_type}:{user_key}"
+        fail_count_key = f"{self.FAIL_COUNT_PREFIX}{task_type}:{user_key}"
 
-        # Update task status
-        status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
-        await self._redis.hset(task_key, "status", status.value)
+        try:
+            # Update task status
+            status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
+            await self._redis.hset(task_key, "status", status.value)
 
-        # Record execution time
-        if success:
+            # Always record last_exec to enforce interval spacing on both success and failure
             await self._redis.set(last_exec_key, str(int(time.time())))
             await self._redis.expire(last_exec_key, 86400)  # 24 hours
 
-        # Release lock
-        await self._redis.release_lock(lock_key, lock_token)
+            if success:
+                # Reset consecutive failure count on success
+                await self._redis.delete(fail_count_key)
+            else:
+                # Increment consecutive failure count
+                task_config = await self.get_task_config(task_type)
+                max_retries = task_config.max_retries if task_config else 3
+                interval = task_config.interval if task_config else 1800
 
-        logger.info(f"Task {task_type} for {user_key} " f"{'completed' if success else 'failed'}")
+                count = await self._redis.incr(fail_count_key)
+                fail_count_ttl = max(max_retries * interval * 2, 86400)
+                await self._redis.expire(fail_count_key, fail_count_ttl)
+
+                logger.warning(
+                    f"Task {task_type} for {user_key} failed "
+                    f"(consecutive failures: {count}/{max_retries})"
+                )
+        except Exception as e:
+            logger.exception(f"Error updating task state for {task_type}:{user_key}: {e}")
+        finally:
+            # Always release lock, even if state updates failed.
+            # Use asyncio.shield() to protect against CancelledError propagation:
+            # in Python 3.10, cancellation is "sticky" — after CancelledError is raised,
+            # subsequent await calls in the same task also raise CancelledError.
+            # shield() runs release_lock as an independent task unaffected by cancellation.
+            try:
+                await asyncio.shield(self._redis.release_lock(lock_key, lock_token))
+            except (asyncio.CancelledError, Exception) as e:
+                logger.error(f"Failed to release lock for {task_type}:{user_key}: {e}")
+
+        logger.info(f"Task {task_type} for {user_key} {'completed' if success else 'failed'}")
 
     async def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
         """Get configuration for a task type (async)"""
@@ -315,20 +387,31 @@ class RedisTaskScheduler(ITaskScheduler):
         self._executor_task = asyncio.create_task(self._executor_loop())
 
     async def _executor_loop(self) -> None:
-        """Main executor loop"""
+        """Main executor loop with graceful shutdown support"""
         while self._running:
             try:
                 # Process user_activity tasks
                 for task_type in self._task_handlers.keys():
+                    if not self._running:
+                        break
                     await self._process_task_type(task_type)
 
                 # Process periodic tasks
-                await self._process_periodic_tasks()
+                if self._running:
+                    await self._process_periodic_tasks()
 
+            except asyncio.CancelledError:
+                logger.info("Executor loop cancelled, stopping")
+                break
             except Exception as e:
                 logger.exception(f"Error in task scheduler: {e}")
 
-            await asyncio.sleep(self._check_interval)
+            if self._running:
+                try:
+                    await asyncio.sleep(self._check_interval)
+                except asyncio.CancelledError:
+                    logger.info("Executor loop sleep cancelled, stopping")
+                    break
 
     async def _process_task_type(self, task_type: str) -> None:
         """Process tasks of a specific type (async)"""
@@ -341,11 +424,12 @@ class RedisTaskScheduler(ITaskScheduler):
             logger.warning(f"No handler for task type: {task_type}")
             return
 
+        lock_released = False
         try:
             logger.info(f"Executing {task_type} for {task_info.user_key}")
 
             # Execute in thread pool to avoid blocking event loop
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             success = await loop.run_in_executor(
                 None, handler, task_info.user_id, task_info.device_id, task_info.agent_id
             )
@@ -353,11 +437,28 @@ class RedisTaskScheduler(ITaskScheduler):
             await self.complete_task(
                 task_type, task_info.user_key, task_info.lock_token or "", success
             )
+            lock_released = True
+        except asyncio.CancelledError:
+            logger.warning(f"Task {task_type} for {task_info.user_key} cancelled during shutdown")
+            raise  # Re-raise to let _executor_loop handle it
         except Exception as e:
             logger.exception(f"Task {task_type} failed for {task_info.user_key}: {e}")
-            await self.complete_task(
-                task_type, task_info.user_key, task_info.lock_token or "", False
-            )
+        finally:
+            if not lock_released:
+                # Use asyncio.shield() so complete_task runs as an independent task,
+                # unaffected by the outer task's cancellation state. Without this,
+                # CancelledError would propagate into every await inside complete_task.
+                try:
+                    await asyncio.shield(
+                        self.complete_task(
+                            task_type, task_info.user_key, task_info.lock_token or "", False
+                        )
+                    )
+                except (asyncio.CancelledError, Exception) as cleanup_err:
+                    logger.error(
+                        f"Failed to release lock during cleanup for "
+                        f"{task_type}:{task_info.user_key}: {cleanup_err}"
+                    )
 
     async def _process_periodic_tasks(self) -> None:
         """Process periodic tasks (global tasks, not user-specific) (async)"""
@@ -398,6 +499,7 @@ class RedisTaskScheduler(ITaskScheduler):
                     periodic_key,
                     {"last_run": str(now), "next_run": str(now + interval), "status": "running"},
                 )
+                await self._redis.expire(periodic_key, interval * 3)
 
                 # Execute task
                 logger.info(f"Executing periodic task: {task_type}")
@@ -405,18 +507,65 @@ class RedisTaskScheduler(ITaskScheduler):
                 await loop.run_in_executor(None, handler, None, None, None)
 
                 await self._redis.hset(periodic_key, "status", "idle")
+                await self._redis.expire(periodic_key, interval * 3)
+            except asyncio.CancelledError:
+                logger.warning(f"Periodic task {task_type} cancelled during shutdown")
+                raise
             except Exception as e:
                 logger.exception(f"Periodic task {task_type} failed: {e}")
                 await self._redis.hset(periodic_key, "status", "failed")
+                await self._redis.expire(periodic_key, interval * 3)
             finally:
-                await self._redis.release_lock(lock_key, lock_token)
+                try:
+                    await asyncio.shield(self._redis.release_lock(lock_key, lock_token))
+                except (asyncio.CancelledError, Exception) as e:
+                    logger.error(f"Failed to release periodic lock for {task_type}: {e}")
 
-    def stop(self) -> None:
-        """Stop the scheduler"""
+    async def stop(self, timeout: float = 30.0) -> None:
+        """
+        Stop the scheduler gracefully.
+
+        Sets running flag to False, then waits up to `timeout` seconds
+        for the executor loop to finish its current cycle. If the executor
+        doesn't finish in time, it is cancelled.
+
+        Args:
+            timeout: Maximum seconds to wait for in-flight tasks to complete.
+                     Default 30s. Set to 0 for immediate cancellation.
+        """
+        if not self._running and not self._executor_task:
+            return
+
         self._running = False
-        if self._executor_task:
-            self._executor_task.cancel()
-            self._executor_task = None
+        logger.info("Stopping task scheduler (graceful)...")
+
+        if self._executor_task and not self._executor_task.done():
+            if timeout > 0:
+                try:
+                    await asyncio.wait_for(asyncio.shield(self._executor_task), timeout=timeout)
+                    logger.info("Task scheduler stopped gracefully")
+                except asyncio.TimeoutError:
+                    logger.warning(f"Scheduler did not stop within {timeout}s, cancelling")
+                    self._executor_task.cancel()
+                    try:
+                        await self._executor_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                except asyncio.CancelledError:
+                    self._executor_task.cancel()
+                    try:
+                        await self._executor_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                    raise
+            else:
+                self._executor_task.cancel()
+                try:
+                    await self._executor_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+        self._executor_task = None
         logger.info("Task scheduler stopped")
 
     def is_running(self) -> bool:

@@ -157,6 +157,9 @@ LLM prompts for extraction, classification, merging, and hierarchy summarization
 
 These are real bugs encountered during development. Check for them when modifying related code.
 
+### Multi-instance deployment — all shared-state operations must be concurrency-safe
+This service runs as multiple instances sharing the same Redis and MySQL. Any "read-then-write" sequence on shared state is a potential race condition. Use atomic operations: Lua scripts for Redis (see `_CONDITIONAL_ZPOPMIN_LUA` in `redis_scheduler.py` for the pattern, executed via `RedisCache.eval_lua()`), database transactions for MySQL. When adding new Redis operations that check-then-modify, ask: "What happens if two instances run this at the same time?" If the answer is "data corruption or duplicate work", make it atomic.
+
 ### All profile/entity operations require the 3-key identifier `(user_id, device_id, agent_id)`
 Every storage method for profiles and entities requires all three identifiers. `device_id` and `agent_id` default to `"default"`. Omitting them causes positional argument mismatches (e.g., `entity_name` gets interpreted as `device_id`). The same applies to tools, cache manager, and search strategies. Redis cache keys also use all three: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
 

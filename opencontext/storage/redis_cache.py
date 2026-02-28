@@ -32,6 +32,16 @@ logger = get_logger(__name__)
 _redis_client: Optional["RedisCache"] = None
 _redis_lock = threading.Lock()
 
+# Lua script for atomic lock release: only DEL if the caller still owns the lock.
+# Prevents releasing a lock that expired and was re-acquired by another instance.
+_RELEASE_LOCK_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+else
+    return 0
+end
+"""
+
 
 @dataclass
 class RedisCacheConfig:
@@ -599,6 +609,22 @@ class RedisCache:
             logger.error(f"Redis ZRANGEBYSCORE error: {e}")
             return []
 
+    async def eval_lua(self, script: str, keys: List[str], args: List = None) -> Any:
+        """Execute a Lua script on Redis server.
+
+        Keys are automatically prefixed. Scripts run atomically (Redis single-threaded).
+        """
+        if not await self._ensure_async_client():
+            return None
+        try:
+            prefixed_keys = [self._make_key(k) for k in keys]
+            return await self._async_client.eval(
+                script, len(prefixed_keys), *prefixed_keys, *(args or [])
+            )
+        except Exception as e:
+            logger.error(f"Redis eval_lua error: {e}")
+            return None
+
     async def zrem(self, key: str, *members: str) -> int:
         """Remove members from a sorted set."""
         if not await self._ensure_async_client() or not members:
@@ -714,7 +740,11 @@ class RedisCache:
 
     async def release_lock(self, lock_name: str, token: str) -> bool:
         """
-        Release a distributed lock.
+        Release a distributed lock atomically.
+
+        Uses a Lua script to ensure the lock is only deleted if the caller
+        still owns it (token matches). Prevents releasing a lock that expired
+        and was re-acquired by another instance.
 
         Args:
             lock_name: Name of the lock
@@ -726,13 +756,9 @@ class RedisCache:
         if not await self._ensure_async_client():
             return False
         try:
-            lock_key = f"lock:{lock_name}"
-            # Only release if we own the lock
-            current_token = await self.get(lock_key)
-            if current_token == token:
-                await self.delete(lock_key)
-                return True
-            return False
+            lock_key = self._make_key(f"lock:{lock_name}")
+            result = await self._async_client.eval(_RELEASE_LOCK_LUA, 1, lock_key, token)
+            return bool(result)
         except Exception as e:
             logger.error(f"Redis release_lock error: {e}")
             return False
