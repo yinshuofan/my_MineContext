@@ -96,7 +96,7 @@ class LLMClient:
             api_start = time.time()
             response = await self.client.chat.completions.create(**create_params)
 
-            record_processing_stage(
+            await record_processing_stage(
                 "chat_cost", int((time.time() - api_start) * 1000), status="success"
             )
 
@@ -105,7 +105,7 @@ class LLMClient:
                 try:
                     from opencontext.monitoring import record_token_usage
 
-                    record_token_usage(
+                    await record_token_usage(
                         model=self.model,
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens,
@@ -119,7 +119,7 @@ class LLMClient:
             logger.exception(f"OpenAI API async error: {e}")
             # Record failure
             try:
-                record_processing_stage(
+                await record_processing_stage(
                     "chat_cost", int((time.time() - request_start) * 1000), status="failure"
                 )
             except ImportError:
@@ -167,7 +167,7 @@ class LLMClient:
                 try:
                     from opencontext.monitoring import record_token_usage
 
-                    record_token_usage(
+                    await record_token_usage(
                         model=self.model,
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=0,  # embedding has no completion tokens
@@ -223,7 +223,7 @@ class LLMClient:
                     try:
                         from opencontext.monitoring import record_token_usage
 
-                        record_token_usage(
+                        await record_token_usage(
                             model=self.model,
                             prompt_tokens=response.usage.prompt_tokens,
                             completion_tokens=0,

@@ -52,9 +52,18 @@ async def lifespan(app: FastAPI):
     if not hasattr(app.state, "context_lab_instance"):
         app.state.context_lab_instance = get_or_create_context_lab()
 
+    # Initialize async storage (must happen inside event loop)
+    from opencontext.storage.global_storage import GlobalStorage, get_storage
+
+    await GlobalStorage.get_instance().ensure_initialized()
+
+    # Update OpenContext's storage reference now that async init is done
+    context_lab = app.state.context_lab_instance
+    if context_lab and context_lab.storage is None:
+        context_lab.storage = get_storage()
+
     # Start task scheduler after event loop is running
     try:
-        context_lab = app.state.context_lab_instance
         if context_lab and hasattr(context_lab, "component_initializer"):
             await context_lab.component_initializer.start_task_scheduler()
     except Exception as e:

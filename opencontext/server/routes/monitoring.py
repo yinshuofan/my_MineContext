@@ -28,7 +28,7 @@ async def get_system_overview(
     """
     try:
         monitor = get_monitor()
-        overview = monitor.get_system_overview()
+        overview = await monitor.get_system_overview()
         return {"success": True, "data": overview}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get system overview: {str(e)}")
@@ -45,7 +45,7 @@ async def get_context_type_stats(
     """
     try:
         monitor = get_monitor()
-        stats = monitor.get_context_type_stats(force_refresh=force_refresh)
+        stats = await monitor.get_context_type_stats(force_refresh=force_refresh)
         return {"success": True, "data": stats}
     except Exception as e:
         raise HTTPException(
@@ -63,7 +63,7 @@ async def get_token_usage_summary(
     """
     try:
         monitor = get_monitor()
-        summary = monitor.get_token_usage_summary(hours=hours)
+        summary = await monitor.get_token_usage_summary(hours=hours)
         return {"success": True, "data": summary}
     except Exception as e:
         raise HTTPException(
@@ -99,7 +99,7 @@ async def get_stage_timing_metrics(
     """
     try:
         monitor = get_monitor()
-        metrics = monitor.get_stage_timing_summary(hours=hours)
+        metrics = await monitor.get_stage_timing_summary(hours=hours)
         return {"success": True, "data": metrics}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get stage timing metrics: {str(e)}")
@@ -115,7 +115,7 @@ async def get_data_stats(
     """
     try:
         monitor = get_monitor()
-        stats = monitor.get_data_stats_summary(hours=hours)
+        stats = await monitor.get_data_stats_summary(hours=hours)
         return {"success": True, "data": stats}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get data statistics: {str(e)}")
@@ -131,7 +131,7 @@ async def get_data_stats_trend(
     """
     try:
         monitor = get_monitor()
-        trend = monitor.get_data_stats_trend(hours=hours)
+        trend = await monitor.get_data_stats_trend(hours=hours)
         return {"success": True, "data": trend}
     except Exception as e:
         raise HTTPException(
@@ -154,7 +154,7 @@ async def get_data_stats_by_range(
             raise HTTPException(status_code=400, detail="start_time must be earlier than end_time")
 
         monitor = get_monitor()
-        stats = monitor.get_data_stats_by_range(start_time=start_time, end_time=end_time)
+        stats = await monitor.get_data_stats_by_range(start_time=start_time, end_time=end_time)
         return {"success": True, "data": stats}
     except HTTPException:
         raise
@@ -173,7 +173,7 @@ async def refresh_context_type_stats(
     """
     try:
         monitor = get_monitor()
-        stats = monitor.get_context_type_stats(force_refresh=True)
+        stats = await monitor.get_context_type_stats(force_refresh=True)
         return {"success": True, "data": stats, "message": "Statistics data refreshed"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to refresh statistics data: {str(e)}")

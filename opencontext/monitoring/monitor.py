@@ -118,20 +118,17 @@ class Monitor:
         # Start time
         self._start_time = datetime.now()
 
-        # Auto cleanup old monitoring data on startup
-        self._cleanup_old_data()
-
         logger.info("System monitor initialized")
 
-    def _cleanup_old_data(self):
+    async def _cleanup_old_data(self):
         """Clean up monitoring data older than 7 days"""
 
         try:
-            get_storage().cleanup_old_monitoring_data(days=7)
+            await get_storage().cleanup_old_monitoring_data(days=7)
         except Exception as e:
             logger.error(f"Failed to cleanup old monitoring data: {e}")
 
-    def record_token_usage(
+    async def record_token_usage(
         self, model: str, prompt_tokens: int = 0, completion_tokens: int = 0, total_tokens: int = 0
     ):
         """Record token usage"""
@@ -149,15 +146,15 @@ class Monitor:
             if len(self._token_usage_by_model[model]) > 100:
                 self._token_usage_by_model[model] = self._token_usage_by_model[model][-100:]
 
-            # Persist to database
-            self._persist_token_usage(model, prompt_tokens, completion_tokens, total_tokens)
+        # Persist to database
+        await self._persist_token_usage(model, prompt_tokens, completion_tokens, total_tokens)
 
-    def _persist_token_usage(
+    async def _persist_token_usage(
         self, model: str, prompt_tokens: int, completion_tokens: int, total_tokens: int
     ):
         """Persist token usage to database"""
         try:
-            get_storage().save_monitoring_token_usage(
+            await get_storage().save_monitoring_token_usage(
                 model, prompt_tokens, completion_tokens, total_tokens
             )
         except Exception as e:
@@ -201,7 +198,7 @@ class Monitor:
             )
             self._retrieval_history.append(metrics)
 
-    def get_context_type_stats(self, force_refresh: bool = False) -> Dict[str, int]:
+    async def get_context_type_stats(self, force_refresh: bool = False) -> Dict[str, int]:
         """Get record count for each context_type"""
         now = datetime.now()
 
@@ -213,12 +210,11 @@ class Monitor:
 
         # Fetch latest statistics from storage
         try:
-            with self._lock:
-                stats = get_storage().get_all_processed_context_counts()
-                stats = {}
-                for context_type in ContextType:
-                    count = get_storage().get_processed_context_count(context_type.value)
-                    stats[context_type.value] = count
+            await get_storage().get_all_processed_context_counts()
+            stats = {}
+            for context_type in ContextType:
+                count = await get_storage().get_processed_context_count(context_type.value)
+                stats[context_type.value] = count
             # Update cache
             for context_type_value, count in stats.items():
                 self._context_type_stats[context_type_value] = ContextTypeStats(
@@ -234,7 +230,7 @@ class Monitor:
         # Return cached data or empty dict
         return {k: v.count for k, v in self._context_type_stats.items()}
 
-    def get_token_usage_summary(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_token_usage_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get token usage summary from database"""
         summary = {
             "total_records": 0,
@@ -245,7 +241,7 @@ class Monitor:
         }
 
         try:
-            rows = get_storage().query_monitoring_token_usage(hours)
+            rows = await get_storage().query_monitoring_token_usage(hours)
 
             model_stats = defaultdict(
                 lambda: {"count": 0, "total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0}
@@ -335,7 +331,7 @@ class Monitor:
 
             return summary
 
-    def record_processing_stage(
+    async def record_processing_stage(
         self,
         stage_name: str,
         duration_ms: int,
@@ -344,11 +340,11 @@ class Monitor:
     ):
         """Record processing stage timing"""
         try:
-            get_storage().save_monitoring_stage_timing(stage_name, duration_ms, status, metadata)
+            await get_storage().save_monitoring_stage_timing(stage_name, duration_ms, status, metadata)
         except Exception as e:
             logger.error(f"Failed to record processing stage: {e}")
 
-    def increment_data_count(
+    async def increment_data_count(
         self,
         data_type: str,
         count: int = 1,
@@ -357,11 +353,11 @@ class Monitor:
     ):
         """Increment data count"""
         try:
-            get_storage().save_monitoring_data_stats(data_type, count, context_type, metadata)
+            await get_storage().save_monitoring_data_stats(data_type, count, context_type, metadata)
         except Exception as e:
             logger.error(f"Failed to increment data count: {e}")
 
-    def get_stage_timing_summary(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_stage_timing_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get stage timing summary from database"""
         summary = {
             "total_operations": 0,
@@ -370,7 +366,7 @@ class Monitor:
         }
 
         try:
-            rows = get_storage().query_monitoring_stage_timing(hours)
+            rows = await get_storage().query_monitoring_stage_timing(hours)
 
             stage_stats = defaultdict(
                 lambda: {
@@ -413,7 +409,7 @@ class Monitor:
 
         return summary
 
-    def get_data_stats_summary(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_data_stats_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get data statistics summary from database"""
         summary = {
             "by_data_type": {},
@@ -422,7 +418,7 @@ class Monitor:
         }
 
         try:
-            rows = get_storage().query_monitoring_data_stats(hours)
+            rows = await get_storage().query_monitoring_data_stats(hours)
 
             # Process the grouped data
             for row in rows:
@@ -447,7 +443,7 @@ class Monitor:
 
         return summary
 
-    def get_data_stats_by_range(self, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
+    async def get_data_stats_by_range(self, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
         """Get data statistics by custom time range"""
         summary = {
             "by_data_type": {},
@@ -460,7 +456,7 @@ class Monitor:
         }
 
         try:
-            rows = get_storage().query_monitoring_data_stats_by_range(start_time, end_time)
+            rows = await get_storage().query_monitoring_data_stats_by_range(start_time, end_time)
 
             # Process the grouped data
             for row in rows:
@@ -485,10 +481,10 @@ class Monitor:
 
         return summary
 
-    def get_data_stats_trend(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_data_stats_trend(self, hours: int = 24) -> Dict[str, Any]:
         """Get data statistics trend with time series data"""
         try:
-            rows = get_storage().query_monitoring_data_stats_trend(hours)
+            rows = await get_storage().query_monitoring_data_stats_trend(hours)
 
             # Organize data by data_type for easy frontend consumption
             # Structure: { 'document': [{timestamp, count}, ...], 'context': [...] }
@@ -573,7 +569,7 @@ class Monitor:
                 "time_range_hours": hours,
             }
 
-    def record_scheduler_execution(
+    async def record_scheduler_execution(
         self,
         task_type: str,
         user_key: str,
@@ -596,7 +592,7 @@ class Monitor:
             )
         # Persist to MySQL via existing stage_timing table
         status = "success" if success else "error"
-        self.record_processing_stage(
+        await self.record_processing_stage(
             stage_name=f"scheduler:{task_type}",
             duration_ms=duration_ms,
             status=status,
@@ -739,19 +735,19 @@ class Monitor:
 
             return summary
 
-    def get_system_overview(self) -> Dict[str, Any]:
+    async def get_system_overview(self) -> Dict[str, Any]:
         """Get system overview"""
         uptime = datetime.now() - self._start_time
 
         return {
             "uptime_seconds": int(uptime.total_seconds()),
             "uptime_formatted": str(uptime).split(".")[0],
-            "context_types": self.get_context_type_stats(),
-            "token_usage_24h": self.get_token_usage_summary(hours=24),
-            "token_usage_7d": self.get_token_usage_summary(hours=168),  # 7 days
+            "context_types": await self.get_context_type_stats(),
+            "token_usage_24h": await self.get_token_usage_summary(hours=24),
+            "token_usage_7d": await self.get_token_usage_summary(hours=168),  # 7 days
             "processing": self.get_processing_summary(hours=24),
-            "stage_timing": self.get_stage_timing_summary(hours=24),
-            "data_stats_24h": self.get_data_stats_summary(hours=24),
+            "stage_timing": await self.get_stage_timing_summary(hours=24),
+            "data_stats_24h": await self.get_data_stats_summary(hours=24),
             "scheduler": self.get_scheduler_summary(hours=24),
             "last_updated": datetime.now().isoformat(),
         }
@@ -779,11 +775,11 @@ def initialize_monitor() -> Monitor:
 
 
 # Convenient global functions for reporting metrics
-def record_token_usage(
+async def record_token_usage(
     model: str, prompt_tokens: int = 0, completion_tokens: int = 0, total_tokens: int = 0
 ):
     """Global function: Record token usage"""
-    get_monitor().record_token_usage(model, prompt_tokens, completion_tokens, total_tokens)
+    await get_monitor().record_token_usage(model, prompt_tokens, completion_tokens, total_tokens)
 
 
 def record_processing_metrics(
@@ -813,29 +809,29 @@ def record_processing_error(
     get_monitor().record_processing_error(error_message, processor_name, context_count, timestamp)
 
 
-def record_processing_stage(
+async def record_processing_stage(
     stage_name: str, duration_ms: int, status: str = "success", metadata: Optional[str] = None
 ):
     """Global function: Record processing stage timing"""
-    get_monitor().record_processing_stage(stage_name, duration_ms, status, metadata)
+    await get_monitor().record_processing_stage(stage_name, duration_ms, status, metadata)
 
 
-def increment_context_count(context_type: str):
+async def increment_context_count(context_type: str):
     """Global function: Increment context count by type"""
-    get_monitor().increment_data_count("context", context_type=context_type)
+    await get_monitor().increment_data_count("context", context_type=context_type)
 
 
-def increment_data_count(
+async def increment_data_count(
     data_type: str,
     count: int = 1,
     context_type: Optional[str] = None,
     metadata: Optional[str] = None,
 ):
     """Global function: Increment data count"""
-    get_monitor().increment_data_count(data_type, count, context_type, metadata)
+    await get_monitor().increment_data_count(data_type, count, context_type, metadata)
 
 
-def record_scheduler_execution(
+async def record_scheduler_execution(
     task_type: str,
     user_key: str,
     success: bool,
@@ -844,6 +840,6 @@ def record_scheduler_execution(
     error_message: str = "",
 ):
     """Global function: Record scheduler task execution metrics"""
-    get_monitor().record_scheduler_execution(
+    await get_monitor().record_scheduler_execution(
         task_type, user_key, success, duration_ms, trigger_mode, error_message
     )

@@ -528,7 +528,7 @@ class RedisTaskScheduler(ITaskScheduler):
             try:
                 from opencontext.monitoring import record_scheduler_execution
 
-                record_scheduler_execution(
+                await record_scheduler_execution(
                     task_type=task_type,
                     user_key=task_info.user_key,
                     success=exec_success,
@@ -625,7 +625,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 try:
                     from opencontext.monitoring import record_scheduler_execution
 
-                    record_scheduler_execution(
+                    await record_scheduler_execution(
                         task_type=task_type,
                         user_key="global",
                         success=exec_success,

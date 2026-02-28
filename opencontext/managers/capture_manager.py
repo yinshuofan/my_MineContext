@@ -270,7 +270,7 @@ class ContextCaptureManager:
         """
         self._callback = callback
 
-    def _on_component_capture(self, contexts: List[RawContextProperties]) -> None:
+    async def _on_component_capture(self, contexts: List[RawContextProperties]) -> None:
         """
         Component capture callback function.
 
@@ -303,7 +303,7 @@ class ContextCaptureManager:
         # Call the upper-level callback (e.g., pass to OpenContext for processing)
         if self._callback:
             try:
-                self._callback(contexts)
+                await self._callback(contexts)
             except Exception as e:
                 logger.exception(
                     f"An exception occurred when executing the upper-level callback function: {e}"
