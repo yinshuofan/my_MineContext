@@ -33,6 +33,7 @@ llm:
     api_key: "${LLM_API_KEY}" # 必填
     base_url: "${LLM_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
     model: "${LLM_MODEL:doubao-seed-1-6-251015}"
+    max_concurrent: ${LLM_MAX_CONCURRENT:10}
 
 # VLM 配置（视觉语言模型，用于图片/截图理解）
 vlm_model:
@@ -40,6 +41,7 @@ vlm_model:
   api_key: "${VLM_API_KEY}"
   model: "${VLM_MODEL:doubao-seed-1-6-251015}"
   provider: "doubao"
+  max_concurrent: ${VLM_MAX_CONCURRENT:10}
 
 # Embedding 配置（向量嵌入模型，用于语义检索）
 embedding_model:
@@ -47,6 +49,7 @@ embedding_model:
   api_key: "${EMBEDDING_API_KEY}"
   model: "${EMBEDDING_MODEL:doubao-embedding-large-text-240915}"
   provider: "openai"
+  max_concurrent: ${EMBEDDING_MAX_CONCURRENT:20}
   output_dim: 2048 # 嵌入维度，须与向量库 dimension 一致
 
 # ============================================================

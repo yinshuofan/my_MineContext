@@ -7,8 +7,9 @@
 OpenContext module: llm_client
 """
 
+import asyncio
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from openai import APIError, AsyncOpenAI
 
@@ -42,12 +43,21 @@ class LLMClient:
         self.provider = config.get("provider", LLMProvider.OPENAI.value)
         if not self.api_key or not self.base_url or not self.model:
             raise ValueError("API key, base URL, and model must be provided")
+        self._max_concurrent = int(config.get("max_concurrent", 10))
+        self._semaphore: Optional[asyncio.Semaphore] = None
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
             timeout=self.timeout,
             max_retries=self.max_retries,
         )
+
+    @property
+    def _sem(self) -> asyncio.Semaphore:
+        """Lazy-init semaphore to ensure creation inside an event loop."""
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        return self._semaphore
 
     async def generate_with_messages(self, messages: List[Dict[str, Any]], **kwargs):
         if self.llm_type == LLMType.CHAT:
@@ -73,91 +83,100 @@ class LLMClient:
         """Async chat completion"""
         import time
 
-        request_start = time.time()
+        await self._sem.acquire()
         try:
-            tools = kwargs.get("tools", None)
-            thinking = kwargs.get("thinking", None)
+            request_start = time.time()
+            try:
+                tools = kwargs.get("tools", None)
+                thinking = kwargs.get("thinking", None)
 
-            create_params = {
-                "model": self.model,
-                "messages": messages,
-            }
-            if tools:
-                create_params["tools"] = tools
-                create_params["tool_choice"] = "auto"
+                create_params = {
+                    "model": self.model,
+                    "messages": messages,
+                }
+                if tools:
+                    create_params["tools"] = tools
+                    create_params["tool_choice"] = "auto"
 
-            if thinking:
-                if self.provider == LLMProvider.DOUBAO.value:
-                    if thinking == "disabled":
-                        create_params["reasoning_effort"] = "minimal"
-                elif self.provider == LLMProvider.DASHSCOPE.value:
-                    create_params["extra_body"] = {"thinking": {"type": thinking}}
-            # Stage: LLM API call
-            api_start = time.time()
-            response = await self.client.chat.completions.create(**create_params)
+                if thinking:
+                    if self.provider == LLMProvider.DOUBAO.value:
+                        if thinking == "disabled":
+                            create_params["reasoning_effort"] = "minimal"
+                    elif self.provider == LLMProvider.DASHSCOPE.value:
+                        create_params["extra_body"] = {"thinking": {"type": thinking}}
+                # Stage: LLM API call
+                api_start = time.time()
+                response = await self.client.chat.completions.create(**create_params)
 
-            await record_processing_stage(
-                "chat_cost", int((time.time() - api_start) * 1000), status="success"
-            )
+                await record_processing_stage(
+                    "chat_cost", int((time.time() - api_start) * 1000), status="success"
+                )
 
-            # Record token usage
-            if hasattr(response, "usage") and response.usage:
+                # Record token usage
+                if hasattr(response, "usage") and response.usage:
+                    try:
+                        from opencontext.monitoring import record_token_usage
+
+                        await record_token_usage(
+                            model=self.model,
+                            prompt_tokens=response.usage.prompt_tokens,
+                            completion_tokens=response.usage.completion_tokens,
+                            total_tokens=response.usage.total_tokens,
+                        )
+                    except ImportError:
+                        pass  # Monitoring module not installed or initialized
+
+                return response
+            except APIError as e:
+                logger.exception(f"OpenAI API async error: {e}")
+                # Record failure
                 try:
-                    from opencontext.monitoring import record_token_usage
-
-                    await record_token_usage(
-                        model=self.model,
-                        prompt_tokens=response.usage.prompt_tokens,
-                        completion_tokens=response.usage.completion_tokens,
-                        total_tokens=response.usage.total_tokens,
+                    await record_processing_stage(
+                        "chat_cost", int((time.time() - request_start) * 1000), status="failure"
                     )
                 except ImportError:
-                    pass  # Monitoring module not installed or initialized
-
-            return response
-        except APIError as e:
-            logger.exception(f"OpenAI API async error: {e}")
-            # Record failure
-            try:
-                await record_processing_stage(
-                    "chat_cost", int((time.time() - request_start) * 1000), status="failure"
-                )
-            except ImportError:
-                pass
-            raise
+                    pass
+                raise
+        finally:
+            self._sem.release()
 
     async def _openai_chat_completion_stream(self, messages: List[Dict[str, Any]], **kwargs):
         """Async stream chat completion - async generator"""
+        await self._sem.acquire()
         try:
-            tools = kwargs.get("tools", None)
-            thinking = kwargs.get("thinking", None)
+            try:
+                tools = kwargs.get("tools", None)
+                thinking = kwargs.get("thinking", None)
 
-            create_params = {
-                "model": self.model,
-                "messages": messages,
-                "stream": True,
-            }
-            if tools:
-                create_params["tools"] = tools
-                create_params["tool_choice"] = "auto"
+                create_params = {
+                    "model": self.model,
+                    "messages": messages,
+                    "stream": True,
+                }
+                if tools:
+                    create_params["tools"] = tools
+                    create_params["tool_choice"] = "auto"
 
-            if thinking:
-                if self.provider == LLMProvider.DOUBAO.value:
-                    if thinking == "disabled":
-                        create_params["reasoning_effort"] = "minimal"
-                elif self.provider == LLMProvider.DASHSCOPE.value:
-                    create_params["extra_body"] = {"thinking": {"type": thinking}}
+                if thinking:
+                    if self.provider == LLMProvider.DOUBAO.value:
+                        if thinking == "disabled":
+                            create_params["reasoning_effort"] = "minimal"
+                    elif self.provider == LLMProvider.DASHSCOPE.value:
+                        create_params["extra_body"] = {"thinking": {"type": thinking}}
 
-            stream = await self.client.chat.completions.create(**create_params)
+                stream = await self.client.chat.completions.create(**create_params)
 
-            # Return stream object directly, it's already an async iterator
-            async for chunk in stream:
-                yield chunk
-        except APIError as e:
-            logger.error(f"OpenAI API async stream error: {e}")
-            raise
+                # Return stream object directly, it's already an async iterator
+                async for chunk in stream:
+                    yield chunk
+            except APIError as e:
+                logger.error(f"OpenAI API async stream error: {e}")
+                raise
+        finally:
+            self._sem.release()
 
     async def _openai_embedding(self, text: str, **kwargs) -> List[float]:
+        await self._sem.acquire()
         try:
             response = await self.client.embeddings.create(model=self.model, input=[text])
             embedding = response.data[0].embedding
@@ -176,7 +195,7 @@ class LLMClient:
                 except ImportError:
                     pass  # Monitoring module not installed or initialized
 
-            output_dim = kwargs.get("output_dim", self.config.get("output_dim", 0))
+            output_dim = int(kwargs.get("output_dim", self.config.get("output_dim", 0)))
             if output_dim and len(embedding) > output_dim:
                 import math
 
@@ -189,6 +208,8 @@ class LLMClient:
         except APIError as e:
             logger.error(f"OpenAI API error during embedding: {e}")
             raise
+        finally:
+            self._sem.release()
 
     async def vectorize(self, vectorize: Vectorize, **kwargs):
         if vectorize.vector:
@@ -205,14 +226,15 @@ class LLMClient:
         if self.llm_type != LLMType.EMBEDDING:
             raise ValueError(f"Unsupported LLM type for embedding generation: {self.llm_type}")
 
-        max_batch = kwargs.pop("max_batch_size", self.config.get("max_batch_size", 64))
-        output_dim = kwargs.get("output_dim", self.config.get("output_dim", 0))
+        max_batch = int(kwargs.pop("max_batch_size", self.config.get("max_batch_size", 64)))
+        output_dim = int(kwargs.get("output_dim", self.config.get("output_dim", 0)))
         all_embeddings: List[List[float]] = []
 
         for i in range(0, len(texts), max_batch):
             chunk = texts[i : i + max_batch]
             try:
-                response = await self.client.embeddings.create(model=self.model, input=chunk)
+                async with self._sem:
+                    response = await self.client.embeddings.create(model=self.model, input=chunk)
                 sorted_data = sorted(response.data, key=lambda d: d.index)
                 chunk_embeddings = [d.embedding for d in sorted_data]
 

@@ -29,6 +29,9 @@ from opencontext.utils.logging_utils import get_logger
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/push", tags=["push"])
 
+# Strong references to fire-and-forget tasks to prevent GC collection
+_background_tasks: set = set()
+
 
 # ============================================================================
 # Task Scheduler Integration
@@ -218,13 +221,17 @@ async def push_chat(
                         agent_id=request.agent_id,
                     )
                 if request.flush_immediately:
-                    await text_chat.flush_user_buffer(
-                        user_id=request.user_id,
-                        device_id=request.device_id,
-                        agent_id=request.agent_id,
+                    task = asyncio.create_task(
+                        text_chat.flush_user_buffer(
+                            user_id=request.user_id,
+                            device_id=request.device_id,
+                            agent_id=request.agent_id,
+                        )
                     )
+                    _background_tasks.add(task)
+                    task.add_done_callback(_background_tasks.discard)
 
-            await asyncio.wait_for(_push_all_messages(), timeout=60.0)
+            await asyncio.wait_for(_push_all_messages(), timeout=10.0)
 
             background_tasks.add_task(
                 _schedule_user_compression,
@@ -271,7 +278,7 @@ async def push_chat(
             )
 
     except asyncio.TimeoutError:
-        logger.warning("Push chat timed out after 60s")
+        logger.warning("Push chat timed out after 10s")
         return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
         logger.exception(f"Error pushing chat: {e}")

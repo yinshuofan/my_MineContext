@@ -35,6 +35,7 @@ class TextChatCapture(BaseCaptureComponent):
         )
         self._buffer_size = 2  # 默认2条总结一次
         self._buffer_ttl = 3600 * 24  # 缓冲区 TTL：24小时
+        self._background_tasks: set = set()
 
         # Redis 缓存
         self._redis_cache = None
@@ -279,11 +280,28 @@ class TextChatCapture(BaseCaptureComponent):
                 logger.info(
                     f"Buffer size reached {self._buffer_size} for {buffer_key}, flushing messages."
                 )
-                await self._flush_buffer(buffer_key, user_id, device_id, agent_id)
+                task = asyncio.create_task(
+                    self._safe_flush_buffer(buffer_key, user_id, device_id, agent_id)
+                )
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
 
         except Exception as e:
             logger.error(f"Redis push_message error: {e}")
             raise RuntimeError(f"Failed to push message to Redis: {e}") from e
+
+    async def _safe_flush_buffer(
+        self,
+        buffer_key: str,
+        user_id: Optional[str],
+        device_id: Optional[str],
+        agent_id: Optional[str],
+    ):
+        """Wrapper for _flush_buffer that catches exceptions to prevent unhandled task errors."""
+        try:
+            await self._flush_buffer(buffer_key, user_id, device_id, agent_id)
+        except Exception as e:
+            logger.error(f"Background flush failed for {buffer_key}: {e}")
 
     async def _flush_buffer(
         self,
