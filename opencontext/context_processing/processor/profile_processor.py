@@ -75,7 +75,7 @@ def refresh_profile(
                     device_id=device_id,
                     agent_id=agent_id,
                     content=merged.get("content", new_content),
-                    summary=merged.get("summary", new_summary),
+                    summary=None,
                     keywords=merged.get("keywords", new_keywords),
                     entities=merged.get("entities", new_entities),
                     importance=merged.get("importance", new_importance),
@@ -90,7 +90,7 @@ def refresh_profile(
             device_id=device_id,
             agent_id=agent_id,
             content=new_content,
-            summary=new_summary,
+            summary=None,
             keywords=new_keywords,
             entities=new_entities,
             importance=new_importance,
@@ -130,7 +130,6 @@ def _merge_profile_with_llm(
         existing_content = json.dumps(
             {
                 "content": existing.get("content", ""),
-                "summary": existing.get("summary", ""),
                 "keywords": existing.get("keywords", []),
                 "entities": existing.get("entities", []),
                 "importance": existing.get("importance", 0),

@@ -8,7 +8,13 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from opencontext.server.search.models import EntityResult, ProfileResult
+
+class SimpleProfile(BaseModel):
+    """Simplified profile for cache response (no user_id/device_id/agent_id/summary)."""
+
+    content: str
+    keywords: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RecentlyAccessedItem(BaseModel):
@@ -26,7 +32,7 @@ class RecentlyAccessedItem(BaseModel):
 
 
 class RecentMemoryItem(BaseModel):
-    """A memory created within the recent time window."""
+    """A memory created within the recent time window (internal use for snapshot building)."""
 
     id: str
     title: Optional[str] = None
@@ -40,7 +46,7 @@ class RecentMemoryItem(BaseModel):
 
 
 class DailySummaryItem(BaseModel):
-    """An L1 daily summary for a specific day."""
+    """An L1 daily summary for a specific day (internal use for snapshot building)."""
 
     id: str
     time_bucket: str  # e.g. "2026-02-21"
@@ -48,13 +54,18 @@ class DailySummaryItem(BaseModel):
     children_count: int = 0
 
 
-class RecentMemories(BaseModel):
-    """Hierarchical recent memories to prevent token explosion."""
+class SimpleDailySummary(BaseModel):
+    """Simplified daily summary for cache response."""
 
-    today_events: List[RecentMemoryItem] = Field(default_factory=list)
-    daily_summaries: List[DailySummaryItem] = Field(default_factory=list)
-    recent_documents: List[RecentMemoryItem] = Field(default_factory=list)
-    recent_knowledge: List[RecentMemoryItem] = Field(default_factory=list)
+    time_bucket: str
+    summary: Optional[str] = None
+
+
+class SimpleTodayEvent(BaseModel):
+    """Simplified today event for cache response."""
+
+    title: Optional[str] = None
+    summary: Optional[str] = None
 
 
 class UserMemoryCacheResponse(BaseModel):
@@ -64,8 +75,7 @@ class UserMemoryCacheResponse(BaseModel):
     user_id: str
     device_id: str = "default"
     agent_id: str
-    profile: Optional[ProfileResult] = None
-    entities: List[EntityResult] = Field(default_factory=list)
+    profile: Optional[SimpleProfile] = None
     recently_accessed: List[RecentlyAccessedItem] = Field(default_factory=list)
-    recent_memories: RecentMemories = Field(default_factory=RecentMemories)
-    cache_metadata: Dict[str, Any] = Field(default_factory=dict)
+    daily_summaries: List[SimpleDailySummary] = Field(default_factory=list)
+    today_events: List[SimpleTodayEvent] = Field(default_factory=list)

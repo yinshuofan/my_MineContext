@@ -176,7 +176,7 @@ Relational DB model. Composite PK: `(user_id, device_id, agent_id)`.
 | `device_id` | `str` | `"default"` |
 | `agent_id` | `str` | `"default"` |
 | `content` | `str` | required |
-| `summary` | `Optional[str]` | `None` |
+| `summary` | `Optional[str]` | `None` | **Deprecated** — DB column exists for backward compatibility but profile processor always stores `None`. Not exposed in API responses. |
 | `keywords` | `List[str]` | `[]` |
 | `entities` | `List[str]` | `[]` |
 | `importance` | `int` | `0` |

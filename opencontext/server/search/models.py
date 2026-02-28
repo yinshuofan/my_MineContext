@@ -74,7 +74,6 @@ class ProfileResult(BaseModel):
     device_id: str = "default"
     agent_id: str
     content: str
-    summary: Optional[str] = None
     keywords: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
