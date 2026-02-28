@@ -46,6 +46,14 @@ python -m py_compile opencontext/path/to/file.py
 
 The specific number of agents, their query focus, and team composition should be determined by the actual task — the table above is guidance, not a rigid rule.
 
+### Architecture-first design
+
+When proposing code changes, **evaluate whether the solution fits the project's architecture** — not just whether it works. The simplest modification is not always the best one. Consider:
+
+- **Layer boundaries**: Does the change respect the separation between generic infrastructure (e.g., `RedisCache` as thin wrapper) and domain logic (e.g., scheduler's task lifecycle)? Don't leak domain concepts into generic layers, and don't duplicate infrastructure in domain code.
+- **Multi-instance deployment**: This service may run as multiple instances behind a load balancer. Any code touching shared state (Redis, MySQL) must be safe under concurrent access. Think about: race conditions, lock contention, atomic operations, and whether "read-then-write" sequences need to be made atomic (e.g., via Lua scripts or database transactions).
+- **Existing patterns**: Before introducing a new approach, check how similar problems are already solved in the codebase. Follow established conventions unless there's a clear reason to deviate.
+
 ### What to explore
 
 - Source files directly related to the task
@@ -257,6 +265,9 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 ## Pitfalls and Lessons Learned
 
 These are real bugs encountered during development. Check for them when modifying related code.
+
+### Multi-instance deployment — all shared-state operations must be concurrency-safe
+This service runs as multiple instances sharing the same Redis and MySQL. Any "read-then-write" sequence on shared state is a potential race condition. Use atomic operations: Lua scripts for Redis (see `_CONDITIONAL_ZPOPMIN_LUA` in `redis_scheduler.py` for the pattern, executed via `RedisCache.eval_lua()`), database transactions for MySQL. When adding new Redis operations that check-then-modify, ask: "What happens if two instances run this at the same time?" If the answer is "data corruption or duplicate work", make it atomic.
 
 ### All profile/entity operations require the 3-key identifier `(user_id, device_id, agent_id)`
 Every storage method for profiles and entities (`upsert_profile`, `get_profile`, `get_entity`, `search_entities`, `list_entities`, etc.) requires all three identifiers. `device_id` and `agent_id` default to `"default"` for backward compatibility. When adding new code that calls these methods, always pass all three — omitting `device_id` or `agent_id` causes positional argument mismatches (e.g., `entity_name` gets interpreted as `device_id`). The same applies to `ProfileEntityTool`, `ProfileRetrievalTool`, memory cache manager, and search strategies. Redis cache keys also use all three: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
