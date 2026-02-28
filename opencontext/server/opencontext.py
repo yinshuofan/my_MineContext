@@ -315,9 +315,9 @@ class OpenContext:
                     asyncio.run_coroutine_threadsafe(
                         self.component_initializer.stop_task_scheduler(), loop
                     ).result(timeout=35)
+                    logger.info("Task scheduler stopped")
                 except RuntimeError:
-                    pass  # No event loop — scheduler already stopped by lifespan
-                logger.info("Task scheduler stopped")
+                    logger.debug("No event loop — scheduler already stopped by lifespan")
             except Exception as e:
                 logger.warning(f"Error stopping task scheduler: {e}")
 

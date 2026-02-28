@@ -358,10 +358,14 @@ class RedisTaskScheduler(ITaskScheduler):
         except Exception as e:
             logger.exception(f"Error updating task state for {task_type}:{user_key}: {e}")
         finally:
-            # Always release lock, even if state updates failed
+            # Always release lock, even if state updates failed.
+            # Use asyncio.shield() to protect against CancelledError propagation:
+            # in Python 3.10, cancellation is "sticky" — after CancelledError is raised,
+            # subsequent await calls in the same task also raise CancelledError.
+            # shield() runs release_lock as an independent task unaffected by cancellation.
             try:
-                await self._redis.release_lock(lock_key, lock_token)
-            except Exception as e:
+                await asyncio.shield(self._redis.release_lock(lock_key, lock_token))
+            except (asyncio.CancelledError, Exception) as e:
                 logger.error(f"Failed to release lock for {task_type}:{user_key}: {e}")
 
         logger.info(
@@ -451,11 +455,16 @@ class RedisTaskScheduler(ITaskScheduler):
             logger.exception(f"Task {task_type} failed for {task_info.user_key}: {e}")
         finally:
             if not lock_released:
+                # Use asyncio.shield() so complete_task runs as an independent task,
+                # unaffected by the outer task's cancellation state. Without this,
+                # CancelledError would propagate into every await inside complete_task.
                 try:
-                    await self.complete_task(
-                        task_type, task_info.user_key, task_info.lock_token or "", False
+                    await asyncio.shield(
+                        self.complete_task(
+                            task_type, task_info.user_key, task_info.lock_token or "", False
+                        )
                     )
-                except Exception as cleanup_err:
+                except (asyncio.CancelledError, Exception) as cleanup_err:
                     logger.error(
                         f"Failed to release lock during cleanup for "
                         f"{task_type}:{task_info.user_key}: {cleanup_err}"
@@ -509,12 +518,20 @@ class RedisTaskScheduler(ITaskScheduler):
 
                 await self._redis.hset(periodic_key, "status", "idle")
                 await self._redis.expire(periodic_key, interval * 3)
+            except asyncio.CancelledError:
+                logger.warning(f"Periodic task {task_type} cancelled during shutdown")
+                raise
             except Exception as e:
                 logger.exception(f"Periodic task {task_type} failed: {e}")
                 await self._redis.hset(periodic_key, "status", "failed")
                 await self._redis.expire(periodic_key, interval * 3)
             finally:
-                await self._redis.release_lock(lock_key, lock_token)
+                try:
+                    await asyncio.shield(
+                        self._redis.release_lock(lock_key, lock_token)
+                    )
+                except (asyncio.CancelledError, Exception) as e:
+                    logger.error(f"Failed to release periodic lock for {task_type}: {e}")
 
     async def stop(self, timeout: float = 30.0) -> None:
         """
