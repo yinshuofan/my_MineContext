@@ -71,7 +71,7 @@ class LLMContextStrategy:
         response = await generate_for_agent_async(
             messages=messages,
             tools=self.all_tools,
-            # thinking="disabled",
+            thinking="disabled",
         )
 
         # Extract tool calls from the response
