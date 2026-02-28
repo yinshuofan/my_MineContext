@@ -329,36 +329,44 @@ class RedisTaskScheduler(ITaskScheduler):
         last_exec_key = f"{self.LAST_EXEC_PREFIX}{task_type}:{user_key}"
         fail_count_key = f"{self.FAIL_COUNT_PREFIX}{task_type}:{user_key}"
 
-        # Update task status
-        status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
-        await self._redis.hset(task_key, "status", status.value)
+        try:
+            # Update task status
+            status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
+            await self._redis.hset(task_key, "status", status.value)
 
-        # Always record last_exec to enforce interval spacing on both success and failure
-        await self._redis.set(last_exec_key, str(int(time.time())))
-        await self._redis.expire(last_exec_key, 86400)  # 24 hours
+            # Always record last_exec to enforce interval spacing on both success and failure
+            await self._redis.set(last_exec_key, str(int(time.time())))
+            await self._redis.expire(last_exec_key, 86400)  # 24 hours
 
-        if success:
-            # Reset consecutive failure count on success
-            await self._redis.delete(fail_count_key)
-        else:
-            # Increment consecutive failure count
-            task_config = await self.get_task_config(task_type)
-            max_retries = task_config.max_retries if task_config else 3
-            interval = task_config.interval if task_config else 1800
+            if success:
+                # Reset consecutive failure count on success
+                await self._redis.delete(fail_count_key)
+            else:
+                # Increment consecutive failure count
+                task_config = await self.get_task_config(task_type)
+                max_retries = task_config.max_retries if task_config else 3
+                interval = task_config.interval if task_config else 1800
 
-            count = await self._redis.incr(fail_count_key)
-            fail_count_ttl = max(max_retries * interval * 2, 86400)
-            await self._redis.expire(fail_count_key, fail_count_ttl)
+                count = await self._redis.incr(fail_count_key)
+                fail_count_ttl = max(max_retries * interval * 2, 86400)
+                await self._redis.expire(fail_count_key, fail_count_ttl)
 
-            logger.warning(
-                f"Task {task_type} for {user_key} failed "
-                f"(consecutive failures: {count}/{max_retries})"
-            )
+                logger.warning(
+                    f"Task {task_type} for {user_key} failed "
+                    f"(consecutive failures: {count}/{max_retries})"
+                )
+        except Exception as e:
+            logger.exception(f"Error updating task state for {task_type}:{user_key}: {e}")
+        finally:
+            # Always release lock, even if state updates failed
+            try:
+                await self._redis.release_lock(lock_key, lock_token)
+            except Exception as e:
+                logger.error(f"Failed to release lock for {task_type}:{user_key}: {e}")
 
-        # Release lock
-        await self._redis.release_lock(lock_key, lock_token)
-
-        logger.info(f"Task {task_type} for {user_key} " f"{'completed' if success else 'failed'}")
+        logger.info(
+            f"Task {task_type} for {user_key} {'completed' if success else 'failed'}"
+        )
 
     async def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
         """Get configuration for a task type (async)"""
@@ -383,20 +391,31 @@ class RedisTaskScheduler(ITaskScheduler):
         self._executor_task = asyncio.create_task(self._executor_loop())
 
     async def _executor_loop(self) -> None:
-        """Main executor loop"""
+        """Main executor loop with graceful shutdown support"""
         while self._running:
             try:
                 # Process user_activity tasks
                 for task_type in self._task_handlers.keys():
+                    if not self._running:
+                        break
                     await self._process_task_type(task_type)
 
                 # Process periodic tasks
-                await self._process_periodic_tasks()
+                if self._running:
+                    await self._process_periodic_tasks()
 
+            except asyncio.CancelledError:
+                logger.info("Executor loop cancelled, stopping")
+                break
             except Exception as e:
                 logger.exception(f"Error in task scheduler: {e}")
 
-            await asyncio.sleep(self._check_interval)
+            if self._running:
+                try:
+                    await asyncio.sleep(self._check_interval)
+                except asyncio.CancelledError:
+                    logger.info("Executor loop sleep cancelled, stopping")
+                    break
 
     async def _process_task_type(self, task_type: str) -> None:
         """Process tasks of a specific type (async)"""
@@ -409,6 +428,7 @@ class RedisTaskScheduler(ITaskScheduler):
             logger.warning(f"No handler for task type: {task_type}")
             return
 
+        lock_released = False
         try:
             logger.info(f"Executing {task_type} for {task_info.user_key}")
 
@@ -421,11 +441,25 @@ class RedisTaskScheduler(ITaskScheduler):
             await self.complete_task(
                 task_type, task_info.user_key, task_info.lock_token or "", success
             )
+            lock_released = True
+        except asyncio.CancelledError:
+            logger.warning(
+                f"Task {task_type} for {task_info.user_key} cancelled during shutdown"
+            )
+            raise  # Re-raise to let _executor_loop handle it
         except Exception as e:
             logger.exception(f"Task {task_type} failed for {task_info.user_key}: {e}")
-            await self.complete_task(
-                task_type, task_info.user_key, task_info.lock_token or "", False
-            )
+        finally:
+            if not lock_released:
+                try:
+                    await self.complete_task(
+                        task_type, task_info.user_key, task_info.lock_token or "", False
+                    )
+                except Exception as cleanup_err:
+                    logger.error(
+                        f"Failed to release lock during cleanup for "
+                        f"{task_type}:{task_info.user_key}: {cleanup_err}"
+                    )
 
     async def _process_periodic_tasks(self) -> None:
         """Process periodic tasks (global tasks, not user-specific) (async)"""
