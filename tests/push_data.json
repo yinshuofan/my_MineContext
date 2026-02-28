@@ -1,0 +1,16 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"type": "text", "text": "今天上午开了团队周会，讨论了Q1季度的核心目标。产品侧确认搜索优化和用户体验改进两个重点方向，技术侧需要完成向量检索性能提升。各组汇报了上周进展和风险事项。会议还讨论了客户A的多语言需求和知识库导入功能。下午进行了代码评审，审查了HNSW参数调优和Redis连接池优化。晚上完成了搜索模块性能优化，P99延迟从350ms降到120ms。"}]
+    },
+    {
+      "role": "assistant",
+      "content": [{"type": "text", "text": "好的，我记录了今天的工作内容：团队周会讨论Q1目标、代码评审、搜索性能优化。"}]
+    }
+  ],
+  "user_id": "test_hierarchy_user",
+  "device_id": "default",
+  "agent_id": "default",
+  "process_mode": "direct"
+}

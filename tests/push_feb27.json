@@ -1,0 +1,28 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"type": "text", "text": "今天上午和后端团队开了技术方案评审会，讨论了向量数据库选型的问题。对比了Qdrant、Milvus和VikingDB三个方案，最终决定采用VikingDB，主要考虑到和火山引擎的整合度高，SDK支持比较完善。下午花了三个小时写了VikingDB集成层的接口定义和基础测试用例。"}],
+      "timestamp": "2026-02-27T10:00:00"
+    },
+    {
+      "role": "assistant",
+      "content": [{"type": "text", "text": "收到，VikingDB选型已确认，接口定义和测试用例也已开始编写。"}],
+      "timestamp": "2026-02-27T10:01:00"
+    },
+    {
+      "role": "user",
+      "content": [{"type": "text", "text": "晚上在调试embedding pipeline的时候发现了一个内存泄漏问题，批量embedding请求超过500条时内存会持续增长。排查了两个小时，最后发现是numpy数组在循环中没有及时释放，加了gc.collect()之后解决了。另外把embedding的batch size从1000调整到了200，稳定性好了很多。"}],
+      "timestamp": "2026-02-27T20:30:00"
+    },
+    {
+      "role": "assistant",
+      "content": [{"type": "text", "text": "了解，内存泄漏问题已定位并修复，batch size已调整为200。"}],
+      "timestamp": "2026-02-27T20:31:00"
+    }
+  ],
+  "user_id": "test_hierarchy_user",
+  "device_id": "default",
+  "agent_id": "default",
+  "process_mode": "direct"
+}

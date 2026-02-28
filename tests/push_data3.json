@@ -1,0 +1,16 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"type": "text", "text": "今天跟客户A开了需求沟通会，他们希望增加多语言支持功能，需要支持中英日韩四种语言的嵌入模型。另外还需要自定义知识库导入，需要新增文档解析管道。预计两个迭代周期可以完成开发。下午还做了技术方案评审，确定了使用multilingual-e5作为多语言嵌入模型的方案。"}]
+    },
+    {
+      "role": "assistant",
+      "content": [{"type": "text", "text": "了解，客户需求包括多语言支持和知识库导入功能，已确定multilingual-e5方案。"}]
+    }
+  ],
+  "user_id": "test_hierarchy_user",
+  "device_id": "default",
+  "agent_id": "default",
+  "process_mode": "direct"
+}

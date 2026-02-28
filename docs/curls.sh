@@ -479,6 +479,25 @@ curl -X GET "http://localhost:1733/api/monitoring/scheduler/failures?hours=1"
 # -H "X-API-Key: your-api-key"
 
 
+# === Manual Task Trigger (for testing) ===
+
+# Trigger hierarchy summary — auto mode (full execute: L1 + L2 + L3)
+curl -X POST "http://localhost:1733/api/monitoring/trigger-task?task_type=hierarchy_summary&user_id=user_001"
+# -H "X-API-Key: your-api-key"
+
+# Trigger daily summary for a specific date
+curl -X POST "http://localhost:1733/api/monitoring/trigger-task?task_type=hierarchy_summary&user_id=user_001&level=daily&target=2026-03-01"
+# -H "X-API-Key: your-api-key"
+
+# Trigger weekly summary for a specific ISO week
+curl -X POST "http://localhost:1733/api/monitoring/trigger-task?task_type=hierarchy_summary&user_id=user_001&level=weekly&target=2026-W09"
+# -H "X-API-Key: your-api-key"
+
+# Trigger monthly summary for a specific month
+curl -X POST "http://localhost:1733/api/monitoring/trigger-task?task_type=hierarchy_summary&user_id=user_001&level=monthly&target=2026-03"
+# -H "X-API-Key: your-api-key"
+
+
 # ============================================================================
 # 13. Settings - Model
 # ============================================================================

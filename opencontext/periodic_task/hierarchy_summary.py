@@ -18,6 +18,7 @@ Generates hierarchical time-based summaries for EVENT type contexts:
 """
 
 import datetime
+import json
 import time
 import uuid
 from typing import Dict, List, Optional, Tuple
@@ -1248,26 +1249,53 @@ class HierarchySummaryTask(BasePeriodicTask):
         # 从 time_bucket 解析一个代表性的 event_time
         event_time = self._parse_event_time_from_bucket(time_bucket)
 
-        # Extract a title from the first line of the summary (heuristic)
-        # 从摘要的第一行提取标题（启发式方法）
-        lines = summary_text.strip().split("\n")
-        title = lines[0][:100] if lines else f"{level_name.capitalize()} Summary - {time_bucket}"
-        # Clean up common prefixes like "1. " or "Title: " from the title
-        for prefix in ["1. ", "1.", "Title: ", "Title:", "# "]:
-            if title.startswith(prefix):
-                title = title[len(prefix) :].strip()
-                break
+        # Parse LLM JSON response to extract structured fields
+        # LLM 返回 JSON 格式：{title, summary, keywords, entities, importance}
+        title = f"{level_name.capitalize()} Summary - {time_bucket}"
+        summary_body = summary_text
+        keywords = [level_name, "summary", time_bucket]
+        entities: List[str] = []
+        importance = 5 + level
+
+        # Strip markdown code fences if present (```json ... ```)
+        cleaned = summary_text.strip()
+        if cleaned.startswith("```"):
+            first_newline = cleaned.find("\n")
+            if first_newline != -1:
+                cleaned = cleaned[first_newline + 1 :]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                title = str(parsed.get("title", title))[:100]
+                summary_body = str(parsed.get("summary", summary_text))
+                if parsed.get("keywords"):
+                    keywords = [str(k) for k in parsed["keywords"]]
+                if parsed.get("entities"):
+                    entities = [str(e) for e in parsed["entities"]]
+                if parsed.get("importance") is not None:
+                    importance = int(parsed["importance"])
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # Not JSON — use heuristic title extraction
+            lines = summary_text.strip().split("\n")
+            title = lines[0][:100] if lines else title
+            for prefix in ["1. ", "1.", "Title: ", "Title:", "# "]:
+                if title.startswith(prefix):
+                    title = title[len(prefix) :].strip()
+                    break
 
         # Build extracted data
         # 构建提取数据
         extracted_data = ExtractedData(
             title=title,
-            summary=summary_text,
-            keywords=[level_name, "summary", time_bucket],
-            entities=[],
+            summary=summary_body,
+            keywords=keywords,
+            entities=entities,
             context_type=ContextType.EVENT,
             confidence=80,
-            importance=5 + level,  # Higher level → slightly higher importance
+            importance=importance,
         )
 
         # Build context properties with hierarchy fields
@@ -1287,11 +1315,11 @@ class HierarchySummaryTask(BasePeriodicTask):
             children_ids=children_ids,
         )
 
-        # Build vectorize object for semantic search
-        # 构建向量化对象以支持语义搜索
+        # Build vectorize object for semantic search (use parsed summary, not raw JSON)
+        # 构建向量化对象以支持语义搜索（使用解析后的摘要，而非原始 JSON）
         vectorize = Vectorize(
             content_format=ContentFormat.TEXT,
-            text=summary_text,
+            text=summary_body,
         )
 
         # Generate embedding vector

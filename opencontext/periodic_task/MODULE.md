@@ -150,7 +150,7 @@ Each overflow handler: format -> check tokens -> if over limit, split into batch
 
 Prompt resolution: prompt group `"hierarchy_summary"` from YAML -> `{level}_summary` / `{level}_partial_summary` / `{level}_merge` keys -> fallback to `_FALLBACK_PROMPTS` dict.
 
-**Storage**: `async _store_summary(user_id, summary_text, level, time_bucket, children_ids) -> Optional[ProcessedContext]` -- builds `ProcessedContext` with hierarchy fields, generates embedding via `await do_vectorize()`, calls `await storage.upsert_processed_context()`.
+**Storage**: `async _store_summary(user_id, summary_text, level, time_bucket, children_ids) -> Optional[ProcessedContext]` -- parses the LLM JSON response (`{title, summary, keywords, entities, importance}`) to extract structured fields, builds `ProcessedContext` with hierarchy fields, generates embedding via `await do_vectorize()`, calls `await storage.upsert_processed_context()`. Falls back to heuristic title extraction if the LLM response is not valid JSON. Also handles markdown code fence stripping (` ```json ... ``` `).
 
 **Factory**: `create_hierarchy_handler() -> async TaskHandler`
 

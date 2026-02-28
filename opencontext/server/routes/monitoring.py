@@ -274,3 +274,71 @@ async def get_scheduler_failures(
         return {"success": True, "data": failure_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get scheduler failures: {str(e)}")
+
+
+@router.post("/trigger-task")
+async def trigger_task(
+    task_type: str = Query(..., description="Task type to trigger (e.g. hierarchy_summary)"),
+    user_id: str = Query(..., description="User ID"),
+    device_id: str = Query("default", description="Device ID"),
+    agent_id: str = Query("default", description="Agent ID"),
+    level: str = Query(
+        "auto", description="Summary level: auto (full execute), daily, weekly, monthly"
+    ),
+    target: str = Query(
+        None, description="Target period: date (2026-03-01), week (2026-W08), month (2026-02)"
+    ),
+    _auth: str = auth_dependency,
+):
+    """Manually trigger a periodic task for testing (bypasses scheduler delay)"""
+    try:
+        if task_type == "hierarchy_summary":
+            from opencontext.periodic_task.hierarchy_summary import HierarchySummaryTask
+
+            task = HierarchySummaryTask()
+
+            if level == "auto":
+                from opencontext.periodic_task import create_hierarchy_handler
+
+                handler = create_hierarchy_handler()
+                success = await handler(user_id=user_id, device_id=device_id, agent_id=agent_id)
+                return {
+                    "success": success,
+                    "message": f"hierarchy_summary {'completed' if success else 'failed'}",
+                }
+
+            if not target:
+                raise HTTPException(
+                    status_code=400, detail="target parameter required for specific level"
+                )
+
+            result = None
+            if level == "daily":
+                result = await task._generate_daily_summary(user_id, target)
+            elif level == "weekly":
+                result = await task._generate_weekly_summary(user_id, target)
+            elif level == "monthly":
+                result = await task._generate_monthly_summary(user_id, target)
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown level: {level}")
+
+            if result:
+                return {
+                    "success": True,
+                    "message": f"{level} summary generated for {target}",
+                    "data": {
+                        "id": result.id,
+                        "title": result.extracted_data.title if result.extracted_data else None,
+                        "summary": result.extracted_data.summary if result.extracted_data else None,
+                        "hierarchy_level": result.properties.hierarchy_level,
+                        "time_bucket": result.properties.time_bucket,
+                    },
+                }
+            else:
+                return {"success": False, "message": f"No summary generated for {level} {target}"}
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown task type: {task_type}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Task execution failed: {str(e)}")

@@ -1,0 +1,16 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"type": "text", "text": "刚完成了生产环境部署，采用蓝绿部署策略。部署过程中发现一个数据库连接超时问题，通过调整连接池最大空闲时间解决了。部署完成后持续监控两小时，各项指标正常，错误率低于0.01%。明天准备开始月度复盘会议。"}]
+    },
+    {
+      "role": "assistant",
+      "content": [{"type": "text", "text": "收到，生产环境部署已完成，监控指标正常。明天有月度复盘。"}]
+    }
+  ],
+  "user_id": "test_hierarchy_user",
+  "device_id": "default",
+  "agent_id": "default",
+  "process_mode": "direct"
+}
