@@ -31,8 +31,8 @@
         }
         .chart-container {
             position: relative;
-            height: 350px;
-            margin: 20px 0;
+            height: 280px;
+            margin: 15px 0;
         }
         .refresh-btn {
             position: fixed;
@@ -47,7 +47,11 @@
             display: inline-block;
         }
         .metric-value {
-            font-size: 2.5rem;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .metric-value-sm {
+            font-size: 1.4rem;
             font-weight: bold;
         }
         .metric-label {
@@ -85,10 +89,11 @@
         <div class="container-fluid">
             <div class="d-flex align-items-center">
                 <a class="navbar-brand" href="/">OpenContext - 系统监控</a>
-                <a href="/" class="btn btn-outline-light btn-sm ms-3">回到 home 页</a>
+                <a href="/" class="btn btn-outline-light btn-sm ms-3">返回主页</a>
             </div>
-            <div class="d-flex">
-                <a href="/" class="btn btn-outline-light btn-sm me-2">返回主页</a>
+            <div class="d-flex align-items-center text-light">
+                <small class="me-3">运行: <span id="uptime">-</span></small>
+                <small>更新: <span id="lastUpdate">-</span></small>
             </div>
         </div>
     </nav>
@@ -101,55 +106,61 @@
             刷新数据
         </button>
 
-        <!-- 页面标题 -->
-        <div class="row mt-3">
-            <div class="col-12">
-                <h1 class="text-center mb-4">OpenContext 系统监控</h1>
-                <div class="alert alert-info">
-                    <strong>系统运行时间:</strong> <span id="uptime">加载中...</span> |
-                    <strong>最后更新:</strong> <span id="lastUpdate">加载中...</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- 核心指标卡片 - 2个（Token消耗 + Context统计，带时间范围选择） -->
-        <div class="row mb-4">
-            <!-- Token 消耗统计 -->
-            <div class="col-md-6">
+        <!-- 核心指标卡片 - 4个 -->
+        <div class="row mt-3 mb-4">
+            <!-- Token 消耗 -->
+            <div class="col-md-3">
                 <div class="card metric-card border-primary">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="card-title text-primary mb-0">Token 消耗统计</h5>
-                            <div class="btn-group time-range-selector" role="group">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="card-title text-primary mb-0">Token 消耗</h6>
+                            <div class="btn-group" role="group">
                                 <input type="radio" class="btn-check" name="tokenTimeRange" id="token24h" value="24" checked>
-                                <label class="btn btn-outline-primary btn-sm" for="token24h">24小时</label>
-
+                                <label class="btn btn-outline-primary btn-sm" for="token24h">24h</label>
                                 <input type="radio" class="btn-check" name="tokenTimeRange" id="token7d" value="168">
-                                <label class="btn btn-outline-primary btn-sm" for="token7d">7天</label>
+                                <label class="btn btn-outline-primary btn-sm" for="token7d">7d</label>
                             </div>
                         </div>
                         <div class="metric-value text-center text-primary" id="totalTokens">-</div>
-                        <small class="metric-label d-block text-center">总消耗 Token</small>
+                        <small class="metric-label d-block text-center">总消耗</small>
                     </div>
                 </div>
             </div>
-
             <!-- Context 统计 -->
-            <div class="col-md-6">
+            <div class="col-md-3">
                 <div class="card metric-card border-success">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="card-title text-success mb-0">Context 统计</h5>
-                            <div class="btn-group time-range-selector" role="group">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="card-title text-success mb-0">Context</h6>
+                            <div class="btn-group" role="group">
                                 <input type="radio" class="btn-check" name="contextTimeRange" id="context24h" value="24" checked>
-                                <label class="btn btn-outline-success btn-sm" for="context24h">近24h新增</label>
-
+                                <label class="btn btn-outline-success btn-sm" for="context24h">24h</label>
                                 <input type="radio" class="btn-check" name="contextTimeRange" id="contextAll" value="all">
-                                <label class="btn btn-outline-success btn-sm" for="contextAll">全部记录</label>
+                                <label class="btn btn-outline-success btn-sm" for="contextAll">全部</label>
                             </div>
                         </div>
                         <div class="metric-value text-center text-success" id="totalContexts">-</div>
-                        <small class="metric-label d-block text-center" id="contextLabel">24小时内新增</small>
+                        <small class="metric-label d-block text-center" id="contextLabel">24h新增</small>
+                    </div>
+                </div>
+            </div>
+            <!-- 处理错误 -->
+            <div class="col-md-3">
+                <div class="card metric-card border-danger">
+                    <div class="card-body">
+                        <h6 class="card-title text-danger mb-2">处理错误</h6>
+                        <div class="metric-value text-center text-danger" id="totalErrors">-</div>
+                        <small class="metric-label d-block text-center">近24h</small>
+                    </div>
+                </div>
+            </div>
+            <!-- 系统运行时间 -->
+            <div class="col-md-3">
+                <div class="card metric-card border-info">
+                    <div class="card-body">
+                        <h6 class="card-title text-info mb-2">运行时间</h6>
+                        <div class="metric-value-sm text-center text-info" id="uptimeCard">-</div>
+                        <small class="metric-label d-block text-center">系统已运行</small>
                     </div>
                 </div>
             </div>
@@ -159,7 +170,7 @@
         <div class="row mb-4">
             <!-- 环节耗时分布 -->
             <div class="col-md-6">
-                <div class="card">
+                <div class="card h-100">
                     <div class="card-header">
                         <h5>环节耗时分布</h5>
                     </div>
@@ -173,7 +184,7 @@
 
             <!-- 模型Token使用分布 -->
             <div class="col-md-6">
-                <div class="card">
+                <div class="card h-100">
                     <div class="card-header">
                         <h5>模型Token使用分布</h5>
                     </div>
@@ -186,10 +197,10 @@
             </div>
         </div>
 
-        <!-- Context 类型分布图表 -->
+        <!-- Context 类型分布 + 数据处理监控 -->
         <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
+            <div class="col-md-6">
+                <div class="card h-100">
                     <div class="card-header">
                         <h5 id="contextChartTitle">Context 类型分布（24小时新增）</h5>
                     </div>
@@ -200,12 +211,8 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- 数据处理监控 -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
+            <div class="col-md-6">
+                <div class="card h-100">
                     <div class="card-header">
                         <h5>数据处理监控（24小时）</h5>
                     </div>
@@ -280,10 +287,10 @@
             </div>
         </div>
 
-        <!-- 队列深度面板 -->
+        <!-- 队列深度 + 调度器健康状态 -->
         <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
+            <div class="col-md-6">
+                <div class="card h-100">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">队列深度（实时）</h5>
                         <small class="text-muted" id="queueLastUpdate">每10秒自动刷新</small>
@@ -293,12 +300,25 @@
                     </div>
                 </div>
             </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">调度器健康状态</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>运行状态：</strong><span id="schedulerRunningStatus">加载中...</span></p>
+                        <p><strong>在飞任务数：</strong><span id="schedulerInFlight">-</span></p>
+                        <p class="mb-1"><strong>已注册处理器：</strong></p>
+                        <div id="schedulerHandlers">加载中...</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- 任务执行历史 -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
+        <!-- 任务执行历史 + 最近失败记录 -->
+        <div class="row mb-5">
+            <div class="col-md-7">
+                <div class="card h-100">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">任务执行历史</h5>
                         <div class="btn-group scheduler-time-range" role="group">
@@ -320,7 +340,7 @@
                                         <th class="text-center">成功</th>
                                         <th class="text-center">失败</th>
                                         <th class="text-center">失败率</th>
-                                        <th class="text-center">平均耗时(ms)</th>
+                                        <th class="text-center">均耗时(ms)</th>
                                         <th class="text-center">最大耗时(ms)</th>
                                     </tr>
                                 </thead>
@@ -332,14 +352,10 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- 最近失败记录 -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
+            <div class="col-md-5">
+                <div class="card h-100">
                     <div class="card-header">
-                        <h5 class="mb-0">最近失败记录（最多10条）</h5>
+                        <h5 class="mb-0">最近失败记录</h5>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
@@ -348,40 +364,14 @@
                                     <tr>
                                         <th>时间</th>
                                         <th>任务类型</th>
-                                        <th>用户标识</th>
                                         <th>错误信息</th>
                                         <th class="text-center">耗时(ms)</th>
                                     </tr>
                                 </thead>
                                 <tbody id="recentFailuresBody">
-                                    <tr><td colspan="5" class="text-center">加载中...</td></tr>
+                                    <tr><td colspan="4" class="text-center">加载中...</td></tr>
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 调度器健康状态 -->
-        <div class="row mb-5">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">调度器健康状态</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-4">
-                                <p><strong>运行状态：</strong><span id="schedulerRunningStatus">加载中...</span></p>
-                            </div>
-                            <div class="col-md-4">
-                                <p><strong>在飞任务数：</strong><span id="schedulerInFlight">-</span></p>
-                            </div>
-                            <div class="col-md-4">
-                                <p><strong>已注册处理器：</strong></p>
-                                <div id="schedulerHandlers">加载中...</div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -467,6 +457,8 @@
                 // 获取处理错误（最近1天，最多20条）
                 const processingErrors = await fetchData('/api/monitoring/processing-errors?hours=24&top=20');
                 updateProcessingErrorsChart(processingErrors.data);
+                const totalErrorsEl = document.getElementById('totalErrors');
+                if (totalErrorsEl) totalErrorsEl.textContent = (processingErrors.data.total_errors || 0).toLocaleString();
 
                 // 获取调度器数据
                 await loadSchedulerData();
@@ -506,7 +498,7 @@
                     const contextTypes = dataStats.data.by_context_type || {};
                     const total = Object.values(contextTypes).reduce((sum, count) => sum + count, 0);
 
-                    updateContextDisplay(total, '24小时内新增');
+                    updateContextDisplay(total, '24h新增');
                     updateContextChart(contextTypes, 'Context 类型分布（24小时新增）');
                 }
             } catch (error) {
@@ -525,6 +517,8 @@
         function updateOverview(data) {
             document.getElementById('uptime').textContent = data.uptime_formatted || '未知';
             document.getElementById('lastUpdate').textContent = new Date(data.last_updated).toLocaleString();
+            const uptimeCardEl = document.getElementById('uptimeCard');
+            if (uptimeCardEl) uptimeCardEl.textContent = data.uptime_formatted || '-';
         }
 
         function updateTokenDisplay(data) {
@@ -962,7 +956,7 @@
             const tbody = document.getElementById('recentFailuresBody');
 
             if (!failures || failures.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-success">暂无失败记录</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-success">暂无失败记录</td></tr>';
                 return;
             }
 
@@ -971,14 +965,12 @@
             for (const f of display) {
                 const ts = f.timestamp ? new Date(f.timestamp).toLocaleString('zh-CN') : '-';
                 const taskType = f.task_type || '-';
-                const userKey = f.user_key || '-';
                 const errMsg = f.error_message || '-';
                 const dur = f.duration_ms != null ? f.duration_ms : '-';
 
                 html += `<tr>
                     <td><small>${ts}</small></td>
                     <td><small>${taskType}</small></td>
-                    <td><small>${userKey}</small></td>
                     <td><small class="text-break">${errMsg}</small></td>
                     <td class="text-center">${dur}</td>
                 </tr>`;
