@@ -119,6 +119,15 @@ Implements `ITaskScheduler`. Stores all state in Redis via `RedisCache`.
 
 **Constructor**: `__init__(redis_cache: RedisCache, config: Optional[Dict[str, Any]] = None)`
 
+**Instance variables (concurrency)**:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `_check_interval` | `int` | Seconds between drain cycles. Read from `config["executor"]["check_interval"]`, default `10` |
+| `_max_concurrent` | `int` | Max concurrent fire-and-forget tasks across all types. Read from `config["executor"]["max_concurrent"]`, default `5` |
+| `_concurrency_sem` | `Optional[asyncio.Semaphore]` | Initialized in `_executor_loop` with value `_max_concurrent`. Acquired before claiming a task, released after execution completes (in `_run_and_release`) |
+| `_in_flight` | `Set[asyncio.Task]` | Tracks all fire-and-forget `_run_and_release` tasks currently executing. Used during shutdown to await lock cleanup |
+
 **Redis key prefixes**:
 | Prefix | Purpose |
 |--------|---------|
@@ -138,8 +147,11 @@ Implements `ITaskScheduler`. Stores all state in Redis via `RedisCache`.
 |--------|-------------|
 | `_collect_task_types()` | Reads `config["tasks"]` and queues enabled tasks for async registration |
 | `init_task_types()` | `async` -- registers queued task configs in Redis (called from `start()`) |
-| `_executor_loop()` | `async` -- main loop: processes user_activity tasks then periodic tasks, sleeps `check_interval` (default 10s); checks `self._running` between task types and catches `CancelledError` to exit cleanly |
-| `_process_task_type(task_type)` | `async` -- gets one pending task, runs handler via `run_in_executor`, calls `complete_task`; uses `lock_released` flag + `finally` block to ensure the lock is always released even on `CancelledError` |
+| `_executor_loop()` | `async` -- coordinator that creates one `_type_worker` per registered handler + one `_periodic_worker`, then `asyncio.gather`s them. On `CancelledError`, cascades cancel to all workers and awaits in-flight tasks |
+| `_type_worker(task_type)` | `async` -- independent per-type worker. Drain loop: acquires `_concurrency_sem` (1s timeout for shutdown responsiveness), calls `get_pending_task()`, fires off `_run_and_release` via `create_task` (fire-and-forget). Sleeps `check_interval` between drain cycles |
+| `_run_and_release(task_type, task_info)` | `async` -- wraps `_execute_task` in `try/finally: _concurrency_sem.release()` to guarantee semaphore release |
+| `_execute_task(task_type, task_info)` | `async` -- executes a single claimed task. Runs handler via `run_in_executor`, calls `complete_task`. Uses `lock_released` flag + `finally` block with `asyncio.shield` to ensure lock is always released even on `CancelledError` |
+| `_periodic_worker()` | `async` -- independent loop wrapping `_process_periodic_tasks()` with `check_interval` sleep. Handles `CancelledError` for clean shutdown |
 | `_process_periodic_tasks()` | `async` -- iterates periodic task configs, checks `next_run`, acquires global lock, runs handler with `(None, None, None)` |
 
 **Global singleton functions**:
@@ -179,37 +191,61 @@ Push endpoint
         ├─ Check fail_count >= max_retries (skip if exceeded; auto-resets via TTL)
         └─ Create TaskInfo, write to Redis hash + add to sorted set (score = now + interval)
 
-_executor_loop (every check_interval seconds)
-  ├─ Checks self._running between task types; catches CancelledError to exit cleanly
-  └─> _process_task_type(task_type) for each registered handler
-        ├─ get_pending_task() -- Lua script atomic conditional pop (only if score <= now), orphan cleanup loop, acquire lock
-        ├─ run_in_executor(handler, user_id, device_id, agent_id)
-        ├─ complete_task() -- update status, record last_exec (always), manage fail_count, release lock
-        │     ├─ All Redis state updates in try block
-        │     └─ release_lock() in finally -- lock always released even if state updates fail
-        └─ lock_released flag + finally in _process_task_type:
-              ├─ CancelledError caught, logged, re-raised (complete_task called via finally)
-              └─ On any other exception: complete_task called in finally with success=False
+_executor_loop (coordinator)
+  └─> asyncio.gather(
+        _type_worker("hierarchy_summary"),
+        _type_worker("memory_compression"),
+        _periodic_worker(),
+      )
+
+Each _type_worker (independent per-type, concurrent execution):
+  while _running:
+    drain loop:
+      sem.acquire(timeout=1s)            # backpressure: max N total in-flight
+      task = get_pending_task(type)       # Lua atomic pop (only if score <= now), orphan cleanup, acquire lock
+      if no task: sem.release(); break
+      _in_flight.add(create_task(         # fire-and-forget — runs concurrently
+        _run_and_release(type, task)      # wraps _execute_task + sem.release in finally
+      ))
+    sleep(check_interval)
+
+_execute_task(task_type, task_info):
+  ├─ run_in_executor(handler, user_id, device_id, agent_id)
+  ├─ complete_task() -- update status, record last_exec (always), manage fail_count, release lock
+  │     ├─ All Redis state updates in try block
+  │     └─ release_lock() in finally -- lock always released even if state updates fail
+  └─ lock_released flag + finally:
+        ├─ CancelledError caught, logged, re-raised (complete_task called via finally with asyncio.shield)
+        └─ On any other exception: complete_task called in finally with success=False
 ```
 
 ### graceful shutdown flow
 
 ```
 stop(timeout=30.0)  [async]
-  ├─ Sets self._running = False  (signals _executor_loop to exit after current cycle)
+  ├─ Sets self._running = False  (signals workers to exit after current drain cycle)
   ├─ asyncio.wait_for(asyncio.shield(executor_task), timeout=timeout)
   │     ├─ shield() prevents wait_for from cancelling the task on timeout
   │     ├─ On success: executor finished naturally, log "stopped gracefully"
   │     └─ On TimeoutError: force-cancel executor_task, await it (absorb CancelledError)
+  ├─ Await remaining _in_flight tasks (ensures lock cleanup for fire-and-forget tasks)
   └─ self._executor_task = None
 
 _executor_loop handles CancelledError
-  └─ Catches asyncio.CancelledError, logs, breaks -- no lock leak from the loop itself
+  ├─ Cancels all worker tasks
+  ├─ Awaits workers with return_exceptions=True
+  └─ Awaits all _in_flight tasks with return_exceptions=True
 
-_process_task_type handles CancelledError
+_type_worker handles CancelledError
+  └─ Breaks out of drain and sleep loops cleanly
+
+_execute_task handles CancelledError
   ├─ lock_released = False set before try block
   ├─ run_in_executor() interrupted by CancelledError -> caught, logged, re-raised
-  └─ finally block: if not lock_released -> complete_task(success=False) -> releases lock
+  └─ finally block: if not lock_released -> asyncio.shield(complete_task(success=False)) -> releases lock
+
+_run_and_release handles cleanup
+  └─ finally block: _concurrency_sem.release() -- semaphore always freed
 
 complete_task lock safety
   ├─ All Redis state updates (status, last_exec, fail_count) in try block
@@ -224,13 +260,16 @@ Callers of `stop()`: `stop_task_scheduler()` in `component_initializer.py` is `a
 ### periodic task lifecycle
 
 ```
-_executor_loop
-  └─> _process_periodic_tasks()
-        ├─ Iterate config["tasks"] where trigger_mode == "periodic" and enabled
-        ├─ Check next_run from Redis hash
-        ├─ Acquire global lock (scheduler:lock:{type}:global)
-        ├─ run_in_executor(handler, None, None, None)  -- no user context
-        └─ Release lock, update next_run
+_periodic_worker (independent loop, runs alongside _type_workers)
+  while _running:
+    _process_periodic_tasks()
+      ├─ Iterate config["tasks"] where trigger_mode == "periodic" and enabled
+      ├─ Check next_run from Redis hash
+      ├─ Acquire global lock (scheduler:lock:{type}:global)
+      ├─ run_in_executor(handler, None, None, None)  -- no user context
+      ├─ Release lock (asyncio.shield in finally), update next_run
+      └─ On CancelledError: re-raise for clean shutdown
+    sleep(check_interval)
 ```
 
 ## Cross-Module Dependencies
@@ -251,10 +290,10 @@ _executor_loop
 - **Handlers are synchronous**: The scheduler wraps them with `run_in_executor()`. Do not make handlers async.
 - **Periodic handlers receive `(None, None, None)`**: Tasks that need `user_id` must use `user_activity` trigger mode, not `periodic`.
 - **Disabled tasks silently skip**: If `enabled: false` in config, `_collect_task_types()` skips registration, and `schedule_user_task()` returns `False` with a warning log. No error is raised.
-- **One task per cycle per type**: `_process_task_type()` processes at most one pending task per executor loop iteration. This provides natural rate limiting.
+- **Concurrent execution with global backpressure**: Each `_type_worker` drains its queue fully each cycle, firing off tasks concurrently via `create_task`. Total concurrency across all types is bounded by `_concurrency_sem` (default 5). Workers block on semaphore acquisition (1s timeout) before claiming tasks, providing natural backpressure.
 - **Lock token is required for `complete_task`**: Always pass the `lock_token` from `TaskInfo` to `complete_task()`.
-- **`check_interval` controls throughput**: Default 10s. All registered handler types are checked each cycle.
+- **`check_interval` and `max_concurrent` read from `executor` sub-key**: Config path is `config["executor"]["check_interval"]` (default 10) and `config["executor"]["max_concurrent"]` (default 5). Not top-level scheduler config keys.
 - **`last_exec` is recorded on both success and failure**: This enforces interval spacing after failures too, preventing rapid re-scheduling when a dependency (e.g., LLM) is down.
 - **Consecutive failure tracking**: `fail_count` key tracks failures across task instances (since each push creates a new `TaskInfo`). When `fail_count >= max_retries`, new tasks are blocked. The key auto-expires via TTL (`max(max_retries * interval * 2, 86400)` seconds), allowing automatic recovery after transient outages. On success, `fail_count` is immediately deleted.
 - **`stop()` is async and must be awaited**: The shutdown sequence sets `_running = False`, then waits up to `timeout` (default 30s) for the executor loop to finish its current work. Callers must `await stop()`. Use `timeout=0` for immediate cancellation.
-- **Lock safety on cancellation**: `_process_task_type()` uses a `lock_released` flag and a `finally` block to ensure `complete_task()` is always called. `complete_task()` uses its own `try/finally` to guarantee `release_lock()` runs even if Redis state updates fail.
+- **Lock safety on cancellation**: `_execute_task()` uses a `lock_released` flag and a `finally` block with `asyncio.shield` to ensure `complete_task()` is always called even on `CancelledError`. `complete_task()` uses its own `try/finally` to guarantee `release_lock()` runs even if Redis state updates fail. `_run_and_release()` guarantees `_concurrency_sem.release()` in its own `finally` block.

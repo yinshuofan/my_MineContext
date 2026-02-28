@@ -10,7 +10,7 @@ supporting multi-instance deployment. All Redis operations are async.
 
 import asyncio
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from loguru import logger
 
@@ -73,7 +73,11 @@ class RedisTaskScheduler(ITaskScheduler):
         """
         self._redis = redis_cache
         self._config = config or {}
-        self._check_interval = self._config.get("check_interval", 10)
+
+        # Read from executor sub-key, matching the actual YAML structure
+        executor_config = self._config.get("executor", {})
+        self._check_interval = executor_config.get("check_interval", 10)
+        self._max_concurrent = executor_config.get("max_concurrent", 5)
 
         # Initialize user key builder
         user_key_config = UserKeyConfig.from_dict(self._config.get("user_key_config", {}))
@@ -85,6 +89,10 @@ class RedisTaskScheduler(ITaskScheduler):
         # Running state
         self._running = False
         self._executor_task: Optional[asyncio.Task] = None
+
+        # Concurrency control for fire-and-forget task execution
+        self._concurrency_sem: Optional[asyncio.Semaphore] = None
+        self._in_flight: Set[asyncio.Task] = set()
 
         # Store pending task type configs for async initialization
         self._pending_task_configs: list = []
@@ -387,38 +395,90 @@ class RedisTaskScheduler(ITaskScheduler):
         self._executor_task = asyncio.create_task(self._executor_loop())
 
     async def _executor_loop(self) -> None:
-        """Main executor loop with graceful shutdown support"""
+        """
+        Coordinator that launches independent workers per task type.
+
+        Each worker drains its queue concurrently (fire-and-forget) bounded by
+        a global semaphore. A separate periodic worker handles global tasks.
+        """
+        self._concurrency_sem = asyncio.Semaphore(self._max_concurrent)
+
+        workers: List[asyncio.Task] = []
+        for task_type in self._task_handlers:
+            workers.append(asyncio.create_task(self._type_worker(task_type)))
+        workers.append(asyncio.create_task(self._periodic_worker()))
+
+        try:
+            await asyncio.gather(*workers)
+        except asyncio.CancelledError:
+            for t in workers:
+                if not t.done():
+                    t.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            # Also await all in-flight task executions for lock cleanup
+            if self._in_flight:
+                await asyncio.gather(*list(self._in_flight), return_exceptions=True)
+
+    async def _type_worker(self, task_type: str) -> None:
+        """
+        Independent worker for a single task type.
+
+        Drain loop: claims tasks and fires them off concurrently via
+        create_task, bounded by the global concurrency semaphore.
+        Then sleeps for check_interval before the next drain cycle.
+        """
         while self._running:
+            # --- drain phase: claim tasks and fire them off concurrently ---
             try:
-                # Process user_activity tasks
-                for task_type in self._task_handlers.keys():
-                    if not self._running:
-                        break
-                    await self._process_task_type(task_type)
+                while self._running:
+                    try:
+                        await asyncio.wait_for(self._concurrency_sem.acquire(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        continue  # re-check _running
 
-                # Process periodic tasks
-                if self._running:
-                    await self._process_periodic_tasks()
+                    # Wrap the region between acquire and ownership transfer to
+                    # create_task so the semaphore is released on any exception.
+                    try:
+                        task_info = await self.get_pending_task(task_type)
+                    except Exception:
+                        self._concurrency_sem.release()
+                        raise
 
+                    if not task_info:
+                        self._concurrency_sem.release()
+                        break  # queue empty, go to sleep
+
+                    # Fire-and-forget: task runs concurrently.
+                    # Semaphore ownership transfers to _run_and_release.
+                    t = asyncio.create_task(self._run_and_release(task_type, task_info))
+                    self._in_flight.add(t)
+                    t.add_done_callback(self._in_flight.discard)
             except asyncio.CancelledError:
-                logger.info("Executor loop cancelled, stopping")
                 break
             except Exception as e:
-                logger.exception(f"Error in task scheduler: {e}")
+                logger.exception(f"Error in type worker for {task_type}: {e}")
 
+            # --- sleep phase ---
             if self._running:
                 try:
                     await asyncio.sleep(self._check_interval)
                 except asyncio.CancelledError:
-                    logger.info("Executor loop sleep cancelled, stopping")
                     break
 
-    async def _process_task_type(self, task_type: str) -> None:
-        """Process tasks of a specific type (async)"""
-        task_info = await self.get_pending_task(task_type)
-        if not task_info:
-            return
+    async def _run_and_release(self, task_type: str, task_info: TaskInfo) -> None:
+        """Wrapper that executes a task and guarantees semaphore release."""
+        try:
+            await self._execute_task(task_type, task_info)
+        finally:
+            self._concurrency_sem.release()
 
+    async def _execute_task(self, task_type: str, task_info: TaskInfo) -> None:
+        """
+        Execute a single claimed task.
+
+        Preserves the exact lock lifecycle from the original _process_task_type:
+        lock_released flag, finally block with asyncio.shield for cleanup.
+        """
         handler = self._task_handlers.get(task_type)
         if not handler:
             logger.warning(f"No handler for task type: {task_type}")
@@ -440,7 +500,7 @@ class RedisTaskScheduler(ITaskScheduler):
             lock_released = True
         except asyncio.CancelledError:
             logger.warning(f"Task {task_type} for {task_info.user_key} cancelled during shutdown")
-            raise  # Re-raise to let _executor_loop handle it
+            raise  # Re-raise so _run_and_release's finally still fires
         except Exception as e:
             logger.exception(f"Task {task_type} failed for {task_info.user_key}: {e}")
         finally:
@@ -459,6 +519,22 @@ class RedisTaskScheduler(ITaskScheduler):
                         f"Failed to release lock during cleanup for "
                         f"{task_type}:{task_info.user_key}: {cleanup_err}"
                     )
+
+    async def _periodic_worker(self) -> None:
+        """Independent worker loop for periodic (global) tasks."""
+        while self._running:
+            try:
+                await self._process_periodic_tasks()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.exception(f"Error in periodic worker: {e}")
+
+            if self._running:
+                try:
+                    await asyncio.sleep(self._check_interval)
+                except asyncio.CancelledError:
+                    break
 
     async def _process_periodic_tasks(self) -> None:
         """Process periodic tasks (global tasks, not user-specific) (async)"""
@@ -564,6 +640,12 @@ class RedisTaskScheduler(ITaskScheduler):
                     await self._executor_task
                 except (asyncio.CancelledError, Exception):
                     pass
+
+        # Await any remaining in-flight task executions to ensure lock cleanup
+        if self._in_flight:
+            logger.info(f"Waiting for {len(self._in_flight)} in-flight tasks to clean up...")
+            await asyncio.gather(*list(self._in_flight), return_exceptions=True)
+            self._in_flight.clear()
 
         self._executor_task = None
         logger.info("Task scheduler stopped")
