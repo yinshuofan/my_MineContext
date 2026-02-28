@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from opencontext.context_consumption.context_agent.core.llm_context_strategy import (
     LLMContextStrategy,
 )
-from opencontext.context_consumption.context_agent.models.enums import ContextSufficiency, QueryType
+from opencontext.context_consumption.context_agent.models.enums import QueryType
 from opencontext.context_consumption.context_agent.models.schemas import (
     ContextCollection,
     ContextItem,
@@ -33,7 +33,7 @@ from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-MAX_ITERATIONS = 2
+MAX_ITERATIONS = 1
 
 # Exact mapping from tool name to TypedResults field
 _TOOL_TYPE_MAP = {
@@ -47,9 +47,9 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
     """
     Intelligent search strategy — LLM decides which tools to call.
 
-    Reuses LLMContextStrategy (analyze_and_plan_tools, execute_tool_calls_parallel,
-    validate_and_filter_tool_results, evaluate_sufficiency) but only performs
-    retrieval, not answer generation.
+    Reuses LLMContextStrategy (analyze_and_plan_tools, execute_tool_calls_parallel)
+    but only performs retrieval, not answer generation. Sufficiency evaluation is
+    merged into the tool analysis prompt — returning no tool calls signals sufficiency.
     """
 
     def __init__(self):
@@ -110,7 +110,7 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
             profile, entities = None, []
 
         # Convert ContextItems to TypedResults, filtering by requested types
-        typed = self._context_items_to_typed_results(agentic_items, context_types)
+        typed = self._context_items_to_typed_results(agentic_items, context_types, top_k=top_k)
 
         # Merge in profile/entity results (as fallback in case agent didn't call those tools)
         if profile and typed.profile is None and ContextType.PROFILE.value in context_types:
@@ -131,18 +131,25 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
             enhanced_query=query,
         )
         collection = ContextCollection()
-        all_items: List[ContextItem] = []
+        seen_items: Dict[str, ContextItem] = {}
 
         for iteration in range(1, MAX_ITERATIONS + 1):
             try:
-                # LLM decides which tools to call
+                # LLM decides which tools to call (also evaluates sufficiency —
+                # returns no tool_calls if existing context is already sufficient)
                 tool_calls, _ = await self._strategy.analyze_and_plan_tools(
                     intent, collection, iteration
                 )
 
                 if not tool_calls:
+                    reason = (
+                        "no retrieval needed"
+                        if iteration == 1
+                        else "context sufficient or no further gaps"
+                    )
                     logger.info(
-                        f"Intelligent search iteration {iteration}: LLM returned no tool calls"
+                        f"Intelligent search iteration {iteration}: "
+                        f"LLM returned no tool calls, {reason}"
                     )
                     break
 
@@ -153,28 +160,18 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
                     logger.info(f"Intelligent search iteration {iteration}: no results from tools")
                     break
 
-                # LLM validates and filters results
-                relevant_items, _ = await self._strategy.validate_and_filter_tool_results(
-                    tool_calls, tool_results, intent, collection
-                )
-
-                # Add to collection
-                for item in relevant_items:
+                # Deduplicate by context ID, keeping the higher score
+                for item in tool_results:
+                    existing = seen_items.get(item.id)
+                    if existing is None or item.relevance_score > existing.relevance_score:
+                        seen_items[item.id] = item
                     collection.add_item(item)
-                all_items.extend(relevant_items)
-
-                # Check sufficiency
-                sufficiency = await self._strategy.evaluate_sufficiency(collection, intent)
-
-                if sufficiency == ContextSufficiency.SUFFICIENT:
-                    logger.info(f"Intelligent search: sufficient after {iteration} iterations")
-                    break
 
             except Exception as e:
                 logger.error(f"Intelligent search iteration {iteration} failed: {e}")
                 break
 
-        return all_items
+        return list(seen_items.values())
 
     async def _direct_profile_entity_lookup(
         self,
@@ -243,15 +240,23 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
         self,
         items: List[ContextItem],
         context_types: Optional[List[str]] = None,
+        top_k: int = 5,
     ) -> TypedResults:
         """Convert ContextItems to TypedResults by routing based on tool_name.
 
         Uses exact tool name mapping instead of substring matching.
         Filters results by requested context_types when provided.
+        Applies score threshold (>= 0.3), sorts by score descending,
+        and truncates each type to top_k.
         """
+        SCORE_THRESHOLD = 0.3
         typed = TypedResults()
 
         for item in items:
+            # Filter out low-relevance results
+            if item.relevance_score < SCORE_THRESHOLD:
+                continue
+
             tool_name = item.metadata.get("tool_name", "")
             original = item.metadata.get("original_data", {})
 
@@ -278,6 +283,14 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
                         continue
                 getattr(typed, target).append(vr)
             # Profile/entity from tools are handled by direct lookup fallback
+
+        # Sort each type by score descending, then truncate to top_k
+        typed.documents.sort(key=lambda x: x.score or 0, reverse=True)
+        typed.events.sort(key=lambda x: x.score or 0, reverse=True)
+        typed.knowledge.sort(key=lambda x: x.score or 0, reverse=True)
+        typed.documents = typed.documents[:top_k]
+        typed.events = typed.events[:top_k]
+        typed.knowledge = typed.knowledge[:top_k]
 
         return typed
 

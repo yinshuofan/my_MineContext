@@ -77,7 +77,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             "**Filter options:**\n"
             "- Time range filtering (by event_time, create_time, or update_time)\n"
             "- Entity filtering (find knowledge mentioning specific technologies or concepts)\n"
-            "- Configurable result count (top_k: 1-100, default 20)\n"
+            "- Configurable result count (top_k: 1-100, default 5)\n"
             "\n"
             "**Note:** Results are merged from both KNOWLEDGE and EVENT (L0) searches, "
             "deduplicated by ID, and sorted by relevance score descending."
@@ -151,7 +151,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             query: Optional natural language search query.
             entities: Optional entity list for filtering.
             time_range: Optional time range filter dict.
-            top_k: Number of results to return (default 20).
+            top_k: Number of results to return (default 5).
             user_id: User identifier for multi-user filtering.
             device_id: Device identifier for multi-user filtering.
             agent_id: Agent identifier for multi-user filtering.
@@ -162,7 +162,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
         query = kwargs.get("query")
         entities = kwargs.get("entities", [])
         time_range = kwargs.get("time_range")
-        top_k = kwargs.get("top_k", 20)
+        top_k = kwargs.get("top_k", 5)
         user_id = kwargs.get("user_id")
         device_id = kwargs.get("device_id")
         agent_id = kwargs.get("agent_id")

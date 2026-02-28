@@ -247,6 +247,11 @@ chat_workflow:
            - Avoid repeating tool combinations that have been tried and were ineffective
            - Adjust query strategy based on previous feedback
 
+        ### Sufficiency Check (Important)
+        Before analyzing information gaps, first evaluate existing context:
+        - If existing context is **already sufficient** to answer the user's question, **do not call any tools**
+        - Only plan tool calls when information gaps actually exist
+
         ## Gap Analysis Framework
 
         ### What information is needed to answer the question?

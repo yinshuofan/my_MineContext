@@ -8,6 +8,7 @@ Use large language models to intelligently analyze user needs and decide which r
 
 import asyncio
 import json
+import uuid
 from datetime import datetime
 from math import log
 from typing import Any, Dict, List, Optional, Set
@@ -120,16 +121,11 @@ class LLMContextStrategy:
             summary_lines.append(f"Chat History: \n" + "\n".join(chat_history))
 
         if context.items:
-            sources = {}
-            for item in context.items:
-                source = item.source.value
-                if source not in sources:
-                    sources[source] = 0
-                sources[source] += 1
-
-            summary_lines.append("Collected Context Items:")
-            for source, count in sources.items():
-                summary_lines.append(f"  - {source}: {count} items")
+            summary_lines.append(f"Collected Context Items ({len(context.items)} total):")
+            for i, item in enumerate(context.items):
+                title = item.title or ""
+                content_preview = item.content or ""
+                summary_lines.append(f"  {i+1}. [{item.source.value}] {title}: {content_preview}")
 
         return "\n".join(summary_lines) if summary_lines else "No existing context"
 
@@ -311,6 +307,7 @@ class LLMContextStrategy:
             return ContextItem(
                 source=source,
                 content=content,
+                id=item_dict.get("id") or str(uuid.uuid4()),
                 title=title,
                 relevance_score=relevance_score,
                 timestamp=datetime.now(),

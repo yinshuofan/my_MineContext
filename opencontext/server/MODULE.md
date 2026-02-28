@@ -147,15 +147,15 @@ class IntelligentSearchStrategy(BaseSearchStrategy):
     # Internal
     async def _agentic_search_loop(self, query: str, user_id: Optional[str]) -> List[ContextItem]
     async def _direct_profile_entity_lookup(self, query, top_k, user_id, device_id, agent_id) -> tuple
-    def _context_items_to_typed_results(self, items: List[ContextItem], context_types) -> TypedResults
+    def _context_items_to_typed_results(self, items, context_types, top_k) -> TypedResults
     @staticmethod _item_to_vector_result(item: ContextItem, original: Dict) -> VectorResult
 ```
 
 Algorithm:
 1. Enhance query with time range info
-2. Run agentic loop (max 2 iterations) in parallel with direct profile/entity lookup
-3. Agentic loop: `analyze_and_plan_tools` -> `execute_tool_calls_parallel` -> `validate_and_filter_tool_results` -> `evaluate_sufficiency`
-4. Convert `ContextItem` results to `TypedResults` using `_TOOL_TYPE_MAP`
+2. Run agentic loop (MAX_ITERATIONS=1) in parallel with direct profile/entity lookup
+3. Agentic loop: `analyze_and_plan_tools` -> `execute_tool_calls_parallel`, dedup by context ID (keeping higher score)
+4. Convert `ContextItem` results to `TypedResults` using `_TOOL_TYPE_MAP`, with score threshold (≥0.3), per-type sort by score descending, and top_k truncation
 
 ### UserMemoryCacheManager (cache/memory_cache_manager.py)
 

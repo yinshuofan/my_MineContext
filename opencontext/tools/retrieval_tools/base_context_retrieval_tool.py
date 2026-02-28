@@ -147,10 +147,25 @@ class BaseContextRetrievalTool(BaseTool):
         self, context: ProcessedContext, score: float, additional_fields: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Format single context result"""
+        ed = context.extracted_data
+        props = context.properties
         result = {
+            "id": context.id,
             "similarity_score": score,
             "context": context.get_llm_context_string(),
             "context_type": self.CONTEXT_TYPE.value,
+            "title": ed.title or "",
+            "summary": ed.summary or "",
+            "keywords": ed.keywords or [],
+            "entities": ed.entities or [],
+            "create_time": props.create_time.isoformat() if props.create_time else None,
+            "event_time": props.event_time.isoformat() if props.event_time else None,
+            "hierarchy_level": props.hierarchy_level,
+            "time_bucket": props.time_bucket,
+            "parent_id": props.parent_id,
+            "children_ids": props.children_ids or [],
+            "source_file_key": props.source_file_key,
+            "metadata": context.metadata or {},
         }
 
         # Add context type description
@@ -218,7 +233,7 @@ class BaseContextRetrievalTool(BaseTool):
                 },
                 "top_k": {
                     "type": "integer",
-                    "default": 20,
+                    "default": 5,
                     "minimum": 1,
                     "maximum": 100,
                     "description": "Number of results to return",
@@ -248,7 +263,7 @@ class BaseContextRetrievalTool(BaseTool):
             query: Optional search query
             entities: Optional entity list for filtering
             time_range: Optional time range filter
-            top_k: Number of results to return (default 20)
+            top_k: Number of results to return (default 5)
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
@@ -259,7 +274,7 @@ class BaseContextRetrievalTool(BaseTool):
         query = kwargs.get("query")
         entities = kwargs.get("entities", [])
         time_range = kwargs.get("time_range")
-        top_k = kwargs.get("top_k", 20)
+        top_k = kwargs.get("top_k", 5)
         user_id = kwargs.get("user_id")
         device_id = kwargs.get("device_id")
         agent_id = kwargs.get("agent_id")

@@ -92,7 +92,7 @@ class ProfileRetrievalTool(BaseTool):
                 "top_k": {
                     "type": "integer",
                     "description": "Maximum number of results to return",
-                    "default": 20,
+                    "default": 5,
                 },
             },
             "required": ["operation", "user_id"],
@@ -206,7 +206,7 @@ class ProfileRetrievalTool(BaseTool):
                 "error": "query is required for search_entities operation",
             }
 
-        top_k = min(max(params.get("top_k", 20), 1), 100)
+        top_k = min(max(params.get("top_k", 5), 1), 100)
 
         storage = self._get_storage()
         results = storage.search_entities(
@@ -230,7 +230,7 @@ class ProfileRetrievalTool(BaseTool):
         device_id = params.get("device_id", "default")
         agent_id = params.get("agent_id", "default")
         entity_type = params.get("entity_type")
-        top_k = min(max(params.get("top_k", 20), 1), 100)
+        top_k = min(max(params.get("top_k", 5), 1), 100)
 
         storage = self._get_storage()
         results = storage.list_entities(

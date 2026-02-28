@@ -82,7 +82,7 @@ class HierarchicalEventTool(BaseTool):
             "**Supports:**\n"
             "- Optional time range filtering via start/end timestamps\n"
             "- Multi-user isolation via user_id, device_id, agent_id\n"
-            "- Configurable result count (top_k, default 20)"
+            "- Configurable result count (top_k, default 5)"
         )
 
     @classmethod
@@ -125,10 +125,10 @@ class HierarchicalEventTool(BaseTool):
                 },
                 "top_k": {
                     "type": "integer",
-                    "default": 20,
+                    "default": 5,
                     "minimum": 1,
                     "maximum": 100,
-                    "description": "Maximum number of results to return (default 20).",
+                    "description": "Maximum number of results to return (default 5).",
                 },
                 "user_id": {
                     "type": "string",
@@ -314,11 +314,25 @@ class HierarchicalEventTool(BaseTool):
         hierarchy_level: int,
     ) -> Dict[str, Any]:
         """Format a single context into the output dict."""
+        ed = context.extracted_data
+        props = context.properties
         return {
+            "id": context.id,
             "context": context.get_llm_context_string(),
             "similarity_score": round(score, 4),
             "context_type": "event",
+            "title": ed.title or "",
+            "summary": ed.summary or "",
+            "keywords": ed.keywords or [],
+            "entities": ed.entities or [],
+            "create_time": props.create_time.isoformat() if props.create_time else None,
+            "event_time": props.event_time.isoformat() if props.event_time else None,
             "hierarchy_level": hierarchy_level,
+            "time_bucket": props.time_bucket,
+            "parent_id": props.parent_id,
+            "children_ids": props.children_ids or [],
+            "source_file_key": props.source_file_key,
+            "metadata": context.metadata or {},
         }
 
     # ── Main execute ─────────────────────────────────────────────────
@@ -345,7 +359,7 @@ class HierarchicalEventTool(BaseTool):
         """
         query: str = kwargs.get("query", "")
         time_range: Optional[Dict[str, Any]] = kwargs.get("time_range")
-        top_k: int = kwargs.get("top_k", 20)
+        top_k: int = kwargs.get("top_k", 5)
         user_id: Optional[str] = kwargs.get("user_id")
         device_id: Optional[str] = kwargs.get("device_id")
         agent_id: Optional[str] = kwargs.get("agent_id")

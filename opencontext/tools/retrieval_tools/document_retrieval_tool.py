@@ -60,7 +60,7 @@ class DocumentRetrievalTool(BaseContextRetrievalTool):
 **Filter options:**
 - Time range filtering (by event_time, create_time, or update_time)
 - Entity filtering (find documents mentioning specific people, projects, technologies)
-- Configurable result count (top_k: 1-100, default 20)
+- Configurable result count (top_k: 1-100, default 5)
 
 **Best for:**
 - Searching through uploaded documents and files for relevant content
