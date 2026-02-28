@@ -21,8 +21,8 @@ from opencontext.context_processing.processor.entity_processor import (
     refresh_entities,
     validate_and_clean_entities,
 )
-from opencontext.llm.global_embedding_client import do_vectorize_async
-from opencontext.llm.global_vlm_client import generate_with_messages_async
+from opencontext.llm.global_embedding_client import do_vectorize
+from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import *
 from opencontext.models.enums import get_context_type_descriptions_for_extraction
 from opencontext.monitoring import (
@@ -457,7 +457,7 @@ class ScreenshotProcessor(BaseContextProcessor):
         ]
 
         try:
-            raw_llm_response = await generate_with_messages_async(messages)
+            raw_llm_response = await generate_with_messages(messages)
         except Exception as e:
             logger.error(f"Failed to get VLM response. Error: {e}")
             raise ValueError(f"Failed to get VLM response. Error: {e}")
@@ -558,7 +558,7 @@ class ScreenshotProcessor(BaseContextProcessor):
                 ),
             },
         ]
-        response = await generate_with_messages_async(messages)
+        response = await generate_with_messages(messages)
 
         if not response:
             raise ValueError(
@@ -691,7 +691,7 @@ class ScreenshotProcessor(BaseContextProcessor):
     ) -> ProcessedContext:
         """Parse a single context item."""
         entities_info = validate_and_clean_entities(entities)
-        vectorize_task = do_vectorize_async(item.vectorize)
+        vectorize_task = do_vectorize(item.vectorize)
         entities_task = refresh_entities(
             entities_info,
             item.vectorize.text,

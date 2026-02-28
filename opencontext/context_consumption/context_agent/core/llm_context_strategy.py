@@ -14,7 +14,7 @@ from math import log
 from typing import Any, Dict, List, Optional, Set
 
 from opencontext.config.global_config import get_prompt_group
-from opencontext.llm.global_vlm_client import generate_for_agent_async, generate_with_messages_async
+from opencontext.llm.global_vlm_client import generate_for_agent_async, generate_with_messages
 from opencontext.tools.tool_definitions import (
     ALL_PROFILE_TOOL_DEFINITIONS,
     ALL_RETRIEVAL_TOOL_DEFINITIONS,
@@ -153,7 +153,7 @@ class LLMContextStrategy:
             {"role": "user", "content": user_prompt},
         ]
         # Use normal text generation, no tool calls needed
-        response = await generate_with_messages_async(
+        response = await generate_with_messages(
             messages=messages,
             enable_executor=False,
             thinking="disabled",
@@ -394,7 +394,7 @@ class LLMContextStrategy:
         messages.append({"role": "user", "content": user_prompt})
 
         try:
-            response = await generate_with_messages_async(
+            response = await generate_with_messages(
                 messages=messages,
                 thinking="disabled",
             )

@@ -78,7 +78,7 @@ async def get_completion_suggestions(request: CompletionRequest, _auth: str = au
         completion_service = get_completion_service()
 
         # Get completion suggestions
-        suggestions = completion_service.get_completions(
+        suggestions = await completion_service.get_completions(
             current_text=request.text,
             cursor_position=request.cursor_position,
             document_id=request.document_id,
@@ -162,7 +162,7 @@ async def get_completion_suggestions_stream(
                 yield f"data: {json.dumps({'type': 'processing', 'completion_type': comp_type.value})}\n\n"
 
                 # Get completions for this type
-                suggestions = completion_service.get_completions(
+                suggestions = await completion_service.get_completions(
                     current_text=request.text,
                     cursor_position=request.cursor_position,
                     document_id=request.document_id,

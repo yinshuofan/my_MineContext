@@ -188,7 +188,7 @@ class DocumentTextChunker(BaseChunker):
         """
         try:
             from opencontext.config.global_config import get_prompt_group
-            from opencontext.llm.global_vlm_client import generate_with_messages_async
+            from opencontext.llm.global_vlm_client import generate_with_messages
             from opencontext.utils.json_parser import parse_json_from_response
 
             prompt_group = get_prompt_group("document_processing.text_chunking")
@@ -208,7 +208,7 @@ class DocumentTextChunker(BaseChunker):
             ]
 
             # Async LLM call
-            response = await generate_with_messages_async(messages=messages)
+            response = await generate_with_messages(messages=messages)
 
             # Parse JSON response
             chunks = parse_json_from_response(response)
@@ -266,7 +266,7 @@ class DocumentTextChunker(BaseChunker):
         """
         try:
             from opencontext.config.global_config import get_prompt_group
-            from opencontext.llm.global_vlm_client import generate_with_messages_async
+            from opencontext.llm.global_vlm_client import generate_with_messages
             from opencontext.utils.json_parser import parse_json_from_response
 
             prompt_group = get_prompt_group("document_processing.global_semantic_chunking")
@@ -294,7 +294,7 @@ class DocumentTextChunker(BaseChunker):
 
             # Async LLM call
             response = loop.run_until_complete(
-                generate_with_messages_async(
+                generate_with_messages(
                     messages=messages,
                 )
             )

@@ -299,7 +299,7 @@ async def get_document_context_status(document_id: int, _auth: str = auth_depend
     """
     try:
         # Get context information
-        context_info = get_document_context_info(document_id)
+        context_info = await get_document_context_info(document_id)
 
         return JSONResponse({"success": True, "document_id": document_id, **context_info})
 
@@ -374,7 +374,7 @@ async def cleanup_document_context(doc_id: int):
 
         # Use DocumentManagementTool to delete related chunks
         management_tool = DocumentManagementTool()
-        result = management_tool.delete_document_chunks(raw_type="vaults", raw_id=str(doc_id))
+        result = await management_tool.delete_document_chunks(raw_type="vaults", raw_id=str(doc_id))
 
         if result.get("success"):
             logger.info(
@@ -389,7 +389,7 @@ async def cleanup_document_context(doc_id: int):
         logger.exception(f"Failed to cleanup document context: {e}")
 
 
-def get_document_context_info(doc_id: int) -> dict:
+async def get_document_context_info(doc_id: int) -> dict:
     """
     Get document context processing information
 
@@ -405,7 +405,7 @@ def get_document_context_info(doc_id: int) -> dict:
         )
 
         management_tool = DocumentManagementTool()
-        result = management_tool.get_document_by_id(
+        result = await management_tool.get_document_by_id(
             raw_type="vaults", raw_id=str(doc_id), return_chunks=False
         )
 

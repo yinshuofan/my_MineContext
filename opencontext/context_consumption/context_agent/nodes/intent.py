@@ -14,7 +14,7 @@ from opencontext.config.global_config import get_prompt_group
 from opencontext.context_consumption.context_agent.models.events import StreamEvent
 from opencontext.llm.global_vlm_client import (
     generate_stream_for_agent,
-    generate_with_messages_async,
+    generate_with_messages,
 )
 
 from ..core.state import WorkflowState
@@ -81,7 +81,7 @@ class IntentNode(BaseNode):
                 ),
             },
         ]
-        response = await generate_with_messages_async(
+        response = await generate_with_messages(
             messages,
             thinking="disabled",
         )
@@ -180,7 +180,7 @@ class IntentNode(BaseNode):
             {"role": "system", "content": prompt_template["system"]},
             {"role": "user", "content": user_prompt},
         ]
-        response = await generate_with_messages_async(
+        response = await generate_with_messages(
             messages,
             thinking="disabled",
         )
@@ -235,7 +235,7 @@ class IntentNode(BaseNode):
                 {"role": "user", "content": prompt_template["user"].format(text=query)},
             ]
 
-            response = await generate_with_messages_async(messages, thinking="disabled")
+            response = await generate_with_messages(messages, thinking="disabled")
 
             result = parse_json_from_response(response.strip())
             entities = []

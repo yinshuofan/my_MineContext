@@ -8,10 +8,9 @@
 Storage backend package initialization file
 """
 
-from .chromadb_backend import ChromaDBBackend
 from .sqlite_backend import SQLiteBackend
 
-__all__ = ["SQLiteBackend", "ChromaDBBackend"]
+__all__ = ["SQLiteBackend"]
 
 # MySQL backend is optional, import only if pymysql is available
 try:

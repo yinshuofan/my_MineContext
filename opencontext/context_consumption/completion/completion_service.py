@@ -84,7 +84,7 @@ class CompletionService:
             logger.error(f"CompletionService initialization failed: {e}")
             raise
 
-    def get_completions(
+    async def get_completions(
         self,
         current_text: str,
         cursor_position: int,
@@ -124,7 +124,7 @@ class CompletionService:
             suggestions = []
 
             # 1. Semantic continuation completion
-            semantic_suggestions = self._get_semantic_continuations(context)
+            semantic_suggestions = await self._get_semantic_continuations(context)
             suggestions.extend(semantic_suggestions)
 
             # 2. Template completion
@@ -235,7 +235,7 @@ class CompletionService:
             "line_number": current_line_idx + 1,
         }
 
-    def _get_semantic_continuations(self, context: Dict[str, Any]) -> List[CompletionSuggestion]:
+    async def _get_semantic_continuations(self, context: Dict[str, Any]) -> List[CompletionSuggestion]:
         """Get semantic continuation suggestions"""
         suggestions = []
 
@@ -263,7 +263,7 @@ class CompletionService:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ]
-            response = generate_with_messages(messages)
+            response = await generate_with_messages(messages)
 
             if response and response.choices:
                 content = response.choices[0].message.content.strip()

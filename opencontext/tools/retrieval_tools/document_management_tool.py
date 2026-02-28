@@ -40,7 +40,7 @@ class DocumentManagementTool:
         """Get storage from global singleton"""
         return get_storage()
 
-    def get_document_by_id(
+    async def get_document_by_id(
         self, raw_type: str, raw_id: str, return_chunks: bool = True
     ) -> Dict[str, Any]:
         """
@@ -59,7 +59,7 @@ class DocumentManagementTool:
             filters = {"raw_type": {"$eq": raw_type}, "raw_id": {"$eq": raw_id}}
 
             # Retrieve all related chunks
-            results = self._execute_document_search(
+            results = await self._execute_document_search(
                 query=" ",
                 context_types=[ContextType.DOCUMENT.value],
                 filters=filters,
@@ -91,7 +91,7 @@ class DocumentManagementTool:
             logger.exception(f"Failed to get document: {e}")
             return {"success": False, "error": str(e), "document": None}
 
-    def delete_document_chunks(self, raw_type: str, raw_id: str) -> Dict[str, Any]:
+    async def delete_document_chunks(self, raw_type: str, raw_id: str) -> Dict[str, Any]:
         """
         Delete all chunks of specified document (for cleanup when deleting document)
 
@@ -107,7 +107,7 @@ class DocumentManagementTool:
             filters = {"raw_type": {"$eq": raw_type}, "raw_id": {"$eq": raw_id}}
 
             # Find chunks to delete
-            results = self._execute_document_search(
+            results = await self._execute_document_search(
                 query="",
                 context_types=[ContextType.DOCUMENT.value],
                 filters=filters,
@@ -144,19 +144,19 @@ class DocumentManagementTool:
             logger.exception(f"Failed to delete document chunks: {e}")
             return {"success": False, "error": str(e), "deleted_count": 0}
 
-    def _execute_document_search(
+    async def _execute_document_search(
         self, query: str, context_types: List[str], filters: Dict[str, Any], top_k: int = 10
     ) -> List[Tuple[ProcessedContext, float]]:
         """Execute document search operation - directly use the built filter dictionary"""
         if query:
             # Semantic search
             vectorize = Vectorize(text=query)
-            return self.storage.search(
+            return await self.storage.search(
                 query=vectorize, context_types=context_types, filters=filters, top_k=top_k
             )
         else:
             # Pure filter query
-            results_dict = self.storage.get_all_processed_contexts(
+            results_dict = await self.storage.get_all_processed_contexts(
                 context_types=context_types, limit=top_k, filter=filters
             )
 

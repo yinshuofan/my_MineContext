@@ -9,7 +9,7 @@ Evaluates the execution results and provides suggestions for improvement
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from opencontext.llm.global_vlm_client import generate_with_messages_async
+from opencontext.llm.global_vlm_client import generate_with_messages
 
 from ..core.state import WorkflowState
 from ..models.enums import ContextSufficiency, EventType, NodeType, ReflectionType, WorkflowStage
@@ -188,7 +188,7 @@ class ReflectionNode(BaseNode):
                 {"role": "user", "content": prompt},
             ]
 
-            response = await generate_with_messages_async(messages)
+            response = await generate_with_messages(messages)
 
             if response and response.strip() != "None":
                 # Parse issues
@@ -240,7 +240,7 @@ class ReflectionNode(BaseNode):
                     {"role": "user", "content": prompt},
                 ]
 
-                response = await generate_with_messages_async(messages)
+                response = await generate_with_messages(messages)
 
                 # Parse suggestions
                 for line in response.split("\n"):
