@@ -288,7 +288,7 @@ class ITaskScheduler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """Stop the scheduler."""
         pass
 

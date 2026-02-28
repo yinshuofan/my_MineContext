@@ -273,7 +273,7 @@ class ComponentInitializer:
         except Exception as e:
             logger.exception(f"Failed to start task scheduler: {e}")
 
-    def stop_task_scheduler(self) -> None:
+    async def stop_task_scheduler(self) -> None:
         """
         Stop the task scheduler.
         """
@@ -282,7 +282,7 @@ class ComponentInitializer:
 
             scheduler = get_scheduler()
             if scheduler:
-                scheduler.stop()
+                await scheduler.stop()
                 logger.info("Task scheduler stopped")
         except Exception as e:
             logger.exception(f"Failed to stop task scheduler: {e}")

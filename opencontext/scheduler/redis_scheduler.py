@@ -516,12 +516,55 @@ class RedisTaskScheduler(ITaskScheduler):
             finally:
                 await self._redis.release_lock(lock_key, lock_token)
 
-    def stop(self) -> None:
-        """Stop the scheduler"""
+    async def stop(self, timeout: float = 30.0) -> None:
+        """
+        Stop the scheduler gracefully.
+
+        Sets running flag to False, then waits up to `timeout` seconds
+        for the executor loop to finish its current cycle. If the executor
+        doesn't finish in time, it is cancelled.
+
+        Args:
+            timeout: Maximum seconds to wait for in-flight tasks to complete.
+                     Default 30s. Set to 0 for immediate cancellation.
+        """
+        if not self._running and not self._executor_task:
+            return
+
         self._running = False
-        if self._executor_task:
-            self._executor_task.cancel()
-            self._executor_task = None
+        logger.info("Stopping task scheduler (graceful)...")
+
+        if self._executor_task and not self._executor_task.done():
+            if timeout > 0:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(self._executor_task), timeout=timeout
+                    )
+                    logger.info("Task scheduler stopped gracefully")
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Scheduler did not stop within {timeout}s, cancelling"
+                    )
+                    self._executor_task.cancel()
+                    try:
+                        await self._executor_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                except asyncio.CancelledError:
+                    self._executor_task.cancel()
+                    try:
+                        await self._executor_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                    raise
+            else:
+                self._executor_task.cancel()
+                try:
+                    await self._executor_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+        self._executor_task = None
         logger.info("Task scheduler stopped")
 
     def is_running(self) -> bool:

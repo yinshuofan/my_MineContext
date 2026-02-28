@@ -306,9 +306,17 @@ class OpenContext:
         logger.info("Shutting down all components...")
 
         try:
-            # Stop task scheduler
+            # Stop task scheduler (may be already stopped by lifespan teardown)
             try:
-                self.component_initializer.stop_task_scheduler()
+                import asyncio
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    asyncio.run_coroutine_threadsafe(
+                        self.component_initializer.stop_task_scheduler(), loop
+                    ).result(timeout=35)
+                except RuntimeError:
+                    pass  # No event loop — scheduler already stopped by lifespan
                 logger.info("Task scheduler stopped")
             except Exception as e:
                 logger.warning(f"Error stopping task scheduler: {e}")

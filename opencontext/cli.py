@@ -66,15 +66,16 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown - cleanup if needed
+    # Shutdown - stop scheduler first (while event loop is still running)
     try:
         context_lab = getattr(app.state, "context_lab_instance", None)
         if context_lab and hasattr(context_lab, "component_initializer"):
-            context_lab.component_initializer.stop_task_scheduler()
+            await context_lab.component_initializer.stop_task_scheduler()
     except Exception as e:
         logger.warning(f"Error stopping task scheduler: {e}")
 
-    executor.shutdown(wait=False)
+    # Shutdown executor, waiting for in-flight thread pool tasks
+    executor.shutdown(wait=True, cancel_futures=True)
 
 
 app = FastAPI(title="OpenContext", version="1.0.0", lifespan=lifespan)
@@ -225,7 +226,7 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
         finally:
             # Stop task scheduler
             if hasattr(lab_instance, "component_initializer"):
-                lab_instance.component_initializer.stop_task_scheduler()
+                await lab_instance.component_initializer.stop_task_scheduler()
 
     try:
         asyncio.run(_run_async())
