@@ -9,7 +9,6 @@ Command-line interface - provides the entry point for command-line tools
 
 import argparse
 import sys
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -19,24 +18,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from opencontext.config.config_manager import ConfigManager
 from opencontext.server.api import router as api_router
 from opencontext.server.opencontext import OpenContext
 from opencontext.utils.logging_utils import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
-# Global variables for multi-process support
-_config_path = None
+# Global variable for multi-process support
 _context_lab_instance = None
 
 
 def get_or_create_context_lab():
     """Get or create the global OpenContext instance for the current process."""
-    global _context_lab_instance, _config_path
+    global _context_lab_instance
     if _context_lab_instance is None:
-        _context_lab_instance = _initialize_context_lab(_config_path)
-        _context_lab_instance.initialize()
+        _context_lab_instance = _initialize_context_lab()
         _context_lab_instance.start_capture()
     return _context_lab_instance
 
@@ -131,24 +127,19 @@ app.include_router(api_router)
 
 
 def start_web_server(
-    context_lab_instance: OpenContext,
+    context_lab_instance: Optional[OpenContext],
     host: str,
     port: int,
     workers: int = 1,
-    config_path: str = None,
 ) -> None:
     """Start the web server with the given opencontext instance.
 
     Args:
-        context_lab_instance: The opencontext instance to attach to the app
+        context_lab_instance: The opencontext instance to attach to the app (None in multi-worker mode)
         host: Host address to bind to
         port: Port number to bind to
         workers: Number of worker processes
-        config_path: Configuration file path for multi-process mode
     """
-    global _config_path
-    _config_path = config_path
-
     if workers > 1:
         logger.info(f"Starting with {workers} worker processes")
         # For multi-process mode, use import string to avoid the warning
@@ -183,11 +174,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _initialize_context_lab(config_path: Optional[str]) -> OpenContext:
+def _initialize_context_lab() -> OpenContext:
     """Initialize the OpenContext instance.
-
-    Args:
-        config_path: Optional path to configuration file
 
     Returns:
         Initialized OpenContext instance
@@ -196,7 +184,7 @@ def _initialize_context_lab(config_path: Optional[str]) -> OpenContext:
         RuntimeError: If initialization fails
     """
     try:
-        lab_instance = OpenContext(config_path=config_path)
+        lab_instance = OpenContext()
         lab_instance.initialize()
         return lab_instance
     except Exception as e:
@@ -244,31 +232,44 @@ def handle_start(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, 1 for failure)
     """
-    try:
-        lab_instance = _initialize_context_lab(args.config)
-    except RuntimeError:
-        return 1
-
-    logger.info("Starting all modules")
-    lab_instance.start_capture()
-
     from opencontext.config.global_config import get_config
 
     web_config = get_config("web")
-    if web_config.get("enabled", True):
-        # Command line arguments override config file
-        host = args.host if args.host else web_config.get("host", "localhost")
-        port = args.port if args.port else web_config.get("port", 1733)
+    workers = getattr(args, "workers", 1)
 
+    if not web_config.get("enabled", True):
+        # Headless mode
+        try:
+            lab_instance = _initialize_context_lab()
+        except RuntimeError:
+            return 1
+        logger.info("Starting all modules")
+        lab_instance.start_capture()
+        _run_headless_mode(lab_instance)
+        return 0
+
+    # Command line arguments override config file
+    host = args.host if args.host else web_config.get("host", "localhost")
+    port = args.port if args.port else web_config.get("port", 1733)
+
+    if workers > 1:
+        # Multi-worker: main process is just a supervisor, workers self-initialize in lifespan
+        logger.info(f"Starting web server on {host}:{port} with {workers} workers")
+        start_web_server(None, host, port, workers)
+    else:
+        # Single-worker: initialize here and pass to app directly
+        try:
+            lab_instance = _initialize_context_lab()
+        except RuntimeError:
+            return 1
+        logger.info("Starting all modules")
+        lab_instance.start_capture()
         try:
             logger.info(f"Starting web server on {host}:{port}")
-            workers = getattr(args, "workers", 1)
-            start_web_server(lab_instance, host, port, workers, args.config)
+            start_web_server(lab_instance, host, port)
         finally:
             logger.info("Web server closed, shutting down capture modules...")
             lab_instance.shutdown()
-    else:
-        _run_headless_mode(lab_instance)
 
     return 0
 
@@ -279,6 +280,12 @@ def _setup_logging(config_path: Optional[str]) -> None:
     Args:
         config_path: Optional path to configuration file
     """
+    import os
+
+    # Propagate config path via env var for multi-worker subprocess inheritance
+    if config_path:
+        os.environ["OPENCONTEXT_CONFIG_PATH"] = config_path
+
     from opencontext.config.global_config import GlobalConfig
 
     GlobalConfig.get_instance().initialize(config_path)

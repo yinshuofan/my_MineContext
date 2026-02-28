@@ -31,14 +31,8 @@ logger = get_logger(__name__)
 class OpenContext:
     """OpenContext main class - integrates all components and provides unified API."""
 
-    def __init__(self, config_path: Optional[str] = None):
-        """
-        Initialize OpenContext.
-
-        Args:
-            config_path: Configuration file path
-            config_dict: Configuration dictionary (unused, kept for compatibility)
-        """
+    def __init__(self):
+        """Initialize OpenContext."""
         # Initialize core components
         self.capture_manager = ContextCaptureManager()
         self.processor_manager = ContextProcessorManager()
