@@ -39,11 +39,6 @@
 
 ### 2.1 并发安全类（多实例部署风险）
 
-**S-01. `schedule_user_task()` TOCTOU 竞态条件**
-- 位置: `opencontext/scheduler/redis_scheduler.py:190-262`
-- 描述: `schedule_user_task()` 先用 `hgetall` 检查任务是否存在，再用 `get` 检查 `last_exec`，再用 `get` 检查 `fail_count`，最后才用 pipeline 写入。在多实例部署下，两个实例可能同时通过所有检查，为同一个 user_key 创建重复任务。虽然 `ZADD` 对同一 member 是幂等的（会覆盖 score），但两个实例会各自创建 task hash，且第二个会覆盖第一个的 `created_at`/`scheduled_at`。
-- 修复建议: 将 exists-check + create 合并为一个 Lua 脚本原子操作（类似 `_CONDITIONAL_ZPOPMIN_LUA` 模式），或使用 `HSETNX` 原子检查-创建。
-
 **S-02. SQLite 单连接并发不安全**
 - 位置: `opencontext/storage/sqlite_backend.py`
 - 描述: SQLite 后端使用单连接，多线程访问会导致 `database is locked` 错误。
@@ -61,17 +56,6 @@
 - 描述: `messages.append()` 直接修改传入的引用，导致副作用。
 - 修复建议: 函数入口 `messages = list(messages)` 浅拷贝。
 
-### 2.3 运行时 Bug 类
-
-**S-15. `CompletionService._get_semantic_continuations` 对返回值类型理解错误**
-- 位置: `opencontext/context_consumption/completion/completion_service.py:266-269`
-- 描述: `generate_with_messages()` 返回的是字符串（已解包），不是 OpenAI response 对象。代码中 `response.choices[0].message.content` 永远不会成功，此分支永远不执行。
-- 修复建议: 直接使用 `response` 作为字符串处理。
-
-**S-16. `WorkflowState.to_dict` 引用 `Intent`/`Query` 不存在的属性**
-- 位置: `opencontext/context_consumption/context_agent/core/state.py:162-170`
-- 描述: `to_dict()` 引用 `self.intent.entities`、`self.intent.confidence`、`self.query.timestamp`，但这些字段在对应 dataclass 中不存在，调用时会抛出 `AttributeError`。
-- 修复建议: 从 `to_dict()` 中移除这些引用，或向对应 dataclass 添加字段。
 
 ### 2.4 安全类
 
