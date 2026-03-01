@@ -272,17 +272,6 @@ function populateProcessingSettings(allData) {
     setVal('doc_proc_batch_size', dp.batch_size);
     setVal('doc_proc_batch_timeout', dp.batch_timeout);
 
-    // screenshot_processor
-    const sp = proc.screenshot_processor || {};
-    setChecked('screenshot_proc_enabled', sp.enabled);
-    setVal('screenshot_hash_threshold', sp.similarity_hash_threshold);
-    setVal('screenshot_batch_size', sp.batch_size);
-    setVal('screenshot_batch_timeout', sp.batch_timeout);
-    setVal('screenshot_max_raw_props', sp.max_raw_properties);
-    setVal('screenshot_max_image_size', sp.max_image_size);
-    setVal('screenshot_resize_quality', sp.resize_quality);
-    setChecked('screenshot_enabled_delete', sp.enabled_delete);
-
     // context_merger
     const cm = proc.context_merger || {};
     setChecked('merger_enabled', cm.enabled);
@@ -324,16 +313,6 @@ document.getElementById('processingForm')?.addEventListener('submit', async (e) 
                 enabled: getChecked('doc_proc_enabled'),
                 batch_size: getInt('doc_proc_batch_size'),
                 batch_timeout: getInt('doc_proc_batch_timeout'),
-            },
-            screenshot_processor: {
-                enabled: getChecked('screenshot_proc_enabled'),
-                similarity_hash_threshold: getInt('screenshot_hash_threshold'),
-                batch_size: getInt('screenshot_batch_size'),
-                batch_timeout: getInt('screenshot_batch_timeout'),
-                max_raw_properties: getInt('screenshot_max_raw_props'),
-                max_image_size: getInt('screenshot_max_image_size'),
-                resize_quality: getInt('screenshot_resize_quality'),
-                enabled_delete: getChecked('screenshot_enabled_delete'),
             },
             context_merger: {
                 enabled: getChecked('merger_enabled'),

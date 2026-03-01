@@ -27,7 +27,6 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/settings.py` | Model settings, general settings, prompts CRUD (`/api/model_settings/*`, `/api/settings/*`) |
 | `routes/vaults.py` | Vault document management (`/api/vaults/*`) with background context processing |
 | `routes/web.py` | HTML pages -- contexts list, vector search, chat, monitoring, settings, file serving |
-| `routes/screenshots.py` | Screenshot push (`/api/add_screenshot`, `/api/add_screenshots`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | **search/** | |
 | `search/base_strategy.py` | `BaseSearchStrategy` ABC with `search()` abstract method |

@@ -93,17 +93,6 @@ processing:
     enabled: "${DOCUMENT_PROCESSOR_ENABLED:false}"
     batch_size: 5      # 批处理大小
     batch_timeout: 30  # 批处理超时（秒）
-  # 截图处理器（处理屏幕截图，需配合截图采集使用）
-  screenshot_processor:
-    enabled: "${SCREENSHOT_PROCESSOR_ENABLED:false}"
-    similarity_hash_threshold: 7   # 感知哈希去重阈值
-    batch_size: 20                 # 批处理大小
-    batch_timeout: 10              # 批处理超时（秒）
-    max_raw_properties: 5          # 最大原始属性数
-    max_image_size: 1920           # 图片最大尺寸（像素）
-    resize_quality: 85             # 缩放质量（1-100）
-    enabled_delete: true           # 处理后是否删除原始截图
-
   # 知识合并器（对 knowledge 类型记忆做相似度去重和合并）
   context_merger:
     enabled: "${CONTEXT_MERGER_ENABLED:true}"

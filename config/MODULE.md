@@ -88,8 +88,6 @@
 
 | 提示词 Key | 引用位置 | 文件路径:行号 | 风险 |
 |---|---|---|---|
-| `processing.extraction.screenshot_analyze` | ScreenshotProcessor | `context_processing/processor/screenshot_processor.py:416` | `get_prompt_group()` 返回 None，运行时会抛 ValueError |
-| `merging.screenshot_batch_merging` | ScreenshotProcessor | `context_processing/processor/screenshot_processor.py:544` | 同上 |
 | `completion_service.semantic_continuation` | CompletionService | `context_consumption/completion/completion_service.py:248` | `get_prompt_group()` 返回 None，运行时出错 |
 
 ---
@@ -99,4 +97,4 @@
 - **YAML 中定义的提示词总数**: 30 个
 - **实际被代码使用**: 27 个
 - **未使用**: 3 个
-- **代码引用但 YAML 缺失**: 3 个
+- **代码引用但 YAML 缺失**: 1 个

@@ -76,11 +76,6 @@ redis:
 capture:
   enabled: true
   mode: "push"  # Options: "pull" (auto-capture), "push" (external push via API)
-  # Screenshot capture - disabled for push mode
-  screenshot:
-    enabled: false
-    capture_interval: 5 # Screenshot interval (seconds)
-    storage_path: "${CONTEXT_PATH:.}/screenshots" # Screenshot save directory
   text_chat:
     enabled: true
     buffer_size: 10
@@ -126,17 +121,6 @@ processing:
     enabled: true
     batch_size: 5
     batch_timeout: 30
-  screenshot_processor:
-    enabled: true
-    dedup_cache_size: 30
-    similarity_hash_threshold: 7
-    batch_size: 20 # Increase batch size to improve throughput
-    batch_timeout: 10 # Reduce timeout to improve response speed
-    max_image_size: 1920 # Limit image size to reduce memory usage
-    resize_quality: 85 # Balance quality and performance
-    enabled_delete: true
-    max_raw_properties: 5
-
   # Context merger configuration
   context_merger:
     enabled: false

@@ -27,8 +27,6 @@ redis:
 capture:
   enabled: true
   mode: "push"
-  screenshot:
-    enabled: false
   text_chat:
     enabled: true
     redis:
@@ -48,8 +46,6 @@ processing:
   document_processor:
     enabled: true
     batch_size: 5
-  screenshot_processor:
-    enabled: true
   context_merger:
     enabled: false
     use_intelligent_merging: true

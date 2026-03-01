@@ -1,18 +1,17 @@
 # context_capture/ -- Input Capture Components for Various Data Sources
 
-Provides a base class and concrete implementations for capturing raw context data from screenshots, web links, local folders, chat messages, and vault documents. Each component produces `RawContextProperties` objects that flow into the processing pipeline.
+Provides a base class and concrete implementations for capturing raw context data from web links, local folders, chat messages, and vault documents. Each component produces `RawContextProperties` objects that flow into the processing pipeline.
 
 ## File Overview
 
 | File | Responsibility |
 |------|---------------|
 | `base.py` | `BaseCaptureComponent` -- abstract base implementing `ICaptureComponent` with lifecycle, threading, stats, and callback plumbing |
-| `screenshot.py` | `ScreenshotCapture` -- periodic multi-monitor screen capture using `mss` |
 | `web_link_capture.py` | `WebLinkCapture` -- converts URLs to Markdown (crawl4ai) or PDF (Playwright) |
 | `folder_monitor.py` | `FolderMonitorCapture` -- watches local folders for file create/update/delete events |
 | `text_chat.py` | `TextChatCapture` -- buffers chat messages in Redis, flushes when threshold reached |
 | `vault_document_monitor.py` | `VaultDocumentMonitor` -- polls the vaults DB table for new/updated documents |
-| `__init__.py` | Re-exports `BaseCaptureComponent`, `VaultDocumentMonitor`, `FolderMonitorCapture`, `TextChatCapture` (note: `ScreenshotCapture` and `WebLinkCapture` are NOT exported) |
+| `__init__.py` | Re-exports `BaseCaptureComponent`, `VaultDocumentMonitor`, `FolderMonitorCapture`, `TextChatCapture` (note: `WebLinkCapture` is NOT exported) |
 
 ## Class Hierarchy
 
@@ -21,7 +20,6 @@ ICaptureComponent (interface, opencontext/interfaces/capture_interface.py)
   |
   +-- BaseCaptureComponent (base.py) -- abstract, implements lifecycle + stats
         |
-        +-- ScreenshotCapture (screenshot.py)
         +-- WebLinkCapture (web_link_capture.py)
         +-- FolderMonitorCapture (folder_monitor.py)
         +-- TextChatCapture (text_chat.py)
@@ -68,17 +66,6 @@ Key fields: `_config: Dict`, `_running: bool`, `_capture_thread: Thread`, `_stop
 | `_capture_impl` | `() -> List[RawContextProperties]` |
 
 **Optional overrides (default no-op):** `_get_config_schema_impl`, `_validate_config_impl`, `_get_status_impl`, `_get_statistics_impl`, `_reset_statistics_impl`.
-
-### `ScreenshotCapture` (`screenshot.py`)
-
-Captures screenshots from all monitors using the `mss` library. Supports configurable format (png/jpg), quality, region, deduplication, and max image size.
-
-- `source_type`: `ContextSource.SCREENSHOT` (**Note**: `SCREENSHOT` does not exist in the `ContextSource` enum in `enums.py` -- this is a latent bug in the code)
-- `_take_screenshot() -> list` -- returns list of `(bytes, format_str, details_dict)` per monitor
-- `_create_new_context(screenshot_bytes, screenshot_format, timestamp, details) -> RawContextProperties`
-- On graceful stop, flushes pending stable screenshots via callback
-
-Config keys: `screenshot_format`, `screenshot_quality`, `screenshot_region`, `storage_path`, `dedup_enabled`, `similarity_threshold`, `max_image_size`.
 
 ### `WebLinkCapture` (`web_link_capture.py`)
 
@@ -211,8 +198,7 @@ To add a new capture component:
 - `opencontext.context_processing.processor.document_processor` -- `DocumentProcessor.get_supported_formats()` (used by `FolderMonitorCapture`)
 - `opencontext.storage.redis_cache` -- `RedisCacheConfig`, `get_redis_cache`, `rpush_expire_llen` (used by `TextChatCapture`)
 - `opencontext.utils.async_utils` -- `fire_and_forget()` (used by `base.py` and `text_chat.py` for sync→async bridging)
-- `opencontext.utils.logger` -- `LogManager.get_logger()` (used by `screenshot.py` instead of the standard `get_logger` from `logging_utils`)
-- External: `mss` (screenshot), `crawl4ai` (web markdown), `playwright` (web PDF), `PIL` (image processing)
+- External: `crawl4ai` (web markdown), `playwright` (web PDF), `PIL` (image processing)
 
 **Depended on by:**
 - `opencontext/server/routes/push.py` -- creates and uses `TextChatCapture` for chat message buffering

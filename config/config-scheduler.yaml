@@ -26,8 +26,6 @@ processing:
     enabled: false
   document_processor:
     enabled: false
-  screenshot_processor:
-    enabled: false
   context_merger:
     enabled: false
     enable_memory_management: true

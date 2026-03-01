@@ -10,7 +10,6 @@
 | `processor/processor_factory.py` | Factory for creating processor instances; global singleton `processor_factory` |
 | `processor/text_chat_processor.py` | Extracts structured memories from chat logs via LLM analysis |
 | `processor/document_processor.py` | Processes documents (PDF, DOCX, images, CSV, XLSX, JSONL, MD, TXT) |
-| `processor/screenshot_processor.py` | Processes screenshots via VLM with Redis-backed dedup and context caching |
 | `processor/entity_processor.py` | Standalone functions for validating and persisting entities to relational DB |
 | `processor/profile_processor.py` | Standalone functions for LLM-driven profile merge-before-write to relational DB |
 | `processor/document_converter.py` | Converts documents to images and analyzes page structure (PDF, DOCX, PPTX, MD) |
@@ -30,7 +29,6 @@ IContextProcessor (interface: opencontext/interfaces/processor_interface.py)
   +-- BaseContextProcessor (ABC)
         +-- TextChatProcessor        (processor/text_chat_processor.py)
         +-- DocumentProcessor        (processor/document_processor.py)
-        +-- ScreenshotProcessor      (processor/screenshot_processor.py)
         +-- ContextMerger            (merger/context_merger.py)
 
 BaseChunker (ABC)                    (chunker/chunkers.py)
@@ -59,8 +57,6 @@ Registers built-in processors on init:
 - `"document_processor"` -> `DocumentProcessor`
 - `"text_chat_processor"` -> `TextChatProcessor`
 
-Note: `ScreenshotProcessor` is NOT registered in the factory -- it is used directly by the server layer.
-
 Also defines `ProcessorDependencies` Protocol (deprecated, but still present) with `prompt_manager` and `storage` fields -- used for type hints only, not functionally active.
 
 ```python
@@ -81,7 +77,7 @@ Key abstract methods subclasses must implement:
 - `can_process(self, context: Any) -> bool`
 - `process(self, context: Any) -> List[ProcessedContext]`
 
-**Note**: The ABC declares `process()` as returning `List[ProcessedContext]`, but all concrete subclasses (`TextChatProcessor`, `DocumentProcessor`, `ScreenshotProcessor`) actually return `bool`. Only `ContextMerger` returns `[]` (empty list). This is a known inconsistency.
+**Note**: The ABC declares `process()` as returning `List[ProcessedContext]`, but concrete subclasses (`TextChatProcessor`, `DocumentProcessor`) actually return `bool`. Only `ContextMerger` returns `[]` (empty list). This is a known inconsistency.
 
 Provided methods:
 ```python
@@ -155,26 +151,6 @@ Internal components:
 
 Config keys (from `processing.document_processor`): `batch_size`, `batch_timeout`
 Config keys (from `document_processing`): `enabled`, `dpi`, `vlm_batch_size`, `text_threshold_per_page`
-
-### ScreenshotProcessor (`processor/screenshot_processor.py`)
-
-Processes `ContextSource.SCREENSHOT` inputs. State externalized to Redis.
-
-```python
-def can_process(self, context: RawContextProperties) -> bool
-def process(self, context: RawContextProperties) -> bool                      # sync wrapper
-async def process_async(self, context, user_id="default", device_id="default") -> List[ProcessedContext]
-async def batch_process(self, raw_contexts, user_id, device_id) -> List[ProcessedContext]
-```
-
-Pipeline:
-1. Resize image (optional), calculate perceptual hash
-2. Deduplicate via Redis phash cache (`_is_duplicate_redis`)
-3. VLM analysis (`_process_vlm_single`) with prompt `processing.extraction.screenshot_analyze`
-4. Merge new items with cached contexts by type (`_merge_contexts` -> `_merge_items_with_llm`)
-5. Persist entities via `entity_processor.refresh_entities`
-
-Redis keys: `screenshot:phash:{user_id}:{device_id}`, `processed_cache:{type}:{user_id}:{device_id}`, `lock:screenshot:{user_id}:{device_id}`
 
 ### entity_processor (`processor/entity_processor.py`)
 
@@ -360,17 +336,6 @@ RawContextProperties (LOCAL_FILE / WEB_LINK / INPUT)
     -> _create_contexts_from_chunks(chunks) -> List[ProcessedContext]
 ```
 
-### Screenshot Processing Flow
-```
-RawContextProperties (SCREENSHOT)
-  -> ScreenshotProcessor.process_async()
-    -> phash dedup via Redis
-    -> _process_vlm_single() -> VLM analysis -> List[ProcessedContext]
-    -> _merge_contexts() -> group by type -> _merge_items_with_llm() per type
-    -> _parse_single_context() -> vectorize + entity refresh
-    -> List[ProcessedContext]
-```
-
 ### Knowledge Merge Flow
 ```
 ProcessedContext (KNOWLEDGE, enable_merge=True)
@@ -392,14 +357,12 @@ ProcessedContext (KNOWLEDGE, enable_merge=True)
 | `opencontext.models.context` | All files | `ProcessedContext`, `RawContextProperties`, `ContextProperties`, `ExtractedData`, `Vectorize`, `Chunk`, `EntityData` |
 | `opencontext.models.enums` | All files | `ContextType`, `ContextSource`, `ContentFormat`, `FileType`, `STRUCTURED_FILE_TYPES` |
 | `opencontext.config.global_config` | Processors, chunker | `get_config()`, `get_prompt_group()`, `get_prompt_manager()` |
-| `opencontext.llm.global_vlm_client` | TextChat, Document, Screenshot, Merger, Profile | `generate_with_messages_async()`, `generate_with_messages()` |
-| `opencontext.llm.global_embedding_client` | Screenshot, Merger | `do_vectorize()`, `do_vectorize_async()` |
-| `opencontext.storage.global_storage` | Document, Screenshot, Entity, Profile, Merger | `get_storage()` -> `UnifiedStorage` |
-| `opencontext.storage.redis_cache` | Screenshot | `get_redis_cache()` for phash/context caching |
+| `opencontext.llm.global_vlm_client` | TextChat, Document, Merger, Profile | `generate_with_messages_async()`, `generate_with_messages()` |
+| `opencontext.llm.global_embedding_client` | Merger | `do_vectorize()`, `do_vectorize_async()` |
+| `opencontext.storage.global_storage` | Document, Entity, Profile, Merger | `get_storage()` -> `UnifiedStorage` |
 | `opencontext.interfaces.processor_interface` | BaseProcessor | `IContextProcessor` interface |
-| `opencontext.utils.json_parser` | TextChat, Document, Screenshot, Profile, Merger | `parse_json_from_response()` |
-| `opencontext.utils.image` | Screenshot | `calculate_phash()`, `resize_image()` |
-| `opencontext.monitoring.monitor` | Document, Screenshot | `record_processing_error()`, `record_processing_metrics()` |
+| `opencontext.utils.json_parser` | TextChat, Document, Profile, Merger | `parse_json_from_response()` |
+| `opencontext.monitoring.monitor` | Document | `record_processing_error()`, `record_processing_metrics()` |
 
 ### Depended on BY other modules
 | Consumer | What it uses |
@@ -441,18 +404,14 @@ The merger currently only supports KNOWLEDGE type. To add a new type:
 
 - **Entity persistence requires all 3 identifiers**: `refresh_entities()` and all `storage.upsert_entity()` / `storage.get_entity()` calls require `user_id`, `device_id`, `agent_id`. Omitting any causes argument mismatches.
 
-- **`shutdown()` signature varies across subclasses**: `BaseContextProcessor.shutdown(self) -> bool` takes no args and returns bool. `DocumentProcessor.shutdown(self, _graceful: bool = False)` and `ScreenshotProcessor.shutdown(self, graceful: bool = False)` add an extra parameter and return None implicitly. This deviates from the base class contract.
+- **`shutdown()` signature varies across subclasses**: `BaseContextProcessor.shutdown(self) -> bool` takes no args and returns bool. `DocumentProcessor.shutdown(self, _graceful: bool = False)` adds an extra parameter and returns None implicitly. This deviates from the base class contract.
 
-- **Sync/async bridging in processors**: `TextChatProcessor.process()` and `ScreenshotProcessor.process()` detect whether an event loop is running and either create a task or call `asyncio.run()`. `DocumentProcessor._run_async_tasks()` uses `asyncio.run(asyncio.gather(...))` from the sync `real_process()` method (which runs inside `asyncio.to_thread`). Be careful when modifying this logic.
+- **Sync/async bridging in processors**: `TextChatProcessor.process()` detects whether an event loop is running and either creates a task or calls `asyncio.run()`. `DocumentProcessor._run_async_tasks()` uses `asyncio.run(asyncio.gather(...))` from the sync `real_process()` method (which runs inside `asyncio.to_thread`). Be careful when modifying this logic.
 
 - **VLM batch size is configurable**: `DocumentProcessor._vlm_batch_size` controls how many pages are sent to VLM in parallel. Set via `document_processing.vlm_batch_size` config.
 
-- **`_create_contexts_from_chunks` always produces `ContextType.DOCUMENT`**: All chunks from `DocumentProcessor` are typed as DOCUMENT regardless of file content. Classification into other types happens only in `TextChatProcessor` and `ScreenshotProcessor` via LLM.
+- **`_create_contexts_from_chunks` always produces `ContextType.DOCUMENT`**: All chunks from `DocumentProcessor` are typed as DOCUMENT regardless of file content. Classification into other types happens only in `TextChatProcessor` via LLM.
 
 - **ProcessorFactory creates instances with parameterless constructors**: All processors read their own config from `GlobalConfig` inside `__init__()`. The factory's `config` and `**dependencies` parameters are deprecated and ignored.
-
-- **ScreenshotProcessor is not registered in the factory**: It is instantiated directly by the server layer, not through `processor_factory.create_processor()`.
-
-- **ScreenshotProcessor references non-existent enum values (latent bug)**: `can_process()` and `_create_processed_context()` use `ContextSource.SCREENSHOT`, which does not exist in the `ContextSource` enum (valid values: VAULT, LOCAL_FILE, WEB_LINK, INPUT, CHAT_LOG). The fallback in `_create_processed_context()` also references `ContextType.ACTIVITY_CONTEXT`, which does not exist in `ContextType` (valid values: PROFILE, ENTITY, DOCUMENT, EVENT, KNOWLEDGE). Both will raise `AttributeError` at runtime if reached.
 
 - **ContextMerger._merge_with_llm has Chinese string dependency**: Checks `if "无需合并" in response:` ("no merge needed") to detect when LLM declines a merge. This works with Chinese prompts but will not match if using English prompts.

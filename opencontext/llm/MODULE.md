@@ -115,7 +115,7 @@ Thread-safe singleton. Wraps a `LLMClient(LLMType.CHAT)` configured from `get_co
 - `openai` -- `OpenAI`, `AsyncOpenAI`, `APIError`
 
 **Depended on by:**
-- `opencontext/context_processing/` -- uses `GlobalEmbeddingClient` for vectorization, `GlobalVLMClient` for text/screenshot analysis
+- `opencontext/context_processing/` -- uses `GlobalEmbeddingClient` for vectorization, `GlobalVLMClient` for document analysis
 - `opencontext/storage/backends/` -- vector backends call `do_vectorize_batch()` for batch pre-vectorization in `batch_upsert_processed_context()`, and `do_vectorize()` as single-item fallback in `_ensure_vectorized()`
 - `opencontext/server/` -- health checks call `validate()`; search strategies use embedding client; settings routes reinitialize clients
 - `opencontext/periodic_task/hierarchy_summary.py` -- uses LLM for summary generation

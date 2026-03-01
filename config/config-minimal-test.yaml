@@ -1,0 +1,140 @@
+# Minimal test configuration: SQLite + Qdrant (local) + no Redis
+# Used to verify async init chain without external services
+
+logging:
+  level: DEBUG
+  log_path: "${CONTEXT_PATH:.}/logs/opencontext.log"
+
+user_setting_path: "${CONTEXT_PATH:.}/config/user_setting.yaml"
+
+document_processing:
+  batch_size: 3
+  dpi: 200
+  text_threshold_per_page: 50
+
+llm:
+  provider: "openai"
+  config:
+    api_key: "test-key-placeholder"
+    base_url: "https://api.openai.com/v1"
+    model: "gpt-4o"
+
+vlm_model:
+  base_url: "https://api.openai.com/v1"
+  api_key: "test-key-placeholder"
+  model: "gpt-4o"
+  provider: "openai"
+
+embedding_model:
+  base_url: "https://api.openai.com/v1"
+  api_key: "test-key-placeholder"
+  model: "text-embedding-3-large"
+  provider: "openai"
+  output_dim: 1536
+
+capture:
+  enabled: true
+  text_chat:
+    enabled: true
+    buffer_size: 10
+  folder_monitor:
+    enabled: false
+  vault_document_monitor:
+    enabled: false
+
+processing:
+  enabled: true
+  text_chat_processor:
+    enabled: true
+  document_processor:
+    enabled: false
+  context_merger:
+    enabled: true
+    similarity_threshold: 0.01
+    use_intelligent_merging: false
+    enable_memory_management: true
+    knowledge_retention_days: 30
+    knowledge_similarity_threshold: 0.8
+    knowledge_max_merge_count: 3
+
+redis:
+  enabled: false
+
+memory_cache:
+  snapshot_ttl: 3600
+  recent_days: 7
+  max_recently_accessed: 50
+  max_today_events: 30
+  max_recent_documents: 10
+  max_recent_knowledge: 10
+  accessed_ttl: 604800
+  max_entities: 20
+
+storage:
+  enabled: true
+  backends:
+    # Qdrant in local path mode (no external server needed)
+    - name: "default_vector"
+      storage_type: "vector_db"
+      backend: "qdrant"
+      default: true
+      config:
+        vector_size: 1536
+        path: "${CONTEXT_PATH:.}/persist/qdrant"
+
+    # SQLite (no external DB needed)
+    - name: "document_store"
+      storage_type: "document_db"
+      backend: "sqlite"
+      default: true
+      config:
+        path: "${CONTEXT_PATH:.}/persist/sqlite/app.db"
+
+consumption:
+  enabled: false
+
+web:
+  host: "0.0.0.0"
+  port: 1733
+  enabled: true
+
+api_auth:
+  enabled: false
+  api_keys:
+    - "test"
+  excluded_paths:
+    - "/health"
+    - "/api/health"
+
+prompts:
+  language: "en"
+
+tools:
+  operation_tools:
+    web_search_tool:
+      enabled: false
+
+scheduler:
+  enabled: false
+  user_key_config:
+    use_user_id: true
+    use_device_id: true
+    use_agent_id: true
+    default_device_id: "default"
+    default_agent_id: "default"
+  executor:
+    check_interval: 10
+    max_concurrent: 5
+    lock_timeout: 300
+  tasks:
+    memory_compression:
+      enabled: false
+      trigger_mode: "user_activity"
+      interval: 30
+      task_ttl: 7200
+    hierarchy_summary:
+      enabled: false
+      trigger_mode: "user_activity"
+      interval: 86400
+      timeout: 600
+      task_ttl: 172800
