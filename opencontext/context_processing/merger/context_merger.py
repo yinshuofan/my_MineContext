@@ -778,7 +778,7 @@ class ContextMerger(BaseContextProcessor):
                 enable_merge=context.properties.enable_merge,
             )
 
-            reinforced_importance = min(context.extracted_data.importance + 1, 9)
+            reinforced_importance = min(context.extracted_data.importance + 1, 10)
 
             reinforced_extracted_data = ExtractedData(
                 title=context.extracted_data.title,

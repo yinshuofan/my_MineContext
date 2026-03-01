@@ -172,13 +172,13 @@ class TextChatProcessor(BaseContextProcessor):
             importance = 5
         importance = max(0, min(10, importance))
 
-        # Validate confidence (0-100 range)
+        # Validate confidence (0-10 range)
         confidence = memory.get("confidence", 0)
         try:
             confidence = int(confidence)
         except (ValueError, TypeError):
             confidence = 0
-        confidence = max(0, min(100, confidence))
+        confidence = max(0, min(10, confidence))
 
         # 解析 LLM 返回的 event_time，回退到 raw_context.create_time
         event_time = raw_context.create_time

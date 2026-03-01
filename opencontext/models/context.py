@@ -69,8 +69,8 @@ class ExtractedData(BaseModel):
     keywords: List[str] = Field(default_factory=list)  # keywords
     entities: List[str] = Field(default_factory=list)  # entities
     context_type: ContextType  # context type
-    confidence: int = 0  # confidence
-    importance: int = 0  # importance
+    confidence: int = Field(default=0, ge=0, le=10)  # confidence
+    importance: int = Field(default=0, ge=0, le=10)  # importance
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary"""

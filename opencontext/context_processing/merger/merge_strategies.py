@@ -183,9 +183,9 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
             # Keep the highest-importance summary as the base
             merged_summary = sorted_contexts[0].extracted_data.summary
 
-        merged_importance = max(ctx.extracted_data.importance for ctx in all_contexts)
-        merged_confidence = sum(ctx.extracted_data.confidence for ctx in all_contexts) // len(
-            all_contexts
+        merged_importance = min(max(ctx.extracted_data.importance for ctx in all_contexts), 10)
+        merged_confidence = min(
+            sum(ctx.extracted_data.confidence for ctx in all_contexts) // len(all_contexts), 10
         )
 
         return self._create_merged_context(

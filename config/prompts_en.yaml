@@ -441,8 +441,8 @@ processing:
         3. **keywords**: Keywords relevant to this specific memory
         4. **context_type**: One of the 5 types above
         5. **entities**: Key entities mentioned in this memory (person names, tool names, tech stacks) as structured objects
-        6. **importance**: Score 1-9, technical decisions and personal preferences score high, casual greetings score low
-        7. **confidence**: Score 1-9, how confident you are in the extraction accuracy
+        6. **importance**: Score 0-10, technical decisions and personal preferences score high, casual greetings score low
+        7. **confidence**: Score 0-10, how confident you are in the extraction accuracy
         8. **event_time**: ISO time string if the memory has an explicit time, otherwise null
 
         Please output in JSON format without Markdown markers:
