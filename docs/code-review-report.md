@@ -49,16 +49,6 @@
 - 描述: SQLite 后端使用单连接，多线程访问会导致 `database is locked` 错误。
 - 修复建议: 使用 `threading.local()` 或连接池。
 
-**S-03. MySQL `save_monitoring_stage_timing` 竞态条件** ✅ 已修复
-- 位置: `opencontext/storage/mysql_backend.py`, `opencontext/storage/backends/sqlite_backend.py`
-- 描述: 先 SELECT 再 UPDATE/INSERT 的模式在并发下可能丢失数据。
-- 修复: 两个后端均已替换为原子 upsert（MySQL `ON DUPLICATE KEY UPDATE`，SQLite `ON CONFLICT DO UPDATE SET`）。
-
-**S-04. `active_streams` 进程内字典无法跨 worker 中断**
-- 位置: `opencontext/server/routes/agent_chat.py:36`
-- 描述: 多进程模式下流式响应中断请求路由到不同 worker 会失效。
-- 修复建议: 迁移到 Redis 共享状态。
-
 ### 2.2 功能缺陷类
 
 **S-05. Vault `get_document` 全表扫描 — O(N) 且结果截断**
@@ -66,32 +56,12 @@
 - 描述: `get_vaults(limit=100)` 加载前 100 条再遍历，超过 100 条时找不到目标文档。
 - 修复建议: 使用 `get_vault(vault_id)` 主键查询。
 
-**S-06. `ScreenshotCapture` 引用不存在的 `ContextSource.SCREENSHOT` 枚举**
-- 位置: `opencontext/context_capture/screenshot/screenshot_capture.py`
-- 描述: 该枚举值不存在于 `ContextSource`，运行时会报 `AttributeError`。
-- 修复建议: 删除死代码或添加枚举值。
-
-**S-07. `_background_tasks` 集合内存泄漏风险**
-- 位置: `opencontext/server/routes/push.py:33`
-- 描述: `done_callback` 异常时 `discard` 不执行，集合无限增长。
-- 修复建议: 使用 `WeakSet` 或确保 callback 异常安全。
-
-**S-08. `hierarchy_level` 过滤格式不兼容 VikingDB**
-- 位置: `opencontext/tools/retrieval_tools/hierarchical_event_tool.py:293`, `knowledge_retrieval_tool.py:119`
-- 描述: 设置为整数 `0` 而非 range 格式 `{"$gte": 0, "$lte": 0}`，VikingDB 后端过滤会失败。
-- 修复建议: 统一使用 range 格式。
-
 **S-09. `generate_with_messages` 修改调用者的 messages 列表**
 - 位置: `opencontext/llm/global_vlm_client.py:121-128`
 - 描述: `messages.append()` 直接修改传入的引用，导致副作用。
 - 修复建议: 函数入口 `messages = list(messages)` 浅拷贝。
 
 ### 2.3 运行时 Bug 类
-
-**S-14. `ContextNode` 调用 async 方法 `get_vault()` 缺少 `await`**
-- 位置: `opencontext/context_consumption/context_agent/nodes/context.py:46`
-- 描述: `doc = get_storage().get_vault(int(state.query.document_id))` 缺少 `await`。`get_vault()` 是 `async def` 方法，未 await 将返回协程对象（truthy），后续 `if not doc` 判断永远为 False，错误的文档上下文被注入。
-- 修复建议: 改为 `doc = await get_storage().get_vault(int(state.query.document_id))`。
 
 **S-15. `CompletionService._get_semantic_continuations` 对返回值类型理解错误**
 - 位置: `opencontext/context_consumption/completion/completion_service.py:266-269`
@@ -104,11 +74,6 @@
 - 修复建议: 从 `to_dict()` 中移除这些引用，或向对应 dataclass 添加字段。
 
 ### 2.4 安全类
-
-**S-10. API Key 在日志中部分泄露**
-- 位置: `opencontext/server/middleware/auth.py:105`
-- 描述: 记录 API key 前 8 个字符，短 key 暴露 50%。
-- 修复建议: 不记录 key 内容，改用 hash 或完全掩码。
 
 **S-11. `push_document` 响应泄露服务器文件路径**
 - 位置: `opencontext/server/routes/push.py:302`

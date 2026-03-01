@@ -43,7 +43,7 @@ class ContextNode(BaseNode):
         if state.query.document_id is not None:
             from opencontext.storage.global_storage import get_storage
 
-            doc = get_storage().get_vault(int(state.query.document_id))
+            doc = await get_storage().get_vault(int(state.query.document_id))
             if not doc:
                 await self.streaming_manager.emit(
                     StreamEvent(
