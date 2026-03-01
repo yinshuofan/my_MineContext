@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List
 from opencontext.interfaces.capture_interface import ICaptureComponent
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContextSource
+from opencontext.utils.async_utils import fire_and_forget
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -209,13 +210,7 @@ class BaseCaptureComponent(ICaptureComponent):
                 try:
                     cb_result = self._callback(result)
                     if inspect.isawaitable(cb_result):
-                        # Callback is async — schedule on the running event loop
-                        try:
-                            loop = asyncio.get_running_loop()
-                            asyncio.run_coroutine_threadsafe(cb_result, loop)
-                        except RuntimeError:
-                            # No running loop (sync context) — run via new loop
-                            asyncio.run(cb_result)
+                        fire_and_forget(cb_result)
                 except Exception as e:
                     logger.exception(
                         f"{self._name}: Callback function execution exception: {str(e)}"

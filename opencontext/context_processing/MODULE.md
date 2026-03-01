@@ -443,7 +443,7 @@ The merger currently only supports KNOWLEDGE type. To add a new type:
 
 - **`shutdown()` signature varies across subclasses**: `BaseContextProcessor.shutdown(self) -> bool` takes no args and returns bool. `DocumentProcessor.shutdown(self, _graceful: bool = False)` and `ScreenshotProcessor.shutdown(self, graceful: bool = False)` add an extra parameter and return None implicitly. This deviates from the base class contract.
 
-- **Sync/async bridging in processors**: `TextChatProcessor.process()` and `ScreenshotProcessor.process()` detect whether an event loop is running and either create a task or call `asyncio.run()`. `DocumentProcessor` uses `loop.run_in_executor()` for async. Be careful when modifying this logic.
+- **Sync/async bridging in processors**: `TextChatProcessor.process()` and `ScreenshotProcessor.process()` detect whether an event loop is running and either create a task or call `asyncio.run()`. `DocumentProcessor._run_async_tasks()` uses `asyncio.run(asyncio.gather(...))` from the sync `real_process()` method (which runs inside `asyncio.to_thread`). Be careful when modifying this logic.
 
 - **VLM batch size is configurable**: `DocumentProcessor._vlm_batch_size` controls how many pages are sent to VLM in parallel. Set via `document_processing.vlm_batch_size` config.
 

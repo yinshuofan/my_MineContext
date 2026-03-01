@@ -132,7 +132,7 @@ Facade that holds one `IVectorStorageBackend` and one `IDocumentStorageBackend`.
 
 `initialize()` reads config from `get_config("storage")`, iterates `backends` list, creates each via factory, and assigns to `_vector_backend` / `_document_backend` (preferring configs with `default: true`).
 
-**Routing logic**: All methods check `_initialized` and the relevant backend, then delegate:
+**Routing logic**: Most delegating methods use the `@_require_backend(backend_attr, default)` decorator (module-level) to check `_initialized` and backend availability, returning `default` on failure. Exceptions that keep manual guards: `scroll_processed_contexts` (async generator), `delete_conversation` (parameter-dependent default), `delete_document` (positive check pattern), `get_vector_collection_names` (no `_initialized` check), and the three `todo_embedding` methods (additional `_is_consumption_enabled()` check).
 - Vector operations (contexts, search, hierarchy, todo embeddings) -> `_vector_backend`
 - Document operations (vaults, todos, tips, profiles, entities, conversations, messages, monitoring) -> `_document_backend`
 

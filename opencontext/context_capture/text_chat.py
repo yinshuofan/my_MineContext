@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from opencontext.context_capture.base import BaseCaptureComponent
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContentFormat, ContextSource
+from opencontext.utils.async_utils import fire_and_forget
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -81,13 +82,7 @@ class TextChatCapture(BaseCaptureComponent):
     def _stop_impl(self, graceful: bool = True) -> bool:
         """停止组件，刷新所有缓冲区"""
         if graceful and self._redis_cache:
-            # 在停止时需要异步刷新，使用事件循环运行
-            try:
-                loop = asyncio.get_running_loop()
-                asyncio.run_coroutine_threadsafe(self._flush_all_buffers(), loop)
-            except RuntimeError:
-                # No running loop — run via new loop
-                asyncio.run(self._flush_all_buffers())
+            fire_and_forget(self._flush_all_buffers())
         return True
 
     def _capture_impl(self) -> List[RawContextProperties]:

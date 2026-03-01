@@ -210,6 +210,7 @@ To add a new capture component:
 - `opencontext.storage.global_storage` -- `get_storage()` (used by `FolderMonitorCapture`, `VaultDocumentMonitor`)
 - `opencontext.context_processing.processor.document_processor` -- `DocumentProcessor.get_supported_formats()` (used by `FolderMonitorCapture`)
 - `opencontext.storage.redis_cache` -- `RedisCacheConfig`, `get_redis_cache`, `rpush_expire_llen` (used by `TextChatCapture`)
+- `opencontext.utils.async_utils` -- `fire_and_forget()` (used by `base.py` and `text_chat.py` for sync→async bridging)
 - `opencontext.utils.logger` -- `LogManager.get_logger()` (used by `screenshot.py` instead of the standard `get_logger` from `logging_utils`)
 - External: `mss` (screenshot), `crawl4ai` (web markdown), `playwright` (web PDF), `PIL` (image processing)
 
@@ -225,4 +226,4 @@ To add a new capture component:
 - `TextChatCapture` has async methods (`push_message`, `flush_user_buffer`, `process_messages_directly`, `_create_and_send_context`, etc.).
 - `WebLinkCapture` overrides the base `capture()` method to accept a `urls` parameter. This is the only subclass that changes the base method's signature.
 - `FolderMonitorCapture._cleanup_file_context()` is async and uses `await` on `UnifiedStorage` calls to delete vector entries for deleted files. It is bridged from sync thread context via `_cleanup_file_context_sync()` using `asyncio.run_coroutine_threadsafe`. This is the only capture component that writes to storage.
-- `BaseCaptureComponent.capture()` detects async callbacks via `inspect.isawaitable()` and schedules them on the running event loop when invoked from sync context (e.g., capture loop threads).
+- `BaseCaptureComponent.capture()` detects async callbacks via `inspect.isawaitable()` and dispatches them using `fire_and_forget()` from `opencontext.utils.async_utils` (schedules on running loop or falls back to `asyncio.run()`). `TextChatCapture._stop_impl()` uses the same utility for graceful buffer flush.

@@ -41,13 +41,6 @@ class UserMemoryCacheManager:
 
     def __init__(self):
         self._config = self._load_config()
-        self._build_semaphore: Optional[asyncio.Semaphore] = None
-
-    def _get_build_semaphore(self) -> asyncio.Semaphore:
-        """Lazily create the build semaphore."""
-        if self._build_semaphore is None:
-            self._build_semaphore = asyncio.Semaphore(3)
-        return self._build_semaphore
 
     def _load_config(self) -> Dict[str, Any]:
         raw = get_config("memory_cache") or {}
@@ -215,7 +208,7 @@ class UserMemoryCacheManager:
             finally:
                 await cache.release_lock(lock_key, lock_token)
         else:
-            # Lock timeout — use semaphore to limit concurrent builds
+            # Lock acquisition timed out — try cache once more, else build directly
             snapshot = await cache.get_json(snapshot_key)
             if snapshot:
                 return self._merge_response(
@@ -224,54 +217,11 @@ class UserMemoryCacheManager:
                     cache_hit=True,
                     ttl_remaining=await cache.ttl(snapshot_key),
                 )
-
-            sem = self._get_build_semaphore()
-            try:
-                await asyncio.wait_for(sem.acquire(), timeout=5)
-                try:
-                    # Double-check after acquiring semaphore
-                    snapshot = await cache.get_json(snapshot_key)
-                    if snapshot:
-                        return self._merge_response(
-                            snapshot,
-                            accessed,
-                            cache_hit=True,
-                            ttl_remaining=await cache.ttl(snapshot_key),
-                        )
-                    snapshot_data = await self._build_snapshot(
-                        user_id,
-                        device_id,
-                        agent_id,
-                        recent_days,
-                        max_recent_events_today,
-                    )
-                    ttl = self._config["snapshot_ttl"]
-                    await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
-                    return self._merge_response(
-                        snapshot_data, accessed, cache_hit=False, ttl_remaining=ttl
-                    )
-                finally:
-                    sem.release()
-            except asyncio.TimeoutError:
-                # Semaphore timeout — last resort
-                snapshot = await cache.get_json(snapshot_key)
-                if snapshot:
-                    return self._merge_response(
-                        snapshot,
-                        accessed,
-                        cache_hit=True,
-                        ttl_remaining=await cache.ttl(snapshot_key),
-                    )
-                snapshot_data = await self._build_snapshot(
-                    user_id,
-                    device_id,
-                    agent_id,
-                    recent_days,
-                    max_recent_events_today,
-                )
-                return self._merge_response(
-                    snapshot_data, accessed, cache_hit=False, ttl_remaining=0
-                )
+            # Another instance likely holds the lock and is building; build uncached
+            snapshot_data = await self._build_snapshot(
+                user_id, device_id, agent_id, recent_days, max_recent_events_today
+            )
+            return self._merge_response(snapshot_data, accessed, cache_hit=False, ttl_remaining=0)
 
     # ─── Recently Accessed (real-time from Redis) ───
 

@@ -427,25 +427,8 @@ class DocumentProcessor(BaseContextProcessor):
         return text_list
 
     def _run_async_tasks(self, tasks: List[Any]) -> List[Any]:
-        """Run async tasks in the appropriate event loop."""
-        try:
-            loop = asyncio.get_running_loop()
-            # If we're already in an async context, create a new thread
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run, asyncio.gather(*tasks, return_exceptions=True)
-                )
-                return future.result()
-        except RuntimeError:
-            # No running event loop, create one
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            return loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+        """Run async tasks from sync context (called inside asyncio.to_thread)."""
+        return asyncio.run(asyncio.gather(*tasks, return_exceptions=True))
 
     def _process_vlm_pages_with_doc_images(self, page_infos: List[PageInfo]) -> List[str]:
         """

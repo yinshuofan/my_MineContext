@@ -179,7 +179,7 @@ class UserMemoryCacheManager:
 Caching architecture:
 - **Snapshot** (profile + today events + daily summaries): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot stores full internal data; response assembly in `_merge_response()` simplifies to `SimpleProfile` (content + keywords + metadata), `SimpleDailySummary` (time_bucket + summary), `SimpleTodayEvent` (title + summary + event_time).
 - **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile/entity excluded), always read real-time.
-- **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. Falls back to local `asyncio.Semaphore(3)` if lock acquisition times out.
+- **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. If lock acquisition times out, tries cache once more then builds directly without caching.
 - **Snapshot build**: 6 parallel `asyncio.to_thread()` queries (profile, entities, today events, daily summaries, recent docs, recent knowledge). Response only exposes profile, today_events, daily_summaries, recently_accessed.
 
 ### Auth Middleware (middleware/auth.py)
@@ -425,16 +425,16 @@ Buffer mode (`process_mode="buffer"`):
 push_chat()
   -> for msg in messages: text_chat.push_message()  # atomic Lua (rpush+expire+llen, 1 Redis call per msg)
   -> if flush_immediately: text_chat.flush_user_buffer()
-  -> BackgroundTasks: _schedule_user_compression()       # scheduler.schedule_user_task("memory_compression")
-  -> BackgroundTasks: _schedule_user_hierarchy_summary() # scheduler.schedule_user_task("hierarchy_summary")
+  -> BackgroundTasks: _schedule_user_task("memory_compression")
+  -> BackgroundTasks: _schedule_user_task("hierarchy_summary")
 ```
 
 Direct mode (`process_mode="direct"`):
 ```
 push_chat()
   -> BackgroundTasks: text_chat.process_messages_directly()
-  -> BackgroundTasks: _schedule_user_compression()
-  -> BackgroundTasks: _schedule_user_hierarchy_summary()
+  -> BackgroundTasks: _schedule_user_task("memory_compression")
+  -> BackgroundTasks: _schedule_user_task("hierarchy_summary")
 ```
 
 Both modes use `BackgroundTasks` for scheduling — the scheduling runs after the response is sent, not inline.
@@ -519,7 +519,7 @@ OpenContext._handle_processed_context()
 
 6. **Cache invalidation uses `run_coroutine_threadsafe`** because `_handle_processed_context` runs in a thread pool via `asyncio.to_thread()`. Using `loop.create_task()` from a thread would silently fail. The `_capture_loop()` pattern stores the event loop reference.
 
-7. **Push endpoints schedule tasks via BackgroundTasks**: Both buffer and direct modes use `background_tasks.add_task()` for `_schedule_user_compression()` and `_schedule_user_hierarchy_summary()`. Scheduling runs post-response and must not fail the request.
+7. **Push endpoints schedule tasks via BackgroundTasks**: Both buffer and direct modes use `background_tasks.add_task()` with the unified `_schedule_user_task(task_type, ...)` helper. Scheduling runs post-response and must not fail the request.
 
 8. **`active_streams` dict in `agent_chat.py`** is process-local in-memory state for interrupt flags. Not shared across workers in multi-process mode.
 

@@ -38,13 +38,13 @@ _background_tasks: set = set()
 # ============================================================================
 
 
-async def _schedule_user_compression(
-    user_id: Optional[str], device_id: Optional[str] = None, agent_id: Optional[str] = None
+async def _schedule_user_task(
+    task_type: str,
+    user_id: Optional[str],
+    device_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
 ) -> None:
-    """
-    Schedule a memory compression task for the user (async).
-    This is called after data capture to trigger delayed compression.
-    """
+    """Schedule a user task (compression, hierarchy summary, etc.) without failing the request."""
     if not user_id:
         return
 
@@ -54,39 +54,13 @@ async def _schedule_user_compression(
         scheduler = get_scheduler()
         if scheduler:
             await scheduler.schedule_user_task(
-                task_type="memory_compression",
+                task_type=task_type,
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
             )
     except Exception as e:
-        # Don't fail the request if scheduling fails
-        logger.warning(f"Failed to schedule compression task: {e}")
-
-
-async def _schedule_user_hierarchy_summary(
-    user_id: Optional[str], device_id: Optional[str] = None, agent_id: Optional[str] = None
-) -> None:
-    """
-    Schedule a hierarchy summary task for the user (async).
-    Generates daily/weekly/monthly event summaries after a 24h delay.
-    """
-    if not user_id:
-        return
-
-    try:
-        from opencontext.scheduler import get_scheduler
-
-        scheduler = get_scheduler()
-        if scheduler:
-            await scheduler.schedule_user_task(
-                task_type="hierarchy_summary",
-                user_id=user_id,
-                device_id=device_id,
-                agent_id=agent_id,
-            )
-    except Exception as e:
-        logger.warning(f"Failed to schedule hierarchy summary task: {e}")
+        logger.warning(f"Failed to schedule {task_type} task: {e}")
 
 
 # ============================================================================
@@ -234,13 +208,15 @@ async def push_chat(
             await asyncio.wait_for(_push_all_messages(), timeout=10.0)
 
             background_tasks.add_task(
-                _schedule_user_compression,
+                _schedule_user_task,
+                task_type="memory_compression",
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,
             )
             background_tasks.add_task(
-                _schedule_user_hierarchy_summary,
+                _schedule_user_task,
+                task_type="hierarchy_summary",
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,
@@ -260,13 +236,15 @@ async def push_chat(
                 agent_id=request.agent_id,
             )
             background_tasks.add_task(
-                _schedule_user_compression,
+                _schedule_user_task,
+                task_type="memory_compression",
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,
             )
             background_tasks.add_task(
-                _schedule_user_hierarchy_summary,
+                _schedule_user_task,
+                task_type="hierarchy_summary",
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,
