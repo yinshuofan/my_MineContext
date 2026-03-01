@@ -158,15 +158,13 @@ class WorkflowState:
             "query": {
                 "text": self.query.text,
                 "type": self.query.query_type.value if self.query.query_type else None,
-                "timestamp": self.query.timestamp.isoformat(),
             },
             "stage": self.stage.value,
             "intent": (
                 {
                     "query_type": self.intent.query_type.value,
                     "enhanced_query": self.intent.enhanced_query,
-                    "entities": [{"text": e.text, "type": e.type} for e in self.intent.entities],
-                    "confidence": self.intent.confidence,
+                    "original_query": self.intent.original_query,
                 }
                 if self.intent
                 else None
