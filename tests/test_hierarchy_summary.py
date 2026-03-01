@@ -108,7 +108,7 @@ def create_l0_event(event_data: dict, user_id: str) -> ProcessedContext:
             update_time=now,
             is_processed=True,
             enable_merge=False,
-            is_happend=True,
+            is_happened=True,
             user_id=user_id,
             device_id="default",
             agent_id="default",

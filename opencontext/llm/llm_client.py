@@ -214,10 +214,10 @@ class LLMClient:
     async def vectorize(self, vectorize: Vectorize, **kwargs):
         if vectorize.vector:
             return
-        vectorize.vector = await self.generate_embedding(
-            vectorize.get_vectorize_content(), **kwargs
-        )
-        return
+        content = vectorize.get_vectorize_content()
+        if not content:
+            return
+        vectorize.vector = await self.generate_embedding(content, **kwargs)
 
     async def generate_embedding_batch(self, texts: List[str], **kwargs) -> List[List[float]]:
         """Generate embeddings for multiple texts in a single API call (with internal chunking)."""

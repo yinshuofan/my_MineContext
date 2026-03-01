@@ -257,7 +257,7 @@ def validate_context_type(context_type: str) -> bool:
 def get_context_type_for_analysis(context_type_str: str) -> "ContextType":
     """
     Get the context type for analysis, with fault tolerance.
-    Falls back to EVENT if the type string is not recognized.
+    Falls back to KNOWLEDGE if the type string is not recognized.
     """
     # Normalize input
     context_type_str = context_type_str.lower().strip()

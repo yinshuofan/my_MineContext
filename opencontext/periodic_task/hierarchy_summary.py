@@ -1307,7 +1307,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             is_processed=True,
             has_compression=False,
             enable_merge=False,  # Summaries should not be merged further
-            is_happend=True,
+            is_happened=True,
             user_id=user_id,
             hierarchy_level=level,
             time_bucket=time_bucket,

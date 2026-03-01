@@ -129,7 +129,7 @@ Tracking and hierarchy metadata. Fields:
 | `merge_count` | `int` | `0` | |
 | `duration_count` | `int` | `1` | |
 | `enable_merge` | `bool` | `False` | |
-| `is_happend` | `bool` | `False` | |
+| `is_happened` | `bool` | `False` | |
 | `last_call_time` | `Optional[datetime]` | `None` | |
 | `file_path` | `Optional[str]` | `None` | Document tracking |
 | `raw_type` | `Optional[str]` | `None` | e.g. `"vaults"` |

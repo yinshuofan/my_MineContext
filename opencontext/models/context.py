@@ -99,7 +99,7 @@ class ContextProperties(BaseModel):
     merge_count: int = 0  # merge count
     duration_count: int = 1  # context duration count
     enable_merge: bool = False
-    is_happend: bool = False  # whether occurred
+    is_happened: bool = False  # whether occurred
     last_call_time: Optional[
         datetime.datetime
     ] = None  # last call time, updated during online service calls
@@ -137,7 +137,7 @@ class Vectorize(BaseModel):
     # Future extension for multimodal embedding:
     # images: Optional[List[Any]] = None  # PIL Images or image data for multimodal models
 
-    def get_vectorize_content(self) -> str:
+    def get_vectorize_content(self) -> Optional[str]:
         """Get vectorization content"""
         if self.content_format == ContentFormat.TEXT:
             return self.text
@@ -159,15 +159,6 @@ class ProcessedContext(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(
         default_factory=dict
     )  # metadata for storing structured entity information
-
-    def get_vectorize_content(self) -> str:
-        """Get vectorization content"""
-        if self.vectorize.content_format == ContentFormat.TEXT:
-            return self.vectorize.text
-        elif self.vectorize.content_format == ContentFormat.IMAGE:
-            return self.vectorize.image_path
-        else:
-            return ""
 
     def get_llm_context_string(self) -> str:
         """Get context information string for LLM input"""
@@ -277,8 +268,8 @@ class ProcessedContextModel(BaseModel):
     id: str
     title: Optional[str] = None
     summary: Optional[str] = None
-    keywords: List[str] = []
-    entities: List[str] = []
+    keywords: List[str] = Field(default_factory=list)
+    entities: List[str] = Field(default_factory=list)
     context_type: str
     confidence: int
     importance: int
@@ -291,9 +282,9 @@ class ProcessedContextModel(BaseModel):
     update_time: str
     event_time: str
     embedding: Optional[List[float]] = None
-    raw_contexts: List["RawContextModel"] = []
+    raw_contexts: List["RawContextModel"] = Field(default_factory=list)
     duration_count: int  # context duration count
-    is_happend: bool  # whether occurred
+    is_happened: bool  # whether occurred
     metadata: Optional[Dict[str, Any]] = None  # metadata information
     # Multi-user support fields
     user_id: Optional[str] = None  # User identifier
@@ -347,7 +338,7 @@ class ProcessedContextModel(BaseModel):
             event_time=pc.properties.event_time.strftime("%Y-%m-%d %H:%M:%S"),
             embedding=pc.vectorize.vector,
             raw_contexts=raw_contexts,
-            is_happend=pc.properties.is_happend,
+            is_happened=pc.properties.is_happened,
             metadata=pc.metadata,  # add metadata
             # Multi-user support fields
             user_id=pc.properties.user_id,

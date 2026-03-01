@@ -175,7 +175,7 @@ def generate_one_context(
         merge_count=0,
         duration_count=1,
         enable_merge=True,
-        is_happend=False,
+        is_happened=False,
         last_call_time=None,
         file_path=None,
         raw_type=None,

@@ -71,7 +71,7 @@ FIELD_SOURCE = "source"
 FIELD_IS_PROCESSED = "is_processed"
 FIELD_HAS_COMPRESSION = "has_compression"
 FIELD_ENABLE_MERGE = "enable_merge"
-FIELD_IS_HAPPEND = "is_happend"
+FIELD_IS_HAPPENED = "is_happened"
 FIELD_CALL_COUNT = "call_count"
 FIELD_MERGE_COUNT = "merge_count"
 FIELD_DURATION_COUNT = "duration_count"
@@ -640,7 +640,7 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_IS_PROCESSED, "FieldType": "bool"},
             {"FieldName": FIELD_HAS_COMPRESSION, "FieldType": "bool"},
             {"FieldName": FIELD_ENABLE_MERGE, "FieldType": "bool"},
-            {"FieldName": FIELD_IS_HAPPEND, "FieldType": "bool"},
+            {"FieldName": FIELD_IS_HAPPENED, "FieldType": "bool"},
             {"FieldName": FIELD_CALL_COUNT, "FieldType": "float32"},
             {"FieldName": FIELD_MERGE_COUNT, "FieldType": "float32"},
             {"FieldName": FIELD_DURATION_COUNT, "FieldType": "float32"},
@@ -712,7 +712,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_IS_PROCESSED,
                 FIELD_HAS_COMPRESSION,
                 FIELD_ENABLE_MERGE,
-                FIELD_IS_HAPPEND,
+                FIELD_IS_HAPPENED,
                 FIELD_CREATED_AT_TS,
                 FIELD_CREATE_TIME_TS,
                 FIELD_EVENT_TIME_TS,
