@@ -1309,79 +1309,29 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         try:
             conn = self._connection
-
-            # Calculate time bucket (hour precision)
             now = datetime.now()
             time_bucket = now.strftime("%Y-%m-%d %H:00:00")
+            success_inc = 1 if status == "success" else 0
+            error_inc = 0 if status == "success" else 1
 
-            # First, get existing stats if any
-            cursor = await conn.execute(
+            await conn.execute(
                 """
-                SELECT count, total_duration_ms, min_duration_ms, max_duration_ms, success_count, error_count
-                FROM monitoring_stage_timing
-                WHERE time_bucket = ? AND stage_name = ?
+                INSERT INTO monitoring_stage_timing
+                (time_bucket, stage_name, count, total_duration_ms, min_duration_ms,
+                 max_duration_ms, avg_duration_ms, success_count, error_count, metadata, created_at)
+                VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(time_bucket, stage_name) DO UPDATE SET
+                    count = count + 1,
+                    total_duration_ms = total_duration_ms + excluded.total_duration_ms,
+                    min_duration_ms = MIN(min_duration_ms, excluded.min_duration_ms),
+                    max_duration_ms = MAX(max_duration_ms, excluded.max_duration_ms),
+                    success_count = success_count + excluded.success_count,
+                    error_count = error_count + excluded.error_count,
+                    avg_duration_ms = (total_duration_ms + excluded.total_duration_ms) / (count + 1)
                 """,
-                (time_bucket, stage_name),
+                (time_bucket, stage_name, duration_ms, duration_ms, duration_ms, duration_ms,
+                 success_inc, error_inc, metadata, now),
             )
-            existing = await cursor.fetchone()
-
-            if existing:
-                # Update existing record with aggregated stats
-                old_count, old_total, old_min, old_max, old_success, old_error = existing
-                new_count = old_count + 1
-                new_total = old_total + duration_ms
-                new_min = min(old_min, duration_ms)
-                new_max = max(old_max, duration_ms)
-                new_avg = new_total // new_count
-                new_success = old_success + (1 if status == "success" else 0)
-                new_error = old_error + (0 if status == "success" else 1)
-
-                await conn.execute(
-                    """
-                    UPDATE monitoring_stage_timing
-                    SET count = ?,
-                        total_duration_ms = ?,
-                        min_duration_ms = ?,
-                        max_duration_ms = ?,
-                        avg_duration_ms = ?,
-                        success_count = ?,
-                        error_count = ?
-                    WHERE time_bucket = ? AND stage_name = ?
-                    """,
-                    (
-                        new_count,
-                        new_total,
-                        new_min,
-                        new_max,
-                        new_avg,
-                        new_success,
-                        new_error,
-                        time_bucket,
-                        stage_name,
-                    ),
-                )
-            else:
-                # Insert new record
-                await conn.execute(
-                    """
-                    INSERT INTO monitoring_stage_timing
-                    (time_bucket, stage_name, count, total_duration_ms, min_duration_ms, max_duration_ms, avg_duration_ms, success_count, error_count, metadata, created_at)
-                    VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        time_bucket,
-                        stage_name,
-                        duration_ms,
-                        duration_ms,
-                        duration_ms,
-                        duration_ms,
-                        1 if status == "success" else 0,
-                        0 if status == "success" else 1,
-                        metadata,
-                        now,
-                    ),
-                )
-
             await conn.commit()
             return True
         except Exception as e:
