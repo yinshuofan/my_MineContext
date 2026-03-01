@@ -265,8 +265,8 @@ class CompletionService:
             ]
             response = await generate_with_messages(messages)
 
-            if response and response.choices:
-                content = response.choices[0].message.content.strip()
+            if response:
+                content = response.strip()
 
                 # Parse multiple suggestions (separated by newlines)
                 continuations = [c.strip() for c in content.split("\n") if c.strip()]
