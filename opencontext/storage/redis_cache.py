@@ -860,6 +860,31 @@ class RedisCache:
             return {}
 
     # =========================================================================
+    # Pub/Sub Operations
+    # =========================================================================
+
+    async def publish(self, channel: str, message: str) -> int:
+        """Publish a message to a Redis channel. Channel is auto-prefixed."""
+        if not await self._ensure_async_client():
+            return 0
+        try:
+            return await self._async_client.publish(self._make_key(channel), message)
+        except Exception as e:
+            logger.error(f"Redis PUBLISH error: {e}")
+            return 0
+
+    async def create_pubsub(self):
+        """Create a raw redis.asyncio PubSub instance. Caller manages lifecycle.
+        Returns None if not connected."""
+        if not await self._ensure_async_client():
+            return None
+        try:
+            return self._async_client.pubsub()
+        except Exception as e:
+            logger.error(f"Redis create_pubsub error: {e}")
+            return None
+
+    # =========================================================================
     # Pipeline Support
     # =========================================================================
 

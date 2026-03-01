@@ -79,6 +79,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Error stopping task scheduler: {e}")
 
+    # Stop stream interrupt subscriber
+    try:
+        from opencontext.server.stream_interrupt import get_stream_interrupt_manager
+
+        await get_stream_interrupt_manager().close()
+    except Exception as e:
+        logger.warning(f"Error stopping stream interrupt manager: {e}")
+
     # Shutdown executor, waiting for in-flight thread pool tasks
     executor.shutdown(wait=True, cancel_futures=True)
 

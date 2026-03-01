@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from opencontext.server.middleware.auth import auth_dependency
+from opencontext.server.stream_interrupt import get_stream_interrupt_manager
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
 
@@ -22,20 +23,6 @@ logger = get_logger(__name__)
 
 # Use the same prefix and tags as agent_chat.py for grouping
 router = APIRouter(prefix="/api/agent/chat", tags=["agent_chat"])
-
-# Import active_streams from agent_chat to set interrupt flags
-# This will be initialized when agent_chat module is loaded
-try:
-    from opencontext.server.routes import agent_chat
-
-    def get_active_streams():
-        return agent_chat.active_streams
-
-except ImportError:
-    # Fallback if agent_chat is not loaded yet
-    def get_active_streams():
-        return {}
-
 
 # --- Pydantic Models ---
 # Based on API spec 4.2.2 - 4.2.7
@@ -294,11 +281,10 @@ async def interrupt_message_generation(
         storage = get_storage()
         message_id = int(mid)
 
-        # Set in-memory interrupt flag for immediate effect
-        active_streams = get_active_streams()
-        if message_id in active_streams:
-            active_streams[message_id] = True
-            logger.info(f"Set interrupt flag for active message {message_id}")
+        # Set interrupt flag via manager (propagates across workers via Redis Pub/Sub)
+        interrupt_mgr = get_stream_interrupt_manager()
+        await interrupt_mgr.interrupt(message_id)
+        logger.info(f"Set interrupt flag for message {message_id}")
 
         # Also update database status
         success = storage.mark_message_finished(message_id=message_id, status="cancelled")

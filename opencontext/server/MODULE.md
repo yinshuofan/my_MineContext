@@ -521,7 +521,7 @@ OpenContext._handle_processed_context()
 
 7. **Push endpoints schedule tasks via BackgroundTasks**: Both buffer and direct modes use `background_tasks.add_task()` with the unified `_schedule_user_task(task_type, ...)` helper. Scheduling runs post-response and must not fail the request.
 
-8. **`active_streams` dict in `agent_chat.py`** is process-local in-memory state for interrupt flags. Not shared across workers in multi-process mode.
+8. **Stream interrupt uses `StreamInterruptManager`** (`stream_interrupt.py`). A singleton per worker with Redis Pub/Sub for cross-worker propagation. One persistent `PSUBSCRIBE stream:interrupt:*` pattern subscriber per worker handles all active streams. `register()` / `is_interrupted()` (sync) / `interrupt()` / `unregister()` are the public API. Falls back to local-only dict when Redis is unavailable. Access via `get_stream_interrupt_manager()`.
 
 9. **Auth is a dependency, not middleware**: `auth_dependency = Depends(verify_api_key)` is added per-route, not as ASGI middleware. This allows per-route opt-in.
 

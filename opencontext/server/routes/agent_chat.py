@@ -21,6 +21,7 @@ from opencontext.context_consumption.context_agent import ContextAgent
 from opencontext.context_consumption.context_agent.models import WorkflowStage
 from opencontext.context_consumption.context_agent.models.enums import EventType
 from opencontext.server.middleware.auth import auth_dependency
+from opencontext.server.stream_interrupt import get_stream_interrupt_manager
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
 
@@ -30,10 +31,6 @@ router = APIRouter(prefix="/api/agent", tags=["agent_chat"])
 
 # Global Context Agent instance
 agent_instance = None
-
-# Interrupt flags for active streaming messages
-# Key: message_id, Value: True if interrupted
-active_streams = {}
 
 
 def get_agent():
@@ -123,6 +120,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
         user_message_id = None
         assistant_message_id = None
         storage = None
+        interrupt_mgr = get_stream_interrupt_manager()
 
         try:
             agent = get_agent()
@@ -162,7 +160,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                 )
                 logger.info(f"Created assistant streaming message {assistant_message_id}")
                 # Register this message as an active stream
-                active_streams[assistant_message_id] = False
+                await interrupt_mgr.register(assistant_message_id)
 
             # Send session start event with assistant_message_id
             yield f"data: {json.dumps({'type': 'session_start', 'session_id': request.session_id, 'assistant_message_id': assistant_message_id}, ensure_ascii=False)}\n\n"
@@ -181,7 +179,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
 
             async for event in agent.process_stream(**args):
                 # Check interrupt flag (in-memory, no database query)
-                if assistant_message_id and active_streams.get(assistant_message_id):
+                if assistant_message_id and interrupt_mgr.is_interrupted(assistant_message_id):
                     logger.info(f"Message {assistant_message_id} was interrupted, stopping stream")
                     interrupted = True
                     yield f"data: {json.dumps({'type': 'interrupted', 'content': 'Message generation was interrupted'}, ensure_ascii=False)}\n\n"
@@ -291,8 +289,8 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
 
         finally:
             # Clean up the interrupt flag when stream ends
-            if assistant_message_id and assistant_message_id in active_streams:
-                del active_streams[assistant_message_id]
+            if assistant_message_id:
+                await interrupt_mgr.unregister(assistant_message_id)
                 logger.debug(f"Cleaned up interrupt flag for message {assistant_message_id}")
 
     return StreamingResponse(
