@@ -186,6 +186,10 @@ Key lock methods:
 Lua script methods:
 - `rpush_expire_llen(key, value, ttl) -> int` -- atomic RPUSH + EXPIRE + LLEN in a single round-trip. Returns new list length. Used by `TextChatCapture.push_message()` to reduce 3 Redis calls to 1.
 
+Pub/Sub methods:
+- `publish(channel, message) -> int` -- publish to a Redis channel (auto-prefixed). Returns number of subscribers that received the message. Returns 0 if not connected.
+- `create_pubsub() -> Optional[PubSub]` -- create a raw `redis.asyncio` PubSub instance. Caller manages lifecycle (subscribe, get_message loop, close). Channel names must be constructed with `config.key_prefix` manually. Returns None if not connected.
+
 Pipeline support:
 - `pipeline(transaction=False)` -- async context manager yielding a `_PrefixedPipeline` (auto-prefixes keys). Supports `hset()`, `expire()`, `zadd()`, `execute()`. Used by `RedisTaskScheduler.schedule_user_task()` to batch writes.
 

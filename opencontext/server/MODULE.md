@@ -10,6 +10,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `api.py` | Main `APIRouter` that aggregates all route sub-routers |
 | `component_initializer.py` | `ComponentInitializer` -- initializes capture components, processors, merger, task scheduler |
 | `context_operations.py` | `ContextOperations` -- CRUD and vector search operations delegated from `OpenContext` |
+| `stream_interrupt.py` | `StreamInterruptManager` singleton -- cross-worker stream interrupt via Redis Pub/Sub, falls back to local dict |
 | `utils.py` | `get_context_lab(request) -> OpenContext` dependency, `convert_resp()` standard JSON helper |
 | `__init__.py` | Package marker (empty) |
 | **routes/** | |
