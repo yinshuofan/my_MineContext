@@ -7,7 +7,7 @@
 Server component: monitoring routes - Monitoring API endpoints
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -187,7 +187,7 @@ async def monitoring_health(_auth: str = auth_dependency):
     try:
         monitor = get_monitor()
         uptime_seconds = (
-            int((datetime.now() - monitor._start_time).total_seconds())
+            int((datetime.now(tz=timezone.utc) - monitor._start_time).total_seconds())
             if monitor._start_time
             else 0
         )
