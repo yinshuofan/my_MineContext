@@ -12,7 +12,9 @@ import asyncio
 import time
 from typing import Any, Dict, List, Optional, Set
 
-from loguru import logger
+from opencontext.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 from opencontext.scheduler.base import (
     ITaskScheduler,
