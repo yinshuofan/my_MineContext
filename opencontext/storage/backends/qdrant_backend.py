@@ -905,7 +905,10 @@ class QdrantBackend(IVectorStorageBackend):
             return []
 
     async def get_by_ids(
-        self, ids: List[str], context_type: Optional[str] = None
+        self,
+        ids: List[str],
+        context_type: Optional[str] = None,
+        need_vector: bool = False,
     ) -> List[ProcessedContext]:
         if not self._initialized:
             return []
@@ -931,11 +934,11 @@ class QdrantBackend(IVectorStorageBackend):
                     collection_name=collection_name,
                     ids=uuid_ids,
                     with_payload=True,
-                    with_vectors=False,
+                    with_vectors=need_vector,
                 )
 
                 for point in points:
-                    context = self._qdrant_result_to_context(point, need_vector=False)
+                    context = self._qdrant_result_to_context(point, need_vector=need_vector)
                     if context:
                         results.append(context)
 
@@ -944,3 +947,26 @@ class QdrantBackend(IVectorStorageBackend):
                 continue
 
         return results
+
+    async def batch_set_parent_id(
+        self,
+        children_ids: List[str],
+        parent_id: str,
+        context_type: str,
+    ) -> int:
+        if not self._initialized or not children_ids:
+            return 0
+        collection_name = self._collections.get(context_type)
+        if not collection_name:
+            return 0
+        uuid_ids = [self._string_to_uuid(cid) for cid in children_ids]
+        try:
+            await self._client.set_payload(
+                collection_name=collection_name,
+                payload={"parent_id": parent_id},
+                points=uuid_ids,
+            )
+            return len(children_ids)
+        except Exception as e:
+            logger.warning(f"batch_set_parent_id failed: {e}")
+            return 0

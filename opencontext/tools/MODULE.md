@@ -51,7 +51,7 @@ class BaseTool(ABC):
     @classmethod
     def get_parameters(cls) -> Dict[str, Any]  # JSON Schema for parameters -- NOT abstract
     @abstractmethod
-    def execute(self, **kwargs) -> Dict[str, Any]  # Run the tool -- ONLY abstract method
+    async def execute(self, **kwargs) -> Dict[str, Any]  # Run the tool -- ONLY abstract method
     @classmethod
     def get_definition(cls) -> Dict[str, Any]      # Returns {"name", "description", "parameters"}
 ```
@@ -63,8 +63,7 @@ Central dispatcher. Holds a `_tools_map: Dict[str, BaseTool]` mapping tool names
 ```python
 class ToolsExecutor:
     def __init__(self)                    # Builds _tools_map with all 6 tool instances
-    def run(self, tool_name: str, tool_input: Dict) -> Any            # Sync execution
-    async def run_async(self, tool_name: str, tool_input: Dict) -> Any  # Async via asyncio.to_thread
+    async def run_async(self, tool_name: str, tool_input: Dict) -> Any  # Async: await tool.execute(**kwargs)
     async def batch_run_tools_async(self, tool_calls: List[Dict[str, Any]]) -> Any  # Parallel via asyncio.gather; expects OpenAI tool_call objects (with .function.name, .function.arguments attrs)
     def _validate_input(self, tool_input) -> Tuple[Dict|None, Dict|None]  # Normalize/validate
     def _handle_unknown_tool(self, tool_name: str) -> Dict[str, Any]      # Fuzzy suggestions via difflib
@@ -94,7 +93,7 @@ class BaseContextRetrievalTool(BaseTool):
     def _execute_search(self, query: Optional[str], filters: ContextRetrievalFilter, top_k: int = 20) -> List[Tuple[ProcessedContext, float]]
     def _format_context_result(self, context: ProcessedContext, score: float, additional_fields: Dict = None) -> Dict[str, Any]
     def _format_results(self, search_results: List[Tuple[ProcessedContext, float]]) -> List[Dict[str, Any]]
-    def execute(self, **kwargs) -> List[Dict[str, Any]]  # Full pipeline: parse kwargs -> build filters -> search -> format
+    async def execute(self, **kwargs) -> List[Dict[str, Any]]  # Full pipeline: parse kwargs -> build filters -> search -> format
 ```
 
 **Dataclasses used by BaseContextRetrievalTool:**
@@ -135,7 +134,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
     CONTEXT_TYPE = ContextType.KNOWLEDGE
 
     def _search_l0_events(self, query: str, filters: ContextRetrievalFilter, top_k: int) -> List[Tuple[ProcessedContext, float]]
-    def execute(self, **kwargs) -> List[Dict[str, Any]]  # Custom: knowledge search + L0 event search -> merge -> dedup -> sort
+    async def execute(self, **kwargs) -> List[Dict[str, Any]]  # Custom: knowledge search + L0 event search -> merge -> dedup -> sort
 ```
 
 ### HierarchicalEventTool -- `retrieval_tools/hierarchical_event_tool.py`
@@ -161,7 +160,7 @@ class HierarchicalEventTool(BaseTool):
     def _direct_l0_search(self, query: str, user_id: Optional[str], device_id: Optional[str], agent_id: Optional[str], filters: Dict, top_k: int) -> List[Tuple[ProcessedContext, float, int]]
     @staticmethod
     def _format_result(context: ProcessedContext, score: float, hierarchy_level: int) -> Dict[str, Any]
-    def execute(self, **kwargs) -> List[Dict[str, Any]]
+    async def execute(self, **kwargs) -> List[Dict[str, Any]]
 ```
 
 **Retrieval algorithm (execute):**
@@ -181,7 +180,7 @@ Standalone `BaseTool` subclass for relational DB queries. Operation-based dispat
 
 ```python
 class ProfileRetrievalTool(BaseTool):
-    def execute(self, **kwargs) -> Dict[str, Any]                          # Dispatch by "operation" param
+    async def execute(self, **kwargs) -> Dict[str, Any]                     # Dispatch by "operation" param
     def _get_storage(self)                                                 # Get storage instance; raises RuntimeError if unavailable
     def _handle_get_profile(self, params: Dict[str, Any]) -> Dict[str, Any]     # storage.get_profile()
     def _handle_find_entity(self, params: Dict[str, Any]) -> Dict[str, Any]     # storage.get_entity()
@@ -201,7 +200,7 @@ Entity management tool with 4 operations + a `match_entity()` method used by oth
 ```python
 class ProfileEntityTool(BaseTool):
     def __init__(self, user_id="default", device_id="default", agent_id="default")
-    def execute(self, **kwargs) -> Dict[str, Any]                   # Dispatch by "operation" param
+    async def execute(self, **kwargs) -> Dict[str, Any]              # Dispatch by "operation" param
     def _handle_find_exact(self, params, user_id, device_id, agent_id) -> Dict
     def _handle_find_similar(self, params, user_id, device_id, agent_id) -> Dict
     def _handle_list_entities(self, params, user_id, device_id, agent_id) -> Dict
@@ -222,7 +221,7 @@ Internet search tool using DuckDuckGo (`ddgs` library). Not a retrieval tool -- 
 ```python
 class WebSearchTool(BaseTool):
     def __init__(self)                                          # Reads config from tools.operation_tools.web_search_tool
-    def execute(self, query: str, max_results: int = None, lang: str = "zh-cn", **kwargs) -> Dict[str, Any]
+    async def execute(self, query: str, max_results: int = None, lang: str = "zh-cn", **kwargs) -> Dict[str, Any]
     def _search_duckduckgo(self, query: str, max_results: int, lang: str) -> List[Dict[str, Any]]
     def _get_region(self, lang: str) -> str
 ```
@@ -260,7 +259,7 @@ ToolsExecutor.batch_run_tools_async(tool_calls)
   │     │
   │     ├── Looks up tool name in _tools_map
   │     ├── _validate_input() normalizes input
-  │     └── asyncio.to_thread(tool.execute, **kwargs)
+  │     └── await tool.execute(**kwargs)
   │
   ▼
 Results: List[(tool_call_id, function_name, result_dict)]
@@ -383,6 +382,6 @@ Same as above, but place in `operation_tools/` and add to `WEB_SEARCH_TOOL_DEFIN
 - **Tool names are stable identifiers**: The string returned by `get_name()` is the key in `ToolsExecutor._tools_map` and appears in LLM function-call responses. Changing a tool name is a breaking change for the intelligent search strategy.
 - **Return format**: Retrieval tools return `List[Dict[str, Any]]`. Operation/profile tools return `Dict[str, Any]` with a `success` boolean. Errors are returned inline (not raised), except for fatal errors.
 - **Entity normalization**: `BaseContextRetrievalTool._build_filters()` calls `ProfileEntityTool.match_entity()` to normalize entity names before querying. This means entity filters go through exact-match-then-fuzzy-search before reaching the storage layer.
-- **Thread safety**: `execute()` runs via `asyncio.to_thread()` in the async path. Tools must not share mutable state across calls. Storage connections are per-thread (see `_get_connection()` pattern in storage module).
+- **Thread safety**: `execute()` is `async` and called via `await` in `run_async()`. Tools must not share mutable state across calls. Storage connections are per-thread (see `_get_connection()` pattern in storage module).
 - **DocumentManagementTool is not an LLM tool**: It is not registered in `tool_definitions.py` or `ToolsExecutor`. It is used internally for document admin operations.
 - **Entity filtering is not yet effective at the storage layer**: `_build_filters()` normalizes entity names via `ProfileEntityTool.match_entity()`, but both VikingDB and Qdrant backends skip the `entities` filter key because entities are stored as JSON-serialized strings. To enable entity filtering, the storage format must be changed to native lists.

@@ -1008,7 +1008,22 @@ class UnifiedStorage:
 
     @_require_backend("_vector_backend", default=[])
     async def get_contexts_by_ids(
-        self, ids: List[str], context_type: Optional[str] = None
+        self,
+        ids: List[str],
+        context_type: Optional[str] = None,
+        need_vector: bool = False,
     ) -> List[ProcessedContext]:
         """Get contexts by IDs → vector DB"""
-        return await self._vector_backend.get_by_ids(ids, context_type)
+        return await self._vector_backend.get_by_ids(ids, context_type, need_vector=need_vector)
+
+    @_require_backend("_vector_backend", default=0)
+    async def batch_set_parent_id(
+        self,
+        children_ids: List[str],
+        parent_id: str,
+        context_type: str,
+    ) -> int:
+        """Set parent_id on child contexts. Delegates to vector backend."""
+        return await self._vector_backend.batch_set_parent_id(
+            children_ids, parent_id, context_type
+        )

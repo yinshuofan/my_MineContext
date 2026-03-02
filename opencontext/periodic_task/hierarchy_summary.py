@@ -317,86 +317,37 @@ class HierarchySummaryTask(BasePeriodicTask):
     @staticmethod
     def _format_weekly_hierarchical(
         l1_summaries: List[ProcessedContext],
-        l0_events_by_day: Dict[str, List[ProcessedContext]],
     ) -> str:
         """
-        Format weekly content hierarchically: L1 daily summaries + L0 raw events per day.
-        分层格式化每周内容：L1 每日摘要 + 每天的 L0 原始事件。
+        Format weekly content from L1 daily summaries.
+        从 L1 每日摘要格式化每周内容。
 
-        For L2 (weekly) summary generation. Includes both summary and raw event detail.
+        For L2 (weekly) summary generation. Each level only reads its
+        immediate children — L2 reads L1, not L0.
 
         Args:
             l1_summaries: L1 daily summary contexts for the week
-            l0_events_by_day: Dict mapping date_str -> list of L0 events for that day
 
         Returns:
             Formatted hierarchical text string
         """
-        # Build a map from date_str -> L1 summary
         l1_by_day: Dict[str, ProcessedContext] = {}
         for ctx in l1_summaries:
             tb = ctx.properties.time_bucket
             if tb:
                 l1_by_day[tb] = ctx
 
-        # Collect all day keys (from both L1 and L0)
-        all_days = sorted(set(list(l1_by_day.keys()) + list(l0_events_by_day.keys())))
-
         parts = []
-        for day_str in all_days:
-            # Determine day-of-week label
+        for day_str in sorted(l1_by_day.keys()):
             try:
                 day_date = datetime.date.fromisoformat(day_str)
                 dow = day_date.strftime("%a")
             except (ValueError, TypeError):
                 dow = ""
 
-            l1_ctx = l1_by_day.get(day_str)
-            l0_list = l0_events_by_day.get(day_str, [])
-
-            if l1_ctx:
-                ed = l1_ctx.extracted_data
-                parts.append(f"=== Daily Summary: {day_str} ({dow}) ===")
-                parts.append(ed.summary if ed.summary else "(no summary)")
-                if l0_list:
-                    parts.append("")
-                    parts.append("  --- Raw Events ---")
-                    sorted_l0 = sorted(
-                        l0_list,
-                        key=lambda c: (
-                            c.properties.event_time.isoformat() if c.properties.event_time else ""
-                        ),
-                    )
-                    for j, evt in enumerate(sorted_l0, 1):
-                        evd = evt.extracted_data
-                        line = [f"  [{j}]"]
-                        if evd.title:
-                            line.append(f"Title: {evd.title}")
-                        if evt.properties.event_time:
-                            line.append(f"Time: {evt.properties.event_time.strftime('%H:%M')}")
-                        if evd.summary:
-                            line.append(f"Summary: {evd.summary}")
-                        parts.append(" | ".join(line))
-            elif l0_list:
-                # Unsummarized day — only L0 events exist
-                parts.append(f"=== Unsummarized Day: {day_str} ({dow}) ===")
-                sorted_l0 = sorted(
-                    l0_list,
-                    key=lambda c: (
-                        c.properties.event_time.isoformat() if c.properties.event_time else ""
-                    ),
-                )
-                for j, evt in enumerate(sorted_l0, 1):
-                    evd = evt.extracted_data
-                    line = [f"  [{j}]"]
-                    if evd.title:
-                        line.append(f"Title: {evd.title}")
-                    if evt.properties.event_time:
-                        line.append(f"Time: {evt.properties.event_time.strftime('%H:%M')}")
-                    if evd.summary:
-                        line.append(f"Summary: {evd.summary}")
-                    parts.append(" | ".join(line))
-
+            ed = l1_by_day[day_str].extracted_data
+            parts.append(f"=== Daily Summary: {day_str} ({dow}) ===")
+            parts.append(ed.summary if ed.summary else "(no summary)")
             parts.append("")  # blank line between days
 
         return "\n".join(parts).strip()
@@ -600,7 +551,6 @@ class HierarchySummaryTask(BasePeriodicTask):
     async def _batch_summarize_weekly(
         self,
         l1_contexts: List[ProcessedContext],
-        l0_events_by_day: Dict[str, List[ProcessedContext]],
         time_bucket: str,
     ) -> Optional[str]:
         """
@@ -609,13 +559,12 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         Args:
             l1_contexts: L1 daily summary contexts for the week
-            l0_events_by_day: Dict mapping date_str -> L0 events
             time_bucket: Week string like "2026-W08"
 
         Returns:
             Summary text or None
         """
-        formatted_text = self._format_weekly_hierarchical(l1_contexts, l0_events_by_day)
+        formatted_text = self._format_weekly_hierarchical(l1_contexts)
         total_tokens = _estimate_tokens(formatted_text) + _PROMPT_OVERHEAD_TOKENS
 
         if total_tokens <= _MAX_INPUT_TOKENS:
@@ -636,7 +585,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             if tb:
                 l1_by_day[tb] = ctx
 
-        all_days = sorted(set(list(l1_by_day.keys()) + list(l0_events_by_day.keys())))
+        all_days = sorted(l1_by_day.keys())
         # Split days into groups of 2-3
         day_groups: List[List[str]] = []
         for i in range(0, len(all_days), 3):
@@ -645,8 +594,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         sub_summaries = []
         for idx, day_group in enumerate(day_groups):
             group_l1 = [l1_by_day[d] for d in day_group if d in l1_by_day]
-            group_l0 = {d: l0_events_by_day[d] for d in day_group if d in l0_events_by_day}
-            group_text = self._format_weekly_hierarchical(group_l1, group_l0)
+            group_text = self._format_weekly_hierarchical(group_l1)
             batch_info = f"{idx + 1}/{len(day_groups)}"
             sub_summary = await self._call_llm_for_summary(
                 formatted_content=group_text,
@@ -854,11 +802,11 @@ class HierarchySummaryTask(BasePeriodicTask):
         agent_id: Optional[str] = None,
     ) -> Optional[ProcessedContext]:
         """
-        Generate a weekly summary (Level 2) from Level 1 daily summaries + Level 0 raw events.
-        从 Level 1 日摘要 + Level 0 原始事件生成每周摘要 (Level 2)。
+        Generate a weekly summary (Level 2) from Level 1 daily summaries.
+        从 Level 1 日摘要生成每周摘要 (Level 2)。
 
-        Higher-level summaries now include content from both immediate children (L1) and
-        grandchildren (L0) for richer context.
+        Each hierarchy level only reads its immediate children:
+        L2 reads L1 daily summaries, not L0 raw events.
 
         Args:
             user_id: User identifier
@@ -913,64 +861,16 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         l1_contexts = [ctx for ctx, _score in l1_results] if l1_results else []
 
-        # Also fetch L0 events for the entire week to enrich the weekly summary
-        # 同时获取整周的 L0 事件以丰富周摘要
-        week_start_ts = int(
-            datetime.datetime(
-                week_start.year,
-                week_start.month,
-                week_start.day,
-                tzinfo=datetime.timezone.utc,
-            ).timestamp()
-        )
-        week_end_ts = int(
-            datetime.datetime(
-                week_end.year,
-                week_end.month,
-                week_end.day,
-                23,
-                59,
-                59,
-                tzinfo=datetime.timezone.utc,
-            ).timestamp()
-        )
-
-        l0_filters = {
-            "event_time_ts": {"$gte": week_start_ts, "$lte": week_end_ts},
-            "hierarchy_level": {"$gte": 0, "$lte": 0},
-        }
-        l0_dict = await storage.get_all_processed_contexts(
-            context_types=[ContextType.EVENT.value],
-            limit=500,
-            filter=l0_filters,
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-        )
-        l0_events = l0_dict.get(ContextType.EVENT.value, [])
-
-        # Group L0 events by day
-        # 按天分组 L0 事件
-        l0_events_by_day: Dict[str, List[ProcessedContext]] = {}
-        for evt in l0_events:
-            if evt.properties.event_time:
-                day_key = evt.properties.event_time.strftime("%Y-%m-%d")
-                l0_events_by_day.setdefault(day_key, []).append(evt)
-
-        if not l1_contexts and not l0_events:
-            logger.info(f"No L1/L0 data found for user={user_id}, week={week_str}")
+        if not l1_contexts:
+            logger.info(f"No L1 data found for user={user_id}, week={week_str}")
             return None
 
-        # Collect children_ids from both L1 and L0
         children_ids = [ctx.id for ctx in l1_contexts]
-        for evts in l0_events_by_day.values():
-            children_ids.extend(evt.id for evt in evts)
 
-        # Generate summary with hierarchical content and overflow handling
-        # 使用分层内容和溢出处理生成摘要
+        # Generate summary with overflow handling
+        # 使用溢出处理生成摘要
         summary_text = await self._batch_summarize_weekly(
             l1_contexts=l1_contexts,
-            l0_events_by_day=l0_events_by_day,
             time_bucket=week_str,
         )
         if not summary_text:
@@ -1415,6 +1315,21 @@ class HierarchySummaryTask(BasePeriodicTask):
                     f"Stored {level_name} summary id={summary_id}, "
                     f"time_bucket={time_bucket}, children={len(children_ids)}"
                 )
+                # Backfill parent_id on child contexts
+                if children_ids:
+                    try:
+                        updated = await storage.batch_set_parent_id(
+                            children_ids, summary_id, ContextType.EVENT.value
+                        )
+                        logger.info(
+                            f"Set parent_id on {updated}/{len(children_ids)} children "
+                            f"for {level_name} summary {summary_id}"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to backfill parent_id for {level_name} summary: {e}"
+                        )
+                        # Non-fatal: summary is already stored, parent_id is a bonus link
                 return context
             else:
                 logger.error(f"Failed to upsert {level_name} summary to storage")

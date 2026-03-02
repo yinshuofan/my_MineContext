@@ -309,17 +309,43 @@ class IVectorStorageBackend(IStorageBackend):
 
     @abstractmethod
     async def get_by_ids(
-        self, ids: List[str], context_type: Optional[str] = None
+        self,
+        ids: List[str],
+        context_type: Optional[str] = None,
+        need_vector: bool = False,
     ) -> List[ProcessedContext]:
         """Get contexts by their IDs
 
         Args:
             ids: List of context IDs to retrieve
             context_type: Optional context type for routing to correct collection
+            need_vector: Whether to include vectors in results
 
         Returns:
             List of ProcessedContext objects
         """
+
+    async def batch_set_parent_id(
+        self,
+        children_ids: List[str],
+        parent_id: str,
+        context_type: str,
+    ) -> int:
+        """Set parent_id on multiple child contexts. Returns count of updated contexts.
+
+        Default implementation: fetch with vectors -> modify -> batch upsert.
+        Backends with efficient partial-update support (e.g. Qdrant set_payload)
+        should override this method.
+        """
+        if not children_ids:
+            return 0
+        contexts = await self.get_by_ids(children_ids, context_type, need_vector=True)
+        if not contexts:
+            return 0
+        for ctx in contexts:
+            ctx.properties.parent_id = parent_id
+        await self.batch_upsert_processed_context(contexts)
+        return len(contexts)
 
 
 class IDocumentStorageBackend(IStorageBackend):

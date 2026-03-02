@@ -11,10 +11,11 @@ and improve retrieval performance.
 import time
 from typing import Any, Optional
 
-from loguru import logger
-
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
 from opencontext.scheduler.base import TriggerMode
+from opencontext.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class MemoryCompressionTask(BasePeriodicTask):
@@ -54,6 +55,10 @@ class MemoryCompressionTask(BasePeriodicTask):
     def set_context_merger(self, context_merger: Any) -> None:
         """Set the context merger instance"""
         self._context_merger = context_merger
+
+    def validate_context(self, context: TaskContext) -> bool:
+        """Validate that user_id is provided"""
+        return bool(context.user_id)
 
     async def execute(self, context: TaskContext) -> TaskResult:
         """
@@ -141,6 +146,9 @@ def create_compression_handler(context_merger: Any):
             agent_id=agent_id,
             task_type="memory_compression",
         )
+        if not task.validate_context(context):
+            logger.warning(f"Invalid context for memory compression: user_id={user_id}")
+            return False
         result = await task.execute(context)
         return result.success
 
