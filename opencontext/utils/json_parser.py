@@ -59,48 +59,10 @@ def parse_json_from_response(response: str) -> Optional[Any]:
         except json.JSONDecodeError:
             pass
 
-    # Strategy 4: Parse after fixing common issues
-    try:
-        # Fix internal unescaped quote issues
-        fixed_response = _fix_json_quotes(response)
-        return json.loads(fixed_response)
-    except json.JSONDecodeError:
-        pass
-
-    # Strategy 5: Use json_repair library
+    # Strategy 4: Use json_repair library
     try:
         return json_repair.loads(response)
     except (json.JSONDecodeError, ValueError):
         logger.error(f"Failed to parse JSON from response: {response}")
 
     return None
-
-
-def _fix_json_quotes(json_str: str) -> str:
-    """
-    Fix quote issues in JSON string
-    """
-    # Match unescaped quotes in string values
-    # This is a simple fix strategy, may not be perfect but handles common cases
-
-    # First handle obvious unescaped quote issues
-    # Example: "title":"Use\"codex\"tool" -> "title":"Use\"codex\"tool"
-
-    import re
-
-    # Find all string values and fix quotes in them
-    def fix_quotes_in_match(match):
-        key = match.group(1)
-        value = match.group(2)
-        # Escape quotes in value
-        fixed_value = value.replace('"', '\\"')
-        return f'"{key}":"{fixed_value}"'
-
-    # Match "key":"value" pattern and fix quotes in value
-    pattern = r'"([^"]+)":"([^"]*(?:"[^"]*)*)"'
-    try:
-        fixed = re.sub(pattern, fix_quotes_in_match, json_str)
-        return fixed
-    except Exception as e:
-        logger.debug(f"Regex JSON quote fix failed, returning original: {e}")
-        return json_str
