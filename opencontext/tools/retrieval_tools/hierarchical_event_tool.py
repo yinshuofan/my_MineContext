@@ -194,6 +194,8 @@ class HierarchicalEventTool(BaseTool):
         time_bucket_end: Optional[str],
         user_id: Optional[str],
         top_k: int,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         """Search summary contexts at a given hierarchy level."""
         try:
@@ -203,6 +205,8 @@ class HierarchicalEventTool(BaseTool):
                 time_bucket_start=time_bucket_start,
                 time_bucket_end=time_bucket_end,
                 user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
                 top_k=top_k,
             )
         except Exception as e:
@@ -408,13 +412,17 @@ class HierarchicalEventTool(BaseTool):
                     time_bucket_end=bucket_end,
                     user_id=user_id,
                     top_k=top_k,
+                    device_id=device_id,
+                    agent_id=agent_id,
                 )
                 all_summary_hits.extend(hits)
 
             # Drill down from summaries to L0 events
             drilldown_results: List[Tuple[ProcessedContext, float, int]] = []
             if all_summary_hits:
-                drilldown_results = await self._drill_down_children(all_summary_hits, user_id=user_id)
+                drilldown_results = await self._drill_down_children(
+                    all_summary_hits, user_id=user_id
+                )
 
             # ── Path 2: Direct L0 semantic search (fallback) ─────────
             direct_l0_results = await self._direct_l0_search(

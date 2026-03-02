@@ -990,6 +990,8 @@ class UnifiedStorage:
         time_bucket_start: Optional[str] = None,
         time_bucket_end: Optional[str] = None,
         user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         top_k: int = 20,
     ) -> List[Tuple[ProcessedContext, float]]:
         """Search by hierarchy level and time bucket → vector DB"""
@@ -999,6 +1001,8 @@ class UnifiedStorage:
             time_bucket_start=time_bucket_start,
             time_bucket_end=time_bucket_end,
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
             top_k=top_k,
         )
 

@@ -816,6 +816,8 @@ class QdrantBackend(IVectorStorageBackend):
         time_bucket_start: Optional[str] = None,
         time_bucket_end: Optional[str] = None,
         user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         top_k: int = 20,
     ) -> List[Tuple[ProcessedContext, float]]:
         if not self._initialized:
@@ -839,6 +841,20 @@ class QdrantBackend(IVectorStorageBackend):
                 models.FieldCondition(
                     key="user_id",
                     match=models.MatchValue(value=user_id),
+                )
+            )
+        if device_id:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="device_id",
+                    match=models.MatchValue(value=device_id),
+                )
+            )
+        if agent_id:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="agent_id",
+                    match=models.MatchValue(value=agent_id),
                 )
             )
 

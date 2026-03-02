@@ -195,10 +195,13 @@ class HierarchySummaryTask(BasePeriodicTask):
         """
         start_time = time.time()
         user_id = context.user_id
+        device_id = context.device_id
+        agent_id = context.agent_id
         today = datetime.date.today()
 
         logger.info(
-            f"Starting hierarchy summary generation for user={user_id}, date={today.isoformat()}"
+            f"Starting hierarchy summary generation for user={user_id}, "
+            f"device={device_id}, agent={agent_id}, date={today.isoformat()}"
         )
 
         generated_summaries = []
@@ -209,7 +212,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         yesterday = today - datetime.timedelta(days=1)
         yesterday_str = yesterday.isoformat()  # e.g. "2026-02-20"
         try:
-            daily_result = await self._generate_daily_summary(user_id, yesterday_str)
+            daily_result = await self._generate_daily_summary(
+                user_id, yesterday_str, device_id=device_id, agent_id=agent_id
+            )
             if daily_result:
                 generated_summaries.append(f"daily:{yesterday_str}")
                 logger.info(f"Daily summary generated for user={user_id}, date={yesterday_str}")
@@ -224,7 +229,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         iso_year, iso_week, _ = prev_week_day.isocalendar()
         week_str = f"{iso_year}-W{iso_week:02d}"
         try:
-            weekly_result = await self._generate_weekly_summary(user_id, week_str)
+            weekly_result = await self._generate_weekly_summary(
+                user_id, week_str, device_id=device_id, agent_id=agent_id
+            )
             if weekly_result:
                 generated_summaries.append(f"weekly:{week_str}")
                 logger.info(f"Weekly summary generated for user={user_id}, week={week_str}")
@@ -239,7 +246,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         last_day_prev_month = first_of_month - datetime.timedelta(days=1)
         month_str = last_day_prev_month.strftime("%Y-%m")  # e.g. "2026-01"
         try:
-            monthly_result = await self._generate_monthly_summary(user_id, month_str)
+            monthly_result = await self._generate_monthly_summary(
+                user_id, month_str, device_id=device_id, agent_id=agent_id
+            )
             if monthly_result:
                 generated_summaries.append(f"monthly:{month_str}")
                 logger.info(f"Monthly summary generated for user={user_id}, month={month_str}")
@@ -739,7 +748,13 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     # ── Private methods for each hierarchy level ──
 
-    async def _generate_daily_summary(self, user_id: str, date_str: str) -> Optional[ProcessedContext]:
+    async def _generate_daily_summary(
+        self,
+        user_id: str,
+        date_str: str,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Optional[ProcessedContext]:
         """
         Generate a daily summary (Level 1) from Level 0 raw events.
         从 Level 0 原始事件生成每日摘要 (Level 1)。
@@ -747,6 +762,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         Args:
             user_id: User identifier
             date_str: Date string in ISO format, e.g. "2026-02-21"
+            device_id: Device identifier for multi-device isolation
+            agent_id: Agent identifier for multi-agent isolation
 
         Returns:
             ProcessedContext of the generated daily summary, or None if no events found
@@ -764,6 +781,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             time_bucket_start=date_str,
             time_bucket_end=date_str,
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
             top_k=1,
         )
         if existing:
@@ -793,6 +812,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             limit=500,
             filter=l0_filters,
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
         )
         contexts = l0_dict.get(ContextType.EVENT.value, [])
 
@@ -821,9 +842,17 @@ class HierarchySummaryTask(BasePeriodicTask):
             level=1,
             time_bucket=date_str,
             children_ids=children_ids,
+            device_id=device_id,
+            agent_id=agent_id,
         )
 
-    async def _generate_weekly_summary(self, user_id: str, week_str: str) -> Optional[ProcessedContext]:
+    async def _generate_weekly_summary(
+        self,
+        user_id: str,
+        week_str: str,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Optional[ProcessedContext]:
         """
         Generate a weekly summary (Level 2) from Level 1 daily summaries + Level 0 raw events.
         从 Level 1 日摘要 + Level 0 原始事件生成每周摘要 (Level 2)。
@@ -834,6 +863,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         Args:
             user_id: User identifier
             week_str: ISO week string, e.g. "2026-W08"
+            device_id: Device identifier for multi-device isolation
+            agent_id: Agent identifier for multi-agent isolation
 
         Returns:
             ProcessedContext of the generated weekly summary, or None if no data found
@@ -851,6 +882,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             time_bucket_start=week_str,
             time_bucket_end=week_str,
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
             top_k=1,
         )
         if existing:
@@ -873,6 +906,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             time_bucket_start=week_start.isoformat(),
             time_bucket_end=week_end.isoformat(),
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
             top_k=7,
         )
 
@@ -909,6 +944,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             limit=500,
             filter=l0_filters,
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
         )
         l0_events = l0_dict.get(ContextType.EVENT.value, [])
 
@@ -946,9 +983,17 @@ class HierarchySummaryTask(BasePeriodicTask):
             level=2,
             time_bucket=week_str,
             children_ids=children_ids,
+            device_id=device_id,
+            agent_id=agent_id,
         )
 
-    async def _generate_monthly_summary(self, user_id: str, month_str: str) -> Optional[ProcessedContext]:
+    async def _generate_monthly_summary(
+        self,
+        user_id: str,
+        month_str: str,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Optional[ProcessedContext]:
         """
         Generate a monthly summary (Level 3) from Level 2 weekly summaries + Level 1 daily summaries.
         从 Level 2 周摘要 + Level 1 日摘要生成月摘要 (Level 3)。
@@ -959,6 +1004,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         Args:
             user_id: User identifier
             month_str: Month string, e.g. "2026-02"
+            device_id: Device identifier for multi-device isolation
+            agent_id: Agent identifier for multi-agent isolation
 
         Returns:
             ProcessedContext of the generated monthly summary, or None if no data found
@@ -976,6 +1023,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             time_bucket_start=month_str,
             time_bucket_end=month_str,
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
             top_k=1,
         )
         if existing:
@@ -1015,6 +1064,8 @@ class HierarchySummaryTask(BasePeriodicTask):
                 time_bucket_start=wk,
                 time_bucket_end=wk,
                 user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
                 top_k=1,
             )
             for ctx, _score in wk_results:
@@ -1032,6 +1083,8 @@ class HierarchySummaryTask(BasePeriodicTask):
                 time_bucket_start=wk_start.isoformat(),
                 time_bucket_end=wk_end.isoformat(),
                 user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
                 top_k=7,
             )
             if l1_results:
@@ -1063,6 +1116,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             level=3,
             time_bucket=month_str,
             children_ids=children_ids,
+            device_id=device_id,
+            agent_id=agent_id,
         )
 
     async def _call_llm_for_summary(
@@ -1221,6 +1276,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         level: int,
         time_bucket: str,
         children_ids: List[str],
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> Optional[ProcessedContext]:
         """
         Store a generated summary as a ProcessedContext with hierarchy fields.
@@ -1232,6 +1289,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             level: Hierarchy level (1=daily, 2=weekly, 3=monthly)
             time_bucket: Time bucket string
             children_ids: List of child context IDs that were summarized
+            device_id: Device identifier for multi-device isolation
+            agent_id: Agent identifier for multi-agent isolation
 
         Returns:
             The stored ProcessedContext, or None on failure
@@ -1309,6 +1368,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             enable_merge=False,  # Summaries should not be merged further
             is_happened=True,
             user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
             hierarchy_level=level,
             time_bucket=time_bucket,
             parent_id=None,

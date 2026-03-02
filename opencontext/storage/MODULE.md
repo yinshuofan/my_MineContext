@@ -62,7 +62,7 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `get_processed_context_count` | `(context_type: str) -> int` | Count |
 | `get_all_processed_context_counts` | `() -> Dict[str, int]` | Type-keyed counts |
 | `delete_by_source_file` | `(source_file_key: str, user_id: Optional[str]) -> bool` | Success flag |
-| `search_by_hierarchy` | `(context_type, hierarchy_level, time_bucket_start, time_bucket_end, user_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results |
+| `search_by_hierarchy` | `(context_type, hierarchy_level, time_bucket_start, time_bucket_end, user_id, device_id, agent_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results |
 | `get_by_ids` | `(ids: List[str], context_type: Optional[str]) -> List[ProcessedContext]` | Contexts by ID |
 | `upsert_todo_embedding` | `(todo_id: int, content: str, embedding: List[float], metadata) -> bool` | Success flag |
 | `search_similar_todos` | `(query_embedding: List[float], top_k, similarity_threshold) -> List[Tuple[int, str, float]]` | (todo_id, content, score) |

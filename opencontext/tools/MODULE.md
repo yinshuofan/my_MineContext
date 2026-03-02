@@ -162,7 +162,7 @@ class HierarchicalEventTool(BaseTool):
     def _ts_to_week_bucket(ts: int) -> str
     @staticmethod
     def _ts_to_month_bucket(ts: int) -> str
-    def _search_summaries(self, level: int, time_bucket_start: Optional[str], time_bucket_end: Optional[str], user_id: Optional[str], top_k: int) -> List[Tuple[ProcessedContext, float]]
+    def _search_summaries(self, level: int, time_bucket_start: Optional[str], time_bucket_end: Optional[str], user_id: Optional[str], top_k: int, device_id: Optional[str] = None, agent_id: Optional[str] = None) -> List[Tuple[ProcessedContext, float]]
     def _drill_down_children(self, parent_contexts: List[Tuple[ProcessedContext, float]], user_id: Optional[str] = None) -> List[Tuple[ProcessedContext, float, int]]
     def _direct_l0_search(self, query: str, user_id: Optional[str], device_id: Optional[str], agent_id: Optional[str], filters: Dict, top_k: int) -> List[Tuple[ProcessedContext, float, int]]
     @staticmethod
@@ -310,9 +310,9 @@ execute(**kwargs)
   ├── Convert time_range to bucket strings (day/week/month)
   │
   ├── Path 1: Top-down hierarchy search
-  │     ├── _search_summaries(level=1, day_buckets, user_id, top_k)  → L1 hits
-  │     ├── _search_summaries(level=2, week_buckets, user_id, top_k) → L2 hits
-  │     ├── _search_summaries(level=3, month_buckets, user_id, top_k) → L3 hits
+  │     ├── _search_summaries(level=1, day_buckets, user_id, top_k, device_id, agent_id)  → L1 hits
+  │     ├── _search_summaries(level=2, week_buckets, user_id, top_k, device_id, agent_id) → L2 hits
+  │     ├── _search_summaries(level=3, month_buckets, user_id, top_k, device_id, agent_id) → L3 hits
   │     └── _drill_down_children(all_hits)
   │           ├── BFS through children_ids via storage.get_contexts_by_ids()
   │           └── Blended score: 0.5 * child(0.3) + 0.5 * parent_score

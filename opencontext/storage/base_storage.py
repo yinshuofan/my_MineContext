@@ -287,6 +287,8 @@ class IVectorStorageBackend(IStorageBackend):
         time_bucket_start: Optional[str] = None,
         time_bucket_end: Optional[str] = None,
         user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         top_k: int = 20,
     ) -> List[Tuple[ProcessedContext, float]]:
         """Search contexts by hierarchy level and time bucket range
@@ -297,6 +299,8 @@ class IVectorStorageBackend(IStorageBackend):
             time_bucket_start: Start of time bucket range (inclusive)
             time_bucket_end: End of time bucket range (inclusive)
             user_id: User identifier for multi-user filtering
+            device_id: Device identifier for multi-device isolation
+            agent_id: Agent identifier for multi-agent isolation
             top_k: Maximum number of results
 
         Returns:
