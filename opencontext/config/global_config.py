@@ -50,6 +50,7 @@ class GlobalConfig:
                     self._config_path: Optional[str] = None
                     self._prompt_path: Optional[str] = None
                     self._auto_initialized = False
+                    self._language = "zh"
                     GlobalConfig._initialized = True
 
     @classmethod
@@ -78,8 +79,8 @@ class GlobalConfig:
         try:
             # Try to load the configuration automatically
             config_path = os.environ.get("OPENCONTEXT_CONFIG_PATH", "config/config.yaml")
-            self._initialized = self.initialize(config_path)
-            if not self._initialized:
+            init_success = self.initialize(config_path)
+            if not init_success:
                 logger.error(
                     "GlobalConfig auto-initialization: no config file found, using defaults"
                 )
@@ -292,7 +293,7 @@ class GlobalConfig:
 
     def is_initialized(self) -> bool:
         """Check if the global configuration is initialized"""
-        return self._initialized
+        return self._config_manager is not None
 
 
 # Convenience functions
