@@ -84,7 +84,10 @@ class BaseContextRetrievalTool(BaseTool):
             for entity_name in filters.entities:
                 try:
                     matched_name, _ = await self.profile_entity_tool.match_entity(
-                        entity_name, user_id=filters.user_id
+                        entity_name,
+                        user_id=filters.user_id,
+                        device_id=filters.device_id,
+                        agent_id=filters.agent_id,
                     )
                     unified_entities.append(matched_name if matched_name else entity_name)
                 except Exception as e:

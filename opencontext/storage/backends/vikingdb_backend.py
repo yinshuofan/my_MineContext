@@ -1270,7 +1270,14 @@ class VikingDBBackend(IVectorStorageBackend):
 
         if filters:
             for key, value in filters.items():
-                if key in ("context_type", "context_types", "entities", "data_type"):
+                if key in ("context_type", "context_types", "data_type"):
+                    continue
+                # TODO: entities filter is skipped because entities are stored as a
+                # JSON-serialized string (e.g. '["Alice","Bob"]') in a string field.
+                # VikingDB's scalar filter cannot query individual elements inside a
+                # JSON string. To enable entity filtering, change storage format to a
+                # native list type and implement element-level matching.
+                if key == "entities":
                     continue
                 if value is None:
                     continue

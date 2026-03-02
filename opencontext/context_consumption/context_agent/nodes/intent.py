@@ -157,7 +157,9 @@ class IntentNode(BaseNode):
         self, state: WorkflowState, query_type: QueryType
     ) -> WorkflowState:
         """Analyze complex queries"""
-        enhancement_results = await self._execute_enhancement_tools(state.query.text)
+        enhancement_results = await self._execute_enhancement_tools(
+            state.query.text, user_id=state.query.user_id
+        )
         prompt_template = get_prompt_group("chat_workflow.intent_analysis")
         chat_history = []
         if state.contexts.chat_history:
@@ -191,7 +193,9 @@ class IntentNode(BaseNode):
             enhanced_query=response or state.query.text,
         )
 
-    async def _execute_enhancement_tools(self, query: str) -> Dict[str, Any]:
+    async def _execute_enhancement_tools(
+        self, query: str, user_id: str = None
+    ) -> Dict[str, Any]:
         """Execute entity enhancement tools - use LLM to extract entities and find them via profile_tool"""
         results = {
             "extracted_entities": [],
@@ -211,10 +215,12 @@ class IntentNode(BaseNode):
 
             # Directly call the match_entity function of ProfileEntityTool
             for entity_name in extracted_entities:
-                matched_name, context = profile_tool.match_entity(entity_name)
-                if context and context.metadata:
+                matched_name, context = await profile_tool.match_entity(
+                    entity_name, user_id=user_id
+                )
+                if context and context.get("metadata"):
                     entity_data = {"entity_name": entity_name}
-                    entity_data.update(context.metadata)
+                    entity_data.update(context.get("metadata"))
                     results["found_entities"].append(entity_data)
             return results
 

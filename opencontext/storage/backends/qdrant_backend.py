@@ -571,6 +571,11 @@ class QdrantBackend(IVectorStorageBackend):
             if key == "context_type":
                 continue
             elif key == "entities":
+                # TODO: entities filter is skipped because entities are stored as a
+                # JSON-serialized string (e.g. '["Alice","Bob"]') in the payload.
+                # Qdrant's MatchAny/MatchValue cannot match individual elements
+                # inside a JSON string. To enable entity filtering, store entities
+                # as a native list (not json.dumps) and use MatchAny on the field.
                 continue
             elif not value:
                 continue
