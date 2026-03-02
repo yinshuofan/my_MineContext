@@ -75,7 +75,7 @@ Key abstract methods subclasses must implement:
 - `can_process(self, context: Any) -> bool`
 - `process(self, context: Any) -> List[ProcessedContext]`
 
-**Note**: The ABC declares `process()` as returning `List[ProcessedContext]`, but concrete subclasses (`TextChatProcessor`, `DocumentProcessor`) actually return `bool`. Only `ContextMerger` returns `[]` (empty list). This is a known inconsistency.
+All concrete processors (`TextChatProcessor`, `DocumentProcessor`, `ContextMerger`) return `List[ProcessedContext]` from `process()`, consistent with the interface contract.
 
 Provided methods:
 ```python
@@ -102,7 +102,7 @@ Processes `ContextSource.CHAT_LOG` + `ContentFormat.TEXT` inputs.
 
 ```python
 def can_process(self, context: RawContextProperties) -> bool
-def process(self, context: RawContextProperties) -> bool          # sync entry; fires async task
+async def process(self, context: RawContextProperties) -> List[ProcessedContext]
 async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]
 ```
 
@@ -111,6 +111,7 @@ Pipeline:
 2. Parses JSON response -> `memories` array
 3. Builds `ProcessedContext` per memory via `_build_processed_context()`
 4. Persists extracted entities across all memories via `_persist_entities()` (calls `entity_processor.refresh_entities`)
+5. Returns `List[ProcessedContext]` — callback invocation is handled by `ContextProcessorManager`
 
 The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`.
 
@@ -122,11 +123,11 @@ Supported formats: `.pdf`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.webp`, `.d
 
 ```python
 def can_process(self, context: RawContextProperties) -> bool
-def process(self, context: RawContextProperties) -> bool                      # sync, stores directly
-async def process_async(self, context, user_id="default", device_id="default") -> List[ProcessedContext]
-async def batch_process_async(self, raw_contexts, user_id, device_id) -> List[ProcessedContext]
+async def process(self, context: RawContextProperties) -> List[ProcessedContext]
 def real_process(self, raw_context: RawContextProperties) -> List[ProcessedContext]
 ```
+
+`process()` delegates to `real_process()` via `asyncio.to_thread()` and returns the result directly — no internal storage calls. Storage persistence is handled by the caller (typically `ContextProcessorManager` via its callback).
 
 Four processing paths inside `real_process()`:
 
@@ -311,28 +312,36 @@ class StrategyFactory:
 ### Chat Processing Flow
 ```
 RawContextProperties (CHAT_LOG + TEXT)
-  -> TextChatProcessor.process()
-    -> _process_async()
-      -> LLM call (chat_analyze prompt) -> JSON with memories[]
-      -> _build_processed_context() per memory -> List[ProcessedContext]
-      -> _persist_entities() -> entity_processor.refresh_entities() -> relational DB
-    -> callback(processed_list) if set
+  -> ContextProcessorManager.process()
+    -> TextChatProcessor.process()
+      -> _process_async()
+        -> LLM call (chat_analyze prompt) -> JSON with memories[]
+        -> _build_processed_context() per memory -> List[ProcessedContext]
+        -> _persist_entities() -> entity_processor.refresh_entities() -> relational DB
+      -> return List[ProcessedContext]
+    -> Manager invokes callback -> OpenContext._handle_processed_context()
 ```
 
 ### Document Processing Flow
 ```
 RawContextProperties (LOCAL_FILE / WEB_LINK / INPUT)
-  -> DocumentProcessor.real_process()
-    -> route by document type:
-       |-- Structured (CSV/XLSX/JSONL) -> StructuredFileChunker/FAQChunker.chunk() -> List[Chunk]
-       |-- Text (INPUT source) -> DocumentTextChunker.chunk_text() -> List[Chunk]
-       |-- Visual (PDF/DOCX/images/PPT/MD):
-             -> DocumentConverter.analyze_*_pages() -> List[PageInfo]
-             -> text pages: use extracted text directly
-             -> visual pages: VLM analysis -> extracted text
-             -> merge all pages -> DocumentTextChunker.chunk_text() -> List[Chunk]
-    -> _create_contexts_from_chunks(chunks) -> List[ProcessedContext]
+  -> ContextProcessorManager.process()
+    -> DocumentProcessor.process()
+      -> real_process() via asyncio.to_thread()
+        -> route by document type:
+           |-- Structured (CSV/XLSX/JSONL) -> StructuredFileChunker/FAQChunker.chunk() -> List[Chunk]
+           |-- Text (INPUT source) -> DocumentTextChunker.chunk_text() -> List[Chunk]
+           |-- Visual (PDF/DOCX/images/PPT/MD):
+                 -> DocumentConverter.analyze_*_pages() -> List[PageInfo]
+                 -> text pages: use extracted text directly
+                 -> visual pages: VLM analysis -> extracted text
+                 -> merge all pages -> DocumentTextChunker.chunk_text() -> List[Chunk]
+        -> _create_contexts_from_chunks(chunks) -> List[ProcessedContext]
+      -> return List[ProcessedContext]
+    -> Manager invokes callback -> OpenContext._handle_processed_context()
 ```
+
+**Note**: Processors are pure data transformers — they return `List[ProcessedContext]` without performing storage writes or callback invocations. The `ContextProcessorManager` centrally handles callback dispatch after collecting results.
 
 ### Knowledge Merge Flow
 ```
@@ -357,7 +366,7 @@ ProcessedContext (KNOWLEDGE, enable_merge=True)
 | `opencontext.config.global_config` | Processors, chunker | `get_config()`, `get_prompt_group()`, `get_prompt_manager()` |
 | `opencontext.llm.global_vlm_client` | TextChat, Document, Merger, Profile | `generate_with_messages_async()`, `generate_with_messages()` |
 | `opencontext.llm.global_embedding_client` | Merger | `do_vectorize()`, `do_vectorize_async()` |
-| `opencontext.storage.global_storage` | Document, Entity, Profile, Merger | `get_storage()` -> `UnifiedStorage` |
+| `opencontext.storage.global_storage` | Entity, Profile, Merger | `get_storage()` -> `UnifiedStorage` |
 | `opencontext.interfaces.processor_interface` | BaseProcessor | `IContextProcessor` interface |
 | `opencontext.utils.json_parser` | TextChat, Document, Profile, Merger | `parse_json_from_response()` |
 | `opencontext.monitoring.monitor` | Document | `record_processing_error()`, `record_processing_metrics()` |

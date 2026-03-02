@@ -443,13 +443,17 @@ When buffer flushes or direct processing runs:
 ```
 TextChatCapture.process_messages_directly()
   -> processor_manager.process()
-  -> TextChatProcessor.process()
-  -> callback: OpenContext._handle_processed_context()
-     -> Routes by CONTEXT_STORAGE_BACKENDS:
-        profile/entity -> _store_profile()/_store_entities() -> storage.upsert_profile()/upsert_entity()
-        document/event/knowledge -> storage.batch_upsert_processed_context() -> vector DB
-     -> _invalidate_user_cache() for affected users
+    -> TextChatProcessor.process()
+      -> return List[ProcessedContext]
+    -> Manager invokes callback with results:
+      -> OpenContext._handle_processed_context()
+         -> Routes by CONTEXT_STORAGE_BACKENDS:
+            profile/entity -> _store_profile()/_store_entities() -> storage.upsert_profile()/upsert_entity()
+            document/event/knowledge -> storage.batch_upsert_processed_context() -> vector DB
+         -> _invalidate_user_cache() for affected users
 ```
+
+Processors return `List[ProcessedContext]` to the manager, which centrally invokes the callback. Processors do not call storage or callbacks directly.
 
 ### Search Flow (`POST /api/search`)
 
