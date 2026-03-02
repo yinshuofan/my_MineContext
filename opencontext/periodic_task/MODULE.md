@@ -126,7 +126,7 @@ Each `async _generate_{level}_summary()` method:
 | Method | Input | Output |
 |--------|-------|--------|
 | `_format_l0_events(contexts)` | L0 events | Numbered lines: `[i] Title | Time | Summary | Keywords` |
-| `_format_weekly_hierarchical(l1_summaries, l0_events_by_day)` | L1 + L0 | Day-grouped: `=== Daily Summary: date ===` with nested raw events |
+| `_format_weekly_hierarchical(l1_summaries)` | L1 | Day-grouped: `=== Daily Summary: date ===` |
 | `_format_monthly_hierarchical(l2_summaries, l1_by_week)` | L2 + L1 | Week-grouped: `=== Weekly Summary: week ===` with nested daily summaries |
 
 **Token overflow handling**:
@@ -136,7 +136,7 @@ Constants: `_MAX_INPUT_TOKENS = 60000`, `_BATCH_TOKEN_TARGET = 25000`, `_PROMPT_
 | Method | Level | Batching strategy |
 |--------|-------|-------------------|
 | `async _batch_summarize_and_merge(contexts, level, time_bucket, format_fn)` | L1 | Split by token budget per context |
-| `async _batch_summarize_weekly(l1_contexts, l0_events_by_day, time_bucket)` | L2 | Split by day-groups (3 days per batch) |
+| `async _batch_summarize_weekly(l1_contexts, time_bucket)` | L2 | Split by day-groups (3 days per batch) |
 | `async _batch_summarize_monthly(l2_contexts, l1_by_week, time_bucket)` | L3 | Split by week-groups (2 weeks per batch) |
 
 Each overflow handler: format -> check tokens -> if over limit, split into batches -> generate sub-summaries -> merge via `_call_llm_for_merge()`.
@@ -202,8 +202,7 @@ execute(context)
   ├─> _generate_weekly_summary(user_id, prev_week, device_id, agent_id)
   │     ├─ search_hierarchy(level=2, time_bucket=week, device_id, agent_id) -- dedup check
   │     ├─ search_hierarchy(level=1, week date range, device_id, agent_id) -- fetch L1
-  │     ├─ get_all_processed_contexts(EVENT, filter=..., device_id, agent_id) -- fetch L0
-  │     ├─ _batch_summarize_weekly(l1, l0_by_day, week_str)
+  │     ├─ _batch_summarize_weekly(l1, week_str)
   │     └─ _store_summary(level=2, ..., device_id, agent_id)
   │
   └─> _generate_monthly_summary(user_id, prev_month, device_id, agent_id)
