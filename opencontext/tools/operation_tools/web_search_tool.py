@@ -9,6 +9,7 @@ Web search tool
 Provides internet search capabilities to help obtain the latest information
 """
 
+import asyncio
 from typing import Any, Dict, List
 
 from opencontext.config.global_config import get_config
@@ -100,7 +101,7 @@ class WebSearchTool(BaseTool):
             "required": ["query"],
         }
 
-    def execute(
+    async def execute(
         self, query: str, max_results: int = None, lang: str = "zh-cn", **kwargs
     ) -> Dict[str, Any]:
         """Execute web search with automatic fallback support"""
@@ -111,7 +112,7 @@ class WebSearchTool(BaseTool):
 
         logger.info(f"Using primary search engine: {self.default_engine}")
         if self.default_engine == "duckduckgo":
-            results = self._search_duckduckgo(query, max_results, lang)
+            results = await asyncio.to_thread(self._search_duckduckgo, query, max_results, lang)
         else:
             raise ValueError(f"Unknown search engine: {self.default_engine}")
 
