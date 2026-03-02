@@ -182,9 +182,7 @@ class GlobalConfig:
         """
         Get the current language setting
         """
-        if hasattr(self, "_language"):
-            return self._language
-        return "zh"
+        return self._language
 
     def set_language(self, language: str) -> bool:
         """
