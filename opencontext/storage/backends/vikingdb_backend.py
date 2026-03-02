@@ -188,7 +188,7 @@ class VolcengineAuth:
             Headers with Authorization added
         """
         # Get current time
-        t = datetime.datetime.utcnow()
+        t = datetime.datetime.now(tz=datetime.timezone.utc)
         x_date = t.strftime("%Y%m%dT%H%M%SZ")
         date_stamp = t.strftime("%Y%m%d")
 
