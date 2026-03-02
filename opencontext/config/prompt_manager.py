@@ -11,7 +11,9 @@ import os
 from typing import Dict
 
 import yaml
-from loguru import logger
+from opencontext.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 from opencontext.utils.dict_utils import deep_merge
 
