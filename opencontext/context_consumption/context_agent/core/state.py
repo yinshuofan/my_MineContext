@@ -252,24 +252,3 @@ class StateManager:
         if workflow_id in self.states:
             del self.states[workflow_id]
 
-    def get_active_states(self) -> List[WorkflowState]:
-        """Get all active workflow states."""
-        return [
-            state
-            for state in self.states.values()
-            if not state.is_complete() and not state.is_cancelled
-        ]
-
-    def cleanup_old_states(self, hours: int = 24):
-        """Clean up old workflow states."""
-        from datetime import timedelta
-
-        cutoff_time = datetime.now() - timedelta(hours=hours)
-
-        to_delete = []
-        for workflow_id, state in self.states.items():
-            if state.metadata.updated_at < cutoff_time and state.is_complete():
-                to_delete.append(workflow_id)
-
-        for workflow_id in to_delete:
-            self.delete_state(workflow_id)
