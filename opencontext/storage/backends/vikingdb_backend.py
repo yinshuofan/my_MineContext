@@ -1505,6 +1505,8 @@ class VikingDBBackend(IVectorStorageBackend):
         time_bucket_start: Optional[str] = None,
         time_bucket_end: Optional[str] = None,
         user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         top_k: int = 20,
     ) -> List[Tuple[ProcessedContext, float]]:
         if not self._initialized:
@@ -1538,6 +1540,10 @@ class VikingDBBackend(IVectorStorageBackend):
                         "conds": [user_id],
                     }
                 )
+            if device_id:
+                conditions.append({"op": "must", "field": FIELD_DEVICE_ID, "conds": [device_id]})
+            if agent_id:
+                conditions.append({"op": "must", "field": FIELD_AGENT_ID, "conds": [agent_id]})
 
             time_bucket_filter_start = time_bucket_start
             time_bucket_filter_end = time_bucket_end

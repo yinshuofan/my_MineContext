@@ -150,7 +150,7 @@ Each overflow handler: format -> check tokens -> if over limit, split into batch
 
 Prompt resolution: prompt group `"hierarchy_summary"` from YAML -> `{level}_summary` / `{level}_partial_summary` / `{level}_merge` keys -> fallback to `_FALLBACK_PROMPTS` dict.
 
-**Storage**: `async _store_summary(user_id, summary_text, level, time_bucket, children_ids) -> Optional[ProcessedContext]` -- parses the LLM JSON response (`{title, summary, keywords, entities, importance}`) to extract structured fields, builds `ProcessedContext` with hierarchy fields, generates embedding via `await do_vectorize()`, calls `await storage.upsert_processed_context()`. Falls back to heuristic title extraction if the LLM response is not valid JSON. Also handles markdown code fence stripping (` ```json ... ``` `).
+**Storage**: `async _store_summary(user_id, summary_text, level, time_bucket, children_ids, device_id=None, agent_id=None) -> Optional[ProcessedContext]` -- parses the LLM JSON response (`{title, summary, keywords, entities, importance}`) to extract structured fields, builds `ProcessedContext` with hierarchy fields (including `device_id`/`agent_id` on `ContextProperties`), generates embedding via `await do_vectorize()`, calls `await storage.upsert_processed_context()`. Falls back to heuristic title extraction if the LLM response is not valid JSON. Also handles markdown code fence stripping (` ```json ... ``` `).
 
 **Factory**: `create_hierarchy_handler() -> async TaskHandler`
 
@@ -189,28 +189,30 @@ RedisTaskScheduler._execute_task() or _process_periodic_tasks()
 
 ```
 execute(context)
-  ├─> _generate_daily_summary(user_id, yesterday)
-  │     ├─ search_hierarchy(level=1, time_bucket=yesterday) -- dedup check
-  │     ├─ get_all_processed_contexts(EVENT, filter={event_time_ts, hierarchy_level=0})
+  │  extracts user_id, device_id, agent_id from context
+  │
+  ├─> _generate_daily_summary(user_id, yesterday, device_id, agent_id)
+  │     ├─ search_hierarchy(level=1, time_bucket=yesterday, device_id, agent_id) -- dedup check
+  │     ├─ get_all_processed_contexts(EVENT, filter=..., device_id, agent_id)
   │     ├─ _batch_summarize_and_merge(l0_events, level=1, ..., _format_l0_events)
   │     │     ├─ If fits: _call_llm_for_summary()
   │     │     └─ If overflow: _split_into_batches() -> partial summaries -> _call_llm_for_merge()
-  │     └─ _store_summary(level=1, time_bucket=yesterday, children_ids=[l0 ids])
+  │     └─ _store_summary(level=1, ..., device_id, agent_id)
   │
-  ├─> _generate_weekly_summary(user_id, prev_week)
-  │     ├─ search_hierarchy(level=2, time_bucket=week) -- dedup check
-  │     ├─ search_hierarchy(level=1, week date range) -- fetch L1 summaries
-  │     ├─ get_all_processed_contexts(EVENT, filter={event_time_ts, hierarchy_level=0}) -- fetch L0
+  ├─> _generate_weekly_summary(user_id, prev_week, device_id, agent_id)
+  │     ├─ search_hierarchy(level=2, time_bucket=week, device_id, agent_id) -- dedup check
+  │     ├─ search_hierarchy(level=1, week date range, device_id, agent_id) -- fetch L1
+  │     ├─ get_all_processed_contexts(EVENT, filter=..., device_id, agent_id) -- fetch L0
   │     ├─ _batch_summarize_weekly(l1, l0_by_day, week_str)
-  │     └─ _store_summary(level=2, time_bucket=week, children_ids=[l1 + l0 ids])
+  │     └─ _store_summary(level=2, ..., device_id, agent_id)
   │
-  └─> _generate_monthly_summary(user_id, prev_month)
-        ├─ search_hierarchy(level=3, time_bucket=month) -- dedup check
+  └─> _generate_monthly_summary(user_id, prev_month, device_id, agent_id)
+        ├─ search_hierarchy(level=3, time_bucket=month, device_id, agent_id) -- dedup check
         ├─ For each ISO week in month:
-        │     ├─ search_hierarchy(level=2, week) -- fetch L2 summaries
-        │     └─ search_hierarchy(level=1, week date range) -- fetch L1 summaries
+        │     ├─ search_hierarchy(level=2, week, device_id, agent_id) -- fetch L2
+        │     └─ search_hierarchy(level=1, week date range, device_id, agent_id) -- fetch L1
         ├─ _batch_summarize_monthly(l2, l1_by_week, month_str)
-        └─ _store_summary(level=3, time_bucket=month, children_ids=[l2 + l1 ids])
+        └─ _store_summary(level=3, ..., device_id, agent_id)
 ```
 
 ## Cross-Module Dependencies

@@ -302,39 +302,47 @@ class UserMemoryCacheManager:
                 0,
             ),
             "today_events": storage.get_all_processed_contexts(
-                [ContextType.EVENT.value],
-                max_events_today,
-                0,
-                {
+                context_types=[ContextType.EVENT.value],
+                limit=max_events_today,
+                offset=0,
+                filter={
                     "hierarchy_level": {"$gte": 0, "$lte": 0},
                     "event_time_ts": {"$gte": today_start_ts},
                 },
-                False,
-                user_id,
+                need_vector=False,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
             ),
             "daily_summaries": storage.search_hierarchy(
-                ContextType.EVENT.value,
-                1,  # L1
-                period_start,
-                yesterday,
-                user_id,
-                days,
+                context_type=ContextType.EVENT.value,
+                hierarchy_level=1,  # L1
+                time_bucket_start=period_start,
+                time_bucket_end=yesterday,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+                top_k=days,
             ),
             "recent_docs": storage.get_all_processed_contexts(
-                [ContextType.DOCUMENT.value],
-                self._config["max_recent_documents"],
-                0,
-                {"created_at_ts": {"$gte": week_start_ts}},
-                False,
-                user_id,
+                context_types=[ContextType.DOCUMENT.value],
+                limit=self._config["max_recent_documents"],
+                offset=0,
+                filter={"created_at_ts": {"$gte": week_start_ts}},
+                need_vector=False,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
             ),
             "recent_knowledge": storage.get_all_processed_contexts(
-                [ContextType.KNOWLEDGE.value],
-                self._config["max_recent_knowledge"],
-                0,
-                {"created_at_ts": {"$gte": week_start_ts}},
-                False,
-                user_id,
+                context_types=[ContextType.KNOWLEDGE.value],
+                limit=self._config["max_recent_knowledge"],
+                offset=0,
+                filter={"created_at_ts": {"$gte": week_start_ts}},
+                need_vector=False,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
             ),
         }
 
@@ -413,9 +421,9 @@ class UserMemoryCacheManager:
                         "id": ctx.id,
                         "time_bucket": ctx.properties.time_bucket or "",
                         "summary": ctx.extracted_data.summary if ctx.extracted_data else None,
-                        "children_count": len(ctx.properties.children_ids)
-                        if ctx.properties.children_ids
-                        else 0,
+                        "children_count": (
+                            len(ctx.properties.children_ids) if ctx.properties.children_ids else 0
+                        ),
                     }
                 )
             daily_items.sort(key=lambda x: x["time_bucket"], reverse=True)
