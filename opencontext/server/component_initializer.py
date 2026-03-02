@@ -123,6 +123,8 @@ class ComponentInitializer:
         # Create various processors
         processor_types = ["document_processor", "text_chat_processor"]
 
+        processor_manager.set_callback(processed_context_callback)
+
         for processor_type in processor_types:
             processor_config = processing_config.get(processor_type, {})
             if processor_config.get("enabled", False):
@@ -130,7 +132,6 @@ class ComponentInitializer:
                     # Now processors use parameterless constructors
                     processor = processor_factory.create_processor(processor_type)
                     if processor:
-                        processor.set_callback(processed_context_callback)
                         processor_manager.register_processor(processor)
                         logger.info(
                             f"Processor component '{processor_type}' created and registered successfully"

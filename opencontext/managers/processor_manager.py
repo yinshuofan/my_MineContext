@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional
 from loguru import logger
 
 from opencontext.interfaces import IContextProcessor
-from opencontext.models import ContentFormat, ContextSource, ProcessedContext, RawContextProperties
+from opencontext.models import ContextSource, RawContextProperties
 
 
 class ContextProcessorManager:
@@ -102,7 +102,7 @@ class ContextProcessorManager:
     def set_callback(self, callback: Callable[[List[Any]], None]) -> None:
         self._callback = callback
 
-    async def process(self, initial_input: RawContextProperties):
+    async def process(self, initial_input: RawContextProperties) -> bool:
         """
         Process single input through processing chain
         """
@@ -122,7 +122,10 @@ class ContextProcessorManager:
             return False
 
         try:
-            return await processor.process(initial_input)
+            processed_contexts = await processor.process(initial_input)
+            if processed_contexts and self._callback:
+                await self._callback(processed_contexts)
+            return bool(processed_contexts)
         except Exception as e:
             logger.exception(
                 f"Processing component '{processor_name}' encountered exception while processing data: {e}"
@@ -131,7 +134,7 @@ class ContextProcessorManager:
 
     async def batch_process(
         self, initial_inputs: List[RawContextProperties]
-    ) -> Dict[str, List[ProcessedContext]]:
+    ) -> Dict[str, bool]:
         """Batch process raw context data"""
         tasks = [self.process(initial_input) for initial_input in initial_inputs]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -140,7 +143,7 @@ class ContextProcessorManager:
         for initial_input, result in zip(initial_inputs, raw_results):
             if isinstance(result, Exception):
                 logger.exception(f"'{initial_input.object_id}' generated an exception: {result}")
-                results[initial_input.object_id] = []
+                results[initial_input.object_id] = False
             else:
                 results[initial_input.object_id] = result
         return results

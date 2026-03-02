@@ -30,7 +30,6 @@ from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import *
 from opencontext.models.enums import *
 from opencontext.monitoring.monitor import record_processing_error
-from opencontext.storage.global_storage import get_storage
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 
@@ -172,20 +171,18 @@ class DocumentProcessor(BaseContextProcessor):
             return file_ext in self.get_supported_formats()
         return False
 
-    async def process(self, context: RawContextProperties) -> bool:
+    async def process(self, context: RawContextProperties) -> List[ProcessedContext]:
         """
         Process single document context asynchronously.
         """
         if not self.can_process(context):
-            return False
+            return []
         try:
             processed_contexts = await asyncio.to_thread(self.real_process, context)
-            if processed_contexts:
-                await get_storage().batch_upsert_processed_context(processed_contexts)
-            return bool(processed_contexts)
+            return processed_contexts or []
         except Exception as e:
             logger.exception(f"Error processing document {context.object_id}: {e}")
-            return False
+            return []
 
     def real_process(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
         """Process document and return processed contexts."""

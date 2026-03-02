@@ -40,17 +40,15 @@ class TextChatProcessor(BaseContextProcessor):
             and context.content_format == ContentFormat.TEXT
         )
 
-    async def process(self, context: RawContextProperties) -> bool:
+    async def process(self, context: RawContextProperties) -> List[ProcessedContext]:
         """Process chat context asynchronously."""
         logger.debug(f"Processing chat context: {context}")
         try:
             processed_list = await self._process_async(context)
-            if processed_list and self._callback:
-                await self._callback(processed_list)
-            return True
+            return processed_list or []
         except Exception as e:
             logger.error(f"Failed to process chat context: {e}")
-            return False
+            return []
 
     async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
         # 1. 获取 Prompt

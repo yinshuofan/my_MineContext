@@ -347,9 +347,10 @@ async def trigger_document_processing(
 
         # Get document processor and trigger processing
         processor = DocumentProcessor()
-        success = processor.process(context_data)
+        processed_contexts = await processor.process(context_data)
 
-        if success:
+        if processed_contexts:
+            await get_storage().batch_upsert_processed_context(processed_contexts)
             logger.info(f"Context processing triggered for document {doc_id} ({event_type})")
         else:
             logger.warning(
