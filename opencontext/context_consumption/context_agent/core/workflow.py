@@ -108,6 +108,10 @@ class WorkflowEngine:
                     content=f"Workflow execution failed: {str(e)}",
                 )
             )
+        finally:
+            # Remove state from the manager to prevent unbounded memory growth.
+            # The returned `state` object remains usable (it's a direct reference).
+            self.state_manager.delete_state(state.metadata.workflow_id)
         return state
 
     async def execute_stream(self, **kwargs) -> AsyncIterator[StreamEvent]:
