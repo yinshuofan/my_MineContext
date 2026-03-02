@@ -27,7 +27,6 @@ Loads YAML config with environment variable substitution.
 | `load_config` | `(config_path: Optional[str] = None) -> bool` | Load YAML, substitute env vars, merge user settings. Default path: `config/config.yaml`. Raises `FileNotFoundError` if path missing. |
 | `get_config` | `() -> Optional[Dict[str, Any]]` | Return full config dict |
 | `get_config_path` | `() -> Optional[str]` | Return config file path |
-| `deep_merge` | `(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]` | Recursive dict merge (override wins) |
 | `load_user_settings` | `() -> bool` | Load `user_setting_path` from config, merge into `_config` |
 | `save_user_settings` | `(settings: Dict[str, Any]) -> bool` | Save whitelisted keys (defined in module-level `SAVEABLE_KEYS`: llm, vlm_model, embedding_model, capture, processing, logging, prompts, document_processing, scheduler, memory_cache, tools) to user settings file and merge. Uses whole-key replacement at file level — callers must send complete section objects. |
 | `reset_user_settings` | `() -> bool` | Delete user settings file, reload config |
@@ -113,6 +112,7 @@ is_initialized() -> bool
 **Imports from:**
 - `pyyaml` (yaml.safe_load, yaml.dump)
 - `python-dotenv` (load_dotenv) -- in ConfigManager
+- `opencontext.utils.dict_utils` (deep_merge) -- used by both `config_manager.py` and `prompt_manager.py`
 - `opencontext.utils.logging_utils` (get_logger) -- used by `config_manager.py` and `global_config.py`
 - `loguru` (logger) -- used directly by `prompt_manager.py` (does not use `get_logger`)
 - `opencontext.models.enums` -- PromptManager calls `get_context_type_descriptions_for_prompts()` and `get_context_type_descriptions_for_retrieval()`

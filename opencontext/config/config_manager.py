@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional
 import yaml
 from dotenv import load_dotenv
 
+from opencontext.utils.dict_utils import deep_merge
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -137,29 +138,6 @@ class ConfigManager:
         """
         return self._config_path
 
-    def deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Deep merge two dictionaries
-
-        Args:
-            base: Base configuration
-            override: Configuration to override with
-
-        Returns:
-            Merged configuration
-        """
-        result = base.copy()
-
-        for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                # Recursively merge dictionaries
-                result[key] = self.deep_merge(result[key], value)
-            else:
-                # Directly override
-                result[key] = value
-
-        return result
-
     def load_user_settings(self) -> bool:
         """
         Load user settings and merge them into the main configuration
@@ -178,7 +156,7 @@ class ConfigManager:
                 user_settings = yaml.safe_load(f)
             if not user_settings:
                 return False
-            self._config = self.deep_merge(self._config, user_settings)
+            self._config = deep_merge(self._config, user_settings)
             # logger.info(f"User settings loaded successfully: {user_settings}")
             return True
         except Exception as e:
@@ -228,7 +206,7 @@ class ConfigManager:
             logger.info(f"User settings saved successfully: {user_setting_path}")
 
             # Merge into current config
-            self._config = self.deep_merge(self._config, user_settings)
+            self._config = deep_merge(self._config, user_settings)
             return True
         except Exception as e:
             logger.error(f"Failed to save user settings: {e}")

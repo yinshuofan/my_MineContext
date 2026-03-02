@@ -13,6 +13,8 @@ from typing import Dict
 import yaml
 from loguru import logger
 
+from opencontext.utils.dict_utils import deep_merge
+
 
 class PromptManager:
     def __init__(self, prompt_config_path: str = None):
@@ -89,7 +91,7 @@ class PromptManager:
                 return False
 
             # Deep merge user prompts into current prompts
-            self.prompts = self._deep_merge(self.prompts, user_prompts)
+            self.prompts = deep_merge(self.prompts, user_prompts)
             logger.info(f"User prompts loaded from: {user_prompts_path}")
             return True
         except Exception as e:
@@ -141,7 +143,7 @@ class PromptManager:
             logger.info(f"Prompts saved to: {user_prompts_path}")
 
             # Update current prompts
-            self.prompts = self._deep_merge(self.prompts, prompts_data)
+            self.prompts = deep_merge(self.prompts, prompts_data)
             return True
         except Exception as e:
             logger.error(f"Failed to save prompts: {e}")
@@ -197,18 +199,6 @@ class PromptManager:
         except Exception as e:
             logger.error(f"Failed to reset user prompts: {e}")
             return False
-
-    def _deep_merge(self, base: dict, override: dict) -> dict:
-        """
-        Deep merge two dictionaries
-        """
-        result = base.copy()
-        for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = self._deep_merge(result[key], value)
-            else:
-                result[key] = value
-        return result
 
     def get_context_type_descriptions_for_retrieval(self) -> str:
         """
