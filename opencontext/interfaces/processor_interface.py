@@ -10,7 +10,10 @@ Context processor component interface definition
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from opencontext.models.context import ProcessedContext
 
 
 class IContextProcessor(ABC):
@@ -84,7 +87,7 @@ class IContextProcessor(ABC):
         """
 
     @abstractmethod
-    def process(self, context: Any) -> bool:
+    async def process(self, context: Any) -> List["ProcessedContext"]:
         """
         Process context data
 
