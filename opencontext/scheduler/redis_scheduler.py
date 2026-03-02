@@ -568,12 +568,8 @@ class RedisTaskScheduler(ITaskScheduler):
 
     async def _process_periodic_tasks(self) -> None:
         """Process periodic tasks (global tasks, not user-specific) (async)"""
-        tasks_config = self._config.get("tasks", {})
-
-        for task_type, task_config in tasks_config.items():
-            if not task_config.get("enabled", False):
-                continue
-            if task_config.get("trigger_mode") != TriggerMode.PERIODIC.value:
+        for task_type, config in self._task_config_cache.items():
+            if config.trigger_mode != TriggerMode.PERIODIC:
                 continue
 
             # Check if handler is registered
@@ -593,7 +589,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 continue
 
             # Try to acquire lock
-            timeout = task_config.get("timeout", 300)
+            timeout = config.timeout
             lock_token = await self._redis.acquire_lock(lock_key, timeout=timeout, blocking=False)
             if not lock_token:
                 continue
@@ -603,7 +599,7 @@ class RedisTaskScheduler(ITaskScheduler):
             exec_error = ""
             try:
                 # Update state
-                interval = task_config.get("interval", 3600)
+                interval = config.interval
                 await self._redis.hmset(
                     periodic_key,
                     {"last_run": str(now), "next_run": str(now + interval), "status": "running"},
