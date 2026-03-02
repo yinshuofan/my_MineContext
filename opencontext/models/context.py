@@ -398,7 +398,7 @@ class EntityData(BaseModel):
     device_id: str = "default"  # Device identifier
     agent_id: str = "default"  # Agent identifier
     entity_name: str  # Unique key = user_id + device_id + agent_id + entity_name
-    entity_type: Optional[str] = None  # person / project / team / org / other
+    entity_type: Optional[str] = None  # person / project / team / organization / other
     content: str  # Entity description (LLM-merged result)
     summary: Optional[str] = None
     keywords: List[str] = Field(default_factory=list)
