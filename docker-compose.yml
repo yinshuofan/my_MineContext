@@ -29,7 +29,7 @@ services:
 
   server:
     build: .
-    command: ["-m", "opencontext.cli", "start", "--config", "config/config-docker.yaml"]
+    command: ["-m", "opencontext.cli", "start", "--config", "config/config-docker.yaml", "--workers", "${SERVER_WORKERS:-1}"]
     environment:
       <<: *common-env
       CONTEXT_API_KEY: ${CONTEXT_API_KEY}
@@ -44,7 +44,7 @@ services:
       retries: 3
       start_period: 60s
     deploy:
-      replicas: 3
+      replicas: ${SERVER_REPLICAS:-3}
     restart: unless-stopped
 
   script-scheduler:
