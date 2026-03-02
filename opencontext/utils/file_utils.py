@@ -7,13 +7,14 @@
 File utilities - Provides file operation helper functions
 """
 
-import logging
 import mimetypes
 import os
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-logger = logging.getLogger(__name__)
+from opencontext.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 def ensure_dir(directory: str) -> bool:
