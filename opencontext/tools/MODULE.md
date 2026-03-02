@@ -12,7 +12,6 @@ Tool definitions, executor, and implementations for all retrieval and operation 
 | `profile_tools/__init__.py` | Exports `ProfileEntityTool` |
 | `profile_tools/profile_entity_tool.py` | `ProfileEntityTool` -- entity CRUD and relationship queries against relational DB |
 | `retrieval_tools/__init__.py` | Exports `BaseContextRetrievalTool` and the 4 concrete retrieval tool classes (`DocumentRetrievalTool`, `KnowledgeRetrievalTool`, `HierarchicalEventTool`, `ProfileRetrievalTool`) |
-| `retrieval_tools/base_retrieval_tool.py` | `BaseRetrievalTool` -- older base class with entity unification and vector search helpers (used as mixin pattern) |
 | `retrieval_tools/base_context_retrieval_tool.py` | `BaseContextRetrievalTool` -- primary base class for vector DB context retrieval tools; provides `_execute_search`, `_build_filters`, `_format_results` |
 | `retrieval_tools/document_retrieval_tool.py` | `DocumentRetrievalTool` -- retrieves `document` contexts from vector DB |
 | `retrieval_tools/knowledge_retrieval_tool.py` | `KnowledgeRetrievalTool` -- retrieves `knowledge` + L0 `event` contexts from vector DB, merges and deduplicates |
@@ -30,8 +29,6 @@ BaseTool (ABC)                                      # base.py
 ├── ProfileRetrievalTool                            # retrieval_tools/
 ├── HierarchicalEventTool                           # retrieval_tools/
 ├── WebSearchTool                                   # operation_tools/
-├── BaseRetrievalTool                               # retrieval_tools/base_retrieval_tool.py
-│   (not subclassed by any current tool)
 └── BaseContextRetrievalTool                        # retrieval_tools/base_context_retrieval_tool.py
     ├── DocumentRetrievalTool                       # retrieval_tools/document_retrieval_tool.py
     └── KnowledgeRetrievalTool                      # retrieval_tools/knowledge_retrieval_tool.py
@@ -242,10 +239,6 @@ class DocumentManagementTool:   # Does not extend BaseTool
     def _format_context_result(self, context: ProcessedContext, score: float, additional_fields: Dict[str, Any] = None) -> Dict[str, Any]
 ```
 
-### Unused Base Classes
-
-- **`BaseRetrievalTool`** (`base_retrieval_tool.py`): Has `_execute_search`, `_build_filters`, `_format_results` similar to `BaseContextRetrievalTool` but without multi-user filtering or `CONTEXT_TYPE`. No current subclasses.
-
 ## Internal Data Flow
 
 ### LLM-driven tool execution (intelligent search strategy)
@@ -391,4 +384,4 @@ Same as above, but place in `operation_tools/` and add to `WEB_SEARCH_TOOL_DEFIN
 - **Entity normalization**: `BaseContextRetrievalTool._build_filters()` calls `ProfileEntityTool.match_entity()` to normalize entity names before querying. This means entity filters go through exact-match-then-fuzzy-search before reaching the storage layer.
 - **Thread safety**: `execute()` is `async` and called via `await` in `run_async()`. Tools must not share mutable state across calls. Storage connections are per-thread (see `_get_connection()` pattern in storage module).
 - **DocumentManagementTool is not an LLM tool**: It is not registered in `tool_definitions.py` or `ToolsExecutor`. It is used internally for document admin operations.
-- **`BaseRetrievalTool` is currently unused**: It exists as a potential base class but has no subclasses. When adding new tools, prefer `BaseContextRetrievalTool` for vector DB tools.
+- **Entity filtering is not yet effective at the storage layer**: `_build_filters()` normalizes entity names via `ProfileEntityTool.match_entity()`, but both VikingDB and Qdrant backends skip the `entities` filter key because entities are stored as JSON-serialized strings. To enable entity filtering, the storage format must be changed to native lists.
