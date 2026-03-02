@@ -47,7 +47,7 @@ class MySQLBackend(IDocumentStorageBackend):
             db_config = config.get("config", {})
             self.db_config = {
                 "host": db_config.get("host", "localhost"),
-                "port": db_config.get("port", 3306),
+                "port": int(db_config.get("port", 3306)),
                 "user": db_config.get("user", "root"),
                 "password": db_config.get("password", ""),
                 "db": db_config.get("database", "opencontext"),
