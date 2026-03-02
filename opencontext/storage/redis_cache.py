@@ -173,13 +173,26 @@ class RedisCache:
             return False
 
     async def _ensure_async_client(self) -> bool:
-        """Ensure async client is connected."""
+        """Ensure async client is connected, with retry outside the lock."""
         if self._async_connected:
             return True
-        async with self._async_lock:
-            if self._async_connected:
-                return True
-            return await self._connect_async()
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            async with self._async_lock:
+                if self._async_connected:
+                    return True
+                result = await self._connect_async()
+                if result:
+                    return True
+            # Sleep outside the lock to avoid blocking other callers
+            if attempt < max_retries - 1:
+                delay = 2 ** (attempt + 1)  # 2, 4 seconds
+                logger.warning(
+                    f"Redis connect failed, retry in {delay}s ({attempt + 1}/{max_retries})"
+                )
+                await asyncio.sleep(delay)
+        return False
 
     async def is_connected(self) -> bool:
         """Check if async Redis is connected."""

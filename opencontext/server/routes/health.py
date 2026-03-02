@@ -52,7 +52,8 @@ async def readiness_check(opencontext: OpenContext = Depends(get_context_lab)):
     """Readiness probe - checks all dependencies are connectable."""
     try:
         health_data = await opencontext.check_components_health()
-        all_healthy = all(v for v in health_data.values() if isinstance(v, bool))
+        core_keys = ["config", "storage", "llm", "document_db", "redis"]
+        all_healthy = all(health_data.get(k, False) for k in core_keys if k in health_data)
         status_code = 200 if all_healthy else 503
         return JSONResponse(
             status_code=status_code,

@@ -2,10 +2,11 @@
 FROM python:3.11-slim
 
 # Set environment variables
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     CONTEXT_PATH=/app \
-    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+    PIP_INDEX_URL=${PIP_INDEX_URL}
 
 # Set working directory
 WORKDIR /app
@@ -17,7 +18,7 @@ WORKDIR /app
 COPY . .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir .
 
 # Install playwright dependencies
 # RUN pip install playwright && \
@@ -31,4 +32,4 @@ EXPOSE 1733
 
 # Entrypoint
 ENTRYPOINT ["python"]
-CMD ["-m", "opencontext.cli", "start", "--config", "config/config.yaml"]
+CMD ["-m", "opencontext.cli", "start", "--config", "config/config-docker.yaml"]

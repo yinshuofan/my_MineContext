@@ -388,8 +388,8 @@ class OpenContext:
         # Check MySQL/SQLite connectivity
         try:
             storage = get_storage()
-            if hasattr(storage, "document_storage") and storage.document_storage:
-                backend = storage.document_storage
+            if hasattr(storage, "_document_backend") and storage._document_backend:
+                backend = storage._document_backend
                 if hasattr(backend, "_pool") and backend._pool:
                     # MySQL with pool: use context manager for safe checkout/return
                     with backend._get_connection():
