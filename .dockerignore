@@ -1,0 +1,17 @@
+.git
+.github
+.claude
+.env
+.env.*
+logs/
+persist/
+screenshots/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+docs/
+OpenViking/

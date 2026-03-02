@@ -55,7 +55,19 @@ async def lifespan(app: FastAPI):
     # Initialize async storage (must happen inside event loop)
     from opencontext.storage.global_storage import GlobalStorage, get_storage
 
-    await GlobalStorage.get_instance().ensure_initialized()
+    max_retries = 3
+    for attempt in range(max_retries):
+        await GlobalStorage.get_instance().ensure_initialized()
+        if GlobalStorage.get_instance().get_storage() is not None:
+            break
+        if attempt < max_retries - 1:
+            delay = 3 * (2 ** attempt)  # 3, 6 seconds
+            logger.warning(
+                f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})"
+            )
+            await asyncio.sleep(delay)
+    else:
+        logger.error("Storage initialization failed after all retries")
 
     # Update OpenContext's storage reference now that async init is done
     context_lab = app.state.context_lab_instance

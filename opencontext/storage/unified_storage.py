@@ -8,6 +8,7 @@
 Unified storage system - unified management supporting multiple storage backends
 """
 
+import asyncio
 import functools
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
@@ -154,7 +155,20 @@ class UnifiedStorage:
 
             for config in backend_configs:
                 storage_type = StorageType(config["storage_type"])
-                backend = await self._factory.create_backend(storage_type, config)
+                backend = None
+                max_retries = 3
+                for attempt in range(max_retries):
+                    backend = await self._factory.create_backend(storage_type, config)
+                    if backend:
+                        break
+                    if attempt < max_retries - 1:
+                        delay = 2 ** (attempt + 1)  # 2, 4 seconds
+                        logger.warning(
+                            f"Backend {config['name']} init failed, retry in {delay}s "
+                            f"({attempt + 1}/{max_retries})"
+                        )
+                        await asyncio.sleep(delay)
+
                 if backend:
                     # Set dedicated backend reference
                     if storage_type == StorageType.VECTOR_DB and isinstance(
@@ -172,7 +186,9 @@ class UnifiedStorage:
                         f"Storage backend {config['name']} ({storage_type.value}) initialized successfully"
                     )
                 else:
-                    logger.error(f"Storage backend {config['name']} initialization failed")
+                    logger.error(
+                        f"Storage backend {config['name']} init failed after {max_retries} attempts"
+                    )
                     return False
 
             self._initialized = True

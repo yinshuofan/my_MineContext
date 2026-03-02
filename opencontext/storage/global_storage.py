@@ -47,6 +47,7 @@ class GlobalStorage:
                 if not self._initialized:
                     self._storage: Optional[UnifiedStorage] = None
                     self._auto_initialized = False
+                    self._init_attempts = 0
                     GlobalStorage._initialized = True
 
     @classmethod
@@ -72,6 +73,15 @@ class GlobalStorage:
         if self._auto_initialized:
             return
 
+        max_auto_init_attempts = 3
+        if self._init_attempts >= max_auto_init_attempts:
+            logger.error(
+                f"GlobalStorage auto-init exceeded max attempts ({max_auto_init_attempts})"
+            )
+            return
+
+        self._init_attempts += 1
+
         try:
             # Try to auto-initialize storage
             from opencontext.config.global_config import get_config
@@ -95,7 +105,7 @@ class GlobalStorage:
             self._auto_initialized = True
         except Exception as e:
             logger.error(f"GlobalStorage auto-initialization failed: {e}")
-            self._auto_initialized = True  # Prevent repeated attempts
+            self._auto_initialized = False  # Allow retry on next call
 
     async def ensure_initialized(self):
         """Ensure storage is initialized (async). Call this before first use."""

@@ -1,4 +1,19 @@
-version: '3.8'
+x-common-env: &common-env
+  REDIS_HOST: ${REDIS_HOST:-redis}
+  MYSQL_HOST: ${MYSQL_HOST:-mysql}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+  LLM_API_KEY: ${LLM_API_KEY}
+  LLM_BASE_URL: ${LLM_BASE_URL}
+  LLM_MODEL: ${LLM_MODEL}
+  VLM_API_KEY: ${VLM_API_KEY}
+  VLM_BASE_URL: ${VLM_BASE_URL}
+  VLM_MODEL: ${VLM_MODEL}
+  EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
+  EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+  VIKINGDB_ACCESS_KEY_ID: ${VIKINGDB_ACCESS_KEY_ID}
+  VIKINGDB_SECRET_ACCESS_KEY: ${VIKINGDB_SECRET_ACCESS_KEY}
+  VIKINGDB_REGION: ${VIKINGDB_REGION}
 
 services:
   nginx:
@@ -8,29 +23,17 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - server
+      server:
+        condition: service_healthy
+    restart: unless-stopped
 
   server:
     build: .
     command: ["-m", "opencontext.cli", "start", "--config", "config/config-docker.yaml"]
     environment:
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - MYSQL_HOST=${MYSQL_HOST:-mysql}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - CONTEXT_API_KEY=${CONTEXT_API_KEY}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL}
-      - VLM_API_KEY=${VLM_API_KEY}
-      - VLM_BASE_URL=${VLM_BASE_URL}
-      - VLM_MODEL=${VLM_MODEL}
-      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
-      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
-      - VIKINGDB_ACCESS_KEY_ID=${VIKINGDB_ACCESS_KEY_ID}
-      - VIKINGDB_SECRET_ACCESS_KEY=${VIKINGDB_SECRET_ACCESS_KEY}
-      - VIKINGDB_REGION=${VIKINGDB_REGION}
-      - SCHEDULER_ENABLED=false
+      <<: *common-env
+      CONTEXT_API_KEY: ${CONTEXT_API_KEY}
+      SCHEDULER_ENABLED: "false"
     volumes:
       - ./logs:/app/logs
       - ./persist:/app/persist
@@ -39,30 +42,31 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     deploy:
       replicas: 3
+    restart: unless-stopped
 
   script-scheduler:
     build: .
     command: scripts/scheduler_runner.py --config config/tasks.yaml --project-config config/config-scheduler.yaml
     environment:
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - MYSQL_HOST=${MYSQL_HOST:-mysql}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - PYTHONPATH=/app
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL}
-      - VIKINGDB_ACCESS_KEY_ID=${VIKINGDB_ACCESS_KEY_ID}
-      - VIKINGDB_SECRET_ACCESS_KEY=${VIKINGDB_SECRET_ACCESS_KEY}
-      - VIKINGDB_REGION=${VIKINGDB_REGION}
+      <<: *common-env
+      PYTHONPATH: /app
     volumes:
       - ./logs:/app/logs
       - ./persist:/app/persist
       - ./config:/app/config
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
     deploy:
       replicas: 1
+    restart: unless-stopped
 
   # Infrastructure Services
   mysql:
@@ -80,6 +84,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:alpine
@@ -93,6 +98,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
 
 volumes:
