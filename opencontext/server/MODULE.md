@@ -122,7 +122,7 @@ class FastSearchStrategy(BaseSearchStrategy):
 
     # Internal
     def _build_time_filters(self, time_range: Optional[TimeRange]) -> Dict[str, Any]
-    async def _attach_parent_summaries(self, event_results: List[Tuple[ProcessedContext, float]]) -> List[VectorResult]
+    async def _attach_parent_summaries(self, event_results: List[Tuple[ProcessedContext, float]]) -> List[VectorResult]  # Batch-fetch parent summaries for L0 events via parent_id
     @staticmethod _to_vector_result(ctx: ProcessedContext, score: float) -> VectorResult
     @staticmethod _to_profile_result(data: Dict) -> ProfileResult
     @staticmethod _to_entity_result(data: Dict) -> EntityResult
@@ -132,7 +132,7 @@ Algorithm:
 1. Generate embedding once via `do_vectorize()`
 2. Build time filters from `TimeRange`
 3. Dispatch parallel `asyncio.to_thread()` calls: profile lookup, entity search, document/event/knowledge vector search
-4. Events filtered to L0 only (`hierarchy_level: {"$gte": 0, "$lte": 0}`), with parent summaries batch-attached
+4. Events filtered to L0 only (`hierarchy_level: {"$gte": 0, "$lte": 0}`), with parent summaries batch-attached via `_attach_parent_summaries()`: collects unique `parent_id` values from L0 events, batch-fetches parent contexts via `storage.get_contexts_by_ids()`, and populates the `parent_summary` field on each `VectorResult`. Requires `parent_id` to be backfilled by `HierarchySummaryTask._store_summary()`
 5. Assemble `TypedResults`
 
 ### IntelligentSearchStrategy (search/intelligent_strategy.py)

@@ -136,8 +136,8 @@ Tracking and hierarchy metadata. Fields:
 | `raw_id` | `Optional[str]` | `None` | |
 | `user_id`, `device_id`, `agent_id` | `Optional[str]` | `None` | 3-key identifier |
 | `hierarchy_level` | `int` | `0` | 0=raw, 1=daily, 2=weekly, 3=monthly |
-| `parent_id` | `Optional[str]` | `None` | |
-| `children_ids` | `List[str]` | `[]` | |
+| `parent_id` | `Optional[str]` | `None` | Parent summary context ID; backfilled by `batch_set_parent_id()` after hierarchy summary generation, enables upward traversal (L0 → L1/L2/L3) |
+| `children_ids` | `List[str]` | `[]` | Child context IDs; set during hierarchy summary generation, enables downward traversal and drill-down |
 | `time_bucket` | `Optional[str]` | `None` | e.g. `"2026-02-21"`, `"2026-W08"` |
 | `source_file_key` | `Optional[str]` | `None` | `"user_id:file_path"` format |
 
