@@ -137,15 +137,8 @@ class DocumentTextChunker(BaseChunker):
         # Create async tasks
         tasks = [self._split_with_llm_async(buf) for buf in buffers]
 
-        # Run event loop
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
         # Execute all tasks concurrently
-        results = loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+        results = asyncio.run(asyncio.gather(*tasks, return_exceptions=True))
 
         # Handle exceptions
         processed_results = []
@@ -285,15 +278,8 @@ class DocumentTextChunker(BaseChunker):
                 {"role": "user", "content": user_prompt},
             ]
 
-            # Create async event loop
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
             # Async LLM call
-            response = loop.run_until_complete(
+            response = asyncio.run(
                 generate_with_messages(
                     messages=messages,
                 )
