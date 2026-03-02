@@ -522,7 +522,11 @@ async def change_prompt_language(request: LanguageChangeRequest, _auth: str = au
             return convert_resp(code=500, status=500, message="Failed to change language")
 
         logger.info(f"Prompt language changed to: {request.language}")
-        return convert_resp(message=f"Language changed to {request.language}")
+        return convert_resp(
+            message=f"Language changed to {request.language}. "
+            "Note: in multi-worker mode, restart the service for the change "
+            "to take effect on all workers."
+        )
     except Exception as e:
         logger.exception(f"Failed to change prompt language: {e}")
         return convert_resp(code=500, status=500, message=f"Failed to change language: {str(e)}")

@@ -110,7 +110,7 @@
 
 | 严重度 | 问题 | 位置 |
 |--------|------|------|
-| 🟡 | `GlobalConfig.set_language()` 非线程安全 — `_language` 和 `_prompt_manager` 修改无锁保护。多 worker 下可能状态不一致。 | `global_config.py:188-235` |
+| ✅ | ~~`GlobalConfig.set_language()` 非线程安全~~ — 经调查为多进程架构固有限制，非线程安全问题。已在 API 响应中添加多 worker 模式需重启的提示。 | `settings.py:524-528` |
 | 🟡 | `save_user_settings()` 文件级读-改-写竞态 — 多进程下后写覆盖先写，导致设置丢失。 | `config_manager.py:206-226` |
 | 🟡 | `GlobalConfig._auto_initialize` 中 `self._initialized` 实例属性覆盖类属性，导致隐蔽的状态机缺陷。 | `global_config.py:81` |
 | 🟡 | `deep_merge` 在 `ConfigManager` 和 `PromptManager` 中重复实现。 | `config_manager.py:140-161`, `prompt_manager.py:201-211` |
@@ -475,7 +475,7 @@
 | 3 | 层级摘要 device_id/agent_id 缺失 | 多设备数据混合 |
 | 4 | `ProfileResult.summary` 字段缺失 | 搜索结果数据丢失 |
 | 5 | `IContextProcessor.process()` 返回类型 | 接口契约不一致 |
-| 6 | `GlobalConfig.set_language()` 线程安全 | 多 worker 配置不一致 |
+| ~~6~~ | ~~`GlobalConfig.set_language()` 线程安全~~ | ~~已处理：API 响应添加多 worker 重启提示~~ |
 | 7 | `StateManager.states` 内存泄漏 — 无自动清理 | 长运行内存增长 |
 | 8 | `evaluate_sufficiency` 精确字符串匹配不健壮 | LLM 输出变化时判断错误 |
 
