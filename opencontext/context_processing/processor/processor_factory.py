@@ -9,8 +9,7 @@ Processor component factory implementing the Factory design pattern.
 Provides centralized creation and management of processor instances.
 """
 
-import importlib
-from typing import Any, Dict, List, Optional, Protocol, Type
+from typing import Dict, List, Optional, Type
 
 from opencontext.config import GlobalConfig
 from opencontext.context_processing.processor.document_processor import DocumentProcessor
@@ -21,23 +20,15 @@ from opencontext.utils.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
-class ProcessorDependencies(Protocol):
-    """Protocol defining processor dependencies for better type safety."""
-
-    prompt_manager: Optional[Any]
-    storage: Optional[Any]
-
-
 class ProcessorFactory:
     """
     Factory class for creating processor instances.
 
     Implements the Factory design pattern to provide centralized processor creation
-    with dependency injection and configuration management.
+    and configuration management.
 
     Features:
     - Type-safe processor registration and creation
-    - Automatic dependency injection based on constructor signatures
     - Configuration validation and management
     - Extensible processor type registration
     """
@@ -106,16 +97,12 @@ class ProcessorFactory:
         """
         return type_name in self._processor_registry
 
-    def create_processor(
-        self, type_name: str, config: Optional[Dict[str, Any]] = None, **dependencies
-    ) -> Optional[IContextProcessor]:
+    def create_processor(self, type_name: str) -> Optional[IContextProcessor]:
         """
-        Create a processor instance with automatic dependency injection.
+        Create a processor instance.
 
         Args:
             type_name: Name of the processor type to create
-            config: Configuration dictionary for the processor (deprecated, will be ignored)
-            **dependencies: Named dependencies (deprecated, will be auto-filled from global config)
 
         Returns:
             Processor instance if creation was successful, None otherwise
@@ -141,15 +128,13 @@ class ProcessorFactory:
             return None
 
     def create_processor_with_validation(
-        self, type_name: str, config: Optional[Dict[str, Any]] = None, **dependencies
+        self, type_name: str
     ) -> Optional[IContextProcessor]:
         """
         Create processor with configuration validation.
 
         Args:
             type_name: Name of the processor type to create
-            config: Configuration dictionary for the processor (deprecated)
-            **dependencies: Named dependencies (deprecated)
 
         Returns:
             Processor instance if creation and validation were successful

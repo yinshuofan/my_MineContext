@@ -57,13 +57,11 @@ Registers built-in processors on init:
 - `"document_processor"` -> `DocumentProcessor`
 - `"text_chat_processor"` -> `TextChatProcessor`
 
-Also defines `ProcessorDependencies` Protocol (deprecated, but still present) with `prompt_manager` and `storage` fields -- used for type hints only, not functionally active.
-
 ```python
 class ProcessorFactory:
     def register_processor_type(self, type_name: str, processor_class: Type[IContextProcessor]) -> bool
-    def create_processor(self, type_name: str, config=None, **dependencies) -> Optional[IContextProcessor]
-    def create_processor_with_validation(self, type_name: str, config=None, **dependencies) -> Optional[IContextProcessor]
+    def create_processor(self, type_name: str) -> Optional[IContextProcessor]
+    def create_processor_with_validation(self, type_name: str) -> Optional[IContextProcessor]
     def get_registered_types(self) -> List[str]
     def is_type_registered(self, type_name: str) -> bool
 ```
