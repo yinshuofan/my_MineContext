@@ -63,18 +63,21 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `get_all_processed_context_counts` | `() -> Dict[str, int]` | Type-keyed counts |
 | `delete_by_source_file` | `(source_file_key: str, user_id: Optional[str]) -> bool` | Success flag |
 | `search_by_hierarchy` | `(context_type, hierarchy_level, time_bucket_start, time_bucket_end, user_id, device_id, agent_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results |
-| `get_by_ids` | `(ids: List[str], context_type: Optional[str]) -> List[ProcessedContext]` | Contexts by ID |
+| `get_by_ids` | `(ids: List[str], context_type: Optional[str], need_vector: bool) -> List[ProcessedContext]` | Contexts by ID |
 | `upsert_todo_embedding` | `(todo_id: int, content: str, embedding: List[float], metadata) -> bool` | Success flag |
 | `search_similar_todos` | `(query_embedding: List[float], top_k, similarity_threshold) -> List[Tuple[int, str, float]]` | (todo_id, content, score) |
 | `delete_todo_embedding` | `(todo_id: int) -> bool` | Success flag |
 
-Non-abstract method with default implementation (backends may override):
+Non-abstract methods with default implementation (backends may override):
 
-| Method | Signature | Yields |
-|--------|-----------|--------|
+| Method | Signature | Returns/Yields |
+|--------|-----------|----------------|
 | `scroll_processed_contexts` | `(context_types, batch_size=100, filter, need_vector, user_id, device_id, agent_id) -> Generator[ProcessedContext, None, None]` | `ProcessedContext` objects one at a time |
+| `batch_set_parent_id` | `(children_ids: List[str], parent_id: str, context_type: str) -> int` | Count of updated contexts |
 
 **`scroll_processed_contexts`**: Generator that iterates all matching contexts. The default implementation uses offset-based `get_all_processed_contexts` calls (O(n^2) for backends like ChromaDB). `QdrantBackend` overrides this with native cursor-based scrolling via `_client.scroll(offset=next_page_offset)` for O(n) performance. Used by `ContextMerger._cleanup_contexts_by_type()` for data cleanup iteration.
+
+**`batch_set_parent_id`**: Sets `parent_id` on multiple child contexts. The default implementation fetches contexts with vectors (`get_by_ids(need_vector=True)`), modifies `parent_id`, and re-upserts. `QdrantBackend` overrides with native `set_payload` API (payload-only update, no vector traffic). `VikingDBBackend` overrides with `/api/vikingdb/data/update` API (batch limit 100). Called by `HierarchySummaryTask._store_summary()` to backfill parent_id on children after storing a hierarchy summary.
 
 ### IDocumentStorageBackend (ABC) -- `base_storage.py`
 

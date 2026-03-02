@@ -1315,6 +1315,21 @@ class HierarchySummaryTask(BasePeriodicTask):
                     f"Stored {level_name} summary id={summary_id}, "
                     f"time_bucket={time_bucket}, children={len(children_ids)}"
                 )
+                # Backfill parent_id on child contexts
+                if children_ids:
+                    try:
+                        updated = await storage.batch_set_parent_id(
+                            children_ids, summary_id, ContextType.EVENT.value
+                        )
+                        logger.info(
+                            f"Set parent_id on {updated}/{len(children_ids)} children "
+                            f"for {level_name} summary {summary_id}"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to backfill parent_id for {level_name} summary: {e}"
+                        )
+                        # Non-fatal: summary is already stored, parent_id is a bonus link
                 return context
             else:
                 logger.error(f"Failed to upsert {level_name} summary to storage")

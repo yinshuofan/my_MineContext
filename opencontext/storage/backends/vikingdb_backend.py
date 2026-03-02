@@ -1620,7 +1620,10 @@ class VikingDBBackend(IVectorStorageBackend):
             return []
 
     async def get_by_ids(
-        self, ids: List[str], context_type: Optional[str] = None
+        self,
+        ids: List[str],
+        context_type: Optional[str] = None,
+        need_vector: bool = False,
     ) -> List[ProcessedContext]:
         if not self._initialized:
             return []
@@ -1650,7 +1653,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 if context_type and doc.get(FIELD_CONTEXT_TYPE) != context_type:
                     continue
 
-                context = self._doc_to_context(doc, need_vector=False)
+                context = self._doc_to_context(doc, need_vector=need_vector)
                 if context:
                     contexts.append(context)
 
@@ -1659,6 +1662,37 @@ class VikingDBBackend(IVectorStorageBackend):
         except Exception as e:
             logger.exception(f"Failed to get contexts by IDs: {e}")
             return []
+
+    async def batch_set_parent_id(
+        self,
+        children_ids: List[str],
+        parent_id: str,
+        context_type: str,
+    ) -> int:
+        if not self._initialized or not children_ids:
+            return 0
+        updated = 0
+        # VikingDB update API limit: 100 items per request
+        for i in range(0, len(children_ids), 100):
+            batch = children_ids[i : i + 100]
+            data_list = [{"id": cid, FIELD_PARENT_ID: parent_id} for cid in batch]
+            try:
+                result = await self._client.async_data_request(
+                    path="/api/vikingdb/data/update",
+                    data={
+                        "collection_name": self._collection_name,
+                        "data": data_list,
+                    },
+                )
+                if result.get("code") == "Success":
+                    updated += len(batch)
+                else:
+                    logger.warning(
+                        f"batch_set_parent_id update failed: {result.get('message')}"
+                    )
+            except Exception as e:
+                logger.warning(f"batch_set_parent_id failed for batch: {e}")
+        return updated
 
     # Todo-related methods
     async def upsert_todo_embedding(
