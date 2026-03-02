@@ -89,9 +89,6 @@ Thread-safe singleton. Wraps a `LLMClient(LLMType.CHAT)` configured from `get_co
 
 **Note:** The module-level `is_initialized()` checks `_auto_initialized` (True after auto-init attempt, even on failure), NOT `_vlm_client is not None`. The instance method `is_initialized()` checks `_vlm_client is not None`. These have different semantics.
 
-**Implementation details:**
-- `generate_stream_for_agent` calls the private method `_vlm_client._openai_chat_completion_stream()` directly, bypassing the type check in `generate_with_messages_stream`.
-
 ## Cross-Module Dependencies
 
 **Imports from:**

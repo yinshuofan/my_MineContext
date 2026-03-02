@@ -187,7 +187,7 @@ class GlobalVLMClient:
         """
         Agent-specific streaming generation method
         """
-        async for chunk in self._vlm_client._openai_chat_completion_stream(
+        async for chunk in self._vlm_client.generate_with_messages_stream(
             messages, tools=tools, **kwargs
         ):
             yield chunk
