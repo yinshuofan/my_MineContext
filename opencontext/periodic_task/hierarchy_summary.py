@@ -183,9 +183,9 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         Determines which summaries need to be generated based on the current date:
         根据当前日期判断需要生成哪些摘要：
-        - Daily summary for yesterday (每天生成昨天的日摘要)
-        - Weekly summary if today is Monday (周一生成上周的周摘要)
-        - Monthly summary if today is the 1st (每月1日生成上月的月摘要)
+        - Daily summaries for recent N days (回溯最近 N 天补全缺失的日摘要, configurable via backfill_days)
+        - Weekly summary for the most recent completed week (生成上一个完整周的周摘要)
+        - Monthly summary for the most recent completed month (生成上一个完整月的月摘要)
 
         Args:
             context: Task execution context with user info
@@ -207,21 +207,13 @@ class HierarchySummaryTask(BasePeriodicTask):
         generated_summaries = []
         errors = []
 
-        # ── Level 1: Daily summary for yesterday ──
-        # 生成昨天的每日摘要
-        yesterday = today - datetime.timedelta(days=1)
-        yesterday_str = yesterday.isoformat()  # e.g. "2026-02-20"
-        try:
-            daily_result = await self._generate_daily_summary(
-                user_id, yesterday_str, device_id=device_id, agent_id=agent_id
-            )
-            if daily_result:
-                generated_summaries.append(f"daily:{yesterday_str}")
-                logger.info(f"Daily summary generated for user={user_id}, date={yesterday_str}")
-        except Exception as e:
-            error_msg = f"Failed to generate daily summary for {yesterday_str}: {e}"
-            logger.exception(error_msg)
-            errors.append(error_msg)
+        # ── Level 1: Backfill daily summaries for recent days ──
+        # 回溯最近 N 天，补全缺失的 L1 日摘要
+        daily_generated, daily_errors = await self._backfill_daily_summaries(
+            user_id, today, device_id=device_id, agent_id=agent_id
+        )
+        generated_summaries.extend(daily_generated)
+        errors.extend(daily_errors)
 
         # ── Level 2: Weekly summary for the most recent completed week ──
         # 始终尝试生成上一个完整 ISO 周的周摘要（去重检查防止重复生成）
@@ -695,6 +687,92 @@ class HierarchySummaryTask(BasePeriodicTask):
         )
 
     # ── Private methods for each hierarchy level ──
+
+    async def _backfill_daily_summaries(
+        self,
+        user_id: str,
+        today: datetime.date,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Backfill missing L1 daily summaries for the recent N days.
+        回溯最近 N 天，补全缺失的 L1 日摘要。
+
+        Args:
+            user_id: User identifier
+            today: Current date (exclusive — backfill covers [today-N, yesterday])
+            device_id: Device identifier
+            agent_id: Agent identifier
+
+        Returns:
+            Tuple of (generated_summary_labels, error_messages)
+        """
+        generated = []
+        errors = []
+
+        # Read backfill_days from config (default 7, clamped to [1, 30])
+        backfill_days = 7
+        try:
+            from opencontext.config.global_config import get_config
+
+            bd = get_config("scheduler.tasks.hierarchy_summary.backfill_days")
+            if bd is not None:
+                backfill_days = max(1, min(int(bd), 30))
+        except Exception:
+            pass
+
+        backfill_end = today - datetime.timedelta(days=1)  # yesterday
+        backfill_start = today - datetime.timedelta(days=backfill_days)
+
+        # Batch query existing L1 summaries in the window (1 query vs N)
+        # 批量查询窗口内已有的 L1 摘要（1 次查询代替 N 次）
+        existing_dates: set = set()
+        storage = get_storage()
+        if storage:
+            try:
+                existing_l1 = await storage.search_hierarchy(
+                    context_type=ContextType.EVENT.value,
+                    hierarchy_level=1,
+                    time_bucket_start=backfill_start.isoformat(),
+                    time_bucket_end=backfill_end.isoformat(),
+                    user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
+                    top_k=backfill_days,
+                )
+                existing_dates = {
+                    ctx.properties.time_bucket
+                    for ctx, _ in existing_l1
+                    if ctx.properties.time_bucket
+                }
+            except Exception as e:
+                logger.warning(f"Failed to query existing L1 summaries: {e}")
+
+        # Generate missing daily summaries (most recent first)
+        # 生成缺失的日摘要（从最近一天开始）
+        for day_offset in range(1, backfill_days + 1):
+            target_date = today - datetime.timedelta(days=day_offset)
+            target_str = target_date.isoformat()
+
+            if target_str in existing_dates:
+                continue
+
+            try:
+                result = await self._generate_daily_summary(
+                    user_id, target_str, device_id=device_id, agent_id=agent_id
+                )
+                if result:
+                    generated.append(f"daily:{target_str}")
+                    logger.info(
+                        f"Backfilled daily summary for user={user_id}, date={target_str}"
+                    )
+            except Exception as e:
+                error_msg = f"Failed to generate daily summary for {target_str}: {e}"
+                logger.exception(error_msg)
+                errors.append(error_msg)
+
+        return generated, errors
 
     async def _generate_daily_summary(
         self,

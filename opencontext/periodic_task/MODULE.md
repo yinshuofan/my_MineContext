@@ -111,7 +111,7 @@ Generates hierarchical time-based summaries (L1 daily, L2 weekly, L3 monthly) fo
 No external dependency injection -- uses `get_storage()` and LLM globals directly.
 
 **Core flow in `async execute(context)`**:
-1. Generate L1 daily summary for yesterday
+1. Backfill L1 daily summaries for recent N days via `_backfill_daily_summaries()` (N = `backfill_days` config, default 7). Batch-queries existing L1 summaries in the window (1 query) to skip already-generated dates, then generates missing ones most-recent-first.
 2. Generate L2 weekly summary for the most recent completed ISO week
 3. Generate L3 monthly summary for the most recent completed month
 
@@ -191,13 +191,17 @@ RedisTaskScheduler._execute_task() or _process_periodic_tasks()
 execute(context)
   │  extracts user_id, device_id, agent_id from context
   │
-  ├─> _generate_daily_summary(user_id, yesterday, device_id, agent_id)
-  │     ├─ search_hierarchy(level=1, time_bucket=yesterday, device_id, agent_id) -- dedup check
-  │     ├─ get_all_processed_contexts(EVENT, filter=..., device_id, agent_id)
-  │     ├─ _batch_summarize_and_merge(l0_events, level=1, ..., _format_l0_events)
-  │     │     ├─ If fits: _call_llm_for_summary()
-  │     │     └─ If overflow: _split_into_batches() -> partial summaries -> _call_llm_for_merge()
-  │     └─ _store_summary(level=1, ..., device_id, agent_id)
+  ├─> _backfill_daily_summaries(user_id, today, device_id, agent_id)
+  │     ├─ Read backfill_days from config (default 7)
+  │     ├─ search_hierarchy(level=1, time_bucket_start/end=window, device_id, agent_id) -- batch dedup
+  │     └─ For each missing date (most recent first):
+  │           └─> _generate_daily_summary(user_id, date, device_id, agent_id)
+  │                 ├─ search_hierarchy(level=1, time_bucket=date, device_id, agent_id) -- dedup check
+  │                 ├─ get_all_processed_contexts(EVENT, filter=..., device_id, agent_id)
+  │                 ├─ _batch_summarize_and_merge(l0_events, level=1, ..., _format_l0_events)
+  │                 │     ├─ If fits: _call_llm_for_summary()
+  │                 │     └─ If overflow: _split_into_batches() -> partial summaries -> _call_llm_for_merge()
+  │                 └─ _store_summary(level=1, ..., device_id, agent_id)
   │
   ├─> _generate_weekly_summary(user_id, prev_week, device_id, agent_id)
   │     ├─ search_hierarchy(level=2, time_bucket=week, device_id, agent_id) -- dedup check

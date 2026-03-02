@@ -321,3 +321,4 @@ scheduler:
       interval: 86400      # 用户活动后延迟 24h
       timeout: 600         # LLM 调用超时（秒）
       task_ttl: 172800     # 任务状态 TTL 48h
+      backfill_days: 7     # L1 日摘要回溯天数（补全最近 N 天缺失的日摘要）
