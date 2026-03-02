@@ -11,7 +11,7 @@ import json
 import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from opencontext.models.enums import ContextType
@@ -29,7 +29,7 @@ class TokenUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 @dataclass
@@ -41,7 +41,7 @@ class ProcessingMetrics:
     duration_ms: int
     context_type: Optional[str] = None
     context_count: int = 1
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 @dataclass
@@ -52,7 +52,7 @@ class RetrievalMetrics:
     duration_ms: int
     snippets_count: int = 0
     query: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 @dataclass
@@ -61,7 +61,7 @@ class ContextTypeStats:
 
     context_type: str
     count: int
-    last_update: datetime = field(default_factory=datetime.now)
+    last_update: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 @dataclass
@@ -71,7 +71,7 @@ class ProcessingError:
     error_message: str
     processor_name: str = ""
     context_count: int = 0
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 @dataclass
@@ -84,7 +84,7 @@ class SchedulerMetrics:
     duration_ms: int
     trigger_mode: str
     error_message: str = ""
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 class Monitor:
@@ -107,7 +107,7 @@ class Monitor:
         # Context type statistics cache
         self._context_type_stats: Dict[str, ContextTypeStats] = {}
         self._stats_cache_ttl = 60  # Cache for 60 seconds
-        self._last_stats_update = datetime.min
+        self._last_stats_update = datetime.min.replace(tzinfo=timezone.utc)
 
         # Processing error records (keep last 50 records)
         self._processing_errors: deque = deque(maxlen=50)
@@ -116,7 +116,7 @@ class Monitor:
         self._scheduler_history: deque = deque(maxlen=1000)
 
         # Start time
-        self._start_time = datetime.now()
+        self._start_time = datetime.now(tz=timezone.utc)
 
         logger.info("System monitor initialized")
 
@@ -200,7 +200,7 @@ class Monitor:
 
     async def get_context_type_stats(self, force_refresh: bool = False) -> Dict[str, int]:
         """Get record count for each context_type"""
-        now = datetime.now()
+        now = datetime.now(tz=timezone.utc)
 
         # Check if cache is expired
         if not force_refresh and now - self._last_stats_update < timedelta(
@@ -272,7 +272,7 @@ class Monitor:
 
     def get_processing_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get processing performance summary"""
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = datetime.now(tz=timezone.utc) - timedelta(hours=hours)
 
         with self._lock:
             recent_metrics = [m for m in self._processing_history if m.timestamp >= cutoff_time]
@@ -532,7 +532,7 @@ class Monitor:
     ):
         """Record processing error"""
         if timestamp is None:
-            timestamp = datetime.now()
+            timestamp = datetime.now(tz=timezone.utc)
         with self._lock:
             error = ProcessingError(
                 error_message=error_message,
@@ -544,7 +544,7 @@ class Monitor:
 
     def get_processing_errors(self, hours: int = 1, top_n: int = 5) -> Dict[str, Any]:
         """Get top N processing errors"""
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = datetime.now(tz=timezone.utc) - timedelta(hours=hours)
 
         with self._lock:
             recent_errors = [e for e in self._processing_errors if e.timestamp >= cutoff_time]
@@ -601,7 +601,7 @@ class Monitor:
 
     def get_scheduler_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get scheduler execution summary"""
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = datetime.now(tz=timezone.utc) - timedelta(hours=hours)
 
         with self._lock:
             recent_metrics = [m for m in self._scheduler_history if m.timestamp >= cutoff_time]
@@ -688,7 +688,7 @@ class Monitor:
 
     def get_retrieval_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get retrieval performance summary"""
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = datetime.now(tz=timezone.utc) - timedelta(hours=hours)
 
         with self._lock:
             recent_metrics = [m for m in self._retrieval_history if m.timestamp >= cutoff_time]
@@ -737,7 +737,7 @@ class Monitor:
 
     async def get_system_overview(self) -> Dict[str, Any]:
         """Get system overview"""
-        uptime = datetime.now() - self._start_time
+        uptime = datetime.now(tz=timezone.utc) - self._start_time
 
         return {
             "uptime_seconds": int(uptime.total_seconds()),
@@ -749,7 +749,7 @@ class Monitor:
             "stage_timing": await self.get_stage_timing_summary(hours=24),
             "data_stats_24h": await self.get_data_stats_summary(hours=24),
             "scheduler": self.get_scheduler_summary(hours=24),
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": datetime.now(tz=timezone.utc).isoformat(),
         }
 
 
