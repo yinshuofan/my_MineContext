@@ -84,19 +84,23 @@ class APIAuth {
      * Enhanced fetch with automatic API key handling
      */
     async fetch(url, options = {}) {
-        // If auth is disabled, use original fetch
-        if (!this.authEnabled) {
+        // Always include API key if available (don't wait for authEnabled check,
+        // which may not have completed yet due to async init race condition)
+        const apiKey = this.apiKey || localStorage.getItem('context_lab_api_key');
+
+        // If no API key stored and auth not enabled, use original fetch
+        if (!apiKey && !this.authEnabled) {
             return originalFetch(url, options);
         }
-        
+
         // Prepare headers with API key
         const headers = {
             'Content-Type': 'application/json',
             ...(options.headers || {})
         };
-        
-        if (this.apiKey) {
-            headers['X-API-Key'] = this.apiKey;
+
+        if (apiKey) {
+            headers['X-API-Key'] = apiKey;
         }
         
         const requestOptions = {
@@ -288,11 +292,9 @@ window.apiAuth = new APIAuth();
 
 // Monkey patch fetch for API calls that need authentication
 window.fetch = function(url, options = {}) {
-    // Only patch API calls that need authentication (not excluded ones)
-    if (typeof url === 'string' && url.startsWith('/api/') && 
-        !url.startsWith('/api/auth/') && 
-        !url.startsWith('/api/vaults/') && 
-        !url.startsWith('/api/monitoring/')) {
+    // Only patch API calls that need authentication (not auth status check)
+    if (typeof url === 'string' && url.startsWith('/api/') &&
+        !url.startsWith('/api/auth/')) {
         return window.apiAuth.fetch(url, options);
     }
     return originalFetch(url, options);
