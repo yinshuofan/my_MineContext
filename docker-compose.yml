@@ -47,16 +47,15 @@ services:
       replicas: ${SERVER_REPLICAS:-3}
     restart: unless-stopped
 
-  script-scheduler:
+  scheduler:
     build: .
-    command: scripts/scheduler_runner.py --config config/tasks.yaml --project-config config/config-scheduler.yaml
+    command: ["-m", "opencontext.cli", "start", "--config", "config/config-docker.yaml", "--scheduler-only"]
     environment:
       <<: *common-env
-      PYTHONPATH: /app
+      SCHEDULER_ENABLED: "true"
     volumes:
       - ./logs:/app/logs
       - ./persist:/app/persist
-      - ./config:/app/config
     depends_on:
       mysql:
         condition: service_healthy
@@ -66,6 +65,7 @@ services:
         required: false
     deploy:
       replicas: 1
+    stop_grace_period: 30s
     restart: unless-stopped
 
   # Infrastructure Services

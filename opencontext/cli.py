@@ -199,6 +199,11 @@ def parse_args() -> argparse.Namespace:
     start_parser.add_argument(
         "--workers", type=int, default=1, help="Number of worker processes (default: 1)"
     )
+    start_parser.add_argument(
+        "--scheduler-only",
+        action="store_true",
+        help="Run only the task scheduler without web server or capture",
+    )
 
     return parser.parse_args()
 
@@ -228,20 +233,48 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
         lab_instance: The opencontext instance
     """
     import asyncio
+    import signal
 
     async def _run_async():
+        # Initialize async storage (same pattern as lifespan())
+        from opencontext.storage.global_storage import GlobalStorage, get_storage
+
+        max_retries = 5
+        for attempt in range(max_retries):
+            await GlobalStorage.get_instance().ensure_initialized()
+            if GlobalStorage.get_instance().get_storage() is not None:
+                break
+            if attempt < max_retries - 1:
+                delay = min(10 * (2**attempt), 60)  # 10, 20, 40, 60
+                logger.warning(
+                    f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})"
+                )
+                await asyncio.sleep(delay)
+        else:
+            logger.error("Storage initialization failed after all retries")
+
+        # Update storage reference
+        if lab_instance.storage is None:
+            lab_instance.storage = get_storage()
+
         try:
-            # Start task scheduler
             if hasattr(lab_instance, "component_initializer"):
                 await lab_instance.component_initializer.start_task_scheduler()
 
-            logger.info("Running in headless mode. Press Ctrl+C to exit.")
-            while True:
-                await asyncio.sleep(1)
+            logger.info("Running in headless mode. Waiting for shutdown signal...")
+
+            # Handle SIGTERM for Docker graceful shutdown
+            stop_event = asyncio.Event()
+            loop = asyncio.get_running_loop()
+            try:
+                loop.add_signal_handler(signal.SIGTERM, stop_event.set)
+            except NotImplementedError:
+                pass  # Windows — rely on KeyboardInterrupt via asyncio.run()
+
+            await stop_event.wait()
         except asyncio.CancelledError:
-            pass
+            pass  # SIGINT via asyncio.run() cancellation
         finally:
-            # Stop task scheduler
             if hasattr(lab_instance, "component_initializer"):
                 await lab_instance.component_initializer.stop_task_scheduler()
 
@@ -249,6 +282,7 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
         asyncio.run(_run_async())
     except KeyboardInterrupt:
         logger.info("Received interrupt signal, shutting down...")
+    finally:
         lab_instance.shutdown()
 
 
@@ -265,6 +299,15 @@ def handle_start(args: argparse.Namespace) -> int:
 
     web_config = get_config("web")
     workers = getattr(args, "workers", 1)
+
+    if getattr(args, "scheduler_only", False):
+        # Scheduler-only mode: run task scheduler without web server or capture
+        try:
+            lab_instance = _initialize_context_lab()
+        except RuntimeError:
+            return 1
+        _run_headless_mode(lab_instance)
+        return 0
 
     if not web_config.get("enabled", True):
         # Headless mode
