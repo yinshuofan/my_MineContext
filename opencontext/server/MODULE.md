@@ -64,7 +64,7 @@ class OpenContext:
     def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]
     def update_context(self, doc_id: str, context: ProcessedContext) -> bool
     def delete_context(self, doc_id: str, context_type: str) -> bool
-    async def check_components_health(self) -> Dict[str, Any]  # Checks config, storage, llm, document_db, redis
+    async def check_components_health(self) -> Dict[str, Any]  # Checks config, storage, llm, document_db, redis, scheduler
 
     # Additional public methods
     def start_capture(self) -> None                  # Starts all capture components via capture_manager.start_all_components()
@@ -287,7 +287,7 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 | GET | `/api/monitoring/health` | `monitoring_health` | Monitoring health |
 | GET | `/api/monitoring/processing-errors` | `get_processing_errors` | Processing errors Top N |
 | GET | `/api/monitoring/scheduler` | `get_scheduler_summary` | Scheduler execution summary (query param: `hours`, default 24) |
-| GET | `/api/monitoring/scheduler/queues` | `get_scheduler_queue_depths` | Real-time queue depths for all task types from Redis `zcard` |
+| GET | `/api/monitoring/scheduler/queues` | `get_scheduler_queue_depths` | Real-time queue depths for all task types from Redis `zcard`. Falls back to remote heartbeat + `zcard` when no local scheduler |
 | GET | `/api/monitoring/scheduler/failures` | `get_scheduler_failures` | Scheduler failure rates and recent errors (query param: `hours`, default 1) for alerting |
 | POST | `/api/monitoring/trigger-task` | `trigger_task` | Manually trigger periodic tasks. Params: `task_type` (required, e.g. `hierarchy_summary`), `user_id` (required), `device_id`/`agent_id` (default `"default"`), `level` (`auto`/`daily`/`weekly`/`monthly`, default `auto`), `target` (date/week/month string, required when level != auto) |
 
@@ -368,7 +368,7 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 | Models | `opencontext.models.context` (ProcessedContext, RawContextProperties, Vectorize), `opencontext.models.enums` (ContextType, CONTEXT_STORAGE_BACKENDS, etc.) |
 | Storage | `opencontext.storage.global_storage` (get_storage, GlobalStorage), `opencontext.storage.redis_cache` (get_redis_cache, get_cache) |
 | LLM | `opencontext.llm.global_embedding_client` (do_vectorize, GlobalEmbeddingClient), `opencontext.llm.global_vlm_client`, `opencontext.llm.llm_client` |
-| Scheduler | `opencontext.scheduler` (get_scheduler, init_scheduler) |
+| Scheduler | `opencontext.scheduler` (get_scheduler, init_scheduler, read_scheduler_heartbeat) |
 | Agent | `opencontext.context_consumption.context_agent` (ContextAgent), `context_agent.core.llm_context_strategy` (LLMContextStrategy) |
 | Managers | `opencontext.managers.capture_manager`, `processor_manager` |
 | Monitoring | `opencontext.monitoring` (get_monitor, initialize_monitor) |

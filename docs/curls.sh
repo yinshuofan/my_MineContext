@@ -18,6 +18,9 @@
 curl -X GET http://localhost:1733/health
 
 # Detailed Health Check (with component status)
+# Response includes: config, storage, llm, document_db, redis, scheduler
+# scheduler field (local):  {"initialized": true, "running": true, "in_flight_tasks": 0, "registered_handlers": ["hierarchy_summary", ...]}
+# scheduler field (remote): {"initialized": true, "running": true, "in_flight_tasks": 0, "registered_handlers": [...], "remote": true, "last_heartbeat": "2026-03-04T..."}
 curl -X GET http://localhost:1733/api/health
 # -H "X-API-Key: your-api-key"
 
