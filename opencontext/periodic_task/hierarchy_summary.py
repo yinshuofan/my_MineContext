@@ -1331,7 +1331,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             keywords=keywords,
             entities=entities,
             context_type=ContextType.EVENT,
-            confidence=80,
+            confidence=8,
             importance=importance,
         )
 

@@ -137,6 +137,7 @@ Implements `ITaskScheduler`. Stores all state in Redis via `RedisCache`.
 | `scheduler:lock:{type}:{user_key}` | Distributed lock |
 | `scheduler:periodic:{type}` | Periodic task state hash (`last_run`, `next_run`, `status`) |
 | `scheduler:fail_count:{type}:{user_key}` | Consecutive failure count (auto-expires via TTL) |
+| `scheduler:heartbeat` | Scheduler heartbeat hash (auto-expires via TTL) |
 
 **Properties**: `user_key_builder -> UserKeyBuilder`
 
@@ -163,7 +164,9 @@ Metrics are stored in an in-memory buffer and periodically persisted to the MySQ
 |--------|-------------|
 | `_collect_task_types()` | Reads `config["tasks"]` and queues enabled tasks for async registration |
 | `init_task_types()` | `async` -- registers queued task configs in Redis (called from `start()`) |
-| `_executor_loop()` | `async` -- coordinator that creates one `_type_worker` per registered handler + one `_periodic_worker`, then `asyncio.gather`s them. On `CancelledError`, cascades cancel to all workers and awaits in-flight tasks |
+| `_executor_loop()` | `async` -- coordinator that writes initial heartbeat, then creates one `_type_worker` per registered handler + one `_periodic_worker` + one `_heartbeat_worker`, then `asyncio.gather`s them. On `CancelledError`, cascades cancel to all workers and awaits in-flight tasks |
+| `_write_heartbeat()` | `async` -- writes heartbeat hash to Redis via pipeline (`hset` + `expire`). Called by `_heartbeat_worker` on each cycle and once at the start of `_executor_loop` |
+| `_heartbeat_worker()` | `async` -- independent loop that calls `_write_heartbeat()` every `check_interval` seconds. Handles `CancelledError` for clean shutdown |
 | `_type_worker(task_type)` | `async` -- independent per-type worker. Drain loop: acquires `_concurrency_sem` (1s timeout for shutdown responsiveness), calls `get_pending_task()`, fires off `_run_and_release` via `create_task` (fire-and-forget). Sleeps `check_interval` between drain cycles |
 | `_run_and_release(task_type, task_info)` | `async` -- wraps `_execute_task` in `try/finally: _concurrency_sem.release()` to guarantee semaphore release |
 | `_execute_task(task_type, task_info)` | `async` -- executes a single claimed task. Awaits async handler directly, calls `complete_task`. Uses `lock_released` flag + `finally` block with `asyncio.shield` to ensure lock is always released even on `CancelledError` |
@@ -174,6 +177,30 @@ Metrics are stored in an in-memory buffer and periodically persisted to the MySQ
 - `get_scheduler() -> Optional[RedisTaskScheduler]`
 - `set_scheduler(scheduler: RedisTaskScheduler) -> None`
 - `init_scheduler(redis_cache: RedisCache, config?: Dict) -> RedisTaskScheduler` -- creates, sets, returns
+
+**Remote observation functions** (module-level, for server processes without a local scheduler):
+- `read_scheduler_heartbeat(redis_cache: RedisCache) -> Optional[Dict[str, str]]` -- reads the heartbeat hash from Redis. Returns `None` if no heartbeat exists (scheduler never started or TTL expired)
+- `read_scheduler_queue_depths(redis_cache: RedisCache, task_types: List[str]) -> Dict[str, int]` -- reads `zcard` for each task type's queue sorted set
+
+### Heartbeat Mechanism
+
+The scheduler writes a heartbeat hash to `scheduler:heartbeat` every `check_interval` seconds. The key has a TTL of `check_interval * 3` (default 30s), so it auto-expires if the scheduler crashes.
+
+**Heartbeat hash fields**:
+| Field | Type | Description |
+|-------|------|-------------|
+| `running` | `"true"/"false"` | Whether the scheduler is actively running |
+| `started_at` | ISO 8601 string | When the scheduler was started |
+| `registered_handlers` | JSON array string | Sorted list of registered task handler names |
+| `check_interval` | string (int) | Drain cycle interval in seconds |
+| `in_flight_tasks` | string (int) | Snapshot count of currently executing tasks |
+| `last_heartbeat` | ISO 8601 string | Timestamp of the last heartbeat write |
+
+**Design decisions**:
+- `hset` + `expire` are batched in a **pipeline** to avoid orphaned keys if the process crashes between the two operations
+- On `stop()`, the heartbeat is updated with `running: "false"` rather than deleted, to avoid a detection gap during rolling deployments (old instance deletes → new instance hasn't written yet)
+- `registered_handlers` is stored as a JSON array string so consumers (including the monitoring frontend) can parse it directly
+- `in_flight_tasks` is a snapshot value with at most `check_interval` seconds of staleness, acceptable for monitoring
 
 ### TaskHandler (type alias)
 
@@ -208,10 +235,12 @@ Push endpoint
         └─ Create TaskInfo, write via pipeline: HSET+EXPIRE+ZADD in 1 round-trip
 
 _executor_loop (coordinator)
-  └─> asyncio.gather(
+  └─> _write_heartbeat()  # initial heartbeat before workers start
+      asyncio.gather(
         _type_worker("hierarchy_summary"),
         _type_worker("memory_compression"),
         _periodic_worker(),
+        _heartbeat_worker(),
       )
 
 Each _type_worker (independent per-type, concurrent execution):
@@ -245,7 +274,9 @@ stop(timeout=30.0)  [async]
   │     ├─ On success: executor finished naturally, log "stopped gracefully"
   │     └─ On TimeoutError: force-cancel executor_task, await it (absorb CancelledError)
   ├─ Await remaining _in_flight tasks (ensures lock cleanup for fire-and-forget tasks)
-  └─ self._executor_task = None
+  ├─ self._executor_task = None
+  ├─ Write heartbeat with running="false" + TTL (pipeline: HSET + EXPIRE)
+  └─ Log "Task scheduler stopped"
 
 _executor_loop handles CancelledError
   ├─ Cancels all worker tasks

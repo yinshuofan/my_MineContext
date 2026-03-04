@@ -430,7 +430,37 @@ class OpenContext:
                     "registered_handlers": list(scheduler._task_handlers.keys()),
                 }
             else:
-                health["scheduler"] = {"initialized": False, "running": False}
+                # No local scheduler -- check Redis heartbeat from remote scheduler
+                try:
+                    import json as _json
+
+                    from opencontext.scheduler import read_scheduler_heartbeat
+                    from opencontext.storage.redis_cache import get_redis_cache
+
+                    redis_cache = get_redis_cache()
+                    if redis_cache:
+                        heartbeat = await read_scheduler_heartbeat(redis_cache)
+                        if heartbeat:
+                            handlers = _json.loads(
+                                heartbeat.get("registered_handlers", "[]")
+                            )
+                            health["scheduler"] = {
+                                "initialized": True,
+                                "running": heartbeat.get("running") == "true",
+                                "in_flight_tasks": int(
+                                    heartbeat.get("in_flight_tasks", 0)
+                                ),
+                                "registered_handlers": handlers,
+                                "remote": True,
+                                "last_heartbeat": heartbeat.get("last_heartbeat"),
+                            }
+                        else:
+                            health["scheduler"] = {"initialized": False, "running": False}
+                    else:
+                        health["scheduler"] = {"initialized": False, "running": False}
+                except Exception as e:
+                    logger.warning(f"Failed to read scheduler heartbeat: {e}")
+                    health["scheduler"] = {"initialized": False, "running": False}
         except Exception as e:
             logger.warning(f"Scheduler health check failed: {e}")
             health["scheduler"] = {"initialized": False, "error": str(e)}

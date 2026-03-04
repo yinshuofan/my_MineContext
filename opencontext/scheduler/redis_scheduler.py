@@ -9,7 +9,9 @@ supporting multi-instance deployment. All Redis operations are async.
 """
 
 import asyncio
+import json
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from opencontext.utils.logging_utils import get_logger
@@ -64,6 +66,8 @@ class RedisTaskScheduler(ITaskScheduler):
     LOCK_PREFIX = "scheduler:lock:"
     PERIODIC_PREFIX = "scheduler:periodic:"
     FAIL_COUNT_PREFIX = "scheduler:fail_count:"
+    HEARTBEAT_KEY = "scheduler:heartbeat"
+    HEARTBEAT_TTL_MULTIPLIER = 3
 
     def __init__(self, redis_cache: RedisCache, config: Optional[Dict[str, Any]] = None):
         """
@@ -98,6 +102,9 @@ class RedisTaskScheduler(ITaskScheduler):
         # Concurrency control for fire-and-forget task execution
         self._concurrency_sem: Optional[asyncio.Semaphore] = None
         self._in_flight: Set[asyncio.Task] = set()
+
+        # Heartbeat state
+        self._started_at: Optional[str] = None  # ISO 8601, set in start()
 
         # Store pending task type configs for async initialization
         self._pending_task_configs: list = []
@@ -403,9 +410,42 @@ class RedisTaskScheduler(ITaskScheduler):
         await self.init_task_types()
 
         self._running = True
+        self._started_at = datetime.now(tz=timezone.utc).isoformat()
         logger.info(f"Starting task scheduler, check interval: {self._check_interval}s")
 
         self._executor_task = asyncio.create_task(self._executor_loop())
+
+    async def _write_heartbeat(self) -> None:
+        """Write scheduler heartbeat to Redis with TTL."""
+        now_iso = datetime.now(tz=timezone.utc).isoformat()
+        heartbeat_data = {
+            "running": "true",
+            "started_at": self._started_at or now_iso,
+            "registered_handlers": json.dumps(sorted(self._task_handlers.keys())),
+            "check_interval": str(self._check_interval),
+            "in_flight_tasks": str(len(self._in_flight)),
+            "last_heartbeat": now_iso,
+        }
+        ttl = self._check_interval * self.HEARTBEAT_TTL_MULTIPLIER
+        async with self._redis.pipeline() as pipe:
+            pipe.hset(self.HEARTBEAT_KEY, mapping=heartbeat_data)
+            pipe.expire(self.HEARTBEAT_KEY, ttl)
+            await pipe.execute()
+
+    async def _heartbeat_worker(self) -> None:
+        """Periodically write heartbeat to Redis."""
+        while self._running:
+            try:
+                await self._write_heartbeat()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Heartbeat write failed: {e}")
+            if self._running:
+                try:
+                    await asyncio.sleep(self._check_interval)
+                except asyncio.CancelledError:
+                    break
 
     async def _executor_loop(self) -> None:
         """
@@ -416,10 +456,17 @@ class RedisTaskScheduler(ITaskScheduler):
         """
         self._concurrency_sem = asyncio.Semaphore(self._max_concurrent)
 
+        # Write initial heartbeat before starting workers
+        try:
+            await self._write_heartbeat()
+        except Exception as e:
+            logger.warning(f"Initial heartbeat write failed: {e}")
+
         workers: List[asyncio.Task] = []
         for task_type in self._task_handlers:
             workers.append(asyncio.create_task(self._type_worker(task_type)))
         workers.append(asyncio.create_task(self._periodic_worker()))
+        workers.append(asyncio.create_task(self._heartbeat_worker()))
 
         try:
             await asyncio.gather(*workers)
@@ -696,6 +743,16 @@ class RedisTaskScheduler(ITaskScheduler):
             self._in_flight.clear()
 
         self._executor_task = None
+
+        # Mark heartbeat as not running (let TTL expire naturally)
+        try:
+            async with self._redis.pipeline() as pipe:
+                pipe.hset(self.HEARTBEAT_KEY, "running", "false")
+                pipe.expire(self.HEARTBEAT_KEY, self._check_interval * self.HEARTBEAT_TTL_MULTIPLIER)
+                await pipe.execute()
+        except Exception as e:
+            logger.warning(f"Failed to update scheduler heartbeat on stop: {e}")
+
         logger.info("Task scheduler stopped")
 
     async def get_queue_depths(self) -> Dict[str, int]:
@@ -742,3 +799,20 @@ def init_scheduler(
     scheduler = RedisTaskScheduler(redis_cache, config)
     set_scheduler(scheduler)
     return scheduler
+
+
+async def read_scheduler_heartbeat(redis_cache: RedisCache) -> Optional[Dict[str, str]]:
+    """Read scheduler heartbeat from Redis. Used by server processes without local scheduler."""
+    data = await redis_cache.hgetall(RedisTaskScheduler.HEARTBEAT_KEY)
+    return data if data else None
+
+
+async def read_scheduler_queue_depths(
+    redis_cache: RedisCache, task_types: List[str]
+) -> Dict[str, int]:
+    """Read queue depths from Redis for given task types."""
+    depths = {}
+    for task_type in task_types:
+        queue_key = f"{RedisTaskScheduler.QUEUE_PREFIX}{task_type}"
+        depths[task_type] = await redis_cache.zcard(queue_key)
+    return depths

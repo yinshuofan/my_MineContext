@@ -448,6 +448,59 @@ search_events()
   -> Return EventSearchResponse
 ```
 
+#### Response Format (`EventSearchResponse`)
+
+```json
+{
+  "success": true,
+  "events": [
+    {
+      "id": "05278626-88c4-4f85-8eec-e69ac143914c",
+      "title": "Event title",
+      "summary": "Event summary text",
+      "content": "id: ...\ntitle: ...\nsummary: ...\nkeywords: ...\nentities: ...\ncontext type: event\nmetadata: {...}\ncreate time: ...\nevent time: ...",
+      "keywords": ["keyword1", "keyword2"],
+      "entities": ["entity1", "entity2"],
+      "score": 0.855,
+      "hierarchy_level": 0,
+      "time_bucket": "default",
+      "parent_id": "f4b61534-...",
+      "event_time": "2026-03-04T09:17:26.626423+00:00",
+      "create_time": "2026-03-04T09:17:26.626077",
+      "metadata": {
+        "content": "default",
+        "created_at": "2026-03-04T09:18:38.598626",
+        "is_happend": 0,
+        "source": "default",
+        "todo_id": "default"
+      },
+      "ancestors": [
+        {
+          "id": "f4b61534-...",
+          "hierarchy_level": 1,
+          "time_bucket": "2026-03-04",
+          "summary": "Daily summary text...",
+          "create_time": "2026-03-04T09:29:32.894067+00:00"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "query": "search query text",
+    "total_results": 1,
+    "search_time_ms": 556.02
+  }
+}
+```
+
+**Field notes:**
+- `content`: LLM-friendly flat text representation of the event (all fields concatenated)
+- `hierarchy_level`: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
+- `time_bucket`: `"default"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
+- `parent_id`: Points to the parent summary context; `"default"` if no parent linked yet
+- `ancestors`: Populated when `drill_up=true`; each ancestor has one level higher than the child. Empty array when `drill_up=false` or no parent exists
+- `score`: Semantic similarity score for query search; `1.0` for ID lookup and filter-only search
+
 ### Memory Cache Flow (`GET /api/memory-cache`)
 
 ```

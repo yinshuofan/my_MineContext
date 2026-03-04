@@ -130,6 +130,48 @@ curl -X POST http://localhost:1733/api/search \
     "agent_id": "default"
   }'
 # -H "X-API-Key: your-api-key"
+#
+# Response:
+# {
+#   "success": true,
+#   "events": [
+#     {
+#       "id": "05278626-88c4-4f85-8eec-e69ac143914c",
+#       "title": "Event title",
+#       "summary": "Event summary text",
+#       "content": "id: ...\ntitle: ...\nsummary: ...\nkeywords: ...\nentities: ...\ncontext type: event\nmetadata: {...}\ncreate time: ...\nevent time: ...\nduration count: 1\ntime bucket: ...\nsource file key: ...",
+#       "keywords": ["keyword1", "keyword2"],
+#       "entities": ["entity1", "entity2"],
+#       "score": 0.855,
+#       "hierarchy_level": 0,
+#       "time_bucket": "default",
+#       "parent_id": "f4b61534-...",
+#       "event_time": "2026-03-04T09:17:26.626423+00:00",
+#       "create_time": "2026-03-04T09:17:26.626077",
+#       "metadata": {
+#         "content": "default",
+#         "created_at": "2026-03-04T09:18:38.598626",
+#         "is_happend": 0,
+#         "source": "default",
+#         "todo_id": "default"
+#       },
+#       "ancestors": [
+#         {
+#           "id": "f4b61534-...",
+#           "hierarchy_level": 1,
+#           "time_bucket": "2026-03-04",
+#           "summary": "Daily summary text...",
+#           "create_time": "2026-03-04T09:29:32.894067+00:00"
+#         }
+#       ]
+#     }
+#   ],
+#   "metadata": {
+#     "query": "project timeline and budget",
+#     "total_results": 1,
+#     "search_time_ms": 556.02
+#   }
+# }
 
 # Event Search (by event IDs)
 curl -X POST http://localhost:1733/api/search \
@@ -166,6 +208,34 @@ curl -X POST http://localhost:1733/api/search \
     "user_id": "user_001"
   }'
 # -H "X-API-Key: your-api-key"
+#
+# Response (drill_up=false, no ancestors):
+# {
+#   "success": true,
+#   "events": [
+#     {
+#       "id": "...",
+#       "title": "...",
+#       "summary": "...",
+#       "content": "...",
+#       "keywords": [...],
+#       "entities": [...],
+#       "score": 0.812,
+#       "hierarchy_level": 0,
+#       "time_bucket": "default",
+#       "parent_id": "...",
+#       "event_time": "...",
+#       "create_time": "...",
+#       "metadata": {...},
+#       "ancestors": []
+#     }
+#   ],
+#   "metadata": {
+#     "query": "meeting with John",
+#     "total_results": 1,
+#     "search_time_ms": 430.0
+#   }
+# }
 
 # Direct Vector Search
 curl -X POST http://localhost:1733/api/vector_search \

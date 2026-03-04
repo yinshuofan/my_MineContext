@@ -22,6 +22,8 @@ from opencontext.scheduler.redis_scheduler import (
     RedisTaskScheduler,
     get_scheduler,
     init_scheduler,
+    read_scheduler_heartbeat,
+    read_scheduler_queue_depths,
     set_scheduler,
 )
 from opencontext.scheduler.user_key_builder import UserKeyBuilder
@@ -46,4 +48,6 @@ __all__ = [
     "get_scheduler",
     "set_scheduler",
     "init_scheduler",
+    "read_scheduler_heartbeat",
+    "read_scheduler_queue_depths",
 ]

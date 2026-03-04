@@ -233,13 +233,29 @@ async def get_scheduler_queue_depths(
 ):
     """Get current queue depths for all scheduler task types (real-time from Redis)"""
     try:
+        import json
+
         from opencontext.scheduler import get_scheduler
 
         scheduler = get_scheduler()
-        if not scheduler:
-            return {"success": True, "data": {"queues": {}, "message": "Scheduler not initialized"}}
+        if scheduler:
+            queues = await scheduler.get_queue_depths()
+            return {"success": True, "data": {"queues": queues}}
 
-        queues = await scheduler.get_queue_depths()
+        # Fallback: read from Redis heartbeat
+        from opencontext.scheduler import read_scheduler_heartbeat, read_scheduler_queue_depths
+        from opencontext.storage.redis_cache import get_redis_cache
+
+        redis_cache = get_redis_cache()
+        if not redis_cache:
+            return {"success": True, "data": {"queues": {}, "message": "Redis not available"}}
+
+        heartbeat = await read_scheduler_heartbeat(redis_cache)
+        if not heartbeat:
+            return {"success": True, "data": {"queues": {}, "message": "Scheduler not running"}}
+
+        task_types = json.loads(heartbeat.get("registered_handlers", "[]"))
+        queues = await read_scheduler_queue_depths(redis_cache, task_types)
         return {"success": True, "data": {"queues": queues}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get queue depths: {str(e)}")
