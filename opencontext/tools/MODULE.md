@@ -173,7 +173,7 @@ class HierarchicalEventTool(BaseTool):
 
 **Hierarchy traversal is bidirectional:**
 - **Downward** (top-down): parent summaries → children via `children_ids` (used by HierarchicalEventTool drill-down above)
-- **Upward** (bottom-up): L0 events → parent summaries via `parent_id` (used by `FastSearchStrategy._attach_parent_summaries()` to enrich search results with parent context)
+- **Upward** (bottom-up): L0 events → parent summaries via `parent_id` (used by search API `_drill_up_ancestors()` to enrich search results with ancestor context)
 
 ### ProfileRetrievalTool -- `retrieval_tools/profile_retrieval_tool.py`
 
@@ -351,8 +351,7 @@ ALL_TOOL_DEFINITIONS = ALL_RETRIEVAL_TOOL_DEFINITIONS + ALL_PROFILE_TOOL_DEFINIT
 - `ddgs` -- DuckDuckGo search library (runtime/lazy import in `WebSearchTool._search_duckduckgo`)
 
 **Depended on by:**
-- `opencontext/server/search/intelligent_strategy.py` -- uses `ALL_TOOL_DEFINITIONS` and `ToolsExecutor` for LLM-driven agentic search
-- `opencontext/server/search/fast_strategy.py` -- does NOT use tools; queries storage directly
+- `opencontext/context_consumption/context_agent/` -- uses `ALL_TOOL_DEFINITIONS` and `ToolsExecutor` for LLM-driven agentic conversations
 - `opencontext/server/opencontext.py` -- may reference tools for certain operations
 
 ## Extension Points

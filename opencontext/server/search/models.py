@@ -1,20 +1,12 @@
 # -*- coding: utf-8 -*-
 
 """
-Unified Search API - Request/Response Models
+Event Search API - Request/Response Models
 """
 
-from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
-
-
-class SearchStrategy(str, Enum):
-    """Search strategy enumeration"""
-
-    FAST = "fast"  # Direct parallel search, zero LLM reasoning calls
-    INTELLIGENT = "intelligent"  # LLM-driven agentic search with tool selection and validation
 
 
 class TimeRange(BaseModel):
@@ -30,28 +22,35 @@ class TimeRange(BaseModel):
         return self
 
 
-class UnifiedSearchRequest(BaseModel):
-    """Unified search API request"""
+class EventSearchRequest(BaseModel):
+    """Event search API request"""
 
-    query: str = Field(..., min_length=1, max_length=2000, description="Search query text")
-    strategy: SearchStrategy = Field(
-        default=SearchStrategy.FAST,
-        description="Search strategy: 'fast' for direct parallel search, 'intelligent' for LLM-driven agentic search",
+    query: Optional[str] = Field(
+        default=None,
+        max_length=2000,
+        description="Semantic search query text. At least one of query/event_ids/time_range/hierarchy_levels must be provided.",
+    )
+    event_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Exact event IDs to retrieve",
+    )
+    time_range: Optional[TimeRange] = Field(
+        default=None,
+        description="Time range filter (Unix epoch seconds)",
+    )
+    hierarchy_levels: Optional[List[int]] = Field(
+        default=None,
+        description="Filter by hierarchy levels: 0=raw events, 1=daily, 2=weekly, 3=monthly",
+    )
+    drill_up: bool = Field(
+        default=True,
+        description="Whether to recursively fetch ancestor summaries for each result",
     )
     top_k: int = Field(
         default=20,
         ge=1,
         le=100,
-        description="Maximum results per context type",
-    )
-    context_types: Optional[List[str]] = Field(
-        default=None,
-        description="Context types to search. None means all 5 types. "
-        "Values: profile, entity, document, event, knowledge",
-    )
-    time_range: Optional[TimeRange] = Field(
-        default=None,
-        description="Optional time range filter (Unix epoch seconds)",
+        description="Maximum number of results",
     )
     user_id: Optional[str] = Field(
         default=None, description="User identifier for multi-user filtering"
@@ -63,38 +62,34 @@ class UnifiedSearchRequest(BaseModel):
         default=None, description="Agent identifier for multi-user filtering"
     )
 
+    @model_validator(mode="after")
+    def validate_search_criteria(self) -> "EventSearchRequest":
+        has_query = self.query is not None and len(self.query.strip()) > 0
+        has_ids = self.event_ids is not None and len(self.event_ids) > 0
+        has_time = self.time_range is not None
+        has_levels = self.hierarchy_levels is not None and len(self.hierarchy_levels) > 0
+        if not (has_query or has_ids or has_time or has_levels):
+            raise ValueError(
+                "At least one of query, event_ids, time_range, or hierarchy_levels must be provided"
+            )
+        return self
+
 
 # ── Response Models ──
 
 
-class ProfileResult(BaseModel):
-    """Profile search result from relational DB"""
-
-    user_id: str
-    device_id: str = "default"
-    agent_id: str
-    content: str
-    keywords: List[str] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-class EntityResult(BaseModel):
-    """Entity search result from relational DB"""
+class EventAncestor(BaseModel):
+    """An ancestor summary in the hierarchy chain"""
 
     id: str
-    user_id: str = ""
-    device_id: str = "default"
-    agent_id: str = "default"
-    entity_name: str
-    entity_type: Optional[str] = None
-    content: str
+    hierarchy_level: int
+    time_bucket: Optional[str] = None
     summary: Optional[str] = None
-    aliases: List[str] = Field(default_factory=list)
-    score: float = 1.0
+    create_time: Optional[str] = None
 
 
-class VectorResult(BaseModel):
-    """Vector search result (shared by document/event/knowledge types)"""
+class EventResult(BaseModel):
+    """A single event search result with optional ancestor chain"""
 
     id: str
     title: Optional[str] = None
@@ -102,47 +97,27 @@ class VectorResult(BaseModel):
     content: Optional[str] = None  # get_llm_context_string() output
     keywords: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
-    context_type: str
     score: float
-    create_time: Optional[str] = None
-    event_time: Optional[str] = None
-
-    # Hierarchy info (event type only)
     hierarchy_level: int = 0
     time_bucket: Optional[str] = None
     parent_id: Optional[str] = None
-    children_ids: List[str] = Field(default_factory=list)
-    parent_summary: Optional[str] = None  # Parent summary attached by fast search
-
-    # Document source tracking
-    source_file_key: Optional[str] = None
-
+    event_time: Optional[str] = None
+    create_time: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-class TypedResults(BaseModel):
-    """Search results grouped by context type"""
-
-    profile: Optional[ProfileResult] = None
-    entities: List[EntityResult] = Field(default_factory=list)
-    documents: List[VectorResult] = Field(default_factory=list)
-    events: List[VectorResult] = Field(default_factory=list)
-    knowledge: List[VectorResult] = Field(default_factory=list)
+    ancestors: List[EventAncestor] = Field(default_factory=list)
 
 
 class SearchMetadata(BaseModel):
     """Metadata about the search execution"""
 
-    strategy: str
-    query: str
+    query: Optional[str] = None
     total_results: int
     search_time_ms: float
-    types_searched: List[str]
 
 
-class UnifiedSearchResponse(BaseModel):
-    """Unified search API response"""
+class EventSearchResponse(BaseModel):
+    """Event search API response"""
 
     success: bool
-    results: TypedResults = Field(default_factory=TypedResults)
+    events: List[EventResult] = Field(default_factory=list)
     metadata: SearchMetadata
