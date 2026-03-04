@@ -118,30 +118,52 @@ curl -X POST http://localhost:1733/api/push/document/upload \
 # 4. Search
 # ============================================================================
 
-# Unified Search (fast strategy)
+# Event Search (semantic query with drill-up)
 curl -X POST http://localhost:1733/api/search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "project timeline and budget",
-    "strategy": "fast",
     "top_k": 20,
-    "context_types": ["document", "event", "knowledge"],
+    "drill_up": true,
     "user_id": "user_001",
     "device_id": "default",
     "agent_id": "default"
   }'
 # -H "X-API-Key: your-api-key"
 
-# Unified Search (intelligent strategy)
+# Event Search (by event IDs)
 curl -X POST http://localhost:1733/api/search \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "What do I know about John and our recent meetings?",
-    "strategy": "intelligent",
-    "top_k": 10,
+    "event_ids": ["evt_abc123", "evt_def456"],
+    "drill_up": true,
+    "user_id": "user_001"
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Event Search (filters only — time range + hierarchy levels)
+curl -X POST http://localhost:1733/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "time_range": {"start": 1709251200, "end": 1709856000},
+    "hierarchy_levels": [0, 1],
+    "drill_up": true,
+    "top_k": 20,
     "user_id": "user_001",
     "device_id": "default",
     "agent_id": "default"
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Event Search (no drill-up, flat results)
+curl -X POST http://localhost:1733/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "meeting with John",
+    "hierarchy_levels": [0],
+    "drill_up": false,
+    "top_k": 10,
+    "user_id": "user_001"
   }'
 # -H "X-API-Key: your-api-key"
 

@@ -106,7 +106,7 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 | Component | Location | Details |
 |-----------|----------|---------|
 | Retrieval Tools (4 type-aligned) | `opencontext/tools/` | `tools/MODULE.md` |
-| Search API (fast/intelligent strategies) | `opencontext/server/search/` | `server/MODULE.md` |
+| Search API (event search with hierarchy drill-up) | `opencontext/server/search/` | `server/MODULE.md` |
 | Memory Cache (user memory snapshot) | `opencontext/server/cache/` | `server/MODULE.md` |
 | Scheduling (user_activity / periodic) | `opencontext/scheduler/` | `scheduler/MODULE.md` |
 | Data Models | `opencontext/models/context.py` | `models/MODULE.md` |
@@ -128,7 +128,7 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 | `/api/health` | GET | Health check with component status |
 | `/api/push/chat` | POST | Unified chat push (`process_mode: "buffer"` or `"direct"`) |
 | `/api/push/document` | POST | Push document (file_path or base64) |
-| `/api/search` | POST | Unified search (`strategy: "fast"` or `"intelligent"`) |
+| `/api/search` | POST | Event search with semantic query, filters, and hierarchy drill-up |
 | `/api/memory-cache` | GET | User memory snapshot |
 
 Request body uses OpenAI message format. The 3-key identifier `(user_id, device_id, agent_id)` is optional on all push endpoints, defaulting to `"default"`.

@@ -15,7 +15,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `__init__.py` | Package marker (empty) |
 | **routes/** | |
 | `routes/push.py` | Push API endpoints (`/api/push/*`) -- unified chat, documents, contexts |
-| `routes/search.py` | Unified search endpoint (`POST /api/search`) with strategy selection |
+| `routes/search.py` | Event search endpoint (`POST /api/search`) with semantic query, filters, and hierarchy drill-up |
 | `routes/memory_cache.py` | Memory cache endpoints (`GET/DELETE /api/memory-cache`) |
 | `routes/health.py` | Health and readiness probes (`/health`, `/api/health`, `/api/ready`, `/api/auth/status`) |
 | `routes/context.py` | Context CRUD and vector search (`/api/contexts/*`, `/api/context_types`, `/api/vector_search`) |
@@ -29,10 +29,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/web.py` | HTML pages -- contexts list, vector search, chat, monitoring, settings, file serving |
 | `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | **search/** | |
-| `search/base_strategy.py` | `BaseSearchStrategy` ABC with `search()` abstract method |
-| `search/fast_strategy.py` | `FastSearchStrategy` -- zero LLM calls, parallel storage queries |
-| `search/intelligent_strategy.py` | `IntelligentSearchStrategy` -- LLM-driven agentic tool selection loop |
-| `search/models.py` | Pydantic models: `UnifiedSearchRequest`, `TypedResults`, `VectorResult`, `ProfileResult`, `EntityResult` |
+| `search/models.py` | Pydantic models: `EventSearchRequest`, `EventSearchResponse`, `EventResult`, `EventAncestor`, `SearchMetadata`, `TimeRange` |
 | **cache/** | |
 | `cache/memory_cache_manager.py` | `UserMemoryCacheManager` singleton -- builds/caches per-user memory snapshots in Redis |
 | `cache/models.py` | Response models: `UserMemoryCacheResponse`, `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`, `RecentlyAccessedItem`; internal models: `RecentMemoryItem`, `DailySummaryItem` |
@@ -112,50 +109,32 @@ class ContextOperations:
     def get_context_types(self) -> List[str]
 ```
 
-### FastSearchStrategy (search/fast_strategy.py)
+### Event Search (routes/search.py)
 
-Zero LLM calls. Single embedding generation shared across all parallel storage queries.
+Event-only search with three paths and optional upward hierarchy drill-up.
 
 ```python
-class FastSearchStrategy(BaseSearchStrategy):
-    async def search(self, query, context_types, top_k, time_range, user_id, device_id, agent_id) -> TypedResults
+# Route handler
+async def search_events(request: EventSearchRequest, _auth) -> EventSearchResponse
 
-    # Internal
-    def _build_time_filters(self, time_range: Optional[TimeRange]) -> Dict[str, Any]
-    async def _attach_parent_summaries(self, event_results: List[Tuple[ProcessedContext, float]]) -> List[VectorResult]  # Batch-fetch parent summaries for L0 events via parent_id
-    @staticmethod _to_vector_result(ctx: ProcessedContext, score: float) -> VectorResult
-    @staticmethod _to_profile_result(data: Dict) -> ProfileResult
-    @staticmethod _to_entity_result(data: Dict) -> EntityResult
+# Internal functions
+async def _execute_search(storage, request) -> List[EventResult]
+async def _filter_only_search(storage, request) -> List[Tuple[ProcessedContext, float]]
+async def _drill_up_ancestors(storage, results, max_level) -> Dict[str, List[EventAncestor]]
+def _build_filters(time_range, hierarchy_levels) -> Dict[str, Any]
+def _time_range_to_buckets(start_ts, end_ts) -> Tuple[Optional[str], Optional[str]]
+def _to_event_result(ctx: ProcessedContext, score: float) -> EventResult
+def _to_ancestor(ctx: ProcessedContext) -> EventAncestor
+async def _track_accessed_safe(user_id, results, device_id, agent_id) -> None
 ```
 
 Algorithm:
-1. Generate embedding once via `do_vectorize()`
-2. Build time filters from `TimeRange`
-3. Dispatch parallel `asyncio.to_thread()` calls: profile lookup, entity search, document/event/knowledge vector search
-4. Events filtered to L0 only (`hierarchy_level: {"$gte": 0, "$lte": 0}`), with parent summaries batch-attached via `_attach_parent_summaries()`: collects unique `parent_id` values from L0 events, batch-fetches parent contexts via `storage.get_contexts_by_ids()`, and populates the `parent_summary` field on each `VectorResult`. Requires `parent_id` to be backfilled by `HierarchySummaryTask._store_summary()`
-5. Assemble `TypedResults`
-
-### IntelligentSearchStrategy (search/intelligent_strategy.py)
-
-LLM-driven agentic search. Reuses `LLMContextStrategy` for tool selection.
-
-```python
-class IntelligentSearchStrategy(BaseSearchStrategy):
-    def __init__(self)  # Creates LLMContextStrategy instance
-    async def search(self, query, context_types, top_k, time_range, user_id, device_id, agent_id) -> TypedResults
-
-    # Internal
-    async def _agentic_search_loop(self, query: str, user_id: Optional[str]) -> List[ContextItem]
-    async def _direct_profile_entity_lookup(self, query, top_k, user_id, device_id, agent_id) -> tuple
-    def _context_items_to_typed_results(self, items, context_types, top_k) -> TypedResults
-    @staticmethod _item_to_vector_result(item: ContextItem, original: Dict) -> VectorResult
-```
-
-Algorithm:
-1. Enhance query with time range info
-2. Run agentic loop (MAX_ITERATIONS=1) in parallel with direct profile/entity lookup
-3. Agentic loop: `analyze_and_plan_tools` -> `execute_tool_calls_parallel`, dedup by context ID (keeping higher score)
-4. Convert `ContextItem` results to `TypedResults` using `_TOOL_TYPE_MAP`, with score threshold (≥0.3), per-type sort by score descending, and top_k truncation
+1. **Search path selection** (priority: event_ids > query > filters-only):
+   - `event_ids` → `storage.get_contexts_by_ids()`, score=1.0
+   - `query` → `Vectorize` + `storage.search()` with time/level filters
+   - filters-only → `storage.search_hierarchy()` per level, or `get_all_processed_contexts()` with time filter
+2. **Drill-up** (if `drill_up=True`): Batch-fetch parent chains iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent. Respects `max_level = max(hierarchy_levels)` to cap drill-up depth.
+3. **Result assembly**: `EventResult` with `ancestors: List[EventAncestor]` in ascending level order
 
 ### UserMemoryCacheManager (cache/memory_cache_manager.py)
 
@@ -231,7 +210,7 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| POST | `/api/search` | `unified_search` | Unified search with fast/intelligent strategy |
+| POST | `/api/search` | `search_events` | Event search with semantic query, filters, and hierarchy drill-up |
 
 ### Memory Cache Routes (`/api/*`)
 
@@ -458,27 +437,15 @@ Processors return `List[ProcessedContext]` to the manager, which centrally invok
 ### Search Flow (`POST /api/search`)
 
 ```
-unified_search()
-  -> Validate context_types
-  -> Select strategy (FastSearchStrategy or IntelligentSearchStrategy)
-  -> strategy.search() with 30s timeout
-  -> Fire-and-forget _track_accessed_safe() -> memory_cache_manager.track_accessed()
-  -> Return UnifiedSearchResponse
-```
-
-Fast strategy internals:
-```
-FastSearchStrategy.search()
-  -> do_vectorize(query)                           # 1 embedding call
-  -> asyncio.gather(                               # All in parallel
-       storage.get_profile(),                      # Relational DB
-       storage.search_entities(),                  # Relational DB
-       storage.search(vectorize, [document]),      # Vector DB
-       storage.search(vectorize, [event], L0),     # Vector DB
-       storage.search(vectorize, [knowledge]),     # Vector DB
-     )
-  -> _attach_parent_summaries() for events         # Batch fetch parents
-  -> Assemble TypedResults
+search_events()
+  -> Validate request (query/event_ids/time_range/hierarchy_levels at least one)
+  -> _execute_search() with 30s timeout
+     Path A (event_ids): storage.get_contexts_by_ids()
+     Path B (query):     do_vectorize() -> storage.search([EVENT], filters)
+     Path C (filters):   storage.search_hierarchy() per level, or get_all_processed_contexts()
+  -> _drill_up_ancestors() if drill_up=True    # Batch iterative parent fetch (max 3 rounds)
+  -> Fire-and-forget _track_accessed_safe()
+  -> Return EventSearchResponse
 ```
 
 ### Memory Cache Flow (`GET /api/memory-cache`)
@@ -519,7 +486,7 @@ OpenContext._handle_processed_context()
 
 4. **3-key identifier required**: All profile/entity operations and cache keys use `(user_id, device_id, agent_id)`. Default to `"default"` for device_id and agent_id. Omitting them causes argument mismatches.
 
-5. **Search strategies are lazy singletons** in `routes/search.py`. They are stateless and reusable across requests.
+5. **Search logic lives directly in `routes/search.py`**. No strategy abstraction layer — the route handler calls storage directly.
 
 6. **Cache invalidation uses `run_coroutine_threadsafe`** because `_handle_processed_context` runs in a thread pool via `asyncio.to_thread()`. Using `loop.create_task()` from a thread would silently fail. The `_capture_loop()` pattern stores the event loop reference.
 
@@ -531,4 +498,4 @@ OpenContext._handle_processed_context()
 
 10. **Adding a new route module**: Create `routes/new_module.py` with `router = APIRouter(...)`, then add `from .routes import new_module` and `router.include_router(new_module.router)` in `api.py`.
 
-11. **Adding a new search strategy**: Extend `BaseSearchStrategy`, implement `async search() -> TypedResults`, add lazy singleton getter in `routes/search.py`, add enum value to `SearchStrategy` in `search/models.py`.
+11. **Search is event-only**: The `/api/search` endpoint only searches EVENT contexts. To search other types, use `/api/vector_search` in `routes/context.py`.
