@@ -203,12 +203,16 @@ class TextChatProcessor(BaseContextProcessor):
             confidence=confidence,
         )
 
+        # L0 time_bucket: ISO datetime for per-event granularity
+        time_bucket = event_time.strftime("%Y-%m-%dT%H:%M:%S")
+
         return ProcessedContext(
             properties=ContextProperties(
                 raw_properties=[raw_context],
                 create_time=raw_context.create_time,
                 update_time=datetime.datetime.now(),
                 event_time=event_time,
+                time_bucket=time_bucket,
                 is_processed=True,
                 enable_merge=enable_merge,
                 user_id=raw_context.user_id,

@@ -171,6 +171,9 @@ async def _execute_search(
         result.ancestors = ancestor_map.get(ctx.id, [])
         events.append(result)
 
+    # ── Step 4: Sort by hierarchy level (high→low), then time (early→late) ──
+    events.sort(key=lambda e: (-e.hierarchy_level, e.time_bucket or ""))
+
     return events
 
 
