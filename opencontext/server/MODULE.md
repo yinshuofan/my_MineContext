@@ -444,6 +444,7 @@ search_events()
      Path B (query):     do_vectorize() -> storage.search([EVENT], filters)
      Path C (filters):   storage.search_hierarchy() per level, or get_all_processed_contexts()
   -> _drill_up_ancestors() if drill_up=True    # Batch iterative parent fetch (max 3 rounds)
+  -> Sort events: hierarchy_level DESC, time_bucket ASC
   -> Fire-and-forget _track_accessed_safe()
   -> Return EventSearchResponse
 ```
@@ -463,7 +464,7 @@ search_events()
       "entities": ["entity1", "entity2"],
       "score": 0.855,
       "hierarchy_level": 0,
-      "time_bucket": "default",
+      "time_bucket": "2026-03-04T09:17:26",
       "parent_id": "f4b61534-...",
       "event_time": "2026-03-04T09:17:26.626423+00:00",
       "create_time": "2026-03-04T09:17:26.626077",
@@ -496,7 +497,7 @@ search_events()
 **Field notes:**
 - `content`: LLM-friendly flat text representation of the event (all fields concatenated)
 - `hierarchy_level`: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
-- `time_bucket`: `"default"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
+- `time_bucket`: `"YYYY-MM-DDTHH:MM:SS"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
 - `parent_id`: Points to the parent summary context; `"default"` if no parent linked yet
 - `ancestors`: Populated when `drill_up=true`; each ancestor has one level higher than the child. Empty array when `drill_up=false` or no parent exists
 - `score`: Semantic similarity score for query search; `1.0` for ID lookup and filter-only search

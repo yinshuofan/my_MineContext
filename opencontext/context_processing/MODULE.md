@@ -113,7 +113,7 @@ Pipeline:
 4. Persists extracted entities across all memories via `_persist_entities()` (calls `entity_processor.refresh_entities`)
 5. Returns `List[ProcessedContext]` — callback invocation is handled by `ContextProcessorManager`
 
-The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`.
+The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, generates a `time_bucket` field with per-second granularity (`%Y-%m-%dT%H:%M:%S`) to support fine-grained time-based sorting in search results.
 
 ### DocumentProcessor (`processor/document_processor.py`)
 
