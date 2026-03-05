@@ -280,7 +280,7 @@ async def validate_llm_config(request: ValidateModelRequest, _auth: str = auth_d
                 llm_config = _build_llm_config(
                     cfg.base_url, cfg.api_key, cfg.model, cfg.provider, LLMType.CHAT, timeout=15
                 )
-                valid, msg = LLMClient(llm_type=LLMType.CHAT, config=llm_config).validate()
+                valid, msg = await LLMClient(llm_type=LLMType.CHAT, config=llm_config).validate()
                 if not valid:
                     errors.append(f"LLM: {msg}")
 
@@ -291,7 +291,7 @@ async def validate_llm_config(request: ValidateModelRequest, _auth: str = auth_d
                 vlm_config = _build_llm_config(
                     cfg.base_url, cfg.api_key, cfg.model, cfg.provider, LLMType.CHAT, timeout=15
                 )
-                valid, msg = LLMClient(llm_type=LLMType.CHAT, config=vlm_config).validate()
+                valid, msg = await LLMClient(llm_type=LLMType.CHAT, config=vlm_config).validate()
                 if not valid:
                     errors.append(f"VLM: {msg}")
 
@@ -308,7 +308,7 @@ async def validate_llm_config(request: ValidateModelRequest, _auth: str = auth_d
                     timeout=15,
                     output_dim=cfg.output_dim or 2048,
                 )
-                valid, msg = LLMClient(llm_type=LLMType.EMBEDDING, config=emb_config).validate()
+                valid, msg = await LLMClient(llm_type=LLMType.EMBEDDING, config=emb_config).validate()
                 if not valid:
                     errors.append(f"Embedding: {msg}")
 
