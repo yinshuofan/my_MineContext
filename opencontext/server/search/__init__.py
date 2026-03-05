@@ -5,8 +5,7 @@ Event Search API
 """
 
 from opencontext.server.search.models import (
-    EventAncestor,
-    EventResult,
+    EventNode,
     EventSearchRequest,
     EventSearchResponse,
     SearchMetadata,
@@ -17,7 +16,6 @@ __all__ = [
     "TimeRange",
     "EventSearchRequest",
     "EventSearchResponse",
-    "EventResult",
-    "EventAncestor",
+    "EventNode",
     "SearchMetadata",
 ]

@@ -78,33 +78,33 @@ class EventSearchRequest(BaseModel):
 # ── Response Models ──
 
 
-class EventAncestor(BaseModel):
-    """An ancestor summary in the hierarchy chain"""
+class EventNode(BaseModel):
+    """
+    A node in the event hierarchy tree.
+
+    All fields live on this single model to avoid Pydantic V2's polymorphic
+    serialization issue (subclass fields silently dropped when serialized
+    through a List[BaseClass] annotation). Search-hit fields (content, score,
+    keywords, entities, metadata) are only populated when is_search_hit=True.
+    """
 
     id: str
-    hierarchy_level: int
-    time_bucket: Optional[str] = None
-    summary: Optional[str] = None
-    create_time: Optional[str] = None
-
-
-class EventResult(BaseModel):
-    """A single event search result with optional ancestor chain"""
-
-    id: str
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    content: Optional[str] = None  # get_llm_context_string() output
-    keywords: List[str] = Field(default_factory=list)
-    entities: List[str] = Field(default_factory=list)
-    score: float
     hierarchy_level: int = 0
     time_bucket: Optional[str] = None
     parent_id: Optional[str] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
     event_time: Optional[str] = None
     create_time: Optional[str] = None
+    is_search_hit: bool = False
+    children: List["EventNode"] = Field(default_factory=list)
+
+    # Search-hit fields (populated only when is_search_hit=True)
+    content: Optional[str] = None
+    keywords: List[str] = Field(default_factory=list)
+    entities: List[str] = Field(default_factory=list)
+    score: Optional[float] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    ancestors: List[EventAncestor] = Field(default_factory=list)
 
 
 class SearchMetadata(BaseModel):
@@ -119,5 +119,5 @@ class EventSearchResponse(BaseModel):
     """Event search API response"""
 
     success: bool
-    events: List[EventResult] = Field(default_factory=list)
+    events: List[EventNode] = Field(default_factory=list)
     metadata: SearchMetadata

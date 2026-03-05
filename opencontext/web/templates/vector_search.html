@@ -51,7 +51,7 @@
                             <input class="form-check-input" type="checkbox" id="drillUp" checked>
                             <label class="form-check-label" for="drillUp">向上追溯祖先链</label>
                         </div>
-                        <div class="form-text">开启后显示每个事件的上层总结</div>
+                        <div class="form-text">开启后以树形结构显示层级关系</div>
                     </div>
 
                     <div class="mb-3">
@@ -92,7 +92,7 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">搜索结果</h5>
-                <span class="badge bg-secondary" id="resultCount">0 条结果</span>
+                <span class="badge bg-secondary" id="resultCount">0 条命中</span>
             </div>
             <div class="card-body">
                 <div id="searchMetadata" class="d-none mb-3"></div>
@@ -118,12 +118,21 @@
 .level-badge-1 { background-color: #0d6efd; }
 .level-badge-2 { background-color: #6f42c1; }
 .level-badge-3 { background-color: #d63384; }
-.ancestor-chain { border-left: 3px solid #dee2e6; padding-left: 12px; margin-top: 8px; }
-.ancestor-item { padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
-.ancestor-item:last-child { border-bottom: none; }
 .summary-text { max-height: 4.5em; overflow: hidden; position: relative; }
 .summary-text.expanded { max-height: none; }
 .score-badge { font-size: 0.8rem; }
+.tree-children { padding-left: 20px; border-left: 2px solid; margin-left: 8px; margin-top: 4px; }
+.tree-children-0 { border-color: #6c757d; }
+.tree-children-1 { border-color: #0d6efd; }
+.tree-children-2 { border-color: #6f42c1; }
+.tree-children-3 { border-color: #d63384; }
+.context-card { background-color: #f8f9fa; border-left: 3px solid; border-radius: 4px; padding: 10px 14px; margin-bottom: 8px; }
+.context-card-0 { border-left-color: #6c757d; }
+.context-card-1 { border-left-color: #0d6efd; }
+.context-card-2 { border-left-color: #6f42c1; }
+.context-card-3 { border-left-color: #d63384; }
+.toggle-btn { cursor: pointer; user-select: none; }
+.toggle-btn:hover { opacity: 0.7; }
 </style>
 
 <script>
@@ -146,11 +155,9 @@ async function handleSearch(event) {
     const deviceId = document.getElementById('deviceId').value.trim();
     const agentId = document.getElementById('agentId').value.trim();
 
-    // 获取选中的层级
     const selectedLevels = Array.from(document.querySelectorAll('.hierarchy-level-cb:checked'))
         .map(cb => parseInt(cb.value));
 
-    // 前端校验：至少有 query 或 hierarchy_levels 或 time_range
     const hasQuery = query.length > 0;
     const hasLevels = selectedLevels.length > 0;
     const hasTimeRange = startTime || endTime;
@@ -237,17 +244,29 @@ function displayMetadata(metadata) {
     container.innerHTML = `
         <div class="d-flex gap-3 text-muted small flex-wrap">
             <span>${queryText}</span>
-            <span>结果: <strong>${metadata.total_results}</strong></span>
+            <span>命中: <strong>${metadata.total_results}</strong></span>
             <span>耗时: <strong>${metadata.search_time_ms.toFixed(0)} ms</strong></span>
         </div>
     `;
+}
+
+function countSearchHits(nodes) {
+    let count = 0;
+    for (const node of nodes) {
+        if (node.is_search_hit) count++;
+        if (node.children && node.children.length > 0) {
+            count += countSearchHits(node.children);
+        }
+    }
+    return count;
 }
 
 function displayResults(events) {
     const container = document.getElementById('searchResults');
     const resultCount = document.getElementById('resultCount');
 
-    resultCount.textContent = `${events.length} 条结果`;
+    const hitCount = countSearchHits(events);
+    resultCount.textContent = `${hitCount} 条命中`;
 
     if (!events || events.length === 0) {
         container.innerHTML = `
@@ -260,39 +279,40 @@ function displayResults(events) {
         return;
     }
 
-    // 按 hierarchy_level 分组（高层级在前）
-    const grouped = {};
-    events.forEach(event => {
-        const level = event.hierarchy_level || 0;
-        if (!grouped[level]) grouped[level] = [];
-        grouped[level].push(event);
-    });
-
-    const sortedLevels = Object.keys(grouped).map(Number).sort((a, b) => b - a);
-
     let html = '';
-    sortedLevels.forEach(level => {
-        const items = grouped[level];
-        const label = LEVEL_LABELS[level] || `L${level}`;
-        html += `
-            <div class="mb-4">
-                <h6 class="text-muted mb-3 d-flex align-items-center gap-2 cursor-pointer"
-                    onclick="toggleGroup(this)" style="cursor: pointer;">
-                    <i data-feather="chevron-down" style="width: 16px; height: 16px;" class="group-chevron"></i>
-                    <span class="badge level-badge level-badge-${level}">${label}</span>
-                    <span class="badge bg-secondary">${items.length}</span>
-                </h6>
-                <div class="group-content">
-        `;
-        items.forEach(item => { html += renderEventCard(item); });
-        html += '</div></div>';
+    events.forEach(node => {
+        html += renderTreeNode(node);
     });
 
     container.innerHTML = html;
     feather.replace();
 }
 
-function renderEventCard(event) {
+function renderTreeNode(node) {
+    const level = node.hierarchy_level || 0;
+
+    if (node.is_search_hit) {
+        return renderSearchHitCard(node) + renderChildren(node);
+    } else {
+        return renderContextCard(node) + renderChildren(node);
+    }
+}
+
+function renderChildren(node) {
+    if (!node.children || node.children.length === 0) return '';
+
+    const level = node.hierarchy_level || 0;
+    const childrenId = 'children-' + node.id.replace(/[^a-zA-Z0-9]/g, '');
+
+    let childrenHtml = '';
+    node.children.forEach(child => {
+        childrenHtml += renderTreeNode(child);
+    });
+
+    return `<div class="tree-children tree-children-${level}" id="${childrenId}">${childrenHtml}</div>`;
+}
+
+function renderSearchHitCard(event) {
     const level = event.hierarchy_level || 0;
     const title = event.title || '未命名事件';
     const summary = event.summary || '';
@@ -300,35 +320,14 @@ function renderEventCard(event) {
     const eventTime = event.event_time ? new Date(event.event_time).toLocaleString('zh-CN') : '';
     const createTime = event.create_time ? new Date(event.create_time).toLocaleString('zh-CN') : '';
     const displayTime = eventTime || createTime;
-    const scoreColor = event.score >= 0.9 ? 'success' : event.score >= 0.7 ? 'primary' : 'secondary';
+    const score = event.score || 0;
+    const scoreColor = score >= 0.9 ? 'success' : score >= 0.7 ? 'primary' : 'secondary';
     const cardId = 'card-' + event.id.replace(/[^a-zA-Z0-9]/g, '');
 
-    // keywords
     const keywords = (event.keywords || [])
         .map(k => `<span class="badge bg-info bg-opacity-75 me-1">${escapeHtml(k)}</span>`)
         .join('');
 
-    // ancestors
-    let ancestorsHtml = '';
-    if (event.ancestors && event.ancestors.length > 0) {
-        const ancestorId = 'ancestors-' + cardId;
-        const breadcrumb = event.ancestors
-            .map(a => `${LEVEL_SHORT[a.hierarchy_level] || 'L?'} (${escapeHtml(a.time_bucket || '?')})`)
-            .join(' > ');
-        ancestorsHtml = `
-            <div class="mt-2">
-                <a href="#" class="text-decoration-none small" onclick="toggleAncestors('${ancestorId}'); return false;">
-                    <i data-feather="git-branch" style="width: 14px; height: 14px;" class="me-1"></i>
-                    祖先链: ${escapeHtml(breadcrumb)}
-                </a>
-                <div id="${ancestorId}" class="ancestor-chain d-none mt-1">
-                    ${renderAncestors(event.ancestors)}
-                </div>
-            </div>
-        `;
-    }
-
-    // summary with expand
     let summaryHtml = '';
     if (summary) {
         const needsTruncate = summary.length > 200;
@@ -341,6 +340,13 @@ function renderEventCard(event) {
         `;
     }
 
+    const hasChildren = event.children && event.children.length > 0;
+    const childrenId = 'children-' + event.id.replace(/[^a-zA-Z0-9]/g, '');
+    const toggleHtml = hasChildren ? `
+        <span class="toggle-btn small text-muted ms-2" onclick="toggleChildren('${childrenId}', this)">
+            <i data-feather="chevron-down" style="width: 14px; height: 14px;"></i>
+        </span>` : '';
+
     return `
         <div class="border rounded mb-2 p-3 event-card">
             <div class="d-flex justify-content-between align-items-start mb-2">
@@ -350,11 +356,11 @@ function renderEventCard(event) {
                         <a href="#" onclick="viewContext('${event.id}', 'event'); return false;" class="text-decoration-none">${escapeHtml(title)}</a>
                     </h6>
                     ${timeBucket ? `<small class="text-muted">${escapeHtml(timeBucket)}</small>` : ''}
+                    ${toggleHtml}
                 </div>
-                <span class="badge bg-${scoreColor} score-badge">${event.score.toFixed(4)}</span>
+                <span class="badge bg-${scoreColor} score-badge">${score.toFixed(4)}</span>
             </div>
             ${summaryHtml}
-            ${ancestorsHtml}
             ${keywords ? `<div class="mt-2">${keywords}</div>` : ''}
             <div class="d-flex justify-content-between align-items-center mt-2">
                 ${displayTime ? `<small class="text-muted">${eventTime ? '事件时间' : '创建时间'}: ${displayTime}</small>` : '<span></span>'}
@@ -364,26 +370,44 @@ function renderEventCard(event) {
     `;
 }
 
-function renderAncestors(ancestors) {
-    return ancestors.map(a => {
-        const level = LEVEL_SHORT[a.hierarchy_level] || 'L?';
-        const bucket = a.time_bucket || '?';
-        const summary = a.summary || '无摘要';
-        const createTime = a.create_time ? new Date(a.create_time).toLocaleString('zh-CN') : '';
-        return `
-            <div class="ancestor-item small">
-                <span class="badge level-badge level-badge-${a.hierarchy_level} me-1">${level}</span>
-                <strong>${escapeHtml(bucket)}</strong>
-                ${createTime ? `<span class="text-muted ms-2">${createTime}</span>` : ''}
-                <p class="mb-0 text-muted mt-1">${escapeHtml(summary)}</p>
+function renderContextCard(node) {
+    const level = node.hierarchy_level || 0;
+    const title = node.title || '';
+    const summary = node.summary || '';
+    const timeBucket = node.time_bucket || '';
+
+    const hasChildren = node.children && node.children.length > 0;
+    const childrenId = 'children-' + node.id.replace(/[^a-zA-Z0-9]/g, '');
+    const toggleHtml = hasChildren ? `
+        <span class="toggle-btn" onclick="toggleChildren('${childrenId}', this)">
+            <i data-feather="chevron-down" style="width: 14px; height: 14px;"></i>
+        </span>` : '';
+
+    const titleHtml = title ? `<strong class="ms-1">${escapeHtml(title)}</strong>` : '';
+    const summaryHtml = summary ? `<p class="mb-0 text-muted small mt-1">${escapeHtml(summary)}</p>` : '';
+
+    return `
+        <div class="context-card context-card-${level} mb-2">
+            <div class="d-flex align-items-center gap-2">
+                ${toggleHtml}
+                <span class="badge level-badge level-badge-${level}">${LEVEL_SHORT[level] || 'L?'}</span>
+                ${timeBucket ? `<small class="text-muted">${escapeHtml(timeBucket)}</small>` : ''}
+                ${titleHtml}
             </div>
-        `;
-    }).join('');
+            ${summaryHtml}
+        </div>
+    `;
 }
 
-function toggleAncestors(id) {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle('d-none');
+function toggleChildren(id, el) {
+    const container = document.getElementById(id);
+    if (!container) return;
+    container.classList.toggle('d-none');
+    const icon = el.querySelector('svg');
+    if (icon) {
+        const isHidden = container.classList.contains('d-none');
+        icon.style.transform = isHidden ? 'rotate(-90deg)' : '';
+    }
 }
 
 function toggleSummary(id, link) {
@@ -391,16 +415,6 @@ function toggleSummary(id, link) {
     if (el) {
         el.classList.toggle('expanded');
         link.textContent = el.classList.contains('expanded') ? '收起' : '展开';
-    }
-}
-
-function toggleGroup(header) {
-    const content = header.nextElementSibling;
-    const chevron = header.querySelector('.group-chevron');
-    if (content) content.classList.toggle('d-none');
-    if (chevron) {
-        const isHidden = content && content.classList.contains('d-none');
-        chevron.style.transform = isHidden ? 'rotate(-90deg)' : '';
     }
 }
 
@@ -415,7 +429,7 @@ function displayError(message) {
     const container = document.getElementById('searchResults');
     const metaContainer = document.getElementById('searchMetadata');
     metaContainer.classList.add('d-none');
-    document.getElementById('resultCount').textContent = '0 条结果';
+    document.getElementById('resultCount').textContent = '0 条命中';
     container.innerHTML = `
         <div class="alert alert-danger">
             <i data-feather="alert-circle" class="me-2"></i>

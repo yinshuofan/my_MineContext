@@ -4,7 +4,8 @@
 Event Search API Route
 
 POST /api/search — Search events with optional semantic query, filters, and upward hierarchy
-drill-up.
+drill-up. Returns a tree structure where ancestors are parent nodes containing search hits as
+children.
 """
 
 import asyncio
@@ -20,8 +21,7 @@ from opencontext.models.context import ProcessedContext, Vectorize
 from opencontext.models.enums import ContextType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.search.models import (
-    EventAncestor,
-    EventResult,
+    EventNode,
     EventSearchRequest,
     EventSearchResponse,
     SearchMetadata,
@@ -49,8 +49,8 @@ async def search_events(
     2. **query** — Semantic search with optional time_range / hierarchy_levels filters
     3. **filters-only** — Browse by time_range and/or hierarchy_levels
 
-    When `drill_up=True`, each result includes its ancestor summaries
-    (L0→L1→L2→L3) up to the max requested hierarchy level.
+    When `drill_up=True`, results are returned as a hierarchy tree where ancestor
+    summaries are parent nodes containing search hits as nested children.
     """
     start_time = time.monotonic()
     query_preview = (request.query or "")[:50]
@@ -69,7 +69,7 @@ async def search_events(
         )
 
     try:
-        results = await asyncio.wait_for(
+        search_hits, tree_roots = await asyncio.wait_for(
             _execute_search(storage, request),
             timeout=30.0,
         )
@@ -77,11 +77,11 @@ async def search_events(
         elapsed_ms = (time.monotonic() - start_time) * 1000
 
         # Fire-and-forget: track accessed items for memory cache
-        if request.user_id and results:
+        if request.user_id and search_hits:
             asyncio.create_task(
                 _track_accessed_safe(
                     request.user_id,
-                    results,
+                    search_hits,
                     device_id=request.device_id or "default",
                     agent_id=request.agent_id or "default",
                 )
@@ -89,10 +89,10 @@ async def search_events(
 
         return EventSearchResponse(
             success=True,
-            events=results,
+            events=tree_roots,
             metadata=SearchMetadata(
                 query=request.query,
-                total_results=len(results),
+                total_results=len(search_hits),
                 search_time_ms=round(elapsed_ms, 2),
             ),
         )
@@ -127,8 +127,8 @@ async def search_events(
 async def _execute_search(
     storage,
     request: EventSearchRequest,
-) -> List[EventResult]:
-    """Execute the search and return formatted results."""
+) -> Tuple[List[EventNode], List[EventNode]]:
+    """Execute the search and return (search_hits_for_tracking, tree_roots)."""
 
     # ── Step 1: Get raw results ──
     raw_results: List[Tuple[ProcessedContext, float]] = []
@@ -158,23 +158,48 @@ async def _execute_search(
         # Path C: Filters-only (time_range and/or hierarchy_levels)
         raw_results = await _filter_only_search(storage, request)
 
-    # ── Step 2: Drill up ancestors ──
-    ancestor_map: Dict[str, List[EventAncestor]] = {}
+    # ── Step 2: Collect ancestors ──
+    all_ancestors: Dict[str, ProcessedContext] = {}
     if request.drill_up and raw_results:
         max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
-        ancestor_map = await _drill_up_ancestors(storage, raw_results, max_level)
+        all_ancestors = await _collect_ancestors(storage, raw_results, max_level)
 
-    # ── Step 3: Format results ──
-    events = []
+    # ── Step 3: Build node map ──
+    nodes: Dict[str, EventNode] = {}
+
+    # Search results -> EventNode with is_search_hit=True, score, content, etc.
+    search_hits: List[EventNode] = []
     for ctx, score in raw_results:
-        result = _to_event_result(ctx, score)
-        result.ancestors = ancestor_map.get(ctx.id, [])
-        events.append(result)
+        node = _to_search_hit_node(ctx, score)
+        nodes[ctx.id] = node
+        search_hits.append(node)
 
-    # ── Step 4: Sort by hierarchy level (high→low), then time (early→late) ──
-    events.sort(key=lambda e: (-e.hierarchy_level, e.time_bucket or ""))
+    # Ancestors -> EventNode (lightweight, is_search_hit=False)
+    for aid, actx in all_ancestors.items():
+        if aid not in nodes:  # Don't overwrite search hits
+            nodes[aid] = _to_context_node(actx)
 
-    return events
+    # ── Step 4: Link children to parents, build tree ──
+    roots: List[EventNode] = []
+    linked: set = set()
+    for node_id, node in nodes.items():
+        pid = node.parent_id
+        if pid and pid != "default" and pid in nodes and node_id not in linked:
+            nodes[pid].children.append(node)
+            linked.add(node_id)
+        else:
+            roots.append(node)
+
+    # ── Step 5: Sort ──
+    def sort_tree(node_list: List[EventNode]):
+        node_list.sort(key=lambda n: (n.time_bucket or ""))
+        for n in node_list:
+            if n.children:
+                sort_tree(n.children)
+
+    sort_tree(roots)
+
+    return search_hits, roots
 
 
 async def _filter_only_search(
@@ -245,41 +270,33 @@ async def _filter_only_search(
     return [(ctx, 1.0) for ctx in contexts]
 
 
-async def _drill_up_ancestors(
+async def _collect_ancestors(
     storage,
     results: List[Tuple[ProcessedContext, float]],
     max_level: int,
-) -> Dict[str, List[EventAncestor]]:
+) -> Dict[str, ProcessedContext]:
     """
-    Batch drill-up: for each result, follow parent_id chain upward.
+    Batch collect ancestors: for each result, follow parent_id chain upward.
 
-    Returns a mapping of context_id → [ancestor_L1, ancestor_L2, ...] in ascending level order.
+    Returns a mapping of ancestor_id -> ProcessedContext (excluding search results themselves).
     Uses a shared cache to avoid duplicate fetches (multiple L0 events may share the same L1 parent).
     """
-    # Map of context_id → ProcessedContext (cache)
+    # Map of context_id -> ProcessedContext (cache)
     seen: Dict[str, ProcessedContext] = {}
-    # Map of context_id → list of ancestors
-    ancestor_map: Dict[str, List[EventAncestor]] = {}
 
     # Seed the cache with the search results themselves
     for ctx, _ in results:
         seen[ctx.id] = ctx
 
     # Collect initial parent_ids to fetch
-    current_round: Dict[str, List[str]] = {}  # parent_id → list of child context IDs needing it
+    current_round: Dict[str, List[str]] = {}  # parent_id -> list of child context IDs needing it
     for ctx, _ in results:
-        ancestor_map[ctx.id] = []
         if ctx.properties and ctx.properties.parent_id:
             pid = ctx.properties.parent_id
-            if pid not in seen:
+            if pid != "default" and pid not in seen:
                 current_round.setdefault(pid, []).append(ctx.id)
-            else:
-                # Already cached
-                parent = seen[pid]
-                if parent.properties and parent.properties.hierarchy_level <= max_level:
-                    ancestor_map[ctx.id].append(_to_ancestor(parent))
 
-    # Iterative batch fetch (max 3 rounds: L0→L1, L1→L2, L2→L3)
+    # Iterative batch fetch (max 3 rounds: L0->L1, L1->L2, L2->L3)
     for _ in range(3):
         if not current_round:
             break
@@ -303,23 +320,18 @@ async def _drill_up_ancestors(
             if parent_level > max_level:
                 continue
 
-            ancestor = _to_ancestor(parent)
-
-            # Append this ancestor to all children that needed it
-            for cid in child_ids:
-                ancestor_map[cid].append(ancestor)
-
             # Queue next level parent
             if parent.properties and parent.properties.parent_id:
                 next_pid = parent.properties.parent_id
-                if next_pid not in seen:
-                    # All original result IDs that transitively need this grandparent
+                if next_pid != "default" and next_pid not in seen:
                     for cid in child_ids:
                         next_round.setdefault(next_pid, []).append(cid)
 
         current_round = next_round
 
-    return ancestor_map
+    # Return only ancestors (exclude search results themselves)
+    result_ids = {ctx.id for ctx, _ in results}
+    return {k: v for k, v in seen.items() if k not in result_ids}
 
 
 def _build_filters(
@@ -363,27 +375,47 @@ def _time_range_to_buckets(
     return bucket_start, bucket_end
 
 
-def _to_event_result(ctx: ProcessedContext, score: float) -> EventResult:
-    """Convert a ProcessedContext to an EventResult."""
+def _format_timestamp(value) -> Optional[str]:
+    """Format a timestamp value to ISO string."""
+    if not value:
+        return None
+    try:
+        return value.isoformat()
+    except (AttributeError, ValueError):
+        return str(value)
+
+
+def _normalize_parent_id(props) -> Optional[str]:
+    """Return parent_id or None if it's the 'default' sentinel."""
+    if props and props.parent_id and props.parent_id != "default":
+        return props.parent_id
+    return None
+
+
+def _to_context_node(ctx: ProcessedContext) -> EventNode:
+    """Convert a ProcessedContext to a lightweight EventNode (for ancestors)."""
     props = ctx.properties
     extracted = ctx.extracted_data
 
-    # Format timestamps
-    create_time = None
-    if props and props.create_time:
-        try:
-            create_time = props.create_time.isoformat()
-        except (AttributeError, ValueError):
-            create_time = str(props.create_time)
+    return EventNode(
+        id=ctx.id,
+        hierarchy_level=props.hierarchy_level if props else 0,
+        time_bucket=props.time_bucket if props else None,
+        parent_id=_normalize_parent_id(props),
+        title=extracted.title if extracted else None,
+        summary=extracted.summary if extracted else None,
+        event_time=_format_timestamp(props.event_time if props else None),
+        create_time=_format_timestamp(props.create_time if props else None),
+        is_search_hit=False,
+    )
 
-    event_time = None
-    if props and props.event_time:
-        try:
-            event_time = props.event_time.isoformat()
-        except (AttributeError, ValueError):
-            event_time = str(props.event_time)
 
-    return EventResult(
+def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
+    """Convert a ProcessedContext to a search-hit EventNode with full data."""
+    props = ctx.properties
+    extracted = ctx.extracted_data
+
+    return EventNode(
         id=ctx.id,
         title=extracted.title if extracted else None,
         summary=extracted.summary if extracted else None,
@@ -393,37 +425,17 @@ def _to_event_result(ctx: ProcessedContext, score: float) -> EventResult:
         score=score,
         hierarchy_level=props.hierarchy_level if props else 0,
         time_bucket=props.time_bucket if props else None,
-        parent_id=props.parent_id if props else None,
-        event_time=event_time,
-        create_time=create_time,
+        parent_id=_normalize_parent_id(props),
+        event_time=_format_timestamp(props.event_time if props else None),
+        create_time=_format_timestamp(props.create_time if props else None),
         metadata=ctx.metadata if ctx.metadata else {},
-    )
-
-
-def _to_ancestor(ctx: ProcessedContext) -> EventAncestor:
-    """Convert a ProcessedContext to an EventAncestor."""
-    props = ctx.properties
-    extracted = ctx.extracted_data
-
-    create_time = None
-    if props and props.create_time:
-        try:
-            create_time = props.create_time.isoformat()
-        except (AttributeError, ValueError):
-            create_time = str(props.create_time)
-
-    return EventAncestor(
-        id=ctx.id,
-        hierarchy_level=props.hierarchy_level if props else 0,
-        time_bucket=props.time_bucket if props else None,
-        summary=extracted.summary if extracted else None,
-        create_time=create_time,
+        is_search_hit=True,
     )
 
 
 async def _track_accessed_safe(
     user_id: str,
-    results: List[EventResult],
+    results: List[EventNode],
     device_id: str = "default",
     agent_id: str = "default",
 ) -> None:

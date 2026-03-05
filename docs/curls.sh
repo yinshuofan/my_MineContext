@@ -134,37 +134,37 @@ curl -X POST http://localhost:1733/api/search \
   }'
 # -H "X-API-Key: your-api-key"
 #
-# Response:
+# Response (tree structure — ancestors as parent nodes, search hits as children):
 # {
 #   "success": true,
 #   "events": [
 #     {
-#       "id": "05278626-88c4-4f85-8eec-e69ac143914c",
-#       "title": "Event title",
-#       "summary": "Event summary text",
-#       "content": "id: ...\ntitle: ...\nsummary: ...\nkeywords: ...\nentities: ...\ncontext type: event\nmetadata: {...}\ncreate time: ...\nevent time: ...\nduration count: 1\ntime bucket: ...\nsource file key: ...",
-#       "keywords": ["keyword1", "keyword2"],
-#       "entities": ["entity1", "entity2"],
-#       "score": 0.855,
-#       "hierarchy_level": 0,
-#       "time_bucket": "2026-03-04T09:17:26",
-#       "parent_id": "f4b61534-...",
-#       "event_time": "2026-03-04T09:17:26.626423+00:00",
-#       "create_time": "2026-03-04T09:17:26.626077",
-#       "metadata": {
-#         "content": "default",
-#         "created_at": "2026-03-04T09:18:38.598626",
-#         "is_happend": 0,
-#         "source": "default",
-#         "todo_id": "default"
-#       },
-#       "ancestors": [
+#       "id": "f4b61534-...",
+#       "hierarchy_level": 1,
+#       "time_bucket": "2026-03-04",
+#       "parent_id": null,
+#       "title": "Daily Summary",
+#       "summary": "Daily summary text...",
+#       "event_time": null,
+#       "create_time": "2026-03-04T09:29:32.894067+00:00",
+#       "is_search_hit": false,
+#       "children": [
 #         {
-#           "id": "f4b61534-...",
-#           "hierarchy_level": 1,
-#           "time_bucket": "2026-03-04",
-#           "summary": "Daily summary text...",
-#           "create_time": "2026-03-04T09:29:32.894067+00:00"
+#           "id": "05278626-88c4-4f85-8eec-e69ac143914c",
+#           "hierarchy_level": 0,
+#           "time_bucket": "2026-03-04T09:17:26",
+#           "parent_id": "f4b61534-...",
+#           "title": "Event title",
+#           "summary": "Event summary text",
+#           "event_time": "2026-03-04T09:17:26.626423+00:00",
+#           "create_time": "2026-03-04T09:17:26.626077",
+#           "is_search_hit": true,
+#           "children": [],
+#           "content": "id: ...\ntitle: ...\nsummary: ...\n...",
+#           "keywords": ["keyword1", "keyword2"],
+#           "entities": ["entity1", "entity2"],
+#           "score": 0.855,
+#           "metadata": {"source": "default", "todo_id": "default"}
 #         }
 #       ]
 #     }
@@ -212,25 +212,26 @@ curl -X POST http://localhost:1733/api/search \
   }'
 # -H "X-API-Key: your-api-key"
 #
-# Response (drill_up=false, no ancestors):
+# Response (drill_up=false, flat root nodes):
 # {
 #   "success": true,
 #   "events": [
 #     {
 #       "id": "...",
+#       "hierarchy_level": 0,
+#       "time_bucket": "2026-03-04T18:30:00",
+#       "parent_id": "...",
 #       "title": "...",
 #       "summary": "...",
+#       "event_time": "...",
+#       "create_time": "...",
+#       "is_search_hit": true,
+#       "children": [],
 #       "content": "...",
 #       "keywords": [...],
 #       "entities": [...],
 #       "score": 0.812,
-#       "hierarchy_level": 0,
-#       "time_bucket": "2026-03-04T18:30:00",
-#       "parent_id": "...",
-#       "event_time": "...",
-#       "create_time": "...",
-#       "metadata": {...},
-#       "ancestors": []
+#       "metadata": {...}
 #     }
 #   ],
 #   "metadata": {

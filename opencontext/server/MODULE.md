@@ -29,7 +29,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/web.py` | HTML pages -- contexts list, vector search, chat, monitoring, settings, file serving |
 | `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | **search/** | |
-| `search/models.py` | Pydantic models: `EventSearchRequest`, `EventSearchResponse`, `EventResult`, `EventAncestor`, `SearchMetadata`, `TimeRange` |
+| `search/models.py` | Pydantic models: `EventSearchRequest`, `EventSearchResponse`, `EventNode`, `SearchMetadata`, `TimeRange` |
 | **cache/** | |
 | `cache/memory_cache_manager.py` | `UserMemoryCacheManager` singleton -- builds/caches per-user memory snapshots in Redis |
 | `cache/models.py` | Response models: `UserMemoryCacheResponse`, `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`, `RecentlyAccessedItem`; internal models: `RecentMemoryItem`, `DailySummaryItem` |
@@ -111,20 +111,20 @@ class ContextOperations:
 
 ### Event Search (routes/search.py)
 
-Event-only search with three paths and optional upward hierarchy drill-up.
+Event-only search with three paths and optional upward hierarchy drill-up. Returns a **tree structure** where ancestors are parent nodes containing search hits as nested children.
 
 ```python
 # Route handler
 async def search_events(request: EventSearchRequest, _auth) -> EventSearchResponse
 
 # Internal functions
-async def _execute_search(storage, request) -> List[EventResult]
+async def _execute_search(storage, request) -> Tuple[List[EventNode], List[EventNode]]
 async def _filter_only_search(storage, request) -> List[Tuple[ProcessedContext, float]]
-async def _drill_up_ancestors(storage, results, max_level) -> Dict[str, List[EventAncestor]]
+async def _collect_ancestors(storage, results, max_level) -> Dict[str, ProcessedContext]
 def _build_filters(time_range, hierarchy_levels) -> Dict[str, Any]
 def _time_range_to_buckets(start_ts, end_ts) -> Tuple[Optional[str], Optional[str]]
-def _to_event_result(ctx: ProcessedContext, score: float) -> EventResult
-def _to_ancestor(ctx: ProcessedContext) -> EventAncestor
+def _to_context_node(ctx: ProcessedContext) -> EventNode
+def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode
 async def _track_accessed_safe(user_id, results, device_id, agent_id) -> None
 ```
 
@@ -133,8 +133,10 @@ Algorithm:
    - `event_ids` → `storage.get_contexts_by_ids()`, score=1.0
    - `query` → `Vectorize` + `storage.search()` with time/level filters
    - filters-only → `storage.search_hierarchy()` per level, or `get_all_processed_contexts()` with time filter
-2. **Drill-up** (if `drill_up=True`): Batch-fetch parent chains iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent. Respects `max_level = max(hierarchy_levels)` to cap drill-up depth.
-3. **Result assembly**: `EventResult` with `ancestors: List[EventAncestor]` in ascending level order
+2. **Collect ancestors** (if `drill_up=True`): Batch-fetch parent chains iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent. Returns `Dict[str, ProcessedContext]` of all ancestor contexts.
+3. **Build node map**: Search hits become `EventNode` with is_search_hit=True (score/content/keywords populated), ancestors become lightweight `EventNode` with is_search_hit=False. Search hits are never overwritten by ancestors.
+4. **Link tree**: Each node with a valid `parent_id` (not "default", exists in node map) is appended to parent's `children`. Nodes without a valid parent become roots.
+5. **Sort**: Roots and all children lists sorted by `time_bucket` ASC recursively.
 
 ### UserMemoryCacheManager (cache/memory_cache_manager.py)
 
@@ -451,37 +453,45 @@ search_events()
 
 #### Response Format (`EventSearchResponse`)
 
+Response is a **tree structure**: high-level summaries are root nodes, lower-level events are nested as `children`. All nodes use the single `EventNode` model. `is_search_hit` distinguishes search hits (with score/content/keywords/entities/metadata populated) from ancestor context nodes (lightweight, only id/level/time_bucket/title/summary).
+
 ```json
 {
   "success": true,
   "events": [
     {
-      "id": "05278626-88c4-4f85-8eec-e69ac143914c",
-      "title": "Event title",
-      "summary": "Event summary text",
-      "content": "id: ...\ntitle: ...\nsummary: ...\nkeywords: ...\nentities: ...\ncontext type: event\nmetadata: {...}\ncreate time: ...\nevent time: ...",
-      "keywords": ["keyword1", "keyword2"],
-      "entities": ["entity1", "entity2"],
-      "score": 0.855,
-      "hierarchy_level": 0,
-      "time_bucket": "2026-03-04T09:17:26",
-      "parent_id": "f4b61534-...",
-      "event_time": "2026-03-04T09:17:26.626423+00:00",
-      "create_time": "2026-03-04T09:17:26.626077",
-      "metadata": {
-        "content": "default",
-        "created_at": "2026-03-04T09:18:38.598626",
-        "is_happend": 0,
-        "source": "default",
-        "todo_id": "default"
-      },
-      "ancestors": [
+      "id": "f4b61534-...",
+      "hierarchy_level": 1,
+      "time_bucket": "2026-03-04",
+      "parent_id": null,
+      "title": "Daily Summary",
+      "summary": "Daily summary text...",
+      "event_time": null,
+      "create_time": "2026-03-04T09:29:32.894067+00:00",
+      "is_search_hit": false,
+      "children": [
         {
-          "id": "f4b61534-...",
-          "hierarchy_level": 1,
-          "time_bucket": "2026-03-04",
-          "summary": "Daily summary text...",
-          "create_time": "2026-03-04T09:29:32.894067+00:00"
+          "id": "05278626-88c4-4f85-8eec-e69ac143914c",
+          "hierarchy_level": 0,
+          "time_bucket": "2026-03-04T09:17:26",
+          "parent_id": "f4b61534-...",
+          "title": "Event title",
+          "summary": "Event summary text",
+          "event_time": "2026-03-04T09:17:26.626423+00:00",
+          "create_time": "2026-03-04T09:17:26.626077",
+          "is_search_hit": true,
+          "children": [],
+          "content": "id: ...\ntitle: ...\nsummary: ...\n...",
+          "keywords": ["keyword1", "keyword2"],
+          "entities": ["entity1", "entity2"],
+          "score": 0.855,
+          "metadata": {
+            "content": "default",
+            "created_at": "2026-03-04T09:18:38.598626",
+            "is_happend": 0,
+            "source": "default",
+            "todo_id": "default"
+          }
         }
       ]
     }
@@ -495,11 +505,13 @@ search_events()
 ```
 
 **Field notes:**
-- `content`: LLM-friendly flat text representation of the event (all fields concatenated)
+- `events`: List of root nodes (tree roots). When `drill_up=true`, ancestors become parent nodes with search hits nested as children. When `drill_up=false`, all search hits are flat root nodes.
+- `is_search_hit`: `true` for search results (content/keywords/entities/score/metadata populated), `false` for ancestor context nodes (only id/level/time_bucket/title/summary)
+- `children`: Nested child nodes, sorted by `time_bucket` ASC. Root nodes are also sorted by `time_bucket` ASC.
 - `hierarchy_level`: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
 - `time_bucket`: `"YYYY-MM-DDTHH:MM:SS"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
-- `parent_id`: Points to the parent summary context; `"default"` if no parent linked yet
-- `ancestors`: Populated when `drill_up=true`; each ancestor has one level higher than the child. Empty array when `drill_up=false` or no parent exists
+- `parent_id`: Points to the parent summary context; `"default"` or `null` if no parent linked yet
+- `total_results`: Count of actual search hits (not total tree nodes)
 - `score`: Semantic similarity score for query search; `1.0` for ID lookup and filter-only search
 
 ### Memory Cache Flow (`GET /api/memory-cache`)
