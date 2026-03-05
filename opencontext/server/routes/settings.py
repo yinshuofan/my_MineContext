@@ -191,7 +191,7 @@ async def update_model_settings(
                         LLMType.CHAT,
                         timeout=15,
                     )
-                    llm_valid, llm_msg = LLMClient(
+                    llm_valid, llm_msg = await LLMClient(
                         llm_type=LLMType.CHAT, config=llm_config
                     ).validate()
                     if not llm_valid:
@@ -206,7 +206,7 @@ async def update_model_settings(
                 vlm_config = _build_llm_config(
                     cfg.base_url, cfg.api_key, cfg.model, cfg.provider, LLMType.CHAT, timeout=15
                 )
-                vlm_valid, vlm_msg = LLMClient(
+                vlm_valid, vlm_msg = await LLMClient(
                     llm_type=LLMType.CHAT, config=vlm_config
                 ).validate()
                 if not vlm_valid:
@@ -227,7 +227,7 @@ async def update_model_settings(
                     timeout=15,
                     output_dim=cfg.output_dim or 2048,
                 )
-                emb_valid, emb_msg = LLMClient(
+                emb_valid, emb_msg = await LLMClient(
                     llm_type=LLMType.EMBEDDING, config=emb_config
                 ).validate()
                 if not emb_valid:
