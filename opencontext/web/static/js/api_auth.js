@@ -293,7 +293,8 @@ window.apiAuth = new APIAuth();
 // Monkey patch fetch for API calls that need authentication
 window.fetch = function(url, options = {}) {
     // Only patch API calls that need authentication (not auth status check)
-    if (typeof url === 'string' && url.startsWith('/api/') &&
+    if (typeof url === 'string' &&
+        (url.startsWith('/api/') || url.startsWith('/contexts/')) &&
         !url.startsWith('/api/auth/')) {
         return window.apiAuth.fetch(url, options);
     }
