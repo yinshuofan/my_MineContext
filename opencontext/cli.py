@@ -77,6 +77,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to start task scheduler: {e}")
 
+    # Start config reload manager (listens for cross-worker reload signals)
+    try:
+        from opencontext.server.config_reload_manager import get_config_reload_manager
+
+        await get_config_reload_manager().start(context_lab.reload_components)
+    except Exception as e:
+        logger.warning(f"Failed to start config reload manager: {e}")
+
     yield
 
     # Shutdown - stop scheduler first (while event loop is still running)
@@ -94,6 +102,14 @@ async def lifespan(app: FastAPI):
         await get_stream_interrupt_manager().close()
     except Exception as e:
         logger.warning(f"Error stopping stream interrupt manager: {e}")
+
+    # Stop config reload manager
+    try:
+        from opencontext.server.config_reload_manager import get_config_reload_manager
+
+        await get_config_reload_manager().stop()
+    except Exception as e:
+        logger.warning(f"Error stopping config reload manager: {e}")
 
     # Shutdown executor, waiting for in-flight thread pool tasks
     executor.shutdown(wait=True, cancel_futures=True)
