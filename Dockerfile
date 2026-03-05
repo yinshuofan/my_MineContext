@@ -1,5 +1,5 @@
-# Use Python 3.11 slim image
-FROM python:3.11-slim
+# Use uv base image which includes python 3.13
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 # Set environment variables
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -16,9 +16,6 @@ WORKDIR /app
 
 # Install system dependencies (uncomment if needed later)
 # RUN apt-get update && rm -rf /var/lib/apt/lists/*
-
-# Install uv (fast dependency manager)
-RUN pip install uv
 
 # Copy dependency definition files first
 COPY pyproject.toml uv.lock ./
