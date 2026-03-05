@@ -369,6 +369,7 @@ class ContextCaptureManager:
         self._components.clear()
         self._component_configs.clear()
         self._running_components.clear()
+        self._statistics["components"].clear()
 
     def shutdown(self, graceful: bool = True) -> None:
         """
