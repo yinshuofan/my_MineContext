@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -69,8 +69,17 @@ class ExtractedData(BaseModel):
     keywords: List[str] = Field(default_factory=list)  # keywords
     entities: List[str] = Field(default_factory=list)  # entities
     context_type: ContextType  # context type
-    confidence: int = Field(default=0, ge=0, le=10)  # confidence
-    importance: int = Field(default=0, ge=0, le=10)  # importance
+    confidence: int = Field(default=0)  # confidence (0-10)
+    importance: int = Field(default=0)  # importance (0-10)
+
+    @field_validator("confidence", "importance", mode="before")
+    @classmethod
+    def clamp_score(cls, v):
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return 0
+        return max(0, min(10, v))
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary"""
