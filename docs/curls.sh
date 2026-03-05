@@ -738,6 +738,10 @@ curl -X POST http://localhost:1733/api/settings/prompts/language \
 curl -X POST http://localhost:1733/api/settings/reset
 # -H "X-API-Key: your-api-key"
 
+# Apply Settings (restart components with latest config)
+curl -X POST http://localhost:1733/api/settings/apply
+# -H "X-API-Key: your-api-key"
+
 
 
 # ============================================================================

@@ -309,6 +309,7 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 | GET | `/api/settings/prompts/language` | `get_prompt_language` | Get prompt language |
 | POST | `/api/settings/prompts/language` | `change_prompt_language` | Change language (zh/en) |
 | POST | `/api/settings/reset` | `reset_settings` | Reset all to defaults |
+| POST | `/api/settings/apply` | `apply_settings` | Broadcast config reload signal to all workers |
 
 ### Vault Routes (`/api/vaults/*`)
 
