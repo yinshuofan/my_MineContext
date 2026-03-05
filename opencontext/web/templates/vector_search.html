@@ -1,47 +1,57 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">向量检索</h1>
+    <h1 class="h2">事件搜索</h1>
 </div>
 
 <div class="row">
     <div class="col-md-4">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">检索参数</h5>
+                <h5 class="mb-0">搜索参数</h5>
             </div>
             <div class="card-body">
-                <form id="vectorSearchForm">
+                <form id="eventSearchForm">
                     <div class="mb-3">
                         <label for="query" class="form-label">查询内容</label>
-                        <textarea class="form-control" id="query" rows="3" placeholder="输入要检索的内容..."></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">检索策略</label>
-                        <div>
-                            <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="strategy" id="strategyFast" value="fast" checked>
-                                <label class="form-check-label" for="strategyFast">快速检索</label>
-                            </div>
-                            <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="strategy" id="strategyIntelligent" value="intelligent">
-                                <label class="form-check-label" for="strategyIntelligent">智能检索</label>
-                            </div>
-                        </div>
-                        <div class="form-text">快速检索: 向量相似度搜索；智能检索: LLM 驱动的多轮搜索</div>
+                        <textarea class="form-control" id="query" rows="3" maxlength="2000" placeholder="输入语义搜索内容..."></textarea>
+                        <div class="form-text">支持自然语言查询</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="topK" class="form-label">返回数量 (Top-K)</label>
-                        <input type="number" class="form-control" id="topK" value="10" min="1" max="100">
+                        <input type="number" class="form-control" id="topK" value="20" min="1" max="100">
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">上下文类型</label>
-                        <div id="contextTypes">
-                            <!-- 动态加载上下文类型选择框 -->
+                        <label class="form-label">层级过滤</label>
+                        <div id="hierarchyLevels">
+                            <div class="form-check">
+                                <input class="form-check-input hierarchy-level-cb" type="checkbox" value="0" id="level0">
+                                <label class="form-check-label" for="level0">L0 原始事件</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input hierarchy-level-cb" type="checkbox" value="1" id="level1">
+                                <label class="form-check-label" for="level1">L1 日总结</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input hierarchy-level-cb" type="checkbox" value="2" id="level2">
+                                <label class="form-check-label" for="level2">L2 周总结</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input hierarchy-level-cb" type="checkbox" value="3" id="level3">
+                                <label class="form-check-label" for="level3">L3 月总结</label>
+                            </div>
                         </div>
+                        <div class="form-text">不选则不过滤层级</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="drillUp" checked>
+                            <label class="form-check-label" for="drillUp">向上追溯祖先链</label>
+                        </div>
+                        <div class="form-text">开启后显示每个事件的上层总结</div>
                     </div>
 
                     <div class="mb-3">
@@ -71,7 +81,7 @@
 
                     <button type="submit" class="btn btn-primary w-100">
                         <span class="spinner-border spinner-border-sm d-none" role="status" id="loadingSpinner"></span>
-                        <span id="searchButtonText">开始检索</span>
+                        <span id="searchButtonText">开始搜索</span>
                     </button>
                 </form>
             </div>
@@ -81,7 +91,7 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">检索结果</h5>
+                <h5 class="mb-0">搜索结果</h5>
                 <span class="badge bg-secondary" id="resultCount">0 条结果</span>
             </div>
             <div class="card-body">
@@ -89,7 +99,7 @@
                 <div id="searchResults">
                     <div class="text-muted text-center py-5">
                         <i data-feather="search" class="mb-3" style="width: 48px; height: 48px;"></i>
-                        <p>请输入查询内容并点击"开始检索"按钮</p>
+                        <p>输入查询内容或选择层级过滤，然后点击"开始搜索"</p>
                     </div>
                 </div>
             </div>
@@ -100,141 +110,97 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+.event-card { transition: box-shadow 0.15s; }
+.event-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.level-badge { font-size: 0.75rem; font-weight: 600; }
+.level-badge-0 { background-color: #6c757d; }
+.level-badge-1 { background-color: #0d6efd; }
+.level-badge-2 { background-color: #6f42c1; }
+.level-badge-3 { background-color: #d63384; }
+.ancestor-chain { border-left: 3px solid #dee2e6; padding-left: 12px; margin-top: 8px; }
+.ancestor-item { padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+.ancestor-item:last-child { border-bottom: none; }
+.summary-text { max-height: 4.5em; overflow: hidden; position: relative; }
+.summary-text.expanded { max-height: none; }
+.score-badge { font-size: 0.8rem; }
+</style>
+
 <script>
+const LEVEL_LABELS = {0: 'L0 原始事件', 1: 'L1 日总结', 2: 'L2 周总结', 3: 'L3 月总结'};
+const LEVEL_SHORT = {0: 'L0', 1: 'L1', 2: 'L2', 3: 'L3'};
+
 document.addEventListener('DOMContentLoaded', function() {
-    // 加载上下文类型
-    loadContextTypes();
-
-    // 绑定表单提交事件
-    document.getElementById('vectorSearchForm').addEventListener('submit', handleSearch);
+    document.getElementById('eventSearchForm').addEventListener('submit', handleSearch);
 });
-
-async function loadContextTypes() {
-    try {
-        const response = await fetch('/api/context_types');
-        const contextTypes = await response.json();
-
-        const container = document.getElementById('contextTypes');
-        container.innerHTML = '';
-
-        // 添加"全选"选项
-        const selectAllDiv = document.createElement('div');
-        selectAllDiv.className = 'form-check mb-2';
-        selectAllDiv.innerHTML = `
-            <input class="form-check-input" type="checkbox" id="selectAllContextTypes" checked>
-            <label class="form-check-label fw-bold" for="selectAllContextTypes">
-                全选
-            </label>
-        `;
-        container.appendChild(selectAllDiv);
-
-        // 添加分隔线
-        const hr = document.createElement('hr');
-        hr.className = 'my-2';
-        container.appendChild(hr);
-
-        // 添加各个上下文类型
-        contextTypes.forEach(type => {
-            const div = document.createElement('div');
-            div.className = 'form-check';
-            div.innerHTML = `
-                <input class="form-check-input context-type-checkbox" type="checkbox" value="${type}" id="context_${type}" checked>
-                <label class="form-check-label" for="context_${type}">
-                    ${type}
-                </label>
-            `;
-            container.appendChild(div);
-        });
-
-        // 绑定全选逻辑
-        document.getElementById('selectAllContextTypes').addEventListener('change', function() {
-            const checkboxes = document.querySelectorAll('.context-type-checkbox');
-            checkboxes.forEach(cb => cb.checked = this.checked);
-        });
-
-        // 绑定单个选择框逻辑
-        document.querySelectorAll('.context-type-checkbox').forEach(cb => {
-            cb.addEventListener('change', function() {
-                const allChecked = Array.from(document.querySelectorAll('.context-type-checkbox')).every(c => c.checked);
-                const anyChecked = Array.from(document.querySelectorAll('.context-type-checkbox')).some(c => c.checked);
-                const selectAllCb = document.getElementById('selectAllContextTypes');
-                selectAllCb.checked = allChecked;
-                selectAllCb.indeterminate = !allChecked && anyChecked;
-            });
-        });
-
-    } catch (error) {
-        console.error('Failed to load context types:', error);
-        document.getElementById('contextTypes').innerHTML = '<div class="alert alert-warning">无法加载上下文类型</div>';
-    }
-}
 
 async function handleSearch(event) {
     event.preventDefault();
 
     const query = document.getElementById('query').value.trim();
-    const strategy = document.querySelector('input[name="strategy"]:checked').value;
-    const topK = parseInt(document.getElementById('topK').value) || 10;
+    const topK = parseInt(document.getElementById('topK').value) || 20;
+    const drillUp = document.getElementById('drillUp').checked;
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
     const userId = document.getElementById('userId').value.trim();
     const deviceId = document.getElementById('deviceId').value.trim();
     const agentId = document.getElementById('agentId').value.trim();
 
-    // 获取选中的上下文类型
-    const selectedContextTypes = Array.from(document.querySelectorAll('.context-type-checkbox:checked'))
-        .map(cb => cb.value);
+    // 获取选中的层级
+    const selectedLevels = Array.from(document.querySelectorAll('.hierarchy-level-cb:checked'))
+        .map(cb => parseInt(cb.value));
 
-    if (selectedContextTypes.length === 0) {
-        alert('请至少选择一个上下文类型');
+    // 前端校验：至少有 query 或 hierarchy_levels 或 time_range
+    const hasQuery = query.length > 0;
+    const hasLevels = selectedLevels.length > 0;
+    const hasTimeRange = startTime || endTime;
+
+    if (!hasQuery && !hasLevels && !hasTimeRange) {
+        displayError('请至少输入查询内容、选择层级过滤或设置时间范围');
         return;
     }
 
-    // 显示加载状态
     setLoading(true);
 
     try {
-        // 构建请求体
         const requestBody = {
-            query: query,
-            strategy: strategy,
             top_k: topK,
-            context_types: selectedContextTypes,
-            user_id: userId || undefined,
-            device_id: deviceId || undefined,
-            agent_id: agentId || undefined
+            drill_up: drillUp
         };
 
-        // 构建时间范围
-        if (startTime || endTime) {
+        if (hasQuery) requestBody.query = query;
+        if (hasLevels) requestBody.hierarchy_levels = selectedLevels;
+        if (userId) requestBody.user_id = userId;
+        if (deviceId) requestBody.device_id = deviceId;
+        if (agentId) requestBody.agent_id = agentId;
+
+        if (hasTimeRange) {
             requestBody.time_range = {};
-            if (startTime) {
-                requestBody.time_range.start = Math.floor(new Date(startTime).getTime() / 1000);
-            }
-            if (endTime) {
-                requestBody.time_range.end = Math.floor(new Date(endTime).getTime() / 1000);
-            }
+            if (startTime) requestBody.time_range.start = Math.floor(new Date(startTime).getTime() / 1000);
+            if (endTime) requestBody.time_range.end = Math.floor(new Date(endTime).getTime() / 1000);
         }
 
         const response = await fetch('/api/search', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
         });
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.detail || data.message || '检索失败');
+            const detail = data.detail;
+            if (Array.isArray(detail)) {
+                throw new Error(detail.map(d => d.msg || JSON.stringify(d)).join('; '));
+            }
+            throw new Error(detail || '搜索失败');
         }
 
         if (!data.success) {
-            throw new Error(data.message || '检索失败');
+            throw new Error(data.message || '搜索失败');
         }
 
         displayMetadata(data.metadata);
-        displayResults(data.results);
+        displayResults(data.events);
 
     } catch (error) {
         console.error('Search error:', error);
@@ -247,22 +213,18 @@ async function handleSearch(event) {
 function setLoading(loading) {
     const spinner = document.getElementById('loadingSpinner');
     const buttonText = document.getElementById('searchButtonText');
-    const submitButton = document.querySelector('#vectorSearchForm button[type="submit"]');
+    const submitButton = document.querySelector('#eventSearchForm button[type="submit"]');
 
     if (loading) {
         spinner.classList.remove('d-none');
-        buttonText.textContent = '检索中...';
+        buttonText.textContent = '搜索中...';
         submitButton.disabled = true;
     } else {
         spinner.classList.add('d-none');
-        buttonText.textContent = '开始检索';
+        buttonText.textContent = '开始搜索';
         submitButton.disabled = false;
     }
 }
-
-const STRATEGY_LABELS = { fast: '快速检索', intelligent: '智能检索' };
-const TYPE_LABELS = { profile: '用户画像', entity: '实体', document: '文档', event: '事件', knowledge: '知识' };
-const TYPE_ICONS = { profile: 'user', entity: 'users', document: 'file-text', event: 'calendar', knowledge: 'book' };
 
 function displayMetadata(metadata) {
     const container = document.getElementById('searchMetadata');
@@ -271,134 +233,179 @@ function displayMetadata(metadata) {
         return;
     }
     container.classList.remove('d-none');
-    const strategyLabel = STRATEGY_LABELS[metadata.strategy] || metadata.strategy;
+    const queryText = metadata.query ? `查询: <strong>${escapeHtml(metadata.query)}</strong>` : '过滤搜索';
     container.innerHTML = `
         <div class="d-flex gap-3 text-muted small flex-wrap">
-            <span>策略: <strong>${strategyLabel}</strong></span>
-            <span>结果总数: <strong>${metadata.total_results}</strong></span>
+            <span>${queryText}</span>
+            <span>结果: <strong>${metadata.total_results}</strong></span>
             <span>耗时: <strong>${metadata.search_time_ms.toFixed(0)} ms</strong></span>
         </div>
     `;
 }
 
-function displayResults(results) {
+function displayResults(events) {
     const container = document.getElementById('searchResults');
     const resultCount = document.getElementById('resultCount');
 
-    // 统计总结果数
-    let total = 0;
-    if (results.profile) total += 1;
-    total += (results.entities || []).length;
-    total += (results.documents || []).length;
-    total += (results.events || []).length;
-    total += (results.knowledge || []).length;
+    resultCount.textContent = `${events.length} 条结果`;
 
-    resultCount.textContent = `${total} 条结果`;
-
-    if (total === 0) {
+    if (!events || events.length === 0) {
         container.innerHTML = `
             <div class="text-muted text-center py-5">
-                <i data-feather="search" class="mb-3" style="width: 48px; height: 48px;"></i>
-                <p>未找到匹配的结果</p>
+                <i data-feather="inbox" class="mb-3" style="width: 48px; height: 48px;"></i>
+                <p>未找到匹配的事件</p>
             </div>
         `;
         feather.replace();
         return;
     }
 
+    // 按 hierarchy_level 分组（高层级在前）
+    const grouped = {};
+    events.forEach(event => {
+        const level = event.hierarchy_level || 0;
+        if (!grouped[level]) grouped[level] = [];
+        grouped[level].push(event);
+    });
+
+    const sortedLevels = Object.keys(grouped).map(Number).sort((a, b) => b - a);
+
     let html = '';
-
-    // Profile
-    if (results.profile) {
-        html += renderSection('profile', [results.profile], renderProfileItem);
-    }
-
-    // Entities
-    if (results.entities && results.entities.length > 0) {
-        html += renderSection('entity', results.entities, renderEntityItem);
-    }
-
-    // Documents
-    if (results.documents && results.documents.length > 0) {
-        html += renderSection('document', results.documents, renderVectorItem);
-    }
-
-    // Events
-    if (results.events && results.events.length > 0) {
-        html += renderSection('event', results.events, renderVectorItem);
-    }
-
-    // Knowledge
-    if (results.knowledge && results.knowledge.length > 0) {
-        html += renderSection('knowledge', results.knowledge, renderVectorItem);
-    }
+    sortedLevels.forEach(level => {
+        const items = grouped[level];
+        const label = LEVEL_LABELS[level] || `L${level}`;
+        html += `
+            <div class="mb-4">
+                <h6 class="text-muted mb-3 d-flex align-items-center gap-2 cursor-pointer"
+                    onclick="toggleGroup(this)" style="cursor: pointer;">
+                    <i data-feather="chevron-down" style="width: 16px; height: 16px;" class="group-chevron"></i>
+                    <span class="badge level-badge level-badge-${level}">${label}</span>
+                    <span class="badge bg-secondary">${items.length}</span>
+                </h6>
+                <div class="group-content">
+        `;
+        items.forEach(item => { html += renderEventCard(item); });
+        html += '</div></div>';
+    });
 
     container.innerHTML = html;
     feather.replace();
 }
 
-function renderSection(type, items, renderFn) {
-    const label = TYPE_LABELS[type] || type;
-    const icon = TYPE_ICONS[type] || 'box';
-    let html = `
-        <div class="mb-4">
-            <h6 class="text-muted mb-3 d-flex align-items-center gap-2">
-                <i data-feather="${icon}" style="width: 16px; height: 16px;"></i>
-                ${label}
-                <span class="badge bg-secondary">${items.length}</span>
-            </h6>
-    `;
-    items.forEach(item => { html += renderFn(item); });
-    html += '</div>';
-    return html;
-}
+function renderEventCard(event) {
+    const level = event.hierarchy_level || 0;
+    const title = event.title || '未命名事件';
+    const summary = event.summary || '';
+    const timeBucket = event.time_bucket || '';
+    const eventTime = event.event_time ? new Date(event.event_time).toLocaleString('zh-CN') : '';
+    const createTime = event.create_time ? new Date(event.create_time).toLocaleString('zh-CN') : '';
+    const displayTime = eventTime || createTime;
+    const scoreColor = event.score >= 0.9 ? 'success' : event.score >= 0.7 ? 'primary' : 'secondary';
+    const cardId = 'card-' + event.id.replace(/[^a-zA-Z0-9]/g, '');
 
-function renderProfileItem(profile) {
-    const keywords = (profile.keywords || []).map(k => `<span class="badge bg-info me-1">${escapeHtml(k)}</span>`).join('');
-    return `
-        <div class="border rounded mb-2 p-3">
-            <p class="mb-2">${escapeHtml(profile.content || '无内容')}</p>
-            ${keywords ? `<div>${keywords}</div>` : ''}
-        </div>
-    `;
-}
+    // keywords
+    const keywords = (event.keywords || [])
+        .map(k => `<span class="badge bg-info bg-opacity-75 me-1">${escapeHtml(k)}</span>`)
+        .join('');
 
-function renderEntityItem(entity) {
-    const typeBadge = entity.entity_type ? `<span class="badge bg-secondary me-2">${escapeHtml(entity.entity_type)}</span>` : '';
+    // ancestors
+    let ancestorsHtml = '';
+    if (event.ancestors && event.ancestors.length > 0) {
+        const ancestorId = 'ancestors-' + cardId;
+        const breadcrumb = event.ancestors
+            .map(a => `${LEVEL_SHORT[a.hierarchy_level] || 'L?'} (${escapeHtml(a.time_bucket || '?')})`)
+            .join(' > ');
+        ancestorsHtml = `
+            <div class="mt-2">
+                <a href="#" class="text-decoration-none small" onclick="toggleAncestors('${ancestorId}'); return false;">
+                    <i data-feather="git-branch" style="width: 14px; height: 14px;" class="me-1"></i>
+                    祖先链: ${escapeHtml(breadcrumb)}
+                </a>
+                <div id="${ancestorId}" class="ancestor-chain d-none mt-1">
+                    ${renderAncestors(event.ancestors)}
+                </div>
+            </div>
+        `;
+    }
+
+    // summary with expand
+    let summaryHtml = '';
+    if (summary) {
+        const needsTruncate = summary.length > 200;
+        const summaryId = 'summary-' + cardId;
+        summaryHtml = `
+            <div class="summary-text${needsTruncate ? '' : ' expanded'}" id="${summaryId}">
+                <p class="mb-0 text-muted">${escapeHtml(summary)}</p>
+            </div>
+            ${needsTruncate ? `<a href="#" class="small text-decoration-none" onclick="toggleSummary('${summaryId}', this); return false;">展开</a>` : ''}
+        `;
+    }
+
     return `
-        <div class="border rounded mb-2 p-3">
+        <div class="border rounded mb-2 p-3 event-card">
             <div class="d-flex justify-content-between align-items-start mb-2">
-                <h6 class="mb-0">
-                    ${typeBadge}${escapeHtml(entity.entity_name)}
-                </h6>
-                <span class="badge bg-primary">${entity.score.toFixed(4)}</span>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="badge level-badge level-badge-${level}">${LEVEL_SHORT[level] || 'L?'}</span>
+                    <h6 class="mb-0">
+                        <a href="#" onclick="viewContext('${event.id}', 'event'); return false;" class="text-decoration-none">${escapeHtml(title)}</a>
+                    </h6>
+                    ${timeBucket ? `<small class="text-muted">${escapeHtml(timeBucket)}</small>` : ''}
+                </div>
+                <span class="badge bg-${scoreColor} score-badge">${event.score.toFixed(4)}</span>
             </div>
-            <p class="text-muted small mb-0">${escapeHtml(entity.summary || entity.content || '无描述')}</p>
+            ${summaryHtml}
+            ${ancestorsHtml}
+            ${keywords ? `<div class="mt-2">${keywords}</div>` : ''}
+            <div class="d-flex justify-content-between align-items-center mt-2">
+                ${displayTime ? `<small class="text-muted">${eventTime ? '事件时间' : '创建时间'}: ${displayTime}</small>` : '<span></span>'}
+                <button onclick="viewContext('${event.id}', 'event')" class="btn btn-sm btn-outline-primary">查看详情</button>
+            </div>
         </div>
     `;
 }
 
-function renderVectorItem(result) {
-    const createTime = result.create_time ? new Date(result.create_time).toLocaleString('zh-CN') : '';
-    const contextType = result.context_type || '';
-    return `
-        <div class="border rounded mb-2 p-3">
-            <div class="d-flex justify-content-between align-items-start mb-2">
-                <h6 class="mb-1">
-                    <a href="#" onclick="viewContext('${result.id}', '${contextType}'); return false;" class="text-decoration-none">${escapeHtml(result.title || '未命名')}</a>
-                </h6>
-                <span class="badge bg-primary">${result.score.toFixed(4)}</span>
+function renderAncestors(ancestors) {
+    return ancestors.map(a => {
+        const level = LEVEL_SHORT[a.hierarchy_level] || 'L?';
+        const bucket = a.time_bucket || '?';
+        const summary = a.summary || '无摘要';
+        const createTime = a.create_time ? new Date(a.create_time).toLocaleString('zh-CN') : '';
+        return `
+            <div class="ancestor-item small">
+                <span class="badge level-badge level-badge-${a.hierarchy_level} me-1">${level}</span>
+                <strong>${escapeHtml(bucket)}</strong>
+                ${createTime ? `<span class="text-muted ms-2">${createTime}</span>` : ''}
+                <p class="mb-0 text-muted mt-1">${escapeHtml(summary)}</p>
             </div>
-            <p class="text-muted small mb-2">${escapeHtml(result.summary || '无摘要')}</p>
-            <div class="d-flex justify-content-between align-items-center">
-                ${createTime ? `<small class="text-muted">创建时间: ${createTime}</small>` : '<span></span>'}
-                <button onclick="viewContext('${result.id}', '${contextType}')" class="btn btn-sm btn-outline-primary">查看详情</button>
-            </div>
-        </div>
-    `;
+        `;
+    }).join('');
+}
+
+function toggleAncestors(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('d-none');
+}
+
+function toggleSummary(id, link) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.classList.toggle('expanded');
+        link.textContent = el.classList.contains('expanded') ? '收起' : '展开';
+    }
+}
+
+function toggleGroup(header) {
+    const content = header.nextElementSibling;
+    const chevron = header.querySelector('.group-chevron');
+    if (content) content.classList.toggle('d-none');
+    if (chevron) {
+        const isHidden = content && content.classList.contains('d-none');
+        chevron.style.transform = isHidden ? 'rotate(-90deg)' : '';
+    }
 }
 
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
@@ -408,10 +415,11 @@ function displayError(message) {
     const container = document.getElementById('searchResults');
     const metaContainer = document.getElementById('searchMetadata');
     metaContainer.classList.add('d-none');
+    document.getElementById('resultCount').textContent = '0 条结果';
     container.innerHTML = `
         <div class="alert alert-danger">
             <i data-feather="alert-circle" class="me-2"></i>
-            检索出错: ${escapeHtml(message)}
+            搜索出错: ${escapeHtml(message)}
         </div>
     `;
     feather.replace();
@@ -421,13 +429,8 @@ async function viewContext(contextId, contextType) {
     try {
         const response = await fetch('/contexts/detail', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                id: contextId,
-                context_type: contextType
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: contextId, context_type: contextType })
         });
 
         if (response.ok) {

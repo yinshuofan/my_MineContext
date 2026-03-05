@@ -345,7 +345,7 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 |--------|------|---------|-------------|
 | GET | `/` | `root` | Redirect to `/contexts` |
 | GET | `/contexts` | `read_contexts` | Contexts list page |
-| GET | `/vector_search` | `vector_search_page` | Vector search page |
+| GET | `/vector_search` | `vector_search_page` | Event search page |
 | GET | `/memory_cache` | `memory_cache_page` | Memory cache page |
 | GET | `/chat` | `chat_page` | Redirect to `/advanced_chat` |
 | GET | `/advanced_chat` | `advanced_chat_page` | Redirect to `/vaults` |
