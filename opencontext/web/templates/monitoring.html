@@ -1,1010 +1,990 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>系统监控 - MineContext</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/api_auth.js"></script>
-    <style>
-        body {
-            padding-top: 56px;
-        }
-        .navbar {
-            background-color: #212529 !important;
-        }
-        .metric-card {
-            transition: all 0.3s ease;
-            height: 100%;
-        }
-        .metric-card .card-body {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            height: 100%;
-        }
-        .metric-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        .chart-container {
-            position: relative;
-            height: 280px;
-            margin: 15px 0;
-        }
-        .refresh-btn {
-            position: fixed;
-            top: 70px;
-            right: 20px;
-            z-index: 1000;
-        }
-        .loading {
-            display: none;
-        }
-        .loading.active {
-            display: inline-block;
-        }
-        .metric-value {
-            font-size: 2rem;
-            font-weight: bold;
-        }
-        .metric-value-sm {
-            font-size: 1.4rem;
-            font-weight: bold;
-        }
-        .metric-label {
-            font-size: 0.9rem;
-            color: #6c757d;
-        }
-        .time-range-selector {
-            margin-bottom: 10px;
-        }
-        .scheduler-section-divider {
-            border: 0;
-            border-top: 2px solid #dee2e6;
-            margin: 2rem 0;
-        }
-        .queue-badge {
-            font-size: 1rem;
-            min-width: 2.5rem;
-            display: inline-block;
-            text-align: center;
-        }
-        .scheduler-refresh-btn {
-            font-size: 0.85rem;
-        }
-        .scheduler-time-range .btn {
-            font-size: 0.8rem;
-        }
-        .failure-rate-cell {
-            font-weight: 600;
-        }
-    </style>
-</head>
-<body class="bg-light">
-    <!-- 顶部导航栏 -->
-    <nav class="navbar navbar-dark bg-dark fixed-top">
-        <div class="container-fluid">
-            <div class="d-flex align-items-center">
-                <a class="navbar-brand" href="/">OpenContext - 系统监控</a>
-                <a href="/" class="btn btn-outline-light btn-sm ms-3">返回主页</a>
-            </div>
-            <div class="d-flex align-items-center text-light">
-                <small class="me-3">运行: <span id="uptime">-</span></small>
-                <small>更新: <span id="lastUpdate">-</span></small>
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .metric-card {
+        transition: all 0.3s ease;
+        height: 100%;
+    }
+    .metric-card .card-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        height: 100%;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .chart-container {
+        position: relative;
+        height: 280px;
+        margin: 15px 0;
+    }
+    .refresh-btn {
+        position: fixed;
+        top: 60px;
+        right: 20px;
+        z-index: 1000;
+    }
+    .loading {
+        display: none;
+    }
+    .loading.active {
+        display: inline-block;
+    }
+    .metric-value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .metric-value-sm {
+        font-size: 1.4rem;
+        font-weight: bold;
+    }
+    .metric-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .time-range-selector {
+        margin-bottom: 10px;
+    }
+    .scheduler-section-divider {
+        border: 0;
+        border-top: 2px solid #dee2e6;
+        margin: 2rem 0;
+    }
+    .queue-badge {
+        font-size: 1rem;
+        min-width: 2.5rem;
+        display: inline-block;
+        text-align: center;
+    }
+    .scheduler-refresh-btn {
+        font-size: 0.85rem;
+    }
+    .scheduler-time-range .btn {
+        font-size: 0.8rem;
+    }
+    .failure-rate-cell {
+        font-weight: 600;
+    }
+</style>
+
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">系统监控</h1>
+    <div class="d-flex align-items-center text-muted">
+        <small class="me-3">运行: <span id="uptime">-</span></small>
+        <small>更新: <span id="lastUpdate">-</span></small>
+    </div>
+</div>
+
+<!-- 刷新按钮 -->
+<button class="btn btn-primary refresh-btn" onclick="refreshAllData()">
+    <span class="loading spinner-border spinner-border-sm" role="status"></span>
+    刷新数据
+</button>
+
+<!-- 核心指标卡片 - 4个 -->
+<div class="row mt-3 mb-4">
+    <!-- Token 消耗 -->
+    <div class="col-md-3">
+        <div class="card metric-card border-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="card-title text-primary mb-0">Token 消耗</h6>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="tokenTimeRange" id="token24h" value="24" checked>
+                        <label class="btn btn-outline-primary btn-sm" for="token24h">24h</label>
+                        <input type="radio" class="btn-check" name="tokenTimeRange" id="token7d" value="168">
+                        <label class="btn btn-outline-primary btn-sm" for="token7d">7d</label>
+                    </div>
+                </div>
+                <div class="metric-value text-center text-primary" id="totalTokens">-</div>
+                <small class="metric-label d-block text-center">总消耗</small>
             </div>
         </div>
-    </nav>
-
-    <!-- 主内容区域 -->
-    <div class="container-fluid px-4">
-        <!-- 刷新按钮 -->
-        <button class="btn btn-primary refresh-btn" onclick="refreshAllData()">
-            <span class="loading spinner-border spinner-border-sm" role="status"></span>
-            刷新数据
-        </button>
-
-        <!-- 核心指标卡片 - 4个 -->
-        <div class="row mt-3 mb-4">
-            <!-- Token 消耗 -->
-            <div class="col-md-3">
-                <div class="card metric-card border-primary">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="card-title text-primary mb-0">Token 消耗</h6>
-                            <div class="btn-group" role="group">
-                                <input type="radio" class="btn-check" name="tokenTimeRange" id="token24h" value="24" checked>
-                                <label class="btn btn-outline-primary btn-sm" for="token24h">24h</label>
-                                <input type="radio" class="btn-check" name="tokenTimeRange" id="token7d" value="168">
-                                <label class="btn btn-outline-primary btn-sm" for="token7d">7d</label>
-                            </div>
-                        </div>
-                        <div class="metric-value text-center text-primary" id="totalTokens">-</div>
-                        <small class="metric-label d-block text-center">总消耗</small>
+    </div>
+    <!-- Context 统计 -->
+    <div class="col-md-3">
+        <div class="card metric-card border-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="card-title text-success mb-0">Context</h6>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="contextTimeRange" id="context24h" value="24" checked>
+                        <label class="btn btn-outline-success btn-sm" for="context24h">24h</label>
+                        <input type="radio" class="btn-check" name="contextTimeRange" id="contextAll" value="all">
+                        <label class="btn btn-outline-success btn-sm" for="contextAll">全部</label>
                     </div>
                 </div>
-            </div>
-            <!-- Context 统计 -->
-            <div class="col-md-3">
-                <div class="card metric-card border-success">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="card-title text-success mb-0">Context</h6>
-                            <div class="btn-group" role="group">
-                                <input type="radio" class="btn-check" name="contextTimeRange" id="context24h" value="24" checked>
-                                <label class="btn btn-outline-success btn-sm" for="context24h">24h</label>
-                                <input type="radio" class="btn-check" name="contextTimeRange" id="contextAll" value="all">
-                                <label class="btn btn-outline-success btn-sm" for="contextAll">全部</label>
-                            </div>
-                        </div>
-                        <div class="metric-value text-center text-success" id="totalContexts">-</div>
-                        <small class="metric-label d-block text-center" id="contextLabel">24h新增</small>
-                    </div>
-                </div>
-            </div>
-            <!-- 处理错误 -->
-            <div class="col-md-3">
-                <div class="card metric-card border-danger">
-                    <div class="card-body">
-                        <h6 class="card-title text-danger mb-2">处理错误</h6>
-                        <div class="metric-value text-center text-danger" id="totalErrors">-</div>
-                        <small class="metric-label d-block text-center">近24h</small>
-                    </div>
-                </div>
-            </div>
-            <!-- 系统运行时间 -->
-            <div class="col-md-3">
-                <div class="card metric-card border-info">
-                    <div class="card-body">
-                        <h6 class="card-title text-info mb-2">运行时间</h6>
-                        <div class="metric-value-sm text-center text-info" id="uptimeCard">-</div>
-                        <small class="metric-label d-block text-center">系统已运行</small>
-                    </div>
-                </div>
+                <div class="metric-value text-center text-success" id="totalContexts">-</div>
+                <small class="metric-label d-block text-center" id="contextLabel">24h新增</small>
             </div>
         </div>
-
-        <!-- 图表区域 - 2个 -->
-        <div class="row mb-4">
-            <!-- 环节耗时分布 -->
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h5>环节耗时分布</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="stageTimingChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 模型Token使用分布 -->
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h5>模型Token使用分布</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="tokenUsageChart"></canvas>
-                        </div>
-                    </div>
-                </div>
+    </div>
+    <!-- 处理错误 -->
+    <div class="col-md-3">
+        <div class="card metric-card border-danger">
+            <div class="card-body">
+                <h6 class="card-title text-danger mb-2">处理错误</h6>
+                <div class="metric-value text-center text-danger" id="totalErrors">-</div>
+                <small class="metric-label d-block text-center">近24h</small>
             </div>
         </div>
-
-        <!-- Context 类型分布 + 数据处理监控 -->
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h5 id="contextChartTitle">Context 类型分布（24小时新增）</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="contextStatsChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h5>数据处理监控（24小时）</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="dataProcessingTrendChart"></canvas>
-                        </div>
-                    </div>
-                </div>
+    </div>
+    <!-- 系统运行时间 -->
+    <div class="col-md-3">
+        <div class="card metric-card border-info">
+            <div class="card-body">
+                <h6 class="card-title text-info mb-2">运行时间</h6>
+                <div class="metric-value-sm text-center text-info" id="uptimeCard">-</div>
+                <small class="metric-label d-block text-center">系统已运行</small>
             </div>
         </div>
+    </div>
+</div>
 
-        <!-- 处理错误日志 -->
-        <div class="row mb-5">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>处理错误日志（最近1天，最多20条）</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="processingErrorsChart">加载中...</div>
-                    </div>
-                </div>
+<!-- 图表区域 - 2个 -->
+<div class="row mb-4">
+    <!-- 环节耗时分布 -->
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5>环节耗时分布</h5>
             </div>
-        </div>
-
-        <!-- ========== 定时任务调度器 ========== -->
-        <hr class="scheduler-section-divider">
-        <div class="row mt-3 mb-4">
-            <div class="col-12 d-flex justify-content-between align-items-center">
-                <h2 class="mb-0">定时任务调度器</h2>
-                <button class="btn btn-outline-primary btn-sm scheduler-refresh-btn" onclick="refreshSchedulerData()">
-                    <span class="loading spinner-border spinner-border-sm" id="schedulerLoading" role="status"></span>
-                    刷新调度器数据
-                </button>
-            </div>
-        </div>
-
-        <!-- 调度器概览卡片 -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card metric-card border-primary">
-                    <div class="card-body text-center">
-                        <div class="metric-value text-primary" id="schedulerTotalExec">-</div>
-                        <small class="metric-label">执行总数（24h）</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card metric-card border-success">
-                    <div class="card-body text-center">
-                        <div class="metric-value" id="schedulerSuccessRate">-</div>
-                        <small class="metric-label">成功率</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card metric-card border-info">
-                    <div class="card-body text-center">
-                        <div class="metric-value text-info" id="schedulerAvgDuration">-</div>
-                        <small class="metric-label">平均耗时</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card metric-card border-warning">
-                    <div class="card-body text-center">
-                        <div class="metric-value text-warning" id="schedulerQueueDepth">-</div>
-                        <small class="metric-label">队列深度</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 队列深度 + 调度器健康状态 -->
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">队列深度（实时）</h5>
-                        <small class="text-muted" id="queueLastUpdate">每10秒自动刷新</small>
-                    </div>
-                    <div class="card-body">
-                        <div id="queueDepthContainer">加载中...</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h5 class="mb-0">调度器健康状态</h5>
-                    </div>
-                    <div class="card-body">
-                        <p><strong>运行状态：</strong><span id="schedulerRunningStatus">加载中...</span></p>
-                        <p><strong>在飞任务数：</strong><span id="schedulerInFlight">-</span></p>
-                        <p class="mb-1"><strong>已注册处理器：</strong></p>
-                        <div id="schedulerHandlers">加载中...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 任务执行历史 + 最近失败记录 -->
-        <div class="row mb-5">
-            <div class="col-md-7">
-                <div class="card h-100">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">任务执行历史</h5>
-                        <div class="btn-group scheduler-time-range" role="group">
-                            <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched1h" value="1">
-                            <label class="btn btn-outline-secondary btn-sm" for="sched1h">1h</label>
-                            <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched6h" value="6">
-                            <label class="btn btn-outline-secondary btn-sm" for="sched6h">6h</label>
-                            <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched24h" value="24" checked>
-                            <label class="btn btn-outline-secondary btn-sm" for="sched24h">24h</label>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover" id="taskHistoryTable">
-                                <thead>
-                                    <tr>
-                                        <th>任务类型</th>
-                                        <th class="text-center">总数</th>
-                                        <th class="text-center">成功</th>
-                                        <th class="text-center">失败</th>
-                                        <th class="text-center">失败率</th>
-                                        <th class="text-center">均耗时(ms)</th>
-                                        <th class="text-center">最大耗时(ms)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="taskHistoryBody">
-                                    <tr><td colspan="7" class="text-center">加载中...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-5">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h5 class="mb-0">最近失败记录</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>时间</th>
-                                        <th>任务类型</th>
-                                        <th>错误信息</th>
-                                        <th class="text-center">耗时(ms)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="recentFailuresBody">
-                                    <tr><td colspan="4" class="text-center">加载中...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="stageTimingChart"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        let charts = {};
-        let currentTokenTimeRange = 24; // Default 24 hours
-        let currentContextTimeRange = '24'; // Default 24 hours, 'all' for all records
+    <!-- 模型Token使用分布 -->
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5>模型Token使用分布</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="tokenUsageChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-        // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            loadAllData();
+<!-- Context 类型分布 + 数据处理监控 -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 id="contextChartTitle">Context 类型分布（24小时新增）</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="contextStatsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5>数据处理监控（24小时）</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="dataProcessingTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-            // 监听 Token 时间范围切换
-            document.querySelectorAll('input[name="tokenTimeRange"]').forEach(radio => {
-                radio.addEventListener('change', function() {
-                    currentTokenTimeRange = parseInt(this.value);
-                    loadTokenData();
-                });
+<!-- 处理错误日志 -->
+<div class="row mb-5">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>处理错误日志（最近1天，最多20条）</h5>
+            </div>
+            <div class="card-body">
+                <div id="processingErrorsChart">加载中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 定时任务调度器 ========== -->
+<hr class="scheduler-section-divider">
+<div class="row mt-3 mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <h2 class="mb-0">定时任务调度器</h2>
+        <button class="btn btn-outline-primary btn-sm scheduler-refresh-btn" onclick="refreshSchedulerData()">
+            <span class="loading spinner-border spinner-border-sm" id="schedulerLoading" role="status"></span>
+            刷新调度器数据
+        </button>
+    </div>
+</div>
+
+<!-- 调度器概览卡片 -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card metric-card border-primary">
+            <div class="card-body text-center">
+                <div class="metric-value text-primary" id="schedulerTotalExec">-</div>
+                <small class="metric-label">执行总数（24h）</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card metric-card border-success">
+            <div class="card-body text-center">
+                <div class="metric-value" id="schedulerSuccessRate">-</div>
+                <small class="metric-label">成功率</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card metric-card border-info">
+            <div class="card-body text-center">
+                <div class="metric-value text-info" id="schedulerAvgDuration">-</div>
+                <small class="metric-label">平均耗时</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card metric-card border-warning">
+            <div class="card-body text-center">
+                <div class="metric-value text-warning" id="schedulerQueueDepth">-</div>
+                <small class="metric-label">队列深度</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 队列深度 + 调度器健康状态 -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">队列深度（实时）</h5>
+                <small class="text-muted" id="queueLastUpdate">每10秒自动刷新</small>
+            </div>
+            <div class="card-body">
+                <div id="queueDepthContainer">加载中...</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">调度器健康状态</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>运行状态：</strong><span id="schedulerRunningStatus">加载中...</span></p>
+                <p><strong>在飞任务数：</strong><span id="schedulerInFlight">-</span></p>
+                <p class="mb-1"><strong>已注册处理器：</strong></p>
+                <div id="schedulerHandlers">加载中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 任务执行历史 + 最近失败记录 -->
+<div class="row mb-5">
+    <div class="col-md-7">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">任务执行历史</h5>
+                <div class="btn-group scheduler-time-range" role="group">
+                    <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched1h" value="1">
+                    <label class="btn btn-outline-secondary btn-sm" for="sched1h">1h</label>
+                    <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched6h" value="6">
+                    <label class="btn btn-outline-secondary btn-sm" for="sched6h">6h</label>
+                    <input type="radio" class="btn-check" name="schedulerTimeRange" id="sched24h" value="24" checked>
+                    <label class="btn btn-outline-secondary btn-sm" for="sched24h">24h</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="taskHistoryTable">
+                        <thead>
+                            <tr>
+                                <th>任务类型</th>
+                                <th class="text-center">总数</th>
+                                <th class="text-center">成功</th>
+                                <th class="text-center">失败</th>
+                                <th class="text-center">失败率</th>
+                                <th class="text-center">均耗时(ms)</th>
+                                <th class="text-center">最大耗时(ms)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="taskHistoryBody">
+                            <tr><td colspan="7" class="text-center">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">最近失败记录</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>任务类型</th>
+                                <th>错误信息</th>
+                                <th class="text-center">耗时(ms)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentFailuresBody">
+                            <tr><td colspan="4" class="text-center">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+<script>
+    let charts = {};
+    let currentTokenTimeRange = 24; // Default 24 hours
+    let currentContextTimeRange = '24'; // Default 24 hours, 'all' for all records
+
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAllData();
+
+        // 监听 Token 时间范围切换
+        document.querySelectorAll('input[name="tokenTimeRange"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                currentTokenTimeRange = parseInt(this.value);
+                loadTokenData();
             });
-
-            // 监听 Context 时间范围切换
-            document.querySelectorAll('input[name="contextTimeRange"]').forEach(radio => {
-                radio.addEventListener('change', function() {
-                    currentContextTimeRange = this.value;
-                    loadContextData();
-                });
-            });
-
-            // 监听调度器时间范围切换
-            document.querySelectorAll('input[name="schedulerTimeRange"]').forEach(radio => {
-                radio.addEventListener('change', function() {
-                    currentSchedulerTimeRange = parseInt(this.value);
-                    loadSchedulerData();
-                });
-            });
-
-            // 队列深度每10秒自动刷新
-            queueRefreshInterval = setInterval(loadQueueDepths, 10000);
         });
 
-        async function refreshAllData() {
-            const refreshBtn = document.querySelector('.refresh-btn');
-            const loading = refreshBtn.querySelector('.loading');
-            loading.classList.add('active');
-            refreshBtn.disabled = true;
+        // 监听 Context 时间范围切换
+        document.querySelectorAll('input[name="contextTimeRange"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                currentContextTimeRange = this.value;
+                loadContextData();
+            });
+        });
 
-            try {
-                await loadAllData();
-            } finally {
-                loading.classList.remove('active');
-                refreshBtn.disabled = false;
-            }
+        // 监听调度器时间范围切换
+        document.querySelectorAll('input[name="schedulerTimeRange"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                currentSchedulerTimeRange = parseInt(this.value);
+                loadSchedulerData();
+            });
+        });
+
+        // 队列深度每10秒自动刷新
+        queueRefreshInterval = setInterval(loadQueueDepths, 10000);
+    });
+
+    async function refreshAllData() {
+        const refreshBtn = document.querySelector('.refresh-btn');
+        const loading = refreshBtn.querySelector('.loading');
+        loading.classList.add('active');
+        refreshBtn.disabled = true;
+
+        try {
+            await loadAllData();
+        } finally {
+            loading.classList.remove('active');
+            refreshBtn.disabled = false;
         }
+    }
 
-        async function loadAllData() {
-            try {
-                // 获取系统概览
+    async function loadAllData() {
+        try {
+            // 获取系统概览
+            const overview = await fetchData('/api/monitoring/overview');
+            updateOverview(overview.data);
+
+            // 获取Token数据
+            await loadTokenData();
+
+            // 获取Context数据
+            await loadContextData();
+
+            // 获取环节耗时
+            const stageTiming = await fetchData('/api/monitoring/stage-timing');
+            updateStageTimingChart(stageTiming.data);
+
+            // 获取数据统计（用于 Context 统计）
+            const dataStats = await fetchData('/api/monitoring/data-stats?hours=24');
+            // Context 统计在 loadContextData 中处理
+
+            // 获取数据处理趋势（用于趋势图）
+            const dataTrend = await fetchData('/api/monitoring/data-stats-trend?hours=24');
+            updateDataProcessingTrend(dataTrend.data);
+
+            // 获取处理错误（最近1天，最多20条）
+            const processingErrors = await fetchData('/api/monitoring/processing-errors?hours=24&top=20');
+            updateProcessingErrorsChart(processingErrors.data);
+            const totalErrorsEl = document.getElementById('totalErrors');
+            if (totalErrorsEl) totalErrorsEl.textContent = (processingErrors.data.total_errors || 0).toLocaleString();
+
+            // 获取调度器数据
+            await loadSchedulerData();
+            await loadQueueDepths();
+
+        } catch (error) {
+            console.error('Failed to load monitoring data:', error);
+            showError('加载监控数据失败: ' + error.message);
+        }
+    }
+
+    async function loadTokenData() {
+        try {
+            const tokenUsage = await fetchData(`/api/monitoring/token-usage?hours=${currentTokenTimeRange}`);
+            updateTokenDisplay(tokenUsage.data);
+            updateTokenUsageChart(tokenUsage.data);
+        } catch (error) {
+            console.error('Failed to load token data:', error);
+        }
+    }
+
+    async function loadContextData() {
+        try {
+            let url, chartTitle, label;
+
+            if (currentContextTimeRange === 'all') {
+                // 获取全部记录
                 const overview = await fetchData('/api/monitoring/overview');
-                updateOverview(overview.data);
+                const contextTypes = overview.data.context_types || {};
+                const total = Object.values(contextTypes).reduce((sum, count) => sum + count, 0);
 
-                // 获取Token数据
-                await loadTokenData();
-
-                // 获取Context数据
-                await loadContextData();
-
-                // 获取环节耗时
-                const stageTiming = await fetchData('/api/monitoring/stage-timing');
-                updateStageTimingChart(stageTiming.data);
-
-                // 获取数据统计（用于 Context 统计）
+                updateContextDisplay(total, '全部记录');
+                updateContextChart(contextTypes, 'Context 类型分布（全部记录）');
+            } else {
+                // 获取24小时新增
                 const dataStats = await fetchData('/api/monitoring/data-stats?hours=24');
-                // Context 统计在 loadContextData 中处理
+                const contextTypes = dataStats.data.by_context_type || {};
+                const total = Object.values(contextTypes).reduce((sum, count) => sum + count, 0);
 
-                // 获取数据处理趋势（用于趋势图）
-                const dataTrend = await fetchData('/api/monitoring/data-stats-trend?hours=24');
-                updateDataProcessingTrend(dataTrend.data);
-
-                // 获取处理错误（最近1天，最多20条）
-                const processingErrors = await fetchData('/api/monitoring/processing-errors?hours=24&top=20');
-                updateProcessingErrorsChart(processingErrors.data);
-                const totalErrorsEl = document.getElementById('totalErrors');
-                if (totalErrorsEl) totalErrorsEl.textContent = (processingErrors.data.total_errors || 0).toLocaleString();
-
-                // 获取调度器数据
-                await loadSchedulerData();
-                await loadQueueDepths();
-
-            } catch (error) {
-                console.error('Failed to load monitoring data:', error);
-                showError('加载监控数据失败: ' + error.message);
+                updateContextDisplay(total, '24h新增');
+                updateContextChart(contextTypes, 'Context 类型分布（24小时新增）');
             }
+        } catch (error) {
+            console.error('Failed to load context data:', error);
+        }
+    }
+
+    async function fetchData(url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    function updateOverview(data) {
+        document.getElementById('uptime').textContent = data.uptime_formatted || '未知';
+        document.getElementById('lastUpdate').textContent = new Date(data.last_updated).toLocaleString();
+        const uptimeCardEl = document.getElementById('uptimeCard');
+        if (uptimeCardEl) uptimeCardEl.textContent = data.uptime_formatted || '-';
+    }
+
+    function updateTokenDisplay(data) {
+        document.getElementById('totalTokens').textContent = data.total_tokens?.toLocaleString() || '0';
+    }
+
+    function updateContextDisplay(total, label) {
+        document.getElementById('totalContexts').textContent = total.toLocaleString();
+        document.getElementById('contextLabel').textContent = label;
+    }
+
+    function updateContextChart(contextTypes, chartTitle) {
+        const ctx = document.getElementById('contextStatsChart').getContext('2d');
+        const types = Object.keys(contextTypes);
+        const counts = Object.values(contextTypes);
+
+        // 更新图表标题
+        document.getElementById('contextChartTitle').textContent = chartTitle;
+
+        if (charts.contextStats) {
+            charts.contextStats.destroy();
         }
 
-        async function loadTokenData() {
-            try {
-                const tokenUsage = await fetchData(`/api/monitoring/token-usage?hours=${currentTokenTimeRange}`);
-                updateTokenDisplay(tokenUsage.data);
-                updateTokenUsageChart(tokenUsage.data);
-            } catch (error) {
-                console.error('Failed to load token data:', error);
-            }
-        }
-
-        async function loadContextData() {
-            try {
-                let url, chartTitle, label;
-
-                if (currentContextTimeRange === 'all') {
-                    // 获取全部记录
-                    const overview = await fetchData('/api/monitoring/overview');
-                    const contextTypes = overview.data.context_types || {};
-                    const total = Object.values(contextTypes).reduce((sum, count) => sum + count, 0);
-
-                    updateContextDisplay(total, '全部记录');
-                    updateContextChart(contextTypes, 'Context 类型分布（全部记录）');
-                } else {
-                    // 获取24小时新增
-                    const dataStats = await fetchData('/api/monitoring/data-stats?hours=24');
-                    const contextTypes = dataStats.data.by_context_type || {};
-                    const total = Object.values(contextTypes).reduce((sum, count) => sum + count, 0);
-
-                    updateContextDisplay(total, '24h新增');
-                    updateContextChart(contextTypes, 'Context 类型分布（24小时新增）');
-                }
-            } catch (error) {
-                console.error('Failed to load context data:', error);
-            }
-        }
-
-        async function fetchData(url) {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            return await response.json();
-        }
-
-        function updateOverview(data) {
-            document.getElementById('uptime').textContent = data.uptime_formatted || '未知';
-            document.getElementById('lastUpdate').textContent = new Date(data.last_updated).toLocaleString();
-            const uptimeCardEl = document.getElementById('uptimeCard');
-            if (uptimeCardEl) uptimeCardEl.textContent = data.uptime_formatted || '-';
-        }
-
-        function updateTokenDisplay(data) {
-            document.getElementById('totalTokens').textContent = data.total_tokens?.toLocaleString() || '0';
-        }
-
-        function updateContextDisplay(total, label) {
-            document.getElementById('totalContexts').textContent = total.toLocaleString();
-            document.getElementById('contextLabel').textContent = label;
-        }
-
-        function updateContextChart(contextTypes, chartTitle) {
-            const ctx = document.getElementById('contextStatsChart').getContext('2d');
-            const types = Object.keys(contextTypes);
-            const counts = Object.values(contextTypes);
-
-            // 更新图表标题
-            document.getElementById('contextChartTitle').textContent = chartTitle;
-
-            if (charts.contextStats) {
-                charts.contextStats.destroy();
-            }
-
-            charts.contextStats = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: types,
-                    datasets: [{
-                        label: '数量',
-                        data: counts,
-                        backgroundColor: '#FF6384'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                stepSize: 1
-                            }
+        charts.contextStats = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: types,
+                datasets: [{
+                    label: '数量',
+                    data: counts,
+                    backgroundColor: '#FF6384'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
                         }
                     }
+                }
+            }
+        });
+    }
+
+    function updateStageTimingChart(data) {
+        const ctx = document.getElementById('stageTimingChart').getContext('2d');
+        const stages = Object.keys(data.by_stage || {});
+        const avgDurations = stages.map(stage => data.by_stage[stage].avg_duration);
+
+        if (charts.stageTiming) {
+            charts.stageTiming.destroy();
+        }
+
+        charts.stageTiming = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: stages,
+                datasets: [{
+                    label: '平均耗时 (ms)',
+                    data: avgDurations,
+                    backgroundColor: '#36A2EB'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    function updateTokenUsageChart(data) {
+        const ctx = document.getElementById('tokenUsageChart').getContext('2d');
+        const models = Object.keys(data.by_model || {});
+        const tokenCounts = models.map(model => data.by_model[model].total_tokens);
+
+        if (charts.tokenUsage) {
+            charts.tokenUsage.destroy();
+        }
+
+        charts.tokenUsage = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: models,
+                datasets: [{
+                    label: 'Token消耗',
+                    data: tokenCounts,
+                    backgroundColor: '#4BC0C0'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    function updateDataStats(data) {
+        // 只处理数据处理量趋势图
+        updateDataProcessingTrend(data);
+    }
+
+    function updateDataProcessingTrend(data) {
+        const ctx = document.getElementById('dataProcessingTrendChart').getContext('2d');
+
+        // 使用真实的趋势数据
+        const trend = data.trend || { screenshot: [], document: [], context: [] };
+        const timestamps = data.timestamps || [];
+
+        // 生成过去24小时的完整时间序列（每小时一个点）
+        const now = new Date();
+        const labels = [];
+        const timeMap = {};
+
+        // 创建完整的24小时时间序列
+        for (let i = 23; i >= 0; i--) {
+            const time = new Date(now.getTime() - i * 60 * 60 * 1000);
+            // 使用与后端一致的格式：YYYY-MM-DD HH:00:00（空格，不是T）
+            const year = time.getFullYear();
+            const month = String(time.getMonth() + 1).padStart(2, '0');
+            const day = String(time.getDate()).padStart(2, '0');
+            const hour = String(time.getHours()).padStart(2, '0');
+            const timeStr = `${year}-${month}-${day} ${hour}:00:00`;
+            const label = time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            labels.push(label);
+            timeMap[timeStr] = labels.length - 1;
+        }
+
+        // 初始化数据数组（全部为0）
+        const screenshotData = new Array(labels.length).fill(0);
+        const documentData = new Array(labels.length).fill(0);
+        const contextData = new Array(labels.length).fill(0);
+
+        // 填充真实数据
+        if (trend.screenshot) {
+            trend.screenshot.forEach(item => {
+                const idx = timeMap[item.timestamp];
+                if (idx !== undefined) {
+                    screenshotData[idx] = item.count;
                 }
             });
         }
 
-        function updateStageTimingChart(data) {
-            const ctx = document.getElementById('stageTimingChart').getContext('2d');
-            const stages = Object.keys(data.by_stage || {});
-            const avgDurations = stages.map(stage => data.by_stage[stage].avg_duration);
-
-            if (charts.stageTiming) {
-                charts.stageTiming.destroy();
-            }
-
-            charts.stageTiming = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: stages,
-                    datasets: [{
-                        label: '平均耗时 (ms)',
-                        data: avgDurations,
-                        backgroundColor: '#36A2EB'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
+        if (trend.document) {
+            trend.document.forEach(item => {
+                const idx = timeMap[item.timestamp];
+                if (idx !== undefined) {
+                    documentData[idx] = item.count;
                 }
             });
         }
 
-        function updateTokenUsageChart(data) {
-            const ctx = document.getElementById('tokenUsageChart').getContext('2d');
-            const models = Object.keys(data.by_model || {});
-            const tokenCounts = models.map(model => data.by_model[model].total_tokens);
-
-            if (charts.tokenUsage) {
-                charts.tokenUsage.destroy();
-            }
-
-            charts.tokenUsage = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: models,
-                    datasets: [{
-                        label: 'Token消耗',
-                        data: tokenCounts,
-                        backgroundColor: '#4BC0C0'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
+        if (trend.context) {
+            trend.context.forEach(item => {
+                const idx = timeMap[item.timestamp];
+                if (idx !== undefined) {
+                    contextData[idx] = item.count;
                 }
             });
         }
 
-        function updateDataStats(data) {
-            // 只处理数据处理量趋势图
-            updateDataProcessingTrend(data);
+        if (charts.dataProcessingTrend) {
+            charts.dataProcessingTrend.destroy();
         }
 
-        function updateDataProcessingTrend(data) {
-            const ctx = document.getElementById('dataProcessingTrendChart').getContext('2d');
-
-            // 使用真实的趋势数据
-            const trend = data.trend || { screenshot: [], document: [], context: [] };
-            const timestamps = data.timestamps || [];
-
-            // 生成过去24小时的完整时间序列（每小时一个点）
-            const now = new Date();
-            const labels = [];
-            const timeMap = {};
-
-            // 创建完整的24小时时间序列
-            for (let i = 23; i >= 0; i--) {
-                const time = new Date(now.getTime() - i * 60 * 60 * 1000);
-                // 使用与后端一致的格式：YYYY-MM-DD HH:00:00（空格，不是T）
-                const year = time.getFullYear();
-                const month = String(time.getMonth() + 1).padStart(2, '0');
-                const day = String(time.getDate()).padStart(2, '0');
-                const hour = String(time.getHours()).padStart(2, '0');
-                const timeStr = `${year}-${month}-${day} ${hour}:00:00`;
-                const label = time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-                labels.push(label);
-                timeMap[timeStr] = labels.length - 1;
-            }
-
-            // 初始化数据数组（全部为0）
-            const screenshotData = new Array(labels.length).fill(0);
-            const documentData = new Array(labels.length).fill(0);
-            const contextData = new Array(labels.length).fill(0);
-
-            // 填充真实数据
-            if (trend.screenshot) {
-                trend.screenshot.forEach(item => {
-                    const idx = timeMap[item.timestamp];
-                    if (idx !== undefined) {
-                        screenshotData[idx] = item.count;
-                    }
-                });
-            }
-
-            if (trend.document) {
-                trend.document.forEach(item => {
-                    const idx = timeMap[item.timestamp];
-                    if (idx !== undefined) {
-                        documentData[idx] = item.count;
-                    }
-                });
-            }
-
-            if (trend.context) {
-                trend.context.forEach(item => {
-                    const idx = timeMap[item.timestamp];
-                    if (idx !== undefined) {
-                        contextData[idx] = item.count;
-                    }
-                });
-            }
-
-            if (charts.dataProcessingTrend) {
-                charts.dataProcessingTrend.destroy();
-            }
-
-            charts.dataProcessingTrend = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: '图片/截图',
-                            data: screenshotData,
-                            borderColor: '#36A2EB',
-                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        },
-                        {
-                            label: '文档文件',
-                            data: documentData,
-                            borderColor: '#FF9F40',
-                            backgroundColor: 'rgba(255, 159, 64, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        },
-                        {
-                            label: '处理完成的Context',
-                            data: contextData,
-                            borderColor: '#9966FF',
-                            backgroundColor: 'rgba(153, 102, 255, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                stepSize: 1
-                            }
-                        }
+        charts.dataProcessingTrend = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '图片/截图',
+                        data: screenshotData,
+                        borderColor: '#36A2EB',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        tension: 0.4,
+                        fill: true
                     },
-                    plugins: {
-                        legend: {
-                            position: 'top'
+                    {
+                        label: '文档文件',
+                        data: documentData,
+                        borderColor: '#FF9F40',
+                        backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: '处理完成的Context',
+                        data: contextData,
+                        borderColor: '#9966FF',
+                        backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
                         }
                     }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    }
                 }
-            });
-        }
-
-        function updateProcessingErrorsChart(data) {
-            let errorHtml = '<div class="table-responsive"><table class="table table-striped table-hover"><thead><tr><th width="20%">时间</th><th width="15%">处理器</th><th width="50%">错误信息</th><th width="15%">上下文数</th></tr></thead><tbody>';
-
-            if (data.errors && data.errors.length > 0) {
-                for (const error of data.errors) {
-                    const timestamp = new Date(error.timestamp).toLocaleString();
-                    const processorName = error.processor_name || '-';
-                    errorHtml += `<tr>
-                        <td><small>${timestamp}</small></td>
-                        <td><small>${processorName}</small></td>
-                        <td><small class="text-break">${error.error_message}</small></td>
-                        <td class="text-center">${error.context_count}</td>
-                    </tr>`;
-                }
-            } else {
-                errorHtml += '<tr><td colspan="4" class="text-center text-success"><i class="bi bi-check-circle"></i> 近1天内无处理错误</td></tr>';
             }
+        });
+    }
 
-            errorHtml += '</tbody></table></div>';
-            if (data.total_errors > 0) {
-                errorHtml += `<div class="text-end text-muted mt-2"><small>共 ${data.total_errors} 条错误，显示最近 ${data.errors.length} 条</small></div>`;
-            }
-            document.getElementById('processingErrorsChart').innerHTML = errorHtml;
-        }
+    function updateProcessingErrorsChart(data) {
+        let errorHtml = '<div class="table-responsive"><table class="table table-striped table-hover"><thead><tr><th width="20%">时间</th><th width="15%">处理器</th><th width="50%">错误信息</th><th width="15%">上下文数</th></tr></thead><tbody>';
 
-        function showError(message) {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'alert alert-danger alert-dismissible fade show';
-            alertDiv.innerHTML = `
-                <strong>错误!</strong> ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            document.querySelector('.container-fluid').insertBefore(alertDiv, document.querySelector('.container-fluid').firstChild);
-
-            setTimeout(() => {
-                alertDiv.remove();
-            }, 5000);
-        }
-
-        // ========== 定时任务调度器 ==========
-        let currentSchedulerTimeRange = 24;
-        let queueRefreshInterval = null;
-
-        async function refreshSchedulerData() {
-            const loading = document.getElementById('schedulerLoading');
-            loading.classList.add('active');
-            try {
-                await loadSchedulerData();
-                await loadQueueDepths();
-            } finally {
-                loading.classList.remove('active');
-            }
-        }
-
-        async function loadSchedulerData() {
-            try {
-                const [schedulerResp, healthResp, failuresResp] = await Promise.all([
-                    fetchData(`/api/monitoring/scheduler?hours=${currentSchedulerTimeRange}`),
-                    fetchData('/api/health'),
-                    fetchData(`/api/monitoring/scheduler/failures?hours=${currentSchedulerTimeRange}`)
-                ]);
-
-                const data = schedulerResp.data;
-                const schedulerHealth = (healthResp.components || healthResp.data?.components || {}).scheduler || {};
-
-                updateSchedulerOverview(data);
-                updateTaskHistory(data);
-                updateRecentFailures(data.recent_failures || []);
-                updateSchedulerHealth(schedulerHealth);
-            } catch (error) {
-                console.error('Failed to load scheduler data:', error);
-            }
-        }
-
-        async function loadQueueDepths() {
-            try {
-                const resp = await fetchData('/api/monitoring/scheduler/queues');
-                const queues = resp.data.queues || {};
-                updateQueueDepths(queues);
-
-                // 更新概览卡片中的队列深度总数
-                const totalDepth = Object.values(queues).reduce((sum, v) => sum + v, 0);
-                document.getElementById('schedulerQueueDepth').textContent = totalDepth.toLocaleString();
-
-                document.getElementById('queueLastUpdate').textContent =
-                    '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
-            } catch (error) {
-                console.error('Failed to load queue depths:', error);
-            }
-        }
-
-        function updateSchedulerOverview(data) {
-            // 执行总数
-            document.getElementById('schedulerTotalExec').textContent =
-                (data.total_executions || 0).toLocaleString();
-
-            // 成功率
-            const totalExec = data.total_executions || 0;
-            let successCount = 0;
-            let totalDurationMs = 0;
-            let taskCount = 0;
-
-            const byTask = data.by_task_type || {};
-            for (const key of Object.keys(byTask)) {
-                successCount += byTask[key].success_count || 0;
-                totalDurationMs += byTask[key].total_duration_ms || 0;
-                taskCount += byTask[key].count || 0;
-            }
-
-            const successRate = totalExec > 0 ? (successCount / totalExec * 100) : 0;
-            const rateEl = document.getElementById('schedulerSuccessRate');
-            rateEl.textContent = totalExec > 0 ? successRate.toFixed(1) + '%' : '-';
-
-            // 成功率颜色
-            rateEl.className = 'metric-value';
-            if (totalExec === 0) {
-                rateEl.classList.add('text-muted');
-            } else if (successRate > 95) {
-                rateEl.classList.add('text-success');
-            } else if (successRate > 80) {
-                rateEl.classList.add('text-warning');
-            } else {
-                rateEl.classList.add('text-danger');
-            }
-
-            // 平均耗时
-            const avgDuration = taskCount > 0 ? totalDurationMs / taskCount : 0;
-            const durationEl = document.getElementById('schedulerAvgDuration');
-            if (taskCount === 0) {
-                durationEl.textContent = '-';
-            } else if (avgDuration >= 1000) {
-                durationEl.textContent = (avgDuration / 1000).toFixed(1) + 's';
-            } else {
-                durationEl.textContent = Math.round(avgDuration) + 'ms';
-            }
-        }
-
-        function updateQueueDepths(queues) {
-            const container = document.getElementById('queueDepthContainer');
-            const taskTypes = Object.keys(queues);
-
-            if (taskTypes.length === 0) {
-                container.innerHTML = '<span class="text-muted">暂无队列数据</span>';
-                return;
-            }
-
-            let html = '<div class="d-flex flex-wrap gap-3">';
-            for (const taskType of taskTypes) {
-                const count = queues[taskType];
-                let badgeClass = 'bg-success';
-                if (count > 5) {
-                    badgeClass = 'bg-danger';
-                } else if (count > 0) {
-                    badgeClass = 'bg-warning text-dark';
-                }
-                html += `<div class="d-flex align-items-center gap-2">
-                    <span>${taskType}</span>
-                    <span class="badge ${badgeClass} queue-badge">${count}</span>
-                </div>`;
-            }
-            html += '</div>';
-            container.innerHTML = html;
-        }
-
-        function updateTaskHistory(data) {
-            const tbody = document.getElementById('taskHistoryBody');
-            const byTask = data.by_task_type || {};
-            const taskTypes = Object.keys(byTask);
-
-            if (taskTypes.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">暂无执行记录</td></tr>';
-                return;
-            }
-
-            let html = '';
-            for (const taskType of taskTypes) {
-                const info = byTask[taskType];
-                const count = info.count || 0;
-                const success = info.success_count || 0;
-                const failure = info.failure_count || 0;
-                const failureRate = count > 0 ? (failure / count * 100) : 0;
-                const avgDur = info.avg_duration_ms != null ? Math.round(info.avg_duration_ms) : '-';
-                const maxDur = info.max_duration_ms != null ? Math.round(info.max_duration_ms) : '-';
-
-                let rateClass = 'text-success';
-                if (failureRate >= 20) {
-                    rateClass = 'text-danger';
-                } else if (failureRate >= 5) {
-                    rateClass = 'text-warning';
-                }
-
-                html += `<tr>
-                    <td>${taskType}</td>
-                    <td class="text-center">${count}</td>
-                    <td class="text-center">${success}</td>
-                    <td class="text-center">${failure}</td>
-                    <td class="text-center failure-rate-cell ${rateClass}">${failureRate.toFixed(1)}%</td>
-                    <td class="text-center">${avgDur}</td>
-                    <td class="text-center">${maxDur}</td>
+        if (data.errors && data.errors.length > 0) {
+            for (const error of data.errors) {
+                const timestamp = new Date(error.timestamp).toLocaleString();
+                const processorName = error.processor_name || '-';
+                errorHtml += `<tr>
+                    <td><small>${timestamp}</small></td>
+                    <td><small>${processorName}</small></td>
+                    <td><small class="text-break">${error.error_message}</small></td>
+                    <td class="text-center">${error.context_count}</td>
                 </tr>`;
             }
-            tbody.innerHTML = html;
+        } else {
+            errorHtml += '<tr><td colspan="4" class="text-center text-success"><i class="bi bi-check-circle"></i> 近1天内无处理错误</td></tr>';
         }
 
-        function updateRecentFailures(failures) {
-            const tbody = document.getElementById('recentFailuresBody');
+        errorHtml += '</tbody></table></div>';
+        if (data.total_errors > 0) {
+            errorHtml += `<div class="text-end text-muted mt-2"><small>共 ${data.total_errors} 条错误，显示最近 ${data.errors.length} 条</small></div>`;
+        }
+        document.getElementById('processingErrorsChart').innerHTML = errorHtml;
+    }
 
-            if (!failures || failures.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-success">暂无失败记录</td></tr>';
-                return;
-            }
+    function showError(message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+        alertDiv.innerHTML = `
+            <strong>错误!</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        const container = document.querySelector('main.content') || document.querySelector('main');
+        container.insertBefore(alertDiv, container.firstChild);
 
-            const display = failures.slice(0, 10);
-            let html = '';
-            for (const f of display) {
-                const ts = f.timestamp ? new Date(f.timestamp).toLocaleString('zh-CN') : '-';
-                const taskType = f.task_type || '-';
-                const errMsg = f.error_message || '-';
-                const dur = f.duration_ms != null ? f.duration_ms : '-';
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
 
-                html += `<tr>
-                    <td><small>${ts}</small></td>
-                    <td><small>${taskType}</small></td>
-                    <td><small class="text-break">${errMsg}</small></td>
-                    <td class="text-center">${dur}</td>
-                </tr>`;
-            }
-            tbody.innerHTML = html;
+    // ========== 定时任务调度器 ==========
+    let currentSchedulerTimeRange = 24;
+    let queueRefreshInterval = null;
+
+    async function refreshSchedulerData() {
+        const loading = document.getElementById('schedulerLoading');
+        loading.classList.add('active');
+        try {
+            await loadSchedulerData();
+            await loadQueueDepths();
+        } finally {
+            loading.classList.remove('active');
+        }
+    }
+
+    async function loadSchedulerData() {
+        try {
+            const [schedulerResp, healthResp, failuresResp] = await Promise.all([
+                fetchData(`/api/monitoring/scheduler?hours=${currentSchedulerTimeRange}`),
+                fetchData('/api/health'),
+                fetchData(`/api/monitoring/scheduler/failures?hours=${currentSchedulerTimeRange}`)
+            ]);
+
+            const data = schedulerResp.data;
+            const schedulerHealth = (healthResp.components || healthResp.data?.components || {}).scheduler || {};
+
+            updateSchedulerOverview(data);
+            updateTaskHistory(data);
+            updateRecentFailures(data.recent_failures || []);
+            updateSchedulerHealth(schedulerHealth);
+        } catch (error) {
+            console.error('Failed to load scheduler data:', error);
+        }
+    }
+
+    async function loadQueueDepths() {
+        try {
+            const resp = await fetchData('/api/monitoring/scheduler/queues');
+            const queues = resp.data.queues || {};
+            updateQueueDepths(queues);
+
+            // 更新概览卡片中的队列深度总数
+            const totalDepth = Object.values(queues).reduce((sum, v) => sum + v, 0);
+            document.getElementById('schedulerQueueDepth').textContent = totalDepth.toLocaleString();
+
+            document.getElementById('queueLastUpdate').textContent =
+                '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
+        } catch (error) {
+            console.error('Failed to load queue depths:', error);
+        }
+    }
+
+    function updateSchedulerOverview(data) {
+        // 执行总数
+        document.getElementById('schedulerTotalExec').textContent =
+            (data.total_executions || 0).toLocaleString();
+
+        // 成功率
+        const totalExec = data.total_executions || 0;
+        let successCount = 0;
+        let totalDurationMs = 0;
+        let taskCount = 0;
+
+        const byTask = data.by_task_type || {};
+        for (const key of Object.keys(byTask)) {
+            successCount += byTask[key].success_count || 0;
+            totalDurationMs += byTask[key].total_duration_ms || 0;
+            taskCount += byTask[key].count || 0;
         }
 
-        function updateSchedulerHealth(health) {
-            // 运行状态
-            const statusEl = document.getElementById('schedulerRunningStatus');
-            if (health.running) {
-                statusEl.innerHTML = '<span class="badge bg-success">运行中</span>';
-            } else if (health.initialized === false) {
-                statusEl.innerHTML = '<span class="badge bg-secondary">未初始化</span>';
-            } else {
-                statusEl.innerHTML = '<span class="badge bg-danger">已停止</span>';
-            }
+        const successRate = totalExec > 0 ? (successCount / totalExec * 100) : 0;
+        const rateEl = document.getElementById('schedulerSuccessRate');
+        rateEl.textContent = totalExec > 0 ? successRate.toFixed(1) + '%' : '-';
 
-            // 在飞任务数
-            const inFlightEl = document.getElementById('schedulerInFlight');
-            inFlightEl.textContent = health.in_flight_tasks != null ? health.in_flight_tasks : '-';
-
-            // 已注册处理器
-            const handlersEl = document.getElementById('schedulerHandlers');
-            const handlers = health.registered_handlers || [];
-            if (handlers.length === 0) {
-                handlersEl.innerHTML = '<span class="text-muted">无</span>';
-            } else {
-                handlersEl.innerHTML = handlers
-                    .map(h => `<span class="badge bg-secondary me-1 mb-1">${h}</span>`)
-                    .join('');
-            }
+        // 成功率颜色
+        rateEl.className = 'metric-value';
+        if (totalExec === 0) {
+            rateEl.classList.add('text-muted');
+        } else if (successRate > 95) {
+            rateEl.classList.add('text-success');
+        } else if (successRate > 80) {
+            rateEl.classList.add('text-warning');
+        } else {
+            rateEl.classList.add('text-danger');
         }
-    </script>
-</body>
-</html>
+
+        // 平均耗时
+        const avgDuration = taskCount > 0 ? totalDurationMs / taskCount : 0;
+        const durationEl = document.getElementById('schedulerAvgDuration');
+        if (taskCount === 0) {
+            durationEl.textContent = '-';
+        } else if (avgDuration >= 1000) {
+            durationEl.textContent = (avgDuration / 1000).toFixed(1) + 's';
+        } else {
+            durationEl.textContent = Math.round(avgDuration) + 'ms';
+        }
+    }
+
+    function updateQueueDepths(queues) {
+        const container = document.getElementById('queueDepthContainer');
+        const taskTypes = Object.keys(queues);
+
+        if (taskTypes.length === 0) {
+            container.innerHTML = '<span class="text-muted">暂无队列数据</span>';
+            return;
+        }
+
+        let html = '<div class="d-flex flex-wrap gap-3">';
+        for (const taskType of taskTypes) {
+            const count = queues[taskType];
+            let badgeClass = 'bg-success';
+            if (count > 5) {
+                badgeClass = 'bg-danger';
+            } else if (count > 0) {
+                badgeClass = 'bg-warning text-dark';
+            }
+            html += `<div class="d-flex align-items-center gap-2">
+                <span>${taskType}</span>
+                <span class="badge ${badgeClass} queue-badge">${count}</span>
+            </div>`;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    function updateTaskHistory(data) {
+        const tbody = document.getElementById('taskHistoryBody');
+        const byTask = data.by_task_type || {};
+        const taskTypes = Object.keys(byTask);
+
+        if (taskTypes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">暂无执行记录</td></tr>';
+            return;
+        }
+
+        let html = '';
+        for (const taskType of taskTypes) {
+            const info = byTask[taskType];
+            const count = info.count || 0;
+            const success = info.success_count || 0;
+            const failure = info.failure_count || 0;
+            const failureRate = count > 0 ? (failure / count * 100) : 0;
+            const avgDur = info.avg_duration_ms != null ? Math.round(info.avg_duration_ms) : '-';
+            const maxDur = info.max_duration_ms != null ? Math.round(info.max_duration_ms) : '-';
+
+            let rateClass = 'text-success';
+            if (failureRate >= 20) {
+                rateClass = 'text-danger';
+            } else if (failureRate >= 5) {
+                rateClass = 'text-warning';
+            }
+
+            html += `<tr>
+                <td>${taskType}</td>
+                <td class="text-center">${count}</td>
+                <td class="text-center">${success}</td>
+                <td class="text-center">${failure}</td>
+                <td class="text-center failure-rate-cell ${rateClass}">${failureRate.toFixed(1)}%</td>
+                <td class="text-center">${avgDur}</td>
+                <td class="text-center">${maxDur}</td>
+            </tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+
+    function updateRecentFailures(failures) {
+        const tbody = document.getElementById('recentFailuresBody');
+
+        if (!failures || failures.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-success">暂无失败记录</td></tr>';
+            return;
+        }
+
+        const display = failures.slice(0, 10);
+        let html = '';
+        for (const f of display) {
+            const ts = f.timestamp ? new Date(f.timestamp).toLocaleString('zh-CN') : '-';
+            const taskType = f.task_type || '-';
+            const errMsg = f.error_message || '-';
+            const dur = f.duration_ms != null ? f.duration_ms : '-';
+
+            html += `<tr>
+                <td><small>${ts}</small></td>
+                <td><small>${taskType}</small></td>
+                <td><small class="text-break">${errMsg}</small></td>
+                <td class="text-center">${dur}</td>
+            </tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+
+    function updateSchedulerHealth(health) {
+        // 运行状态
+        const statusEl = document.getElementById('schedulerRunningStatus');
+        if (health.running) {
+            statusEl.innerHTML = '<span class="badge bg-success">运行中</span>';
+        } else if (health.initialized === false) {
+            statusEl.innerHTML = '<span class="badge bg-secondary">未初始化</span>';
+        } else {
+            statusEl.innerHTML = '<span class="badge bg-danger">已停止</span>';
+        }
+
+        // 在飞任务数
+        const inFlightEl = document.getElementById('schedulerInFlight');
+        inFlightEl.textContent = health.in_flight_tasks != null ? health.in_flight_tasks : '-';
+
+        // 已注册处理器
+        const handlersEl = document.getElementById('schedulerHandlers');
+        const handlers = health.registered_handlers || [];
+        if (handlers.length === 0) {
+            handlersEl.innerHTML = '<span class="text-muted">无</span>';
+        } else {
+            handlersEl.innerHTML = handlers
+                .map(h => `<span class="badge bg-secondary me-1 mb-1">${h}</span>`)
+                .join('');
+        }
+    }
+</script>
+{% endblock %}
