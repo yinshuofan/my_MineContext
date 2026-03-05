@@ -6,23 +6,42 @@ ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     CONTEXT_PATH=/app \
-    PIP_INDEX_URL=${PIP_INDEX_URL}
+    PIP_INDEX_URL=${PIP_INDEX_URL} \
+    # Also set UV_INDEX_URL if using uv
+    UV_INDEX_URL=${PIP_INDEX_URL} \
+    UV_COMPILE_BYTECODE=1
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (uncomment if needed later)
 # RUN apt-get update && rm -rf /var/lib/apt/lists/*
+
+# Install uv (fast dependency manager)
+RUN pip install uv
+
+# Copy dependency definition files first
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies using uv into a virtual environment
+# --frozen ensures we use the lockfile
+# --no-install-project installs only dependencies first, so we can cache this layer
+RUN uv sync --frozen --no-install-project
 
 # Copy project files
 COPY . .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir .
+# Install the project itself (no dependencies needed as they are already installed)
+# This installs the project into the virtual environment created in the previous step
+RUN uv sync --frozen
 
-# Install playwright dependencies
-# RUN pip install playwright && \
-#     playwright install --with-deps chromium
+# Ensure subsequent commands use the virtual environment
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Install playwright dependencies (uncomment if needed)
+# Since playwright is in pyproject.toml, it is installed by uv sync.
+# You only need to install the browsers:
+# RUN playwright install --with-deps chromium
 
 # Create directories for logs and data
 RUN mkdir -p logs persist screenshots
