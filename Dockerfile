@@ -23,25 +23,19 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies using uv into a virtual environment
 # --frozen ensures we use the lockfile
 # --no-install-project installs only dependencies first, so we can cache this layer
-RUN uv sync --frozen --no-install-project
+# --mount=type=cache reuses downloaded packages across builds even when uv.lock changes
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
 
 # Copy project files
 COPY . .
 
 # Install the project itself (no dependencies needed as they are already installed)
-# This installs the project into the virtual environment created in the previous step
-RUN uv sync --frozen
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 # Ensure subsequent commands use the virtual environment
 ENV PATH="/app/.venv/bin:$PATH"
-
-# Install playwright dependencies (uncomment if needed)
-# Since playwright is in pyproject.toml, it is installed by uv sync.
-# You only need to install the browsers:
-# RUN playwright install --with-deps chromium
-
-# Create directories for logs and data
-RUN mkdir -p logs persist screenshots
 
 # Expose port
 EXPOSE 1733
