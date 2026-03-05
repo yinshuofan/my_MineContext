@@ -8,6 +8,7 @@
 Vault document monitoring component that monitors changes in the vaults table and generates context capture events
 """
 
+import asyncio
 import threading
 import time
 from datetime import datetime
@@ -51,6 +52,20 @@ class VaultDocumentMonitor(BaseCaptureComponent):
     def _storage(self):
         """Lazy storage access — avoids init-order issues with async GlobalStorage."""
         return get_storage()
+
+    def _get_vaults_sync(self, **kwargs) -> List[Dict]:
+        """Sync wrapper to call async get_vaults() from thread context."""
+        try:
+            loop = asyncio.get_running_loop()
+            future = asyncio.run_coroutine_threadsafe(
+                self._storage.get_vaults(**kwargs), loop
+            )
+            return future.result(timeout=30)
+        except RuntimeError:
+            return asyncio.run(self._storage.get_vaults(**kwargs))
+        except Exception as e:
+            logger.exception(f"Failed to get vaults: {e}")
+            return []
 
     def _initialize_impl(self, config: Dict[str, Any]) -> bool:
         """
@@ -159,7 +174,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
         """Scan existing documents (initial scan)"""
         try:
             logger.info("Starting initial scan of existing vault documents")
-            documents = self._storage.get_vaults(limit=1000, offset=0, is_deleted=False)
+            documents = self._get_vaults_sync(limit=1000, offset=0, is_deleted=False)
 
             for doc in documents:
                 if doc["id"] not in self._processed_vault_ids:
@@ -184,7 +199,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
         try:
             # Get recent documents (based on created_at and updated_at)
             current_time = datetime.now()
-            documents = self._storage.get_vaults(limit=100, offset=0, is_deleted=False)
+            documents = self._get_vaults_sync(limit=100, offset=0, is_deleted=False)
 
             new_documents = []
             updated_documents = []
