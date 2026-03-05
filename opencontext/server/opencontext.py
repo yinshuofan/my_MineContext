@@ -391,8 +391,8 @@ class OpenContext:
             if hasattr(storage, "_document_backend") and storage._document_backend:
                 backend = storage._document_backend
                 if hasattr(backend, "_pool") and backend._pool:
-                    # MySQL with pool: use context manager for safe checkout/return
-                    with backend._get_connection():
+                    # MySQL with pool: use async context manager for safe checkout/return
+                    async with backend._get_connection():
                         pass
                     health["document_db"] = True
                 elif hasattr(backend, "_get_connection"):
