@@ -70,7 +70,7 @@ async def main():
     l0_dict = await storage.get_all_processed_contexts(
         context_types=[ContextType.EVENT.value],
         limit=100,
-        filter={"hierarchy_level": {"$gte": 0, "$lte": 0}},
+        filter={"hierarchy_level": 0},
         user_id=user_id,
     )
     l0_events = l0_dict.get(ContextType.EVENT.value, [])

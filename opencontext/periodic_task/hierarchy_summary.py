@@ -831,7 +831,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         l0_filters = {
             "event_time_ts": {"$gte": day_start_ts, "$lte": day_end_ts},
-            "hierarchy_level": {"$gte": 0, "$lte": 0},
+            "hierarchy_level": 0,
         }
         l0_dict = await storage.get_all_processed_contexts(
             context_types=[ContextType.EVENT.value],

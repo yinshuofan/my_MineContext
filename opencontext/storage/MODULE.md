@@ -213,7 +213,7 @@ Module-level functions:
 | Collection strategy | Per context_type | Per context_type | Single collection, field filtering | Per context_type |
 | ID handling | String IDs directly | UUID5 from string ID | String IDs via HTTP API | String IDs via HTTP API |
 | Connection | Local or HTTP client | `QdrantClient` | HTTP with V4 signature auth | HTTP with API key |
-| `search_by_hierarchy` time_bucket | In-code string filter | In-code string filter (Range doesn't work on strings) | Range filter with float `hierarchy_level` | In-code string filter |
+| `search_by_hierarchy` time_bucket | In-code string filter | In-code string filter (Range doesn't work on strings) | `must` filter with int64 `hierarchy_level` | In-code string filter |
 | Write buffering | `_pending_writes` with flush | None | Batch HTTP requests | None |
 | Graceful shutdown | `atexit` + signal handlers | None | None | None |
 
@@ -304,7 +304,7 @@ get_storage()                          # global_storage.py -> UnifiedStorage
 - **SQLite `_get_connection()` must be used for all method-level DB access.** Only `initialize()` and `close()` may use `self.connection` directly. This prevents thread-safety issues under `asyncio.to_thread()`.
 - **MySQL `_get_connection()` is a context manager** -- always use `with self._get_connection() as conn:`. It auto-returns to pool and auto-rolls-back on exceptions.
 - **Qdrant `search_by_hierarchy`** uses in-code string comparison for `time_bucket` filtering because `models.Range` does not support string fields. Over-fetch with `top_k * 3`, then filter.
-- **VikingDB `hierarchy_level`** is stored as float32. Use range format `{"$gte": N, "$lte": N}` instead of equality checks.
+- **VikingDB `hierarchy_level`** is stored as int64. Use `must` filter directly (e.g., `{"op": "must", "field": "hierarchy_level", "conds": [0]}`). Supports list filtering: `"conds": [0, 1, 2]`.
 - **MySQL `lastrowid` is 0 for VARCHAR PKs** (entities table). Always SELECT back the persisted ID.
 - **Vector backends auto-vectorize** via `do_vectorize()` when `context.vectorize.vector` is None. This is a synchronous call to the embedding service.
 - **Todo collection creation** is gated by `consumption.enabled` config flag. If disabled, todo-related methods on vector backends are no-ops.

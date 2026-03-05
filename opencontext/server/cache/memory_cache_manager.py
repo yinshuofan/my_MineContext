@@ -306,7 +306,7 @@ class UserMemoryCacheManager:
                 limit=max_events_today,
                 offset=0,
                 filter={
-                    "hierarchy_level": {"$gte": 0, "$lte": 0},
+                    "hierarchy_level": 0,
                     "event_time_ts": {"$gte": today_start_ts},
                 },
                 need_vector=False,

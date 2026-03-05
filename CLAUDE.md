@@ -191,8 +191,8 @@ The `relationships` field on `EntityData` is not a separate DB column — it's s
 ### Database connections are not thread-safe — use `_get_connection()` everywhere
 Both MySQL and SQLite backends use `threading.local()` for per-thread connections. `_get_connection()` is the only safe way to access connections from method-level code. In SQLite, `self.connection` is only for `initialize()` and `close()`.
 
-### VikingDB hierarchy_level filter requires range format
-VikingDB stores `hierarchy_level` as float32. Equality checks don't work. Use range format: `{"$gte": 0, "$lte": 0}`.
+### VikingDB hierarchy_level is int64, use must filter
+VikingDB stores `hierarchy_level` as `int64`. Use `must` filter directly: `{"op": "must", "field": "hierarchy_level", "conds": [0]}`. Do NOT use `range` format — it's unnecessary for int64 fields. `must` also supports list filtering: `"conds": [0, 1, 2]`.
 
 ### Context type routing must match CONTEXT_STORAGE_BACKENDS
 `_handle_processed_context()` routes profile/entity to relational DB and others to vector DB. Bypassing this (e.g., calling `batch_upsert_processed_context()` for all types) makes profile/entity data unretrievable.

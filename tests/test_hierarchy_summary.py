@@ -308,7 +308,7 @@ async def cleanup_test_data(storage, user_id: str, dates: list[str], week: str, 
     print("\n[Cleanup] Deleting test data...")
 
     # Delete L0 events
-    l0_filters = {"hierarchy_level": {"$gte": 0, "$lte": 0}}
+    l0_filters = {"hierarchy_level": 0}
     l0_dict = await storage.get_all_processed_contexts(
         context_types=[ContextType.EVENT.value],
         limit=500,

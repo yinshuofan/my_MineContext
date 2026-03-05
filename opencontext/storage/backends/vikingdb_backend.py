@@ -647,7 +647,7 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_FILE_PATH, "FieldType": "string"},
             {"FieldName": FIELD_RAW_TYPE, "FieldType": "string"},
             {"FieldName": FIELD_RAW_ID, "FieldType": "string"},
-            {"FieldName": FIELD_HIERARCHY_LEVEL, "FieldType": "float32"},
+            {"FieldName": FIELD_HIERARCHY_LEVEL, "FieldType": "int64"},
             {"FieldName": FIELD_PARENT_ID, "FieldType": "string"},
             {"FieldName": FIELD_TIME_BUCKET, "FieldType": "string"},
             {"FieldName": FIELD_SOURCE_FILE_KEY, "FieldType": "string"},
@@ -826,7 +826,7 @@ class VikingDBBackend(IVectorStorageBackend):
             elif isinstance(value, bool):
                 fields[key] = value
             elif isinstance(value, (int, float)):
-                fields[key] = float(value)
+                fields[key] = int(value) if key == FIELD_HIERARCHY_LEVEL else float(value)
             elif isinstance(value, str):
                 fields[key] = value
             else:
@@ -1256,7 +1256,6 @@ class VikingDBBackend(IVectorStorageBackend):
             FIELD_CALL_COUNT,
             FIELD_MERGE_COUNT,
             FIELD_DURATION_COUNT,
-            FIELD_HIERARCHY_LEVEL,
         }
 
         if data_type:
@@ -1539,10 +1538,9 @@ class VikingDBBackend(IVectorStorageBackend):
                     "conds": [context_type],
                 },
                 {
-                    "op": "range",
+                    "op": "must",
                     "field": FIELD_HIERARCHY_LEVEL,
-                    "gte": float(hierarchy_level),
-                    "lte": float(hierarchy_level),
+                    "conds": [int(hierarchy_level)],
                 },
             ]
 
