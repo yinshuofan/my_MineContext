@@ -173,7 +173,7 @@ class HierarchicalEventTool(BaseTool):
 
 **Hierarchy traversal is bidirectional:**
 - **Downward** (top-down): parent summaries → children via `children_ids` (used by HierarchicalEventTool drill-down above)
-- **Upward** (bottom-up): L0 events → parent summaries via `parent_id` (used by search API `_drill_up_ancestors()` to enrich search results with ancestor context)
+- **Upward** (bottom-up): L0 events → parent summaries via `parent_id` (used by search API `_collect_ancestors()` to build hierarchy tree with ancestor context nodes)
 
 ### ProfileRetrievalTool -- `retrieval_tools/profile_retrieval_tool.py`
 

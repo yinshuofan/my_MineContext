@@ -445,10 +445,10 @@ search_events()
      Path A (event_ids): storage.get_contexts_by_ids()
      Path B (query):     do_vectorize() -> storage.search([EVENT], filters)
      Path C (filters):   storage.search_hierarchy() per level, or get_all_processed_contexts()
-  -> _drill_up_ancestors() if drill_up=True    # Batch iterative parent fetch (max 3 rounds)
-  -> Sort events: hierarchy_level DESC, time_bucket ASC
+  -> _collect_ancestors() if drill_up=True     # Batch iterative parent fetch (max 3 rounds)
+  -> Build tree: node map → parent-child linking → recursive sort by time_bucket ASC
   -> Fire-and-forget _track_accessed_safe()
-  -> Return EventSearchResponse
+  -> Return EventSearchResponse (tree roots + search hit count)
 ```
 
 #### Response Format (`EventSearchResponse`)
