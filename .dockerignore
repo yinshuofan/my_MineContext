@@ -15,7 +15,10 @@ __pycache__/
 *.egg-info/
 docs/
 OpenViking/
-*.md
+CLAUDE.md
+CHANGELOG.md
+MODULE.md
+**/MODULE.md
 .pre-commit-config.yaml
 .gitignore
 nginx.conf
