@@ -1143,12 +1143,19 @@ class VikingDBBackend(IVectorStorageBackend):
 
             TIME_FIELDS = {"create_time", "event_time", "update_time", "last_call_time"}
 
+            # Fields that should always remain as strings, never JSON-parsed
+            STRING_ONLY_FIELDS = {"title", "summary", "document", "text"}
+
             for key, value in fields.items():
                 if key.endswith("_ts"):
                     continue
 
                 val = value
-                if isinstance(value, str) and value.startswith(("{", "[")):
+                if (
+                    isinstance(value, str)
+                    and value.startswith(("{", "["))
+                    and key not in STRING_ONLY_FIELDS
+                ):
                     try:
                         val = json.loads(value)
                     except (json.JSONDecodeError, TypeError):
