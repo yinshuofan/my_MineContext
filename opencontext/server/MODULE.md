@@ -135,7 +135,7 @@ Algorithm:
    - filters-only → `storage.search_hierarchy()` per level, or `get_all_processed_contexts()` with time filter
 2. **Collect ancestors** (if `drill_up=True`): Batch-fetch parent chains iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent. Returns `Dict[str, ProcessedContext]` of all ancestor contexts.
 3. **Build node map**: Search hits become `EventNode` with is_search_hit=True (score/content/keywords populated), ancestors become lightweight `EventNode` with is_search_hit=False. Search hits are never overwritten by ancestors.
-4. **Link tree**: Each node with a valid `parent_id` (not "default", exists in node map) is appended to parent's `children`. Nodes without a valid parent become roots.
+4. **Link tree**: Each node with a valid `parent_id` (exists in node map) is appended to parent's `children`. Nodes without a valid parent become roots.
 5. **Sort**: Roots and all children lists sorted by `time_bucket` ASC recursively.
 
 ### UserMemoryCacheManager (cache/memory_cache_manager.py)
@@ -510,7 +510,7 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 - `children`: Nested child nodes, sorted by `time_bucket` ASC. Root nodes are also sorted by `time_bucket` ASC.
 - `hierarchy_level`: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
 - `time_bucket`: `"YYYY-MM-DDTHH:MM:SS"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
-- `parent_id`: Points to the parent summary context; `"default"` or `null` if no parent linked yet
+- `parent_id`: Points to the parent summary context; `null` if no parent linked yet
 - `total_results`: Count of actual search hits (not total tree nodes)
 - `score`: Semantic similarity score for query search; `1.0` for ID lookup and filter-only search
 

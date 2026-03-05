@@ -184,7 +184,7 @@ async def _execute_search(
     linked: set = set()
     for node_id, node in nodes.items():
         pid = node.parent_id
-        if pid and pid != "default" and pid in nodes and node_id not in linked:
+        if pid and pid in nodes and node_id not in linked:
             nodes[pid].children.append(node)
             linked.add(node_id)
         else:
@@ -293,7 +293,7 @@ async def _collect_ancestors(
     for ctx, _ in results:
         if ctx.properties and ctx.properties.parent_id:
             pid = ctx.properties.parent_id
-            if pid != "default" and pid not in seen:
+            if pid not in seen:
                 current_round.setdefault(pid, []).append(ctx.id)
 
     # Iterative batch fetch (max 3 rounds: L0->L1, L1->L2, L2->L3)
@@ -323,7 +323,7 @@ async def _collect_ancestors(
             # Queue next level parent
             if parent.properties and parent.properties.parent_id:
                 next_pid = parent.properties.parent_id
-                if next_pid != "default" and next_pid not in seen:
+                if next_pid not in seen:
                     for cid in child_ids:
                         next_round.setdefault(next_pid, []).append(cid)
 
@@ -386,8 +386,8 @@ def _format_timestamp(value) -> Optional[str]:
 
 
 def _normalize_parent_id(props) -> Optional[str]:
-    """Return parent_id or None if it's the 'default' sentinel."""
-    if props and props.parent_id and props.parent_id != "default":
+    """Return parent_id or None."""
+    if props and props.parent_id:
         return props.parent_id
     return None
 
