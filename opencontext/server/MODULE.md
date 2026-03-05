@@ -77,7 +77,7 @@ class OpenContext:
 
 Module-level: `main()` function -- entry point for `if __name__ == "__main__"`, parses args and runs uvicorn.
 
-Key fields: `capture_manager` (ContextCaptureManager), `processor_manager` (ContextProcessorManager), `storage` (UnifiedStorage), `context_operations` (ContextOperations), `component_initializer` (ComponentInitializer).
+Key fields: `capture_manager` (ContextCaptureManager), `processor_manager` (ContextProcessorManager), `storage` (`@property` → `get_storage()`, lazy access), `context_operations` (ContextOperations), `component_initializer` (ComponentInitializer).
 
 ### ComponentInitializer (component_initializer.py)
 
@@ -96,7 +96,7 @@ class ComponentInitializer:
 
 ### ContextOperations (context_operations.py)
 
-Delegates to `UnifiedStorage` (obtained via `get_storage()`).
+Stateless class — delegates to `UnifiedStorage` via a non-caching `@property storage` that calls `get_storage()` on each access (avoids init-order issues with async `GlobalStorage`).
 
 ```python
 class ContextOperations:

@@ -194,7 +194,7 @@ To add a new capture component:
 - `opencontext.interfaces.capture_interface` -- `ICaptureComponent` (base interface)
 - `opencontext.models.context` -- `RawContextProperties`
 - `opencontext.models.enums` -- `ContextSource`, `ContentFormat`, `ContextType`
-- `opencontext.storage.global_storage` -- `get_storage()` (used by `FolderMonitorCapture`, `VaultDocumentMonitor`)
+- `opencontext.storage.global_storage` -- `get_storage()` (used by `FolderMonitorCapture`, `VaultDocumentMonitor` via non-caching `@property _storage`)
 - `opencontext.context_processing.processor.document_processor` -- `DocumentProcessor.get_supported_formats()` (used by `FolderMonitorCapture`)
 - `opencontext.storage.redis_cache` -- `RedisCacheConfig`, `get_redis_cache`, `rpush_expire_llen` (used by `TextChatCapture`)
 - `opencontext.utils.async_utils` -- `fire_and_forget()` (used by `base.py` and `text_chat.py` for sync→async bridging)

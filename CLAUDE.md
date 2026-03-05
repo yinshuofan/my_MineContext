@@ -173,6 +173,9 @@ If you add a field to `ContextProperties` and want it in API responses, you must
 - **lastrowid is 0 for VARCHAR primary keys**: Always SELECT back the persisted ID for UUID/VARCHAR PKs.
 - **InnoDB composite key length limit**: utf8mb4 max key length is 3072 bytes (`VARCHAR(N)` uses `N*4`). Current composite unique key total: 710 chars, just under the 768-char limit.
 
+### Never cache `get_storage()` in `__init__` or sync init code
+`GlobalStorage` requires async `ensure_initialized()` (runs in lifespan). Any `self.storage = get_storage()` in `__init__` or synchronous `initialize()` caches `None` permanently. Use a non-caching `@property` instead: `return get_storage()`. This is O(1) (singleton lookup) and matches the pattern in `BaseContextRetrievalTool`, `ContextMerger`, `OpenContext`, `ContextOperations`, etc. The same rule applies to all global singletons with async init.
+
 ### Use timezone-aware datetime everywhere
 `datetime.utcfromtimestamp()` and `datetime.utcnow()` are deprecated in Python 3.12+. Use `datetime.fromtimestamp(ts, tz=datetime.timezone.utc)` and `datetime.now(tz=datetime.timezone.utc)`.
 
