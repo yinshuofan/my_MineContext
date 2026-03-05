@@ -4,7 +4,7 @@
 Event Search API - Request/Response Models
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -84,8 +84,8 @@ class EventNode(BaseModel):
 
     All fields live on this single model to avoid Pydantic V2's polymorphic
     serialization issue (subclass fields silently dropped when serialized
-    through a List[BaseClass] annotation). Search-hit fields (content, score,
-    keywords, entities, metadata) are only populated when is_search_hit=True.
+    through a List[BaseClass] annotation). Search-hit fields (score,
+    keywords, entities) are only populated when is_search_hit=True.
     """
 
     id: str
@@ -100,11 +100,9 @@ class EventNode(BaseModel):
     children: List["EventNode"] = Field(default_factory=list)
 
     # Search-hit fields (populated only when is_search_hit=True)
-    content: Optional[str] = None
     keywords: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
     score: Optional[float] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SearchMetadata(BaseModel):

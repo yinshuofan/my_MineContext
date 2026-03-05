@@ -419,7 +419,6 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         id=ctx.id,
         title=extracted.title if extracted else None,
         summary=extracted.summary if extracted else None,
-        content=ctx.get_llm_context_string(),
         keywords=extracted.keywords if extracted and extracted.keywords else [],
         entities=extracted.entities if extracted and extracted.entities else [],
         score=score,
@@ -428,7 +427,6 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         parent_id=_normalize_parent_id(props),
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
-        metadata=ctx.metadata if ctx.metadata else {},
         is_search_hit=True,
     )
 
