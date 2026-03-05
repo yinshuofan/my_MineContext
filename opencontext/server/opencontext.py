@@ -251,6 +251,47 @@ class OpenContext:
             logger.error(f"Failed to start capture components: {e}")
             raise
 
+    async def reload_components(self) -> None:
+        """Reload config and gracefully restart Capture, Scheduler, and MemoryCache components."""
+        logger.info("Reloading components with updated configuration...")
+
+        # 1. Reload GlobalConfig from YAML
+        config_mgr = GlobalConfig.get_instance().get_config_manager()
+        if config_mgr:
+            config_mgr.load_config(config_mgr.get_config_path())
+
+        # 2. Refresh ComponentInitializer's cached config reference
+        self.component_initializer.reload_config()
+
+        # 3. Restart Capture: stop → clear → reinit → start
+        try:
+            self.capture_manager.clear_components()
+            self.component_initializer.initialize_capture_components(self.capture_manager)
+            self.capture_manager.start_all_components()
+            logger.info("Capture components reloaded")
+        except Exception as e:
+            logger.error(f"Failed to reload capture components: {e}")
+
+        # 4. Restart Scheduler: stop → reinit → start
+        try:
+            await self.component_initializer.stop_task_scheduler()
+            self.component_initializer.initialize_task_scheduler(self.processor_manager)
+            await self.component_initializer.start_task_scheduler()
+            logger.info("Task scheduler reloaded")
+        except Exception as e:
+            logger.error(f"Failed to reload task scheduler: {e}")
+
+        # 5. Reload Memory Cache Manager config
+        try:
+            from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
+
+            get_memory_cache_manager().reload_config()
+            logger.info("Memory cache manager config reloaded")
+        except Exception as e:
+            logger.error(f"Failed to reload memory cache config: {e}")
+
+        logger.info("Component reload complete")
+
     def shutdown(self, graceful: bool = True) -> None:
         """Shutdown all components gracefully.
 
