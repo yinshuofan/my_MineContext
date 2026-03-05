@@ -55,6 +55,10 @@ class UserMemoryCacheManager:
             "max_entities": raw.get("max_entities", 20),
         }
 
+    def reload_config(self):
+        """Re-read config values from GlobalConfig."""
+        self._config = self._load_config()
+
     # ─── Key helpers ───
 
     @staticmethod

@@ -50,6 +50,10 @@ class ComponentInitializer:
         )
         self.global_config = GlobalConfig.get_instance()
 
+    def reload_config(self):
+        """Refresh the cached config reference from GlobalConfig."""
+        self.config = GlobalConfig.get_instance().get_config()
+
     def _to_camel_case(self, name: str) -> str:
         """Convert snake_case to CamelCase."""
         return "".join(word.capitalize() for word in name.split("_"))

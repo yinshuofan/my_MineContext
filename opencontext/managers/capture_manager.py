@@ -363,6 +363,13 @@ class ContextCaptureManager:
         """
         return self._statistics.copy()
 
+    def clear_components(self):
+        """Stop and remove all components for re-initialization."""
+        self.stop_all_components()
+        self._components.clear()
+        self._component_configs.clear()
+        self._running_components.clear()
+
     def shutdown(self, graceful: bool = True) -> None:
         """
         Shutdown the manager, stopping all components and threads.
