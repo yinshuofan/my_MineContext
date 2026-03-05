@@ -35,7 +35,6 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             description="Monitor document changes in vaults table",
             source_type=ContextSource.INPUT,
         )
-        self._storage = None
         self._monitor_interval = 5  # Monitor interval (seconds)
         self._last_scan_time = None
         self._processed_vault_ids: Set[int] = set()
@@ -48,6 +47,11 @@ class VaultDocumentMonitor(BaseCaptureComponent):
         self._total_processed = 0
         self._last_activity_time = None
 
+    @property
+    def _storage(self):
+        """Lazy storage access — avoids init-order issues with async GlobalStorage."""
+        return get_storage()
+
     def _initialize_impl(self, config: Dict[str, Any]) -> bool:
         """
         Initialize document monitoring component
@@ -59,7 +63,6 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             bool: Whether initialization was successful
         """
         try:
-            self._storage = get_storage()
             self._monitor_interval = config.get("monitor_interval", 5)
 
             # Set initial scan time to current time

@@ -23,8 +23,10 @@ logger = get_logger(__name__)
 class ContextOperations:
     """Handles context CRUD and search operations."""
 
-    def __init__(self):
-        self.storage = get_storage()
+    @property
+    def storage(self):
+        """Lazy storage access — avoids init-order issues with async GlobalStorage."""
+        return get_storage()
 
     async def get_all_contexts(
         self,

@@ -45,9 +45,12 @@ class OpenContext:
         self.web_server: Optional[threading.Thread] = None
         self.web_server_running: bool = False
 
-        self.storage = None
-
         logger.info("OpenContext initialization completed")
+
+    @property
+    def storage(self):
+        """Lazy storage access — avoids init-order issues with async GlobalStorage."""
+        return get_storage()
 
     def initialize(self) -> None:
         """Initialize all components in proper order."""
@@ -80,8 +83,6 @@ class OpenContext:
                     f"Redis singleton initialized: "
                     f"{redis_cfg.host}:{redis_cfg.port}/{redis_cfg.db}"
                 )
-
-            self.storage = GlobalStorage.get_instance().get_storage()
 
             self.context_operations = ContextOperations()
             self.capture_manager.set_callback(self._handle_captured_context)

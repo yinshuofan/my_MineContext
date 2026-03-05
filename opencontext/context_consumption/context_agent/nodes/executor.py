@@ -24,7 +24,11 @@ class ExecutorNode(BaseNode):
 
     def __init__(self, streaming_manager=None):
         super().__init__(NodeType.EXECUTE, streaming_manager)
-        self.storage = get_storage()
+
+    @property
+    def storage(self):
+        """Lazy storage access — avoids init-order issues with async GlobalStorage."""
+        return get_storage()
 
     async def process(self, state: WorkflowState) -> WorkflowState:
         """Process execution"""

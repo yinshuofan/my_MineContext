@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
         app.state.context_lab_instance = get_or_create_context_lab()
 
     # Initialize async storage (must happen inside event loop)
-    from opencontext.storage.global_storage import GlobalStorage, get_storage
+    from opencontext.storage.global_storage import GlobalStorage
 
     max_retries = 3
     for attempt in range(max_retries):
@@ -69,12 +69,8 @@ async def lifespan(app: FastAPI):
     else:
         logger.error("Storage initialization failed after all retries")
 
-    # Update OpenContext's storage reference now that async init is done
-    context_lab = app.state.context_lab_instance
-    if context_lab and context_lab.storage is None:
-        context_lab.storage = get_storage()
-
     # Start task scheduler after event loop is running
+    context_lab = app.state.context_lab_instance
     try:
         if context_lab and hasattr(context_lab, "component_initializer"):
             await context_lab.component_initializer.start_task_scheduler()
@@ -237,7 +233,7 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
 
     async def _run_async():
         # Initialize async storage (same pattern as lifespan())
-        from opencontext.storage.global_storage import GlobalStorage, get_storage
+        from opencontext.storage.global_storage import GlobalStorage
 
         max_retries = 5
         for attempt in range(max_retries):
@@ -252,10 +248,6 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
                 await asyncio.sleep(delay)
         else:
             logger.error("Storage initialization failed after all retries")
-
-        # Update storage reference
-        if lab_instance.storage is None:
-            lab_instance.storage = get_storage()
 
         try:
             if hasattr(lab_instance, "component_initializer"):

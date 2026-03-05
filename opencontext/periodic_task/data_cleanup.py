@@ -106,6 +106,10 @@ class DataCleanupTask(BasePeriodicTask):
                     cleanup_result = "type_cleanup"
 
             # Fallback: Use storage's simple cleanup methods
+            if not cleanup_result and not self._storage:
+                from opencontext.storage.global_storage import get_storage
+
+                self._storage = get_storage()
             if not cleanup_result and self._storage:
                 deleted_count = 0
 

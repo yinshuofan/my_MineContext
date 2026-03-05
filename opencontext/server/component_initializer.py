@@ -23,8 +23,6 @@ from opencontext.context_capture.web_link_capture import WebLinkCapture
 from opencontext.context_processing.processor.processor_factory import ProcessorFactory
 from opencontext.managers.capture_manager import ContextCaptureManager
 from opencontext.managers.processor_manager import ContextProcessorManager
-from opencontext.storage.global_storage import get_storage
-from opencontext.storage.unified_storage import UnifiedStorage
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -226,7 +224,6 @@ class ComponentInitializer:
 
             # Data cleanup handler
             if tasks_config.get("data_cleanup", {}).get("enabled", False):
-                storage = get_storage()
                 retention_days = tasks_config.get("data_cleanup", {}).get("retention_days", 30)
 
                 # Get or create merger for intelligent cleanup
@@ -243,7 +240,7 @@ class ComponentInitializer:
                     logger.info("Reusing merger from processor_manager for cleanup task")
 
                 cleanup_handler = create_cleanup_handler(
-                    context_merger=cleanup_merger, storage=storage, retention_days=retention_days
+                    context_merger=cleanup_merger, storage=None, retention_days=retention_days
                 )
                 scheduler.register_handler("data_cleanup", cleanup_handler)
                 logger.info("Registered data_cleanup task handler with intelligent cleanup")

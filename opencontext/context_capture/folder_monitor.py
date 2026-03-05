@@ -39,7 +39,6 @@ class FolderMonitorCapture(BaseCaptureComponent):
             description="Monitor document changes in local folders",
             source_type=ContextSource.LOCAL_FILE,
         )
-        self._storage = None
         self._monitor_interval = 5
         self._watch_folder_paths: List[str] = []
         self._recursive = True
@@ -57,12 +56,16 @@ class FolderMonitorCapture(BaseCaptureComponent):
         self._last_activity_time = None
         self._last_scan_time = None
 
+    @property
+    def _storage(self):
+        """Lazy storage access — avoids init-order issues with async GlobalStorage."""
+        return get_storage()
+
     def _initialize_impl(self, config: Dict[str, Any]) -> bool:
         """
         Initialize folder monitoring component.
         """
         try:
-            self._storage = get_storage()
             self._monitor_interval = config.get("monitor_interval", 5)
             self._watch_folder_paths = config.get("watch_folder_paths", ["./watch_folder"])
             self._recursive = config.get("recursive", True)

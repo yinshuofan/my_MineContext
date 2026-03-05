@@ -56,7 +56,6 @@ class CompletionService:
     """Core class for the intelligent completion service"""
 
     def __init__(self):
-        self.storage = None
         self.embedding_client = None
         self.chat_client = None
         self.cache = get_completion_cache()  # Use a dedicated cache manager
@@ -70,12 +69,14 @@ class CompletionService:
 
         self._initialize()
 
+    @property
+    def storage(self):
+        """Lazy storage access — avoids init-order issues with async GlobalStorage."""
+        return get_storage()
+
     def _initialize(self):
         """Initialize the service"""
         try:
-            # Get storage and LLM manager
-            self.storage = get_storage()
-
             self.prompt_manager = get_prompt_manager()
 
             logger.info("CompletionService initialized successfully")
