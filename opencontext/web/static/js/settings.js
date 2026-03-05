@@ -749,6 +749,29 @@ async function loadAllGeneralSettings() {
     }
 }
 
+// ==================== Apply Settings ====================
+
+async function applySettings() {
+    if (!confirm('Apply current settings? This will briefly restart some service components.')) {
+        return;
+    }
+
+    try {
+        showToast('Applying settings...');
+        const response = await fetch('/api/settings/apply', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.code === 0) {
+            showToast(data.message || 'Settings applied successfully');
+        } else {
+            showToast('Apply failed: ' + (data.message || 'Unknown error'), true);
+        }
+    } catch (error) {
+        console.error('Failed to apply settings:', error);
+        showToast('Apply failed', true);
+    }
+}
+
 // ==================== Page Init ====================
 
 document.addEventListener('DOMContentLoaded', async function() {
