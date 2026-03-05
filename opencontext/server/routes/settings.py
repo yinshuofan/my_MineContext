@@ -566,3 +566,23 @@ async def reset_settings(_auth: str = auth_dependency):
             return convert_resp(
                 code=500, status=500, message=f"Failed to reset settings: {str(e)}"
             )
+
+
+# ==================== Apply Settings ====================
+
+
+@router.post("/api/settings/apply")
+async def apply_settings(_auth: str = auth_dependency):
+    """Apply saved settings by broadcasting a reload signal to all workers."""
+    try:
+        from opencontext.server.config_reload_manager import get_config_reload_manager
+
+        receivers = await get_config_reload_manager().trigger_reload()
+        logger.info(f"Config reload signal sent, received by {receivers} subscriber(s)")
+        return convert_resp(
+            message=f"Settings apply signal sent to {receivers} worker(s). "
+            "Components will reload within a few seconds."
+        )
+    except Exception as e:
+        logger.exception(f"Failed to apply settings: {e}")
+        return convert_resp(code=500, status=500, message=f"Failed to apply settings: {str(e)}")
