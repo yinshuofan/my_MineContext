@@ -45,11 +45,11 @@
                 <div class="col-md-10">
                     <!-- LLM 文本模型 -->
                     <div class="card mb-4">
-                        <div class="card-header"><strong>LLM 文本模型</strong></div>
+                        <div class="card-header"><strong>LLM 文本模型 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="负责对话分析、知识提取、摘要生成等核心文本处理任务"></i></strong></div>
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-md-4 mb-3">
-                                    <label for="llm_provider" class="form-label">服务商</label>
+                                    <label for="llm_provider" class="form-label">服务商 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="影响 thinking 参数格式；所有服务商均使用 OpenAI 兼容接口"></i></label>
                                     <select class="form-select" id="llm_provider">
                                         <option value="openai">OpenAI</option>
                                         <option value="doubao">豆包</option>
@@ -57,21 +57,21 @@
                                     </select>
                                 </div>
                                 <div class="col-md-4 mb-3">
-                                    <label for="llm_model" class="form-label">模型名称</label>
+                                    <label for="llm_model" class="form-label">模型名称 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="直接传递给 API 的模型 ID，如 gpt-4o、doubao-seed-1-6"></i></label>
                                     <input type="text" class="form-control" id="llm_model" placeholder="例如 gpt-4o">
                                 </div>
                                 <div class="col-md-4 mb-3">
-                                    <label for="llm_max_concurrent" class="form-label">最大并发数</label>
+                                    <label for="llm_max_concurrent" class="form-label">最大并发数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="限制同时进行的 LLM API 调用数（信号量控制），每个实例独立计数"></i></label>
                                     <input type="number" class="form-control" id="llm_max_concurrent" min="1">
                                 </div>
                             </div>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label for="llm_base_url" class="form-label">接口地址</label>
+                                    <label for="llm_base_url" class="form-label">接口地址 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="API 基础地址，必须包含路径前缀如 /v1 或 /api/v3"></i></label>
                                     <input type="text" class="form-control" id="llm_base_url" placeholder="https://api.openai.com/v1">
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label for="llm_api_key" class="form-label">API 密钥</label>
+                                    <label for="llm_api_key" class="form-label">API 密钥 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用于 API 认证，启动时校验，缺失将报错"></i></label>
                                     <input type="password" class="form-control" id="llm_api_key">
                                 </div>
                             </div>
@@ -83,11 +83,11 @@
 
                     <!-- VLM 视觉模型 -->
                     <div class="card mb-4">
-                        <div class="card-header"><strong>VLM 视觉语言模型</strong></div>
+                        <div class="card-header"><strong>VLM 视觉语言模型 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="专用于识别扫描件、图片等视觉内容，将图像转为结构化文本"></i></strong></div>
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-md-4 mb-3">
-                                    <label for="vlm_provider" class="form-label">服务商</label>
+                                    <label for="vlm_provider" class="form-label">服务商 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="同 LLM，影响 thinking 参数格式"></i></label>
                                     <select class="form-select" id="vlm_provider">
                                         <option value="openai">OpenAI</option>
                                         <option value="doubao">豆包</option>
@@ -95,21 +95,21 @@
                                     </select>
                                 </div>
                                 <div class="col-md-4 mb-3">
-                                    <label for="vlm_model" class="form-label">模型名称</label>
+                                    <label for="vlm_model" class="form-label">模型名称 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="需支持图片输入的模型，用于文档图像页面分析"></i></label>
                                     <input type="text" class="form-control" id="vlm_model" placeholder="例如 gpt-4o">
                                 </div>
                                 <div class="col-md-4 mb-3">
-                                    <label for="vlm_max_concurrent" class="form-label">最大并发数</label>
+                                    <label for="vlm_max_concurrent" class="form-label">最大并发数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="限制同时进行的图像识别 API 调用数"></i></label>
                                     <input type="number" class="form-control" id="vlm_max_concurrent" min="1">
                                 </div>
                             </div>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label for="vlm_base_url" class="form-label">接口地址</label>
+                                    <label for="vlm_base_url" class="form-label">接口地址 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="VLM API 基础地址，必须包含路径前缀"></i></label>
                                     <input type="text" class="form-control" id="vlm_base_url" placeholder="https://api.openai.com/v1">
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label for="vlm_api_key" class="form-label">API 密钥</label>
+                                    <label for="vlm_api_key" class="form-label">API 密钥 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="VLM API 认证密钥"></i></label>
                                     <input type="password" class="form-control" id="vlm_api_key">
                                 </div>
                             </div>
@@ -121,11 +121,11 @@
 
                     <!-- Embedding 嵌入模型 -->
                     <div class="card mb-4">
-                        <div class="card-header"><strong>Embedding 嵌入模型</strong></div>
+                        <div class="card-header"><strong>Embedding 嵌入模型 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="将文本转为向量，支撑语义搜索、相似度匹配、知识去重等功能"></i></strong></div>
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-md-3 mb-3">
-                                    <label for="emb_provider" class="form-label">服务商</label>
+                                    <label for="emb_provider" class="form-label">服务商 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="同 LLM，影响 API 参数格式"></i></label>
                                     <select class="form-select" id="emb_provider">
                                         <option value="openai">OpenAI</option>
                                         <option value="doubao">豆包</option>
@@ -133,25 +133,25 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3 mb-3">
-                                    <label for="emb_model" class="form-label">模型名称</label>
+                                    <label for="emb_model" class="form-label">模型名称 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="Embedding 模型 ID，如 text-embedding-3-large"></i></label>
                                     <input type="text" class="form-control" id="emb_model" placeholder="例如 text-embedding-3-large">
                                 </div>
                                 <div class="col-md-3 mb-3">
-                                    <label for="emb_max_concurrent" class="form-label">最大并发数</label>
+                                    <label for="emb_max_concurrent" class="form-label">最大并发数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="限制同时进行的向量化 API 调用数；通常设为 LLM 的 2 倍（向量化更快）"></i></label>
                                     <input type="number" class="form-control" id="emb_max_concurrent" min="1">
                                 </div>
                                 <div class="col-md-3 mb-3">
-                                    <label for="emb_output_dim" class="form-label">输出维度</label>
+                                    <label for="emb_output_dim" class="form-label">输出维度 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="向量截断维度，必须与向量数据库索引维度一致；不匹配将导致写入失败"></i></label>
                                     <input type="number" class="form-control" id="emb_output_dim" min="1">
                                 </div>
                             </div>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label for="emb_base_url" class="form-label">接口地址</label>
+                                    <label for="emb_base_url" class="form-label">接口地址 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="Embedding API 基础地址"></i></label>
                                     <input type="text" class="form-control" id="emb_base_url" placeholder="https://api.openai.com/v1">
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label for="emb_api_key" class="form-label">API 密钥</label>
+                                    <label for="emb_api_key" class="form-label">API 密钥 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="Embedding API 认证密钥"></i></label>
                                     <input type="password" class="form-control" id="emb_api_key">
                                 </div>
                             </div>
@@ -181,14 +181,14 @@
                         <div class="settings-master-toggle">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="capture_enabled">
-                                <label class="form-check-label fw-bold" for="capture_enabled">启用采集</label>
+                                <label class="form-check-label fw-bold" for="capture_enabled">启用采集 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="采集模块总开关；各子模块还有独立开关"></i></label>
                             </div>
                         </div>
 
                         <!-- 文本对话采集 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>文本对话采集</strong>
+                                <strong>文本对话采集 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="接收通过 /api/push/chat 推送的对话消息，缓冲后送入处理管线"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="text_chat_enabled">
                                     <label class="form-check-label" for="text_chat_enabled">启用</label>
@@ -197,7 +197,7 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label for="text_chat_buffer_size" class="form-label">缓冲区大小</label>
+                                        <label for="text_chat_buffer_size" class="form-label">缓冲区大小 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="每个用户的消息在 Redis 中积累到此数量后统一送入处理（如设为 4，则每 4 条消息触发一次处理）"></i></label>
                                         <input type="number" class="form-control" id="text_chat_buffer_size" min="1">
                                     </div>
                                 </div>
@@ -207,7 +207,7 @@
                         <!-- 文件夹监控 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>文件夹监控</strong>
+                                <strong>文件夹监控 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="定期轮询指定文件夹，通过文件哈希和修改时间检测新增/修改/删除的文档"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="folder_monitor_enabled">
                                     <label class="form-check-label" for="folder_monitor_enabled">启用</label>
@@ -216,11 +216,11 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="folder_monitor_interval" class="form-label">监控间隔 (秒)</label>
+                                        <label for="folder_monitor_interval" class="form-label">监控间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="两次文件夹扫描之间的等待时间；值越小检测越快，但 CPU 开销越大"></i></label>
                                         <input type="number" class="form-control" id="folder_monitor_interval" min="1">
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="folder_monitor_max_file_size" class="form-label">最大文件大小 (MB)</label>
+                                        <label for="folder_monitor_max_file_size" class="form-label">最大文件大小 (MB) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="超过此字节数的文件将被跳过（注意：单位为字节，如 104857600 = 100MB）"></i></label>
                                         <input type="number" class="form-control" id="folder_monitor_max_file_size" min="1">
                                     </div>
                                     <div class="col-md-4 mb-3">
@@ -228,18 +228,18 @@
                                             <div>
                                                 <div class="form-check form-switch mb-1">
                                                     <input class="form-check-input" type="checkbox" id="folder_monitor_recursive">
-                                                    <label class="form-check-label" for="folder_monitor_recursive">递归扫描</label>
+                                                    <label class="form-check-label" for="folder_monitor_recursive">递归扫描 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="开启时递归扫描所有子文件夹；关闭时仅监控文件夹根目录下的文件"></i></label>
                                                 </div>
                                                 <div class="form-check form-switch">
                                                     <input class="form-check-input" type="checkbox" id="folder_monitor_initial_scan">
-                                                    <label class="form-check-label" for="folder_monitor_initial_scan">启动时扫描</label>
+                                                    <label class="form-check-label" for="folder_monitor_initial_scan">启动时扫描 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="启动时扫描文件夹中已有的文件；关闭则只检测启动后新增/修改的文件"></i></label>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="folder_monitor_paths" class="form-label">监控文件夹路径 (每行一个)</label>
+                                    <label for="folder_monitor_paths" class="form-label">监控文件夹路径 (每行一个) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="要监控的本地文件夹绝对路径，每行一个"></i></label>
                                     <textarea class="form-control" id="folder_monitor_paths" rows="3" placeholder="/path/to/folder1&#10;/path/to/folder2"></textarea>
                                 </div>
                             </div>
@@ -248,7 +248,7 @@
                         <!-- Vault 文档监控 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>Vault 文档监控</strong>
+                                <strong>Vault 文档监控 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="定期轮询数据库中的 Vault 文档表，检测新增或更新的文档"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="vault_enabled">
                                     <label class="form-check-label" for="vault_enabled">启用</label>
@@ -257,14 +257,14 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label for="vault_interval" class="form-label">监控间隔 (秒)</label>
+                                        <label for="vault_interval" class="form-label">监控间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="两次数据库轮询之间的等待时间"></i></label>
                                         <input type="number" class="form-control" id="vault_interval" min="1">
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <div class="form-switch-centered">
                                             <div class="form-check form-switch">
                                                 <input class="form-check-input" type="checkbox" id="vault_initial_scan">
-                                                <label class="form-check-label" for="vault_initial_scan">启动时扫描</label>
+                                                <label class="form-check-label" for="vault_initial_scan">启动时扫描 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="启动时处理 Vault 中所有已有文档；关闭则只处理启动后新增/更新的文档"></i></label>
                                             </div>
                                         </div>
                                     </div>
@@ -289,14 +289,14 @@
                         <div class="settings-master-toggle">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="processing_enabled">
-                                <label class="form-check-label fw-bold" for="processing_enabled">启用处理</label>
+                                <label class="form-check-label fw-bold" for="processing_enabled">启用处理 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="处理模块总开关；各子模块还有独立开关"></i></label>
                             </div>
                         </div>
 
                         <!-- 文本对话处理器 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>文本对话处理器</strong>
+                                <strong>文本对话处理器 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="调用 LLM 分析对话内容，提取用户画像、实体、事件、知识四类结构化记忆"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="text_chat_proc_enabled">
                                     <label class="form-check-label" for="text_chat_proc_enabled">启用</label>
@@ -307,7 +307,7 @@
                         <!-- 文档处理器 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>文档处理器</strong>
+                                <strong>文档处理器 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="处理上传的文档和网页：文本文件语义分块，PDF/图片调用 VLM 识别，表格文件专用解析"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="doc_proc_enabled">
                                     <label class="form-check-label" for="doc_proc_enabled">启用</label>
@@ -316,11 +316,11 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label for="doc_proc_batch_size" class="form-label">批处理大小</label>
+                                        <label for="doc_proc_batch_size" class="form-label">批处理大小 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="每批同时处理的文档数量"></i></label>
                                         <input type="number" class="form-control" id="doc_proc_batch_size" min="1">
                                     </div>
                                     <div class="col-md-6 mb-3">
-                                        <label for="doc_proc_batch_timeout" class="form-label">批处理超时 (秒)</label>
+                                        <label for="doc_proc_batch_timeout" class="form-label">批处理超时 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="等待凑满一批的超时时间，超时后立即开始处理已有文档"></i></label>
                                         <input type="number" class="form-control" id="doc_proc_batch_timeout" min="1">
                                     </div>
                                 </div>
@@ -330,7 +330,7 @@
                         <!-- 知识合并器 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>知识合并器</strong>
+                                <strong>知识合并器 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="对新入库的知识条目进行去重：查找语义相似的已有条目并合并，防止重复存储"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="merger_enabled">
                                     <label class="form-check-label" for="merger_enabled">启用</label>
@@ -339,14 +339,14 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="merger_threshold" class="form-label">相似度阈值</label>
+                                        <label for="merger_threshold" class="form-label">相似度阈值 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="向量相似度低于此值的条目直接跳过，不进入合并判断（0~1）"></i></label>
                                         <input type="number" class="form-control" id="merger_threshold" min="0" max="1" step="0.01">
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <div class="form-switch-centered">
                                             <div class="form-check form-switch">
                                                 <input class="form-check-input" type="checkbox" id="merger_intelligent">
-                                                <label class="form-check-label" for="merger_intelligent">智能合并</label>
+                                                <label class="form-check-label" for="merger_intelligent">智能合并 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="开启后综合评估关键词重叠(30%)+实体重叠(30%)+向量相似度(40%)；关闭则仅看向量相似度"></i></label>
                                             </div>
                                         </div>
                                     </div>
@@ -354,22 +354,22 @@
                                         <div class="form-switch-centered">
                                             <div class="form-check form-switch">
                                                 <input class="form-check-input" type="checkbox" id="merger_memory_mgmt">
-                                                <label class="form-check-label" for="merger_memory_mgmt">记忆管理</label>
+                                                <label class="form-check-label" for="merger_memory_mgmt">记忆管理 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="开启遗忘曲线机制：根据知识条目的年龄和重要性自动清理低价值旧条目"></i></label>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="merger_retention_days" class="form-label">保留天数</label>
+                                        <label for="merger_retention_days" class="form-label">保留天数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="遗忘曲线的时间常数；超过此天数且重要性低的知识将被自动清理"></i></label>
                                         <input type="number" class="form-control" id="merger_retention_days" min="1">
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="merger_sim_threshold" class="form-label">知识相似度阈值</label>
+                                        <label for="merger_sim_threshold" class="form-label">知识相似度阈值 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="知识类型专用的合并阈值，覆盖上方的通用相似度阈值（0~1）"></i></label>
                                         <input type="number" class="form-control" id="merger_sim_threshold" min="0" max="1" step="0.01">
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="merger_max_merge_count" class="form-label">最大合并数</label>
+                                        <label for="merger_max_merge_count" class="form-label">最大合并数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="单条知识最多被合并几次后标记为「已压缩」，不再参与后续合并"></i></label>
                                         <input type="number" class="form-control" id="merger_max_merge_count" min="1">
                                     </div>
                                 </div>
@@ -378,19 +378,19 @@
 
                         <!-- 文档处理参数 -->
                         <div class="card settings-card mb-4">
-                            <div class="card-header"><strong>文档处理参数</strong></div>
+                            <div class="card-header"><strong>文档处理参数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="控制 PDF 和扫描件转图片、VLM 识别的具体参数"></i></strong></div>
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="docproc_batch_size" class="form-label">VLM 批处理大小</label>
+                                        <label for="docproc_batch_size" class="form-label">VLM 批处理大小 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="每次 VLM 调用同时处理的文档页数"></i></label>
                                         <input type="number" class="form-control" id="docproc_batch_size" min="1">
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="docproc_dpi" class="form-label">PDF DPI</label>
+                                        <label for="docproc_dpi" class="form-label">PDF DPI <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="PDF 转图片的分辨率（DPI）；越高图像越清晰，但处理速度越慢"></i></label>
                                         <input type="number" class="form-control" id="docproc_dpi" min="72" max="600">
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="docproc_text_threshold" class="form-label">每页文字阈值</label>
+                                        <label for="docproc_text_threshold" class="form-label">每页文字阈值 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="页面可提取文字数低于此值时判定为扫描件/图片页，改用 VLM 识别"></i></label>
                                         <input type="number" class="form-control" id="docproc_text_threshold" min="0">
                                     </div>
                                 </div>
@@ -418,25 +418,25 @@
                         <div class="settings-master-toggle">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="scheduler_enabled">
-                                <label class="form-check-label fw-bold" for="scheduler_enabled">启用调度器</label>
+                                <label class="form-check-label fw-bold" for="scheduler_enabled">启用调度器 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="关闭后不初始化调度器，记忆压缩、数据清理、层级摘要等任务均不执行"></i></label>
                             </div>
                         </div>
 
                         <!-- 执行器配置 -->
                         <div class="card settings-card mb-4">
-                            <div class="card-header"><strong>执行器配置</strong></div>
+                            <div class="card-header"><strong>执行器配置 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="控制调度器的轮询频率、并发任务数和分布式锁行为"></i></strong></div>
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="executor_check_interval" class="form-label">检查间隔 (秒)</label>
+                                        <label for="executor_check_interval" class="form-label">检查间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="工作线程每次处理完任务后的等待时间，也控制心跳写入频率"></i></label>
                                         <input type="number" class="form-control" id="executor_check_interval" min="1">
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="executor_max_concurrent" class="form-label">最大并发数</label>
+                                        <label for="executor_max_concurrent" class="form-label">最大并发数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="所有任务类型共享的并发上限（信号量控制），超出时排队等待"></i></label>
                                         <input type="number" class="form-control" id="executor_max_concurrent" min="1">
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="executor_lock_timeout" class="form-label">锁超时 (秒)</label>
+                                        <label for="executor_lock_timeout" class="form-label">锁超时 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="分布式锁的默认超时时间；实际执行时各任务类型使用自己的 timeout 值"></i></label>
                                         <input type="number" class="form-control" id="executor_lock_timeout" min="1">
                                     </div>
                                 </div>
@@ -446,7 +446,7 @@
                         <!-- 记忆压缩任务 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>记忆压缩</strong>
+                                <strong>记忆压缩 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="将语义相似的知识条目合并压缩，减少冗余提升检索精度"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="task_mc_enabled">
                                     <label class="form-check-label" for="task_mc_enabled">启用</label>
@@ -455,18 +455,18 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="task_mc_trigger" class="form-label">触发模式</label>
+                                        <label for="task_mc_trigger" class="form-label">触发模式 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动：推送数据后延迟执行（可去抖）；定时：全局固定间隔执行"></i></label>
                                         <select class="form-select" id="task_mc_trigger">
                                             <option value="user_activity">用户活动触发</option>
                                             <option value="periodic">定时触发</option>
                                         </select>
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="task_mc_interval" class="form-label">间隔 (秒)</label>
+                                        <label for="task_mc_interval" class="form-label">间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动模式下为推送后的延迟秒数；定时模式下为执行间隔"></i></label>
                                         <input type="number" class="form-control" id="task_mc_interval" min="1">
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="task_mc_ttl" class="form-label">任务 TTL (秒)</label>
+                                        <label for="task_mc_ttl" class="form-label">任务 TTL (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="Redis 中任务状态的过期时间；过期后任务记录被清除，允许重新调度"></i></label>
                                         <input type="number" class="form-control" id="task_mc_ttl" min="1">
                                     </div>
                                 </div>
@@ -476,7 +476,7 @@
                         <!-- 数据清理任务 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>数据清理</strong>
+                                <strong>数据清理 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="按遗忘曲线和保留策略清理过期数据：原始事件、陈旧知识等"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="task_dc_enabled">
                                     <label class="form-check-label" for="task_dc_enabled">启用</label>
@@ -485,24 +485,24 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label for="task_dc_trigger" class="form-label">触发模式</label>
+                                        <label for="task_dc_trigger" class="form-label">触发模式 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="通常使用定时模式（全局系统任务，不依赖用户活动）"></i></label>
                                         <select class="form-select" id="task_dc_trigger">
                                             <option value="periodic">定时触发</option>
                                             <option value="user_activity">用户活动触发</option>
                                         </select>
                                     </div>
                                     <div class="col-md-6 mb-3">
-                                        <label for="task_dc_interval" class="form-label">间隔 (秒)</label>
+                                        <label for="task_dc_interval" class="form-label">间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="两次清理之间的间隔时间"></i></label>
                                         <input type="number" class="form-control" id="task_dc_interval" min="1">
                                     </div>
                                 </div>
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label for="task_dc_timeout" class="form-label">超时 (秒)</label>
+                                        <label for="task_dc_timeout" class="form-label">超时 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="单次清理的分布式锁超时；锁过期后其他实例可能启动并发清理"></i></label>
                                         <input type="number" class="form-control" id="task_dc_timeout" min="1">
                                     </div>
                                     <div class="col-md-6 mb-3">
-                                        <label for="task_dc_retention" class="form-label">保留天数</label>
+                                        <label for="task_dc_retention" class="form-label">保留天数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="各类型数据的保留期限：原始事件较短，摘要较长，文档保留至重新上传"></i></label>
                                         <input type="number" class="form-control" id="task_dc_retention" min="1">
                                     </div>
                                 </div>
@@ -512,7 +512,7 @@
                         <!-- 层级摘要任务 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">
-                                <strong>层级摘要</strong>
+                                <strong>层级摘要 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="将每日原始事件(L0)汇总为日报(L1)、周报(L2)、月报(L3)的多级摘要"></i></strong>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="task_hs_enabled">
                                     <label class="form-check-label" for="task_hs_enabled">启用</label>
@@ -521,22 +521,22 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-3 mb-3">
-                                        <label for="task_hs_trigger" class="form-label">触发模式</label>
+                                        <label for="task_hs_trigger" class="form-label">触发模式 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动：推送数据后延迟生成（通常延迟24小时）；定时：固定间隔生成"></i></label>
                                         <select class="form-select" id="task_hs_trigger">
                                             <option value="user_activity">用户活动触发</option>
                                             <option value="periodic">定时触发</option>
                                         </select>
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="task_hs_interval" class="form-label">间隔 (秒)</label>
+                                        <label for="task_hs_interval" class="form-label">间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动模式下为推送后的延迟秒数（默认86400=24小时）"></i></label>
                                         <input type="number" class="form-control" id="task_hs_interval" min="1">
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="task_hs_timeout" class="form-label">超时 (秒)</label>
+                                        <label for="task_hs_timeout" class="form-label">超时 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="单次摘要生成的锁超时，需覆盖 LLM 多轮调用的总耗时"></i></label>
                                         <input type="number" class="form-control" id="task_hs_timeout" min="1">
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="task_hs_ttl" class="form-label">任务 TTL (秒)</label>
+                                        <label for="task_hs_ttl" class="form-label">任务 TTL (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="任务状态过期时间（默认48小时），适应摘要生成的长周期"></i></label>
                                         <input type="number" class="form-control" id="task_hs_ttl" min="1">
                                     </div>
                                 </div>
@@ -549,41 +549,41 @@
                         </div>
 
                         <div class="card settings-card mb-4">
-                            <div class="card-header"><strong>缓存参数</strong></div>
+                            <div class="card-header"><strong>缓存参数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="控制 /api/memory-cache 返回的用户记忆快照的缓存策略和内容上限"></i></strong></div>
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-3 mb-3">
-                                        <label for="cache_snapshot_ttl" class="form-label">快照 TTL (秒)</label>
+                                        <label for="cache_snapshot_ttl" class="form-label">快照 TTL (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="快照在 Redis 中的缓存时间；过期后下次请求将重新从数据库构建"></i></label>
                                         <input type="number" class="form-control" id="cache_snapshot_ttl" min="1">
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="cache_recent_days" class="form-label">最近天数</label>
+                                        <label for="cache_recent_days" class="form-label">最近天数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="快照中「最近」文档和知识的时间窗口（如 7 = 最近 7 天内创建的）"></i></label>
                                         <input type="number" class="form-control" id="cache_recent_days" min="1">
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="cache_max_recently" class="form-label">最大最近访问数</label>
+                                        <label for="cache_max_recently" class="form-label">最大最近访问数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="快照中包含的最近被搜索命中的记录数上限"></i></label>
                                         <input type="number" class="form-control" id="cache_max_recently" min="1">
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="cache_max_today_events" class="form-label">今日最大事件数</label>
+                                        <label for="cache_max_today_events" class="form-label">今日最大事件数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="快照中包含的今日原始事件(L0)数上限"></i></label>
                                         <input type="number" class="form-control" id="cache_max_today_events" min="1">
                                     </div>
                                 </div>
                                 <div class="row">
                                     <div class="col-md-3 mb-3">
-                                        <label for="cache_max_documents" class="form-label">最大最近文档数</label>
+                                        <label for="cache_max_documents" class="form-label">最大最近文档数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="快照中包含的近期文档数上限"></i></label>
                                         <input type="number" class="form-control" id="cache_max_documents" min="1">
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="cache_max_knowledge" class="form-label">最大最近知识数</label>
+                                        <label for="cache_max_knowledge" class="form-label">最大最近知识数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="快照中包含的近期知识条目数上限"></i></label>
                                         <input type="number" class="form-control" id="cache_max_knowledge" min="1">
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="cache_accessed_ttl" class="form-label">访问 TTL (秒)</label>
+                                        <label for="cache_accessed_ttl" class="form-label">访问 TTL (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="搜索命中记录的 Redis 过期时间；过期后不再出现在「最近访问」列表中"></i></label>
                                         <input type="number" class="form-control" id="cache_accessed_ttl" min="1">
                                     </div>
                                     <div class="col-md-3 mb-3">
-                                        <label for="cache_max_entities" class="form-label">最大实体数</label>
+                                        <label for="cache_max_entities" class="form-label">最大实体数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="快照中包含的实体（人物/项目/组织等）数上限"></i></label>
                                         <input type="number" class="form-control" id="cache_max_entities" min="1">
                                     </div>
                                 </div>
@@ -676,4 +676,9 @@
 
 {% block scripts %}
 <script src="/static/js/settings.js"></script>
+<script>
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el);
+    });
+</script>
 {% endblock %}
