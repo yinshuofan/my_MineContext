@@ -27,7 +27,12 @@
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="scheduler-tab" data-bs-toggle="tab" data-bs-target="#scheduler" type="button" role="tab">
-                <i class="bi bi-clock"></i> 调度与缓存
+                <i class="bi bi-clock"></i> 调度器
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="cache-tab" data-bs-toggle="tab" data-bs-target="#cache" type="button" role="tab">
+                <i class="bi bi-memory"></i> 记忆缓存
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -406,15 +411,11 @@
             </div>
         </div>
 
-        <!-- ==================== Tab 4: 调度与缓存 ==================== -->
+        <!-- ==================== Tab 4: 调度器 ==================== -->
         <div class="tab-pane fade" id="scheduler" role="tabpanel">
             <div class="row mt-4">
                 <div class="col-md-10">
-                    <form id="schedulerCacheForm">
-                        <!-- 调度器 -->
-                        <div class="settings-section-heading">
-                            <i class="bi bi-clock-history"></i> 调度器
-                        </div>
+                    <form id="schedulerForm">
                         <div class="settings-master-toggle">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="scheduler_enabled">
@@ -543,11 +544,20 @@
                             </div>
                         </div>
 
-                        <!-- 记忆缓存 -->
-                        <div class="settings-section-heading mt-4">
-                            <i class="bi bi-memory"></i> 记忆缓存
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+                            <button type="button" class="btn btn-secondary" onclick="loadSchedulerSettings()"><i class="bi bi-arrow-clockwise"></i> 重置</button>
                         </div>
+                    </form>
+                </div>
+            </div>
+        </div>
 
+        <!-- ==================== Tab 5: 记忆缓存 ==================== -->
+        <div class="tab-pane fade" id="cache" role="tabpanel">
+            <div class="row mt-4">
+                <div class="col-md-10">
+                    <form id="cacheForm">
                         <div class="card settings-card mb-4">
                             <div class="card-header"><strong>缓存参数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="控制 /api/memory-cache 返回的用户记忆快照的缓存策略和内容上限"></i></strong></div>
                             <div class="card-body">
@@ -592,14 +602,14 @@
 
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
-                            <button type="button" class="btn btn-secondary" onclick="loadSchedulerCacheSettings()"><i class="bi bi-arrow-clockwise"></i> 重置</button>
+                            <button type="button" class="btn btn-secondary" onclick="loadCacheSettings()"><i class="bi bi-arrow-clockwise"></i> 重置</button>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
 
-        <!-- ==================== Tab 5: 提示词 ==================== -->
+        <!-- ==================== Tab 6: 提示词 ==================== -->
         <div class="tab-pane fade" id="prompts" role="tabpanel">
             <div class="row mt-4">
                 <div class="col-md-12">

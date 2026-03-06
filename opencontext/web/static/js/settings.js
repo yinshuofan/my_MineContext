@@ -350,9 +350,9 @@ document.getElementById('processingForm')?.addEventListener('submit', async (e) 
     }
 });
 
-// ==================== Tab 4: 调度与缓存 ====================
+// ==================== Tab 4: 调度器 ====================
 
-function populateSchedulerCacheSettings(allData) {
+function populateSchedulerSettings(allData) {
     const sched = allData.scheduler || {};
     setChecked('scheduler_enabled', sched.enabled);
 
@@ -387,31 +387,20 @@ function populateSchedulerCacheSettings(allData) {
     setVal('task_hs_interval', hs.interval);
     setVal('task_hs_timeout', hs.timeout);
     setVal('task_hs_ttl', hs.task_ttl);
-
-    // memory_cache
-    const cache = allData.memory_cache || {};
-    setVal('cache_snapshot_ttl', cache.snapshot_ttl);
-    setVal('cache_recent_days', cache.recent_days);
-    setVal('cache_max_recently', cache.max_recently_accessed);
-    setVal('cache_max_today_events', cache.max_today_events);
-    setVal('cache_max_documents', cache.max_recent_documents);
-    setVal('cache_max_knowledge', cache.max_recent_knowledge);
-    setVal('cache_accessed_ttl', cache.accessed_ttl);
-    setVal('cache_max_entities', cache.max_entities);
 }
 
-async function loadSchedulerCacheSettings() {
+async function loadSchedulerSettings() {
     try {
         const response = await fetch('/api/settings/general');
         const data = await response.json();
-        if (data.code === 0 && data.data) populateSchedulerCacheSettings(data.data);
+        if (data.code === 0 && data.data) populateSchedulerSettings(data.data);
     } catch (error) {
-        console.error('加载调度/缓存设置失败:', error);
-        showToast('加载调度/缓存设置失败', true);
+        console.error('加载调度器设置失败:', error);
+        showToast('加载调度器设置失败', true);
     }
 }
 
-document.getElementById('schedulerCacheForm')?.addEventListener('submit', async (e) => {
+document.getElementById('schedulerForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const settings = {
@@ -445,6 +434,56 @@ document.getElementById('schedulerCacheForm')?.addEventListener('submit', async 
                 },
             },
         },
+    };
+
+    try {
+        const response = await fetch('/api/settings/general', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+        const data = await response.json();
+
+        if (data.code === 0) {
+            showToast('调度器设置保存成功');
+        } else {
+            showToast('保存失败: ' + (data.message || '未知错误'), true);
+        }
+    } catch (error) {
+        console.error('保存调度器设置失败:', error);
+        showToast('保存失败', true);
+    }
+});
+
+// ==================== Tab 5: 记忆缓存 ====================
+
+function populateCacheSettings(allData) {
+    const cache = allData.memory_cache || {};
+    setVal('cache_snapshot_ttl', cache.snapshot_ttl);
+    setVal('cache_recent_days', cache.recent_days);
+    setVal('cache_max_recently', cache.max_recently_accessed);
+    setVal('cache_max_today_events', cache.max_today_events);
+    setVal('cache_max_documents', cache.max_recent_documents);
+    setVal('cache_max_knowledge', cache.max_recent_knowledge);
+    setVal('cache_accessed_ttl', cache.accessed_ttl);
+    setVal('cache_max_entities', cache.max_entities);
+}
+
+async function loadCacheSettings() {
+    try {
+        const response = await fetch('/api/settings/general');
+        const data = await response.json();
+        if (data.code === 0 && data.data) populateCacheSettings(data.data);
+    } catch (error) {
+        console.error('加载缓存设置失败:', error);
+        showToast('加载缓存设置失败', true);
+    }
+}
+
+document.getElementById('cacheForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const settings = {
         memory_cache: {
             snapshot_ttl: getInt('cache_snapshot_ttl'),
             recent_days: getInt('cache_recent_days'),
@@ -466,17 +505,17 @@ document.getElementById('schedulerCacheForm')?.addEventListener('submit', async 
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('调度与缓存设置保存成功');
+            showToast('缓存设置保存成功');
         } else {
             showToast('保存失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('保存调度/缓存设置失败:', error);
+        console.error('保存缓存设置失败:', error);
         showToast('保存失败', true);
     }
 });
 
-// ==================== Tab 5: 提示词 ====================
+// ==================== Tab 6: 提示词 ====================
 
 function getPromptValue(key) {
     const keys = key.split('.');
@@ -741,7 +780,8 @@ async function loadAllGeneralSettings() {
         if (data.code === 0 && data.data) {
             populateCaptureSettings(data.data);
             populateProcessingSettings(data.data);
-            populateSchedulerCacheSettings(data.data);
+            populateSchedulerSettings(data.data);
+            populateCacheSettings(data.data);
         }
     } catch (error) {
         console.error('加载通用设置失败:', error);
