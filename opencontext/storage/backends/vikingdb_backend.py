@@ -945,6 +945,16 @@ class VikingDBBackend(IVectorStorageBackend):
         if not self._initialized:
             return {}
 
+        # Diagnostic: log caller when limit < 1
+        if limit < 1:
+            import traceback
+
+            logger.warning(
+                f"get_all_processed_contexts called with limit={limit}, "
+                f"context_types={context_types}\n"
+                f"Caller traceback:\n{''.join(traceback.format_stack())}"
+            )
+
         result = {}
 
         if context_types:
