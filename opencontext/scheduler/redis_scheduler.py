@@ -601,6 +601,11 @@ class RedisTaskScheduler(ITaskScheduler):
 
     async def _periodic_worker(self) -> None:
         """Independent worker loop for periodic (global) tasks."""
+        logger.info(
+            f"Periodic worker started, "
+            f"config_cache_keys={list(self._task_config_cache.keys())}, "
+            f"handler_keys={list(self._task_handlers.keys())}"
+        )
         while self._running:
             try:
                 await self._process_periodic_tasks()
@@ -617,6 +622,10 @@ class RedisTaskScheduler(ITaskScheduler):
 
     async def _process_periodic_tasks(self) -> None:
         """Process periodic tasks (global tasks, not user-specific) (async)"""
+        if not self._task_config_cache:
+            logger.debug("periodic check: _task_config_cache is empty, nothing to process")
+            return
+
         for task_type, config in self._task_config_cache.items():
             if config.trigger_mode != TriggerMode.PERIODIC:
                 continue
@@ -624,6 +633,10 @@ class RedisTaskScheduler(ITaskScheduler):
             # Check if handler is registered
             handler = self._task_handlers.get(task_type)
             if not handler:
+                logger.warning(
+                    f"periodic check [{task_type}]: handler not found, "
+                    f"registered handlers={list(self._task_handlers.keys())}"
+                )
                 continue
 
             periodic_key = f"{self.PERIODIC_PREFIX}{task_type}"
@@ -635,12 +648,20 @@ class RedisTaskScheduler(ITaskScheduler):
 
             next_run = int(periodic_state.get("next_run", 0)) if periodic_state else 0
             if now < next_run:
+                logger.debug(
+                    f"periodic check [{task_type}]: not yet, "
+                    f"now={now}, next_run={next_run}, wait={next_run - now}s"
+                )
                 continue
 
             # Try to acquire lock
             timeout = config.timeout
             lock_token = await self._redis.acquire_lock(lock_key, timeout=timeout, blocking=False)
             if not lock_token:
+                logger.warning(
+                    f"periodic check [{task_type}]: failed to acquire lock "
+                    f"(lock_key={lock_key}, timeout={timeout}), skipping"
+                )
                 continue
 
             exec_start = time.time()
