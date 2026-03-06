@@ -44,7 +44,7 @@ function getChecked(id) {
     return el ? el.checked : false;
 }
 
-// ==================== Tab 1: Model Config ====================
+// ==================== Tab 1: 模型配置 ====================
 
 async function loadModelSettings() {
     try {
@@ -83,8 +83,8 @@ async function loadModelSettings() {
             }
         }
     } catch (error) {
-        console.error('Failed to load model settings:', error);
-        showToast('Failed to load model settings', true);
+        console.error('加载模型设置失败:', error);
+        showToast('加载模型设置失败', true);
     }
 }
 
@@ -120,7 +120,7 @@ function _collectModelSection(section) {
 
 async function validateModelSection(section) {
     try {
-        showToast('Testing connection...');
+        showToast('正在测试连接...');
         const payload = {};
         payload[section] = _collectModelSection(section);
 
@@ -132,13 +132,13 @@ async function validateModelSection(section) {
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Connection test passed!');
+            showToast('连接测试通过！');
         } else {
-            showToast('Connection test failed: ' + (data.message || 'Unknown error'), true);
+            showToast('连接测试失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Validation failed:', error);
-        showToast('Connection test failed', true);
+        console.error('连接验证失败:', error);
+        showToast('连接测试失败', true);
     }
 }
 
@@ -158,17 +158,17 @@ async function saveAllModels() {
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Model settings saved successfully');
+            showToast('模型设置保存成功');
         } else {
-            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
+            showToast('保存失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to save model settings:', error);
-        showToast('Save failed', true);
+        console.error('保存模型设置失败:', error);
+        showToast('保存失败', true);
     }
 }
 
-// ==================== Tab 2: Capture Config ====================
+// ==================== Tab 2: 采集配置 ====================
 
 function populateCaptureSettings(allData) {
     const cap = allData.capture || {};
@@ -203,8 +203,8 @@ async function loadCaptureSettings() {
         const data = await response.json();
         if (data.code === 0 && data.data) populateCaptureSettings(data.data);
     } catch (error) {
-        console.error('Failed to load capture settings:', error);
-        showToast('Failed to load capture settings', true);
+        console.error('加载采集设置失败:', error);
+        showToast('加载采集设置失败', true);
     }
 }
 
@@ -246,17 +246,17 @@ document.getElementById('captureForm')?.addEventListener('submit', async (e) => 
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Capture settings saved');
+            showToast('采集设置保存成功');
         } else {
-            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
+            showToast('保存失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to save capture settings:', error);
-        showToast('Save failed', true);
+        console.error('保存采集设置失败:', error);
+        showToast('保存失败', true);
     }
 });
 
-// ==================== Tab 3: Processing Config ====================
+// ==================== Tab 3: 处理配置 ====================
 
 function populateProcessingSettings(allData) {
     const proc = allData.processing || {};
@@ -295,8 +295,8 @@ async function loadProcessingSettings() {
         const data = await response.json();
         if (data.code === 0 && data.data) populateProcessingSettings(data.data);
     } catch (error) {
-        console.error('Failed to load processing settings:', error);
-        showToast('Failed to load processing settings', true);
+        console.error('加载处理设置失败:', error);
+        showToast('加载处理设置失败', true);
     }
 }
 
@@ -340,17 +340,17 @@ document.getElementById('processingForm')?.addEventListener('submit', async (e) 
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Processing settings saved');
+            showToast('处理设置保存成功');
         } else {
-            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
+            showToast('保存失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to save processing settings:', error);
-        showToast('Save failed', true);
+        console.error('保存处理设置失败:', error);
+        showToast('保存失败', true);
     }
 });
 
-// ==================== Tab 4: Scheduler & Cache ====================
+// ==================== Tab 4: 调度与缓存 ====================
 
 function populateSchedulerCacheSettings(allData) {
     const sched = allData.scheduler || {};
@@ -406,8 +406,8 @@ async function loadSchedulerCacheSettings() {
         const data = await response.json();
         if (data.code === 0 && data.data) populateSchedulerCacheSettings(data.data);
     } catch (error) {
-        console.error('Failed to load scheduler/cache settings:', error);
-        showToast('Failed to load scheduler/cache settings', true);
+        console.error('加载调度/缓存设置失败:', error);
+        showToast('加载调度/缓存设置失败', true);
     }
 }
 
@@ -466,17 +466,17 @@ document.getElementById('schedulerCacheForm')?.addEventListener('submit', async 
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Scheduler & cache settings saved');
+            showToast('调度与缓存设置保存成功');
         } else {
-            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
+            showToast('保存失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to save scheduler/cache settings:', error);
-        showToast('Save failed', true);
+        console.error('保存调度/缓存设置失败:', error);
+        showToast('保存失败', true);
     }
 });
 
-// ==================== Tab 5: Prompts ====================
+// ==================== Tab 5: 提示词 ====================
 
 function getPromptValue(key) {
     const keys = key.split('.');
@@ -578,14 +578,14 @@ async function loadPrompts() {
             buildPromptTree(currentPrompts, '', treeEl);
         }
     } catch (error) {
-        console.error('Failed to load prompts:', error);
-        showToast('Failed to load prompts', true);
+        console.error('加载提示词失败:', error);
+        showToast('加载提示词失败', true);
     }
 }
 
 async function saveCurrentPrompt() {
     if (!selectedPromptKey) {
-        showToast('No prompt selected', true);
+        showToast('请先选择一个提示词', true);
         return;
     }
     // Sync editor value
@@ -611,13 +611,13 @@ async function savePrompts() {
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Prompts saved successfully');
+            showToast('提示词保存成功');
         } else {
-            showToast('Save failed: ' + (data.message || 'Unknown error'), true);
+            showToast('保存失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to save prompts:', error);
-        showToast('Save failed', true);
+        console.error('保存提示词失败:', error);
+        showToast('保存失败', true);
     }
 }
 
@@ -631,10 +631,10 @@ async function exportPrompts() {
         a.download = `prompts_${new Date().getTime()}.yaml`;
         a.click();
         window.URL.revokeObjectURL(url);
-        showToast('Export successful');
+        showToast('导出成功');
     } catch (error) {
-        console.error('Failed to export prompts:', error);
-        showToast('Export failed', true);
+        console.error('导出提示词失败:', error);
+        showToast('导出失败', true);
     }
 }
 
@@ -653,21 +653,21 @@ async function importPrompts(event) {
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Import successful');
+            showToast('导入成功');
             loadPrompts();
         } else {
-            showToast('Import failed: ' + (data.message || 'Unknown error'), true);
+            showToast('导入失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to import prompts:', error);
-        showToast('Import failed', true);
+        console.error('导入提示词失败:', error);
+        showToast('导入失败', true);
     } finally {
         event.target.value = '';
     }
 }
 
 async function resetAllSettings() {
-    if (!confirm('Are you sure you want to reset all settings? This will delete all custom configurations and prompts. This action cannot be undone!')) {
+    if (!confirm('确定要重置所有设置吗？这将删除所有自定义配置和提示词，此操作不可撤销！')) {
         return;
     }
 
@@ -676,18 +676,18 @@ async function resetAllSettings() {
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast('Settings reset successfully, reloading...');
+            showToast('设置重置成功，正在重新加载...');
             setTimeout(() => location.reload(), 2000);
         } else {
-            showToast('Reset failed: ' + (data.message || 'Unknown error'), true);
+            showToast('重置失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to reset settings:', error);
-        showToast('Reset failed', true);
+        console.error('重置设置失败:', error);
+        showToast('重置失败', true);
     }
 }
 
-// ==================== Prompt Language ====================
+// ==================== 提示词语言 ====================
 
 async function getCurrentPromptLanguage() {
     try {
@@ -697,7 +697,7 @@ async function getCurrentPromptLanguage() {
             return data.data.language || 'zh';
         }
     } catch (error) {
-        console.error('Failed to get prompt language:', error);
+        console.error('获取提示词语言失败:', error);
     }
     return 'zh';
 }
@@ -705,7 +705,7 @@ async function getCurrentPromptLanguage() {
 async function changePromptLanguage() {
     const language = document.getElementById('promptLanguage').value;
 
-    if (!confirm(`Switch to ${language === 'zh' ? 'Chinese' : 'English'} prompts? Unsaved changes will be lost.`)) {
+    if (!confirm(`确定切换到${language === 'zh' ? '中文' : '英文'}提示词吗？未保存的修改将丢失。`)) {
         const currentLang = await getCurrentPromptLanguage();
         document.getElementById('promptLanguage').value = currentLang;
         return;
@@ -720,18 +720,18 @@ async function changePromptLanguage() {
 
         const data = await response.json();
         if (data.code === 0) {
-            showToast(`Switched to ${language === 'zh' ? 'Chinese' : 'English'} prompts`);
+            showToast(`已切换到${language === 'zh' ? '中文' : '英文'}提示词`);
             await loadPrompts();
         } else {
-            showToast('Language switch failed: ' + (data.message || 'Unknown error'), true);
+            showToast('语言切换失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to switch prompt language:', error);
-        showToast('Language switch failed', true);
+        console.error('切换提示词语言失败:', error);
+        showToast('语言切换失败', true);
     }
 }
 
-// ==================== Bulk Load General Settings ====================
+// ==================== 批量加载通用设置 ====================
 
 async function loadAllGeneralSettings() {
     try {
@@ -744,35 +744,35 @@ async function loadAllGeneralSettings() {
             populateSchedulerCacheSettings(data.data);
         }
     } catch (error) {
-        console.error('Failed to load general settings:', error);
-        showToast('Failed to load settings', true);
+        console.error('加载通用设置失败:', error);
+        showToast('加载设置失败', true);
     }
 }
 
-// ==================== Apply Settings ====================
+// ==================== 应用设置 ====================
 
 async function applySettings() {
-    if (!confirm('Apply current settings? This will briefly restart some service components.')) {
+    if (!confirm('确定要应用当前设置吗？部分服务组件将短暂重启。')) {
         return;
     }
 
     try {
-        showToast('Applying settings...');
+        showToast('正在应用设置...');
         const response = await fetch('/api/settings/apply', { method: 'POST' });
         const data = await response.json();
 
         if (data.code === 0) {
-            showToast(data.message || 'Settings applied successfully');
+            showToast(data.message || '设置应用成功');
         } else {
-            showToast('Apply failed: ' + (data.message || 'Unknown error'), true);
+            showToast('应用失败: ' + (data.message || '未知错误'), true);
         }
     } catch (error) {
-        console.error('Failed to apply settings:', error);
-        showToast('Apply failed', true);
+        console.error('应用设置失败:', error);
+        showToast('应用失败', true);
     }
 }
 
-// ==================== Page Init ====================
+// ==================== 页面初始化 ====================
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Load model settings + all general settings in parallel (single fetch)
