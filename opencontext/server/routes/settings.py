@@ -577,7 +577,12 @@ async def apply_settings(_auth: str = auth_dependency):
     try:
         from opencontext.server.config_reload_manager import get_config_reload_manager
 
-        receivers = await get_config_reload_manager().trigger_reload()
+        mgr = get_config_reload_manager()
+        receivers = await mgr.trigger_reload()
+        if receivers == 0 and mgr._reload_fn:
+            logger.warning("No Pub/Sub subscribers, reloading current worker directly")
+            await mgr._reload_fn()
+            receivers = 1
         logger.info(f"Config reload signal sent, received by {receivers} subscriber(s)")
         return convert_resp(
             message=f"Settings apply signal sent to {receivers} worker(s). "

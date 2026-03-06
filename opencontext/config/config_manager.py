@@ -71,7 +71,11 @@ class ConfigManager:
         self._config = config_data
         self._config_path = found_config_path
         logger.info(f"Configuration loaded successfully: {self._config_path}")
-        self.load_user_settings()
+        if not self.load_user_settings():
+            logger.warning(
+                f"User settings not loaded (path={self._config.get('user_setting_path', 'N/A')}), "
+                "using main config defaults"
+            )
 
         return True
 
