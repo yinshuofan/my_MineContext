@@ -389,6 +389,7 @@ async def update_general_settings(request: GeneralSettingsRequest, _auth: str = 
             if not settings:
                 return convert_resp(code=400, status=400, message="No settings provided")
 
+            logger.info(f"Saving general settings: keys={list(settings.keys())}")
             if not config_mgr.save_user_settings(settings):
                 return convert_resp(code=500, status=500, message="Failed to save settings")
 

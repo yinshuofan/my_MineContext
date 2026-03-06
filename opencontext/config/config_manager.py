@@ -151,8 +151,12 @@ class ConfigManager:
         user_setting_path = self._config.get("user_setting_path")
         if not user_setting_path:
             return False
+        abs_path = os.path.abspath(user_setting_path)
         if not os.path.exists(user_setting_path):
-            logger.info(f"User settings file does not exist, skipping: {user_setting_path}")
+            logger.info(
+                f"User settings file does not exist, skipping: {user_setting_path} "
+                f"(abs={abs_path}, cwd={os.getcwd()})"
+            )
             return False
 
         try:
@@ -161,7 +165,7 @@ class ConfigManager:
             if not user_settings:
                 return False
             self._config = deep_merge(self._config, user_settings)
-            # logger.info(f"User settings loaded successfully: {user_settings}")
+            logger.info(f"User settings loaded and merged: {abs_path}")
             return True
         except Exception as e:
             logger.error(f"Failed to load user settings: {e}")
@@ -207,7 +211,10 @@ class ConfigManager:
                     user_settings, f, default_flow_style=False, sort_keys=False, allow_unicode=True
                 )
 
-            logger.info(f"User settings saved successfully: {user_setting_path}")
+            logger.info(
+                f"User settings saved successfully: {os.path.abspath(user_setting_path)} "
+                f"(keys={list(user_settings.keys())})"
+            )
 
             # Merge into current config
             self._config = deep_merge(self._config, user_settings)
