@@ -53,7 +53,7 @@ class EventSearchRequest(BaseModel):
         description="Maximum number of results",
     )
     score_threshold: Optional[float] = Field(
-        default=None,
+        default=0.75,
         ge=0.0,
         le=1.0,
         description="Minimum similarity score (0-1). Results below this score are filtered out.",
