@@ -111,13 +111,15 @@
 
 {% block scripts %}
 <style>
-.event-card { transition: box-shadow 0.15s; }
+.event-card { transition: box-shadow 0.15s; border-left: 3px solid #198754; }
 .event-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .level-badge { font-size: 0.75rem; font-weight: 600; }
 .level-badge-0 { background-color: #6c757d; }
 .level-badge-1 { background-color: #0d6efd; }
 .level-badge-2 { background-color: #6f42c1; }
 .level-badge-3 { background-color: #d63384; }
+.hit-badge { background-color: #198754; font-size: 0.7rem; font-weight: 500; }
+.ctx-badge { background-color: #6c757d; opacity: 0.6; font-size: 0.7rem; font-weight: 500; }
 .summary-text { max-height: 4.5em; overflow: hidden; position: relative; }
 .summary-text.expanded { max-height: none; }
 .score-badge { font-size: 0.8rem; }
@@ -126,7 +128,7 @@
 .tree-children-1 { border-color: #0d6efd; }
 .tree-children-2 { border-color: #6f42c1; }
 .tree-children-3 { border-color: #d63384; }
-.context-card { background-color: #f8f9fa; border-left: 3px solid; border-radius: 4px; padding: 10px 14px; margin-bottom: 8px; }
+.context-card { background-color: #f8f9fa; border-left: 3px dashed; border-radius: 4px; padding: 10px 14px; margin-bottom: 8px; opacity: 0.85; }
 .context-card-0 { border-left-color: #6c757d; }
 .context-card-1 { border-left-color: #0d6efd; }
 .context-card-2 { border-left-color: #6f42c1; }
@@ -250,23 +252,28 @@ function displayMetadata(metadata) {
     `;
 }
 
-function countSearchHits(nodes) {
-    let count = 0;
+function countNodes(nodes) {
+    let hits = 0, total = 0;
     for (const node of nodes) {
-        if (node.is_search_hit) count++;
+        total++;
+        if (node.is_search_hit) hits++;
         if (node.children && node.children.length > 0) {
-            count += countSearchHits(node.children);
+            const child = countNodes(node.children);
+            hits += child.hits;
+            total += child.total;
         }
     }
-    return count;
+    return { hits, total };
 }
 
 function displayResults(events) {
     const container = document.getElementById('searchResults');
     const resultCount = document.getElementById('resultCount');
 
-    const hitCount = countSearchHits(events);
-    resultCount.textContent = `${hitCount} 条命中`;
+    const { hits: hitCount, total: totalCount } = countNodes(events);
+    resultCount.textContent = totalCount > hitCount
+        ? `${hitCount} 条命中 / ${totalCount} 条总计`
+        : `${hitCount} 条命中`;
 
     if (!events || events.length === 0) {
         container.innerHTML = `
@@ -352,6 +359,7 @@ function renderSearchHitCard(event) {
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span class="badge level-badge level-badge-${level}">${LEVEL_SHORT[level] || 'L?'}</span>
+                    <span class="badge hit-badge">命中</span>
                     <h6 class="mb-0">
                         <a href="#" onclick="viewContext('${event.id}', 'event'); return false;" class="text-decoration-none">${escapeHtml(title)}</a>
                     </h6>
@@ -391,6 +399,7 @@ function renderContextCard(node) {
             <div class="d-flex align-items-center gap-2">
                 ${toggleHtml}
                 <span class="badge level-badge level-badge-${level}">${LEVEL_SHORT[level] || 'L?'}</span>
+                <span class="badge ctx-badge">上下文</span>
                 ${timeBucket ? `<small class="text-muted">${escapeHtml(timeBucket)}</small>` : ''}
                 ${titleHtml}
             </div>
