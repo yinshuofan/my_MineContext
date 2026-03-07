@@ -89,12 +89,14 @@
                 {% if context.summary %}
                 <p class="card-text text-muted small mb-2">{{ context.summary[:120] }}{% if context.summary|length > 120 %}...{% endif %}</p>
                 {% endif %}
-                {% set ids = [] %}
-                {% if context.user_id and context.user_id != 'default' %}{% set _ = ids.append('U:' ~ context.user_id) %}{% endif %}
-                {% if context.device_id and context.device_id != 'default' %}{% set _ = ids.append('D:' ~ context.device_id) %}{% endif %}
-                {% if context.agent_id and context.agent_id != 'default' %}{% set _ = ids.append('A:' ~ context.agent_id) %}{% endif %}
-                {% if ids %}
-                <small class="text-muted"><span data-feather="user" style="width:12px;height:12px;"></span> {{ ids | join(' · ') }}</small>
+                {% if context.user_id and context.user_id != 'default' %}
+                <small class="text-muted me-2"><span data-feather="user" style="width:12px;height:12px;"></span> {{ context.user_id }}</small>
+                {% endif %}
+                {% if context.device_id and context.device_id != 'default' %}
+                <small class="text-muted me-2"><span data-feather="smartphone" style="width:12px;height:12px;"></span> {{ context.device_id }}</small>
+                {% endif %}
+                {% if context.agent_id and context.agent_id != 'default' %}
+                <small class="text-muted"><span data-feather="cpu" style="width:12px;height:12px;"></span> {{ context.agent_id }}</small>
                 {% endif %}
             </div>
             <div class="card-footer py-2 d-flex justify-content-between align-items-center">
