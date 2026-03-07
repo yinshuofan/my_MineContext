@@ -20,7 +20,7 @@
 
                     <div class="mb-3">
                         <label for="topK" class="form-label">返回数量 (Top-K)</label>
-                        <input type="number" class="form-control" id="topK" value="20" min="1" max="100">
+                        <input type="number" class="form-control" id="topK" value="10" min="1" max="100">
                     </div>
 
                     <div class="mb-3">
@@ -149,7 +149,7 @@ async function handleSearch(event) {
     event.preventDefault();
 
     const query = document.getElementById('query').value.trim();
-    const topK = parseInt(document.getElementById('topK').value) || 20;
+    const topK = parseInt(document.getElementById('topK').value) || 10;
     const drillUp = document.getElementById('drillUp').checked;
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
