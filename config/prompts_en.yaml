@@ -429,7 +429,7 @@ processing:
         - Return an EMPTY array if there is nothing worth remembering
 
         ## Classification (ContextType)
-        - `event`: **Always the first memory.** A comprehensive summary of ALL user activities in this conversation — what they did, discussed, decided, expressed, or experienced. This should cover the full scope of the conversation, even if specific details are also extracted as other types below.
+        - `event`: **Always the first memory.** A comprehensive record of ALL user activities in this conversation — what they did, discussed, decided, expressed, or experienced. This should cover the full scope of the conversation, even if specific details are also extracted as other types below. See event output rules below.
         - `profile`: Information about the current user themselves. Only extract **explicitly stated** facts, no inference. See profile output rules below.
         - `entity`: Information about entities other than the current user — people, projects, teams, organizations (e.g., "Li Si is a frontend engineer", "Project Alpha is our CRM system"). Create ONE entity memory per entity when possible.
         - `knowledge`: Abstract knowledge, concepts, principles, operational procedures (e.g., "React Hooks principles", "TCP handshake process", "Steps to deploy with Docker").
@@ -465,9 +465,50 @@ processing:
         - Name: Don't call me sir, call me Xiao Zhang
         ```
 
+        ## Event Output Rules
+
+        When context_type is `event`, the `summary` uses a layered structure:
+
+        **Line 1** — A one-sentence overview of the conversation's core topic (10-30 words). This sentence is the primary matching signal for semantic search — ensure it contains the most critical topic terms.
+        **Line 2+** — A bullet-point list (each line starting with `- `), each bullet adding one key fact, decision, or development.
+
+        **Writing principles**:
+        - The overview sentence goes straight to the point — no framing like "In this conversation, the user..."
+        - Each bullet contains one complete action/decision/finding + directly relevant details (tech stack, person name, outcome)
+        - 3-5 bullets typically; 1-2 is fine when information is sparse — do not pad with filler
+        - Overlap between overview and bullets is acceptable — the overview provides global semantics, bullets provide specifics
+
+        **Granularity guide** — what one bullet should contain:
+        - ❌ `Discussed technical issues` — too vague, missing specifics and conclusions
+        - ✅ `Discussed React dashboard architecture, decided on Next.js` — technology + decision
+        - ❌ `Discussed React dashboard component splitting strategy, compared feature-based vs page-based approaches, ultimately decided on feature-based splitting with Next.js App Router` — over-elaborates process details
+
+        **Action subject**:
+        - The user is the default subject — omit and write actions directly ("Discussed...", "Decided...")
+        - When others are involved, name them explicitly: `Colleague Xiao Wang recommended Zustand`, not `Someone recommended Zustand`
+
+        **Time information**:
+        - Write explicit time points into bullets ("Plan to finish by next Wednesday"); put precise timestamps in the `event_time` field
+        - Do not repeat "today" in every bullet
+
+        **Bad example** — do NOT write like this:
+        ```
+        The user discussed multiple technical topics in today's conversation. First, the user mentioned they are developing a React-based admin dashboard project and were confused about the architecture design. After detailed discussion, the user decided to adopt the Next.js framework. Additionally, the user encountered a TypeScript generic parameter inference issue and found a solution after analysis.
+        ```
+        Problem: Narrative paragraphs are filled with transition words ("First", "Additionally") and hollow modifiers ("were confused", "after detailed discussion"), resulting in low information density and diluted keywords for semantic search.
+
+        **Good example** — write like this:
+        ```
+        Discussed React admin dashboard architecture and resolved TypeScript type inference issue.
+        - Architecture decision: adopted Next.js framework
+        - Resolved generic parameter inference issue using extends constraint
+        - Planned to finish user auth module by next Wednesday (OAuth 2.0)
+        - Colleague Xiao Wang recommended Zustand over Redux for state management
+        ```
+
         ## Per-Memory Fields
         1. **title**: Short descriptive title for this specific memory
-        2. **summary**: Concise summary of this specific memory's content
+        2. **summary**: Summary of this memory (event type uses layered bullet format, profile type uses section format)
         3. **keywords**: Keywords relevant to this specific memory
         4. **context_type**: One of the 5 types above
         5. **entities**: Key entities mentioned in this memory (person names, tool names, tech stacks) as structured objects
@@ -480,7 +521,7 @@ processing:
           "memories": [
             {
               "title": "Short title",
-              "summary": "Detailed summary",
+              "summary": "Core topic overview sentence.\n- bullet 1\n- bullet 2\n- bullet 3",
               "keywords": ["keyword1", "keyword2"],
               "context_type": "event",
               "entities": [{"name": "entity name", "type": "type", "description": "description"}],
