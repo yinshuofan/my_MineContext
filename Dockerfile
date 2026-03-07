@@ -9,7 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_INDEX_URL=${PIP_INDEX_URL} \
     # Also set UV_INDEX_URL if using uv
     UV_INDEX_URL=${PIP_INDEX_URL} \
-    UV_COMPILE_BYTECODE=1
+    UV_COMPILE_BYTECODE=1 \
+    TZ=Asia/Shanghai
 
 # Set working directory
 WORKDIR /app
