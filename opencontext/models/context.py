@@ -378,7 +378,6 @@ class ProfileData(BaseModel):
     )
     factual_profile: str  # Factual profile text (LLM-merged result)
     behavioral_profile: Optional[str] = None  # Behavioral profile text
-    keywords: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
     importance: int = 0
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)

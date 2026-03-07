@@ -90,6 +90,7 @@ class MySQLBackend(IDocumentStorageBackend):
             # Create table structure
             await self._create_tables()
             await self._migrate_schema_v2()
+            await self._migrate_profiles_drop_keywords()
 
             self._initialized = True
             logger.info(
@@ -184,7 +185,6 @@ class MySQLBackend(IDocumentStorageBackend):
                         agent_id VARCHAR(100) NOT NULL DEFAULT 'default',
                         factual_profile LONGTEXT NOT NULL,
                         behavioral_profile LONGTEXT,
-                        keywords JSON,
                         entities JSON,
                         importance INT DEFAULT 0,
                         metadata JSON,
@@ -396,6 +396,19 @@ class MySQLBackend(IDocumentStorageBackend):
                     )
                     await conn.commit()
                     logger.info("Migration: updated entities unique key")
+                except Exception:
+                    await conn.rollback()
+
+    async def _migrate_profiles_drop_keywords(self):
+        """Drop the keywords column from profiles table (idempotent)."""
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    await cursor.execute("SHOW COLUMNS FROM profiles LIKE 'keywords'")
+                    if await cursor.fetchone():
+                        await cursor.execute("ALTER TABLE profiles DROP COLUMN keywords")
+                        await conn.commit()
+                        logger.info("Migration: dropped keywords column from profiles table")
                 except Exception:
                     await conn.rollback()
 
@@ -701,7 +714,6 @@ class MySQLBackend(IDocumentStorageBackend):
         agent_id: str = "default",
         factual_profile: str = "",
         behavioral_profile: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
@@ -713,26 +725,24 @@ class MySQLBackend(IDocumentStorageBackend):
             async with conn.cursor() as cursor:
                 try:
                     now = datetime.now()
-                    keywords_json = json.dumps(keywords or [], ensure_ascii=False)
                     entities_json = json.dumps(entities or [], ensure_ascii=False)
                     metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
 
                     await cursor.execute(
                         """
                         INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                                              keywords, entities, importance, metadata, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                              entities, importance, metadata, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
                             factual_profile = VALUES(factual_profile),
                             behavioral_profile = VALUES(behavioral_profile),
-                            keywords = VALUES(keywords),
                             entities = VALUES(entities),
                             importance = VALUES(importance),
                             metadata = VALUES(metadata),
                             updated_at = VALUES(updated_at)
                         """,
                         (user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                         keywords_json, entities_json, importance, metadata_json, now, now),
+                         entities_json, importance, metadata_json, now, now),
                     )
                     await conn.commit()
                     logger.info(f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}")
@@ -753,7 +763,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     await cursor.execute(
                         """
                         SELECT user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                               keywords, entities, importance, metadata, created_at, updated_at
+                               entities, importance, metadata, created_at, updated_at
                         FROM profiles
                         WHERE user_id = %s AND device_id = %s AND agent_id = %s
                         """,
@@ -762,8 +772,6 @@ class MySQLBackend(IDocumentStorageBackend):
                     row = await cursor.fetchone()
                     if row:
                         result = dict(row)
-                        if isinstance(result.get("keywords"), str):
-                            result["keywords"] = json.loads(result["keywords"])
                         if isinstance(result.get("entities"), str):
                             result["entities"] = json.loads(result["entities"])
                         if isinstance(result.get("metadata"), str):

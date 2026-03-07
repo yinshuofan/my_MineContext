@@ -598,7 +598,6 @@ merging:
 
       返回 JSON 对象：
       - `factual_profile`: (string) 合并后的完整 Markdown 画像，包含全部 4 个分类
-      - `keywords`: (List[string]) 关键描述词
       - `entities`: (List[string]) 提到的相关实体名称
       - `importance`: (integer) 0-10
     user: |

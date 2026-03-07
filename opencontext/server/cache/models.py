@@ -14,7 +14,6 @@ class SimpleProfile(BaseModel):
 
     factual_profile: str
     behavioral_profile: Optional[str] = None
-    keywords: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

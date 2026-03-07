@@ -54,6 +54,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             # Create table structure
             await self._create_tables()
             await self._migrate_schema_v2()
+            await self._migrate_profiles_drop_keywords()
 
             self._initialized = True
             logger.info(f"SQLite backend initialized successfully, database path: {self.db_path}")
@@ -144,7 +145,6 @@ class SQLiteBackend(IDocumentStorageBackend):
                 agent_id TEXT NOT NULL DEFAULT 'default',
                 factual_profile TEXT NOT NULL,
                 behavioral_profile TEXT,
-                keywords JSON,
                 entities JSON,
                 importance INTEGER DEFAULT 0,
                 metadata JSON,
@@ -442,6 +442,54 @@ class SQLiteBackend(IDocumentStorageBackend):
             except Exception as e:
                 await conn.rollback()
                 logger.error(f"Migration failed for entities: {e}")
+
+    async def _migrate_profiles_drop_keywords(self):
+        """Drop the keywords column from profiles table (idempotent)."""
+        conn = self._connection
+
+        cursor = await conn.execute("PRAGMA table_info(profiles)")
+        rows = await cursor.fetchall()
+        columns = [col[1] for col in rows]
+
+        if "keywords" not in columns:
+            return
+
+        try:
+            await conn.execute("ALTER TABLE profiles RENAME TO profiles_old")
+            await conn.execute(
+                """
+                CREATE TABLE profiles (
+                    user_id TEXT NOT NULL,
+                    device_id TEXT NOT NULL DEFAULT 'default',
+                    agent_id TEXT NOT NULL DEFAULT 'default',
+                    factual_profile TEXT NOT NULL,
+                    behavioral_profile TEXT,
+                    entities TEXT,
+                    importance INTEGER DEFAULT 0,
+                    metadata TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, device_id, agent_id)
+                )
+            """
+            )
+            await conn.execute(
+                """
+                INSERT INTO profiles (user_id, device_id, agent_id, factual_profile,
+                                      behavioral_profile, entities, importance, metadata,
+                                      created_at, updated_at)
+                SELECT user_id, device_id, agent_id, factual_profile,
+                       behavioral_profile, entities, importance, metadata,
+                       created_at, updated_at
+                FROM profiles_old
+            """
+            )
+            await conn.execute("DROP TABLE profiles_old")
+            await conn.commit()
+            logger.info("Migration: dropped keywords column from profiles table")
+        except Exception as e:
+            await conn.rollback()
+            logger.error(f"Migration failed for profiles (drop keywords): {e}")
 
     async def _insert_default_vault_document(self):
         """Insert default Quick Start document"""
@@ -901,7 +949,6 @@ class SQLiteBackend(IDocumentStorageBackend):
         agent_id: str = "default",
         factual_profile: str = "",
         behavioral_profile: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
@@ -913,19 +960,17 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
         try:
             now = datetime.now()
-            keywords_json = json.dumps(keywords or [], ensure_ascii=False)
             entities_json = json.dumps(entities or [], ensure_ascii=False)
             metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
 
             await conn.execute(
                 """
                 INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                                      keywords, entities, importance, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                      entities, importance, metadata, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, device_id, agent_id) DO UPDATE SET
                     factual_profile = excluded.factual_profile,
                     behavioral_profile = excluded.behavioral_profile,
-                    keywords = excluded.keywords,
                     entities = excluded.entities,
                     importance = excluded.importance,
                     metadata = excluded.metadata,
@@ -937,7 +982,6 @@ class SQLiteBackend(IDocumentStorageBackend):
                     agent_id,
                     factual_profile,
                     behavioral_profile,
-                    keywords_json,
                     entities_json,
                     importance,
                     metadata_json,
@@ -967,7 +1011,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             cursor = await conn.execute(
                 """
                 SELECT user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                       keywords, entities, importance, metadata, created_at, updated_at
+                       entities, importance, metadata, created_at, updated_at
                 FROM profiles
                 WHERE user_id = ? AND device_id = ? AND agent_id = ?
                 """,
@@ -976,8 +1020,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             row = await cursor.fetchone()
             if row:
                 result = dict(row)
-                if isinstance(result.get("keywords"), str):
-                    result["keywords"] = json.loads(result["keywords"])
                 if isinstance(result.get("entities"), str):
                     result["entities"] = json.loads(result["entities"])
                 if isinstance(result.get("metadata"), str):

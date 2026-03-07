@@ -599,7 +599,6 @@ merging:
 
       Return a JSON object:
       - `factual_profile`: (string) The merged complete Markdown profile containing all 4 categories
-      - `keywords`: (List[string]) Key descriptive terms
       - `entities`: (List[string]) Related entity names mentioned
       - `importance`: (integer) 0-10
     user: |

@@ -380,7 +380,6 @@ class UserMemoryCacheManager:
                 "agent_id": profile_data.get("agent_id", agent_id),
                 "factual_profile": profile_data.get("factual_profile", ""),
                 "behavioral_profile": profile_data.get("behavioral_profile"),
-                "keywords": profile_data.get("keywords", []),
                 "metadata": profile_data.get("metadata", {}),
             }
 
@@ -508,24 +507,34 @@ class UserMemoryCacheManager:
         ttl_remaining: int = 0,
     ) -> UserMemoryCacheResponse:
         """Merge snapshot data with real-time accessed items into final response."""
-        # Profile (simplified: factual_profile + behavioral_profile + keywords + metadata only)
+        # Profile (simplified: factual_profile + behavioral_profile + metadata only)
         profile = None
         profile_data = snapshot_data.get("profile")
         if profile_data:
             profile = SimpleProfile(
                 factual_profile=profile_data.get("factual_profile", ""),
                 behavioral_profile=profile_data.get("behavioral_profile"),
-                keywords=profile_data.get("keywords", []),
                 metadata=profile_data.get("metadata", {}),
             )
 
-        # Filter out profile/entity from recently accessed (safety filter)
+        # Dedup: collect IDs already shown in today_events / daily_summaries
+        rm_data = snapshot_data.get("recent_memories", {})
+        snapshot_ids: set = set()
+        for item in rm_data.get("today_events", []):
+            if item.get("id"):
+                snapshot_ids.add(item["id"])
+        for item in rm_data.get("daily_summaries", []):
+            if item.get("id"):
+                snapshot_ids.add(item["id"])
+
+        # Filter out profile/entity and items already covered by other sections
         filtered_accessed = [
-            item for item in accessed if item.context_type not in ("profile", "entity")
+            item
+            for item in accessed
+            if item.context_type not in ("profile", "entity") and item.id not in snapshot_ids
         ]
 
         # Daily summaries (simplified: time_bucket + summary only)
-        rm_data = snapshot_data.get("recent_memories", {})
         daily_summaries = [
             SimpleDailySummary(
                 time_bucket=item.get("time_bucket", ""),

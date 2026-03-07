@@ -20,7 +20,6 @@ logger = get_logger(__name__)
 
 async def refresh_profile(
     new_factual_profile: str,
-    new_keywords: Optional[List[str]],
     new_entities: Optional[List[str]],
     new_importance: int,
     new_metadata: Optional[Dict[str, Any]],
@@ -36,7 +35,6 @@ async def refresh_profile(
 
     Args:
         new_factual_profile: New factual profile content text
-        new_keywords: New keywords list
         new_entities: New related entity names
         new_importance: New importance score (0-10)
         new_metadata: New metadata dict
@@ -61,7 +59,6 @@ async def refresh_profile(
         if existing:
             merged = await _merge_profile_with_llm(existing, {
                 "factual_profile": new_factual_profile,
-                "keywords": new_keywords or [],
                 "entities": new_entities or [],
                 "importance": new_importance,
             })
@@ -72,7 +69,6 @@ async def refresh_profile(
                     device_id=device_id,
                     agent_id=agent_id,
                     factual_profile=merged.get("factual_profile", new_factual_profile),
-                    keywords=merged.get("keywords", new_keywords),
                     entities=merged.get("entities", new_entities),
                     importance=merged.get("importance", new_importance),
                     metadata=new_metadata,
@@ -86,7 +82,6 @@ async def refresh_profile(
             device_id=device_id,
             agent_id=agent_id,
             factual_profile=new_factual_profile,
-            keywords=new_keywords,
             entities=new_entities,
             importance=new_importance,
             metadata=new_metadata,
@@ -105,11 +100,11 @@ async def _merge_profile_with_llm(
     Use LLM to intelligently merge new profile data into an existing profile.
 
     Args:
-        existing: Existing profile dict from storage (has factual_profile, keywords, etc.)
+        existing: Existing profile dict from storage (has factual_profile, entities, etc.)
         new_data: New profile data dict
 
     Returns:
-        Merged profile dict with factual_profile/keywords/entities/importance,
+        Merged profile dict with factual_profile/entities/importance,
         or None if LLM call fails.
     """
     from opencontext.config.global_config import get_prompt_group
@@ -125,7 +120,6 @@ async def _merge_profile_with_llm(
         existing_content = json.dumps(
             {
                 "factual_profile": existing.get("factual_profile", ""),
-                "keywords": existing.get("keywords", []),
                 "entities": existing.get("entities", []),
                 "importance": existing.get("importance", 0),
             },
