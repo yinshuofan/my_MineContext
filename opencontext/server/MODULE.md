@@ -131,9 +131,9 @@ async def _track_accessed_safe(user_id, results, device_id, agent_id) -> None
 Algorithm:
 1. **Search path selection** (priority: event_ids > query > filters-only):
    - `event_ids` → `storage.get_contexts_by_ids()`, score=1.0
-   - `query` → `Vectorize` + `storage.search()` with time/level filters
+   - `query` → `Vectorize` + `storage.search()` with time filter only (hierarchy_levels not applied — semantic search is heuristic across all levels)
    - filters-only → `storage.search_hierarchy()` per level, or `get_all_processed_contexts()` with time filter
-2. **Collect ancestors** (if `drill_up=True`): Batch-fetch parent chains iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent. Returns `Dict[str, ProcessedContext]` of all ancestor contexts.
+2. **Collect ancestors** (if `drill_up=True`): Batch-fetch parent chains iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent. Strictly stops at `max_level` (= max of `hierarchy_levels`, default 3) — ancestors with `hierarchy_level > max_level` are excluded.
 3. **Build node map**: Search hits become `EventNode` with is_search_hit=True (score/content/keywords populated), ancestors become lightweight `EventNode` with is_search_hit=False. Search hits are never overwritten by ancestors.
 4. **Link tree**: Each node with a valid `parent_id` (exists in node map) is appended to parent's `children`. Nodes without a valid parent become roots.
 5. **Sort**: Roots and all children lists sorted by `time_bucket` ASC recursively.
@@ -444,7 +444,7 @@ search_events()
   -> Validate request (query/event_ids/time_range/hierarchy_levels at least one)
   -> _execute_search() with 30s timeout
      Path A (event_ids): storage.get_contexts_by_ids()
-     Path B (query):     do_vectorize() -> storage.search([EVENT], filters)
+     Path B (query):     do_vectorize() -> storage.search([EVENT], time_filter_only)
      Path C (filters):   storage.search_hierarchy() per level, or get_all_processed_contexts()
   -> _collect_ancestors() if drill_up=True     # Batch iterative parent fetch (max 3 rounds)
   -> Build tree: node map → parent-child linking → recursive sort by time_bucket ASC

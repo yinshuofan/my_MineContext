@@ -143,7 +143,7 @@ async def _execute_search(
         vectorize = Vectorize(text=request.query)
         await do_vectorize(vectorize)
 
-        filters = _build_filters(request.time_range, request.hierarchy_levels)
+        filters = _build_filters(request.time_range, None)
         raw_results = await storage.search(
             query=vectorize,
             top_k=request.top_k,
@@ -313,12 +313,12 @@ async def _collect_ancestors(
             if parent is None:
                 continue
 
-            seen[pid] = parent
-
             # Check if this parent exceeds max_level
             parent_level = parent.properties.hierarchy_level if parent.properties else 0
             if parent_level > max_level:
                 continue
+
+            seen[pid] = parent
 
             # Queue next level parent
             if parent.properties and parent.properties.parent_id:
