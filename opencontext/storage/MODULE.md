@@ -55,11 +55,12 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `delete_contexts` | `(ids: List[str], context_type: str) -> bool` | Success flag |
 | `upsert_processed_context` | `(context: ProcessedContext) -> str` | Stored ID |
 | `batch_upsert_processed_context` | `(contexts: List[ProcessedContext]) -> List[str]` | List of stored IDs |
-| `get_all_processed_contexts` | `(context_types, limit, offset, filter, need_vector, user_id, device_id, agent_id) -> Dict[str, List[ProcessedContext]]` | Type-keyed dict |
+| `get_all_processed_contexts` | `(context_types, limit, offset, filter, need_vector, user_id, device_id, agent_id, skip_slice) -> Dict[str, List[ProcessedContext]]` | Type-keyed dict. `skip_slice=True` skips per-type offset/limit slicing for correct cross-type pagination |
 | `get_processed_context` | `(id: str, context_type: str) -> ProcessedContext` | Single context |
 | `delete_processed_context` | `(id: str, context_type: str) -> bool` | Success flag |
 | `search` | `(query: Vectorize, top_k, context_types, filters, user_id, device_id, agent_id) -> List[Tuple[ProcessedContext, float]]` | Scored results |
-| `get_processed_context_count` | `(context_type: str) -> int` | Count |
+| `get_processed_context_count` | `(context_type, filter, user_id, device_id, agent_id) -> int` | Count (all params except context_type are optional) |
+| `get_filtered_context_count` | `(context_types, filter, user_id, device_id, agent_id) -> int` | Total count across multiple types with filters (UnifiedStorage only) |
 | `get_all_processed_context_counts` | `() -> Dict[str, int]` | Type-keyed counts |
 | `delete_by_source_file` | `(source_file_key: str, user_id: Optional[str]) -> bool` | Success flag |
 | `search_by_hierarchy` | `(context_type, hierarchy_level, time_bucket_start, time_bucket_end, user_id, device_id, agent_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results |

@@ -110,6 +110,7 @@ class IVectorStorageBackend(IStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        skip_slice: bool = False,
     ) -> Dict[str, List[ProcessedContext]]:
         """Get processed contexts
 
@@ -122,6 +123,7 @@ class IVectorStorageBackend(IStorageBackend):
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
+            skip_slice: If True, skip per-type offset/limit slicing (caller handles global slice)
         """
 
     async def scroll_processed_contexts(
@@ -258,7 +260,14 @@ class IVectorStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    async def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(
+        self,
+        context_type: str,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
         """Get record count for specified context_type"""
 
     @abstractmethod

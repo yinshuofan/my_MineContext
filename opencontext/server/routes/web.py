@@ -8,6 +8,7 @@ Web interface routes
 """
 
 import datetime
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -48,7 +49,7 @@ async def read_contexts(
     opencontext: OpenContext = Depends(get_context_lab),
 ):
     limit = min(max(limit, 1), 100)
-    offset = (page - 1) * limit
+    page = max(page, 1)
     types = []
     if type:
         types.append(type)
@@ -82,21 +83,41 @@ async def read_contexts(
             except ValueError:
                 continue
 
-    contexts_dict = await get_storage().get_all_processed_contexts(
-        context_types=list(types),
-        limit=limit + 1,
-        offset=offset,
-        need_vector=False,
+    context_types = [
+        ct for ct in get_storage().get_available_context_types() if ct not in ("profile", "entity")
+    ]
+    types_for_query = list(types) if types else context_types
+
+    # Get total count for pagination
+    total_count = await get_storage().get_filtered_context_count(
+        context_types=types_for_query,
         filter=storage_filter if storage_filter else None,
         user_id=user_id,
         device_id=device_id,
         agent_id=agent_id,
     )
+    total_pages = max(1, math.ceil(total_count / limit))
+    page = min(page, total_pages)
+    offset = (page - 1) * limit
+
+    # Fetch data with skip_slice=True for correct cross-type global pagination.
+    # Note: fetches (offset+limit) records per type, so cost is O(types * (offset+limit)).
+    contexts_dict = await get_storage().get_all_processed_contexts(
+        context_types=types_for_query,
+        limit=limit + offset,
+        offset=0,
+        need_vector=False,
+        filter=storage_filter if storage_filter else None,
+        user_id=user_id,
+        device_id=device_id,
+        agent_id=agent_id,
+        skip_slice=True,
+    )
     contexts = []
     for backend_contexts in contexts_dict.values():
         contexts.extend(backend_contexts)
 
-    # Sort with timezone-aware datetime handling
+    # Sort with timezone-aware datetime handling, then global slice
     def get_sort_key(context):
         dt = context.properties.create_time
         if dt.tzinfo is None:
@@ -104,12 +125,7 @@ async def read_contexts(
         return dt
 
     contexts.sort(key=get_sort_key, reverse=True)
-    has_next = len(contexts) > limit
-    contexts_to_display = contexts[:limit]
-
-    context_types = [
-        ct for ct in get_storage().get_available_context_types() if ct not in ("profile", "entity")
-    ]
+    contexts_to_display = contexts[offset : offset + limit]
 
     return templates.TemplateResponse(
         "contexts.html",
@@ -121,6 +137,7 @@ async def read_contexts(
             ],
             "page": page,
             "limit": limit,
+            "total_pages": total_pages,
             "type": type,
             "user_id": user_id,
             "device_id": device_id,
@@ -129,8 +146,6 @@ async def read_contexts(
             "start_date": start_date,
             "end_date": end_date,
             "context_types": context_types,
-            "has_next": has_next,
-            "has_prev": page > 1,
         },
     )
 

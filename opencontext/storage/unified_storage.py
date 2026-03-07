@@ -252,6 +252,7 @@ class UnifiedStorage:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        skip_slice: bool = False,
     ) -> Dict[str, List[ProcessedContext]]:
         """Get processed contexts, query only from vector database
 
@@ -264,6 +265,7 @@ class UnifiedStorage:
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
+            skip_slice: If True, skip per-type offset/limit slicing (caller handles global slice)
         """
         if not context_types:
             context_types = [ct.value for ct in ContextType]
@@ -277,6 +279,7 @@ class UnifiedStorage:
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
+                skip_slice=skip_slice,
             )
         except Exception as e:
             logger.exception(f"Failed to query ProcessedContext: {e}")
@@ -322,13 +325,48 @@ class UnifiedStorage:
             logger.exception(f"Failed to scroll ProcessedContexts: {e}")
 
     @_require_backend("_vector_backend", default=0)
-    async def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(
+        self,
+        context_type: str,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
         """Get record count for specified context_type"""
         try:
-            return await self._vector_backend.get_processed_context_count(context_type)
+            return await self._vector_backend.get_processed_context_count(
+                context_type,
+                filter=filter,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+            )
         except Exception as e:
             logger.exception(f"Failed to get {context_type} record count: {e}")
             return 0
+
+    @_require_backend("_vector_backend", default=0)
+    async def get_filtered_context_count(
+        self,
+        context_types: Optional[List[str]] = None,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
+        """Get total record count across multiple context types with filters"""
+        if not context_types:
+            context_types = [ct.value for ct in ContextType]
+        total = 0
+        for ct in context_types:
+            try:
+                total += await self._vector_backend.get_processed_context_count(
+                    ct, filter=filter, user_id=user_id, device_id=device_id, agent_id=agent_id
+                )
+            except Exception as e:
+                logger.exception(f"Failed to get {ct} record count: {e}")
+        return total
 
     @_require_backend("_vector_backend", default={})
     async def get_all_processed_context_counts(self) -> Dict[str, int]:

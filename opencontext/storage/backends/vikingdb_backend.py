@@ -941,6 +941,7 @@ class VikingDBBackend(IVectorStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        skip_slice: bool = False,
     ) -> Dict[str, List[ProcessedContext]]:
         if not self._initialized:
             return {}
@@ -963,11 +964,18 @@ class VikingDBBackend(IVectorStorageBackend):
                     data_type=DATA_TYPE_CONTEXT,
                 )
 
+                if skip_slice:
+                    fetch_limit = limit + offset
+                    fetch_offset = 0
+                else:
+                    fetch_limit = limit
+                    fetch_offset = offset
+
                 data = {
                     "collection_name": self._collection_name,
                     "index_name": self._index_name,
-                    "limit": limit,
-                    "offset": offset,
+                    "limit": fetch_limit,
+                    "offset": fetch_offset,
                     "field": FIELD_CREATED_AT_TS,
                     "order": "desc",
                 }
@@ -980,7 +988,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
                 if query_result.get("code") == "Success":
                     output = query_result.get("result", {}).get("data", [])
-                    if len(output) > limit:
+                    if not skip_slice and len(output) > limit:
                         output = output[:limit]
 
                     contexts = []
@@ -1378,12 +1386,23 @@ class VikingDBBackend(IVectorStorageBackend):
         logger.debug(f"Built VikingDB filter: {filter_dict}")
         return filter_dict
 
-    async def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(
+        self,
+        context_type: str,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
         if not self._initialized:
             return 0
 
         try:
             filter_dict = self._build_filter_dict(
+                filters=filter,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
                 context_type=context_type,
                 data_type=DATA_TYPE_CONTEXT,
             )
