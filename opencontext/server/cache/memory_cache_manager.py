@@ -47,7 +47,7 @@ class UserMemoryCacheManager:
         return {
             "snapshot_ttl": raw.get("snapshot_ttl", 300),
             "recent_days": raw.get("recent_days", 7),
-            "max_recently_accessed": raw.get("max_recently_accessed", 50),
+            "max_recently_accessed": raw.get("max_recently_accessed", 25),
             "max_today_events": raw.get("max_today_events", 10),
             "max_recent_documents": raw.get("max_recent_documents", 10),
             "max_recent_knowledge": raw.get("max_recent_knowledge", 10),

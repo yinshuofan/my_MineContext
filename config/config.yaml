@@ -129,7 +129,7 @@ redis:
 memory_cache:
   snapshot_ttl: 3600          # 快照缓存 TTL（秒），默认 1 小时
   recent_days: 7              # "近期"记忆的时间窗口（天）
-  max_recently_accessed: 50   # 最近访问记录的最大追踪条数
+  max_recently_accessed: 25   # 最近访问记录的最大追踪条数
   max_today_events: 10        # 缓存中今日事件的最大条数
   max_recent_documents: 10    # 缓存中近期文档的最大条数
   max_recent_knowledge: 10    # 缓存中近期知识的最大条数
