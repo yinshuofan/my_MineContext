@@ -371,8 +371,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                         user_id TEXT NOT NULL,
                         device_id TEXT NOT NULL DEFAULT 'default',
                         agent_id TEXT NOT NULL DEFAULT 'default',
-                        content TEXT NOT NULL,
-                        summary TEXT,
+                        factual_profile TEXT NOT NULL,
+                        behavioral_profile TEXT,
                         keywords TEXT,
                         entities TEXT,
                         importance INTEGER DEFAULT 0,
@@ -385,9 +385,9 @@ class SQLiteBackend(IDocumentStorageBackend):
                 )
                 await conn.execute(
                     """
-                    INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords,
+                    INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, keywords,
                                           entities, importance, metadata, created_at, updated_at)
-                    SELECT user_id, 'default', agent_id, content, summary, keywords,
+                    SELECT user_id, 'default', agent_id, content, keywords,
                            entities, importance, metadata, created_at, updated_at
                     FROM profiles_old
                 """

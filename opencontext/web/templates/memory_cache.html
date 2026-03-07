@@ -150,7 +150,7 @@ function renderProfile(profile) {
     } else {
         const keywords = (profile.keywords || []).map(k => `<span class="badge bg-secondary me-1">${k}</span>`).join('');
         content = `
-            <div class="bg-light p-3 rounded mb-2" style="white-space: pre-wrap;">${profile.content || '无内容'}</div>
+            <div class="bg-light p-3 rounded mb-2" style="white-space: pre-wrap;">${profile.factual_profile || '无内容'}</div>
             ${keywords ? `<div><strong>关键词:</strong> ${keywords}</div>` : ''}
         `;
     }
