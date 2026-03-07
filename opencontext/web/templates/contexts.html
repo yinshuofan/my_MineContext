@@ -8,13 +8,10 @@
 
 <!-- Filter Bar -->
 <div class="card mb-4">
-    <div class="card-header py-2" data-bs-toggle="collapse" href="#filter-collapse" role="button" aria-expanded="true" aria-controls="filter-collapse" style="cursor: pointer;">
-        <div class="d-flex justify-content-between align-items-center">
-            <h6 class="mb-0"><span data-feather="filter" class="me-1" style="width:16px;height:16px;"></span>筛选条件</h6>
-            <small class="text-muted">点击展开/收起</small>
-        </div>
+    <div class="card-header py-2">
+        <h6 class="mb-0"><span data-feather="filter" class="me-1" style="width:16px;height:16px;"></span>筛选条件</h6>
     </div>
-    <div class="collapse show" id="filter-collapse">
+    <div>
         <div class="card-body py-3">
             <form method="get" id="filter-form">
                 <div class="row g-2 align-items-end">
@@ -30,6 +27,14 @@
                     <div class="col-6 col-md-2">
                         <label class="form-label small mb-1">User ID</label>
                         <input type="text" name="user_id" class="form-control form-control-sm" placeholder="可选" value="{{ user_id or '' }}">
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small mb-1">Device ID</label>
+                        <input type="text" name="device_id" class="form-control form-control-sm" placeholder="可选" value="{{ device_id or '' }}">
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small mb-1">Agent ID</label>
+                        <input type="text" name="agent_id" class="form-control form-control-sm" placeholder="可选" value="{{ agent_id or '' }}">
                     </div>
                     <div class="col-6 col-md-2">
                         <label class="form-label small mb-1">层级</label>
@@ -78,7 +83,7 @@
                     <span class="badge bg-{{ level_colors.get(context.hierarchy_level, 'info') }}">L{{ context.hierarchy_level }}</span>
                     {% endif %}
                 </div>
-                <small class="text-muted" title="{{ context.id }}">{{ context.id[:8] }}</small>
+                <small class="text-muted" title="点击复制: {{ context.id }}" style="cursor:pointer" onclick="copyId(this, '{{ context.id }}')">{{ context.id[:8] }}</small>
             </div>
             <div class="card-body" onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" style="cursor: pointer;">
                 <h6 class="card-title mb-2">{{ context.title or 'N/A' }}</h6>
@@ -124,6 +129,8 @@
             {% set filter_qs = '' %}
             {% if type %}{% set filter_qs = filter_qs ~ '&type=' ~ (type | urlencode) %}{% endif %}
             {% if user_id %}{% set filter_qs = filter_qs ~ '&user_id=' ~ (user_id | urlencode) %}{% endif %}
+            {% if device_id %}{% set filter_qs = filter_qs ~ '&device_id=' ~ (device_id | urlencode) %}{% endif %}
+            {% if agent_id %}{% set filter_qs = filter_qs ~ '&agent_id=' ~ (agent_id | urlencode) %}{% endif %}
             {% if hierarchy_level is not none %}{% set filter_qs = filter_qs ~ '&hierarchy_level=' ~ hierarchy_level %}{% endif %}
             {% if start_date %}{% set filter_qs = filter_qs ~ '&start_date=' ~ start_date %}{% endif %}
             {% if end_date %}{% set filter_qs = filter_qs ~ '&end_date=' ~ end_date %}{% endif %}
@@ -181,6 +188,14 @@
     function changeLimit(newLimit) {
         const params = buildFilterParams({ limit: newLimit, page: '1' });
         window.location.href = '/contexts?' + params;
+    }
+
+    function copyId(el, fullId) {
+        navigator.clipboard.writeText(fullId).then(() => {
+            const original = el.textContent;
+            el.textContent = '已复制';
+            setTimeout(() => { el.textContent = original; }, 1000);
+        }).catch(() => {});
     }
 
     async function viewContext(contextId, contextType) {

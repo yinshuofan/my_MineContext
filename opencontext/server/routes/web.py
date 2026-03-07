@@ -40,6 +40,8 @@ async def read_contexts(
     limit: int = 15,
     type: Optional[str] = None,
     user_id: Optional[str] = None,
+    device_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
     hierarchy_level: Optional[int] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -79,6 +81,8 @@ async def read_contexts(
         need_vector=False,
         filter=storage_filter if storage_filter else None,
         user_id=user_id,
+        device_id=device_id,
+        agent_id=agent_id,
     )
     contexts = []
     for backend_contexts in contexts_dict.values():
@@ -95,7 +99,9 @@ async def read_contexts(
     has_next = len(contexts) > limit
     contexts_to_display = contexts[:limit]
 
-    context_types = get_storage().get_available_context_types()
+    context_types = [
+        ct for ct in get_storage().get_available_context_types() if ct not in ("profile", "entity")
+    ]
 
     return templates.TemplateResponse(
         "contexts.html",
@@ -109,6 +115,8 @@ async def read_contexts(
             "limit": limit,
             "type": type,
             "user_id": user_id,
+            "device_id": device_id,
+            "agent_id": agent_id,
             "hierarchy_level": hierarchy_level,
             "start_date": start_date,
             "end_date": end_date,
