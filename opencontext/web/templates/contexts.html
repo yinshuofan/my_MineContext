@@ -45,12 +45,12 @@
             </div>
             <div class="row g-2 align-items-end mt-1">
                 <div class="col-6 col-md-3">
-                    <label class="form-label small mb-1">开始日期</label>
-                    <input type="date" name="start_date" class="form-control form-control-sm" value="{{ start_date or '' }}">
+                    <label class="form-label small mb-1">开始时间</label>
+                    <input type="datetime-local" name="start_date" class="form-control form-control-sm" value="{{ start_date or '' }}">
                 </div>
                 <div class="col-6 col-md-3">
-                    <label class="form-label small mb-1">结束日期</label>
-                    <input type="date" name="end_date" class="form-control form-control-sm" value="{{ end_date or '' }}">
+                    <label class="form-label small mb-1">结束时间</label>
+                    <input type="datetime-local" name="end_date" class="form-control form-control-sm" value="{{ end_date or '' }}">
                 </div>
                 <div class="col-12 col-md-2">
                     <input type="hidden" name="page" value="1">
@@ -137,8 +137,8 @@
             {% if device_id %}{% set filter_qs = filter_qs ~ '&device_id=' ~ (device_id | urlencode) %}{% endif %}
             {% if agent_id %}{% set filter_qs = filter_qs ~ '&agent_id=' ~ (agent_id | urlencode) %}{% endif %}
             {% if hierarchy_level is not none %}{% set filter_qs = filter_qs ~ '&hierarchy_level=' ~ hierarchy_level %}{% endif %}
-            {% if start_date %}{% set filter_qs = filter_qs ~ '&start_date=' ~ start_date %}{% endif %}
-            {% if end_date %}{% set filter_qs = filter_qs ~ '&end_date=' ~ end_date %}{% endif %}
+            {% if start_date %}{% set filter_qs = filter_qs ~ '&start_date=' ~ (start_date | urlencode) %}{% endif %}
+            {% if end_date %}{% set filter_qs = filter_qs ~ '&end_date=' ~ (end_date | urlencode) %}{% endif %}
             <li class="page-item {% if not has_prev %}disabled{% endif %}">
                 <a class="page-link" href="?page={{ page - 1 }}&limit={{ limit }}{{ filter_qs }}">上一页</a>
             </li>

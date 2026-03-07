@@ -594,6 +594,13 @@ class QdrantBackend(IVectorStorageBackend):
                             range=models.Range(lte=value["$lte"]),
                         )
                     )
+                if "$lt" in value:
+                    must_conditions.append(
+                        models.FieldCondition(
+                            key=key,
+                            range=models.Range(lt=value["$lt"]),
+                        )
+                    )
             else:
                 if isinstance(value, list):
                     must_conditions.append(

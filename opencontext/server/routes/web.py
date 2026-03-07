@@ -58,21 +58,29 @@ async def read_contexts(
     if hierarchy_level is not None:
         storage_filter["hierarchy_level"] = hierarchy_level
     if start_date:
-        try:
-            start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d").replace(
-                tzinfo=datetime.timezone.utc
-            )
-            storage_filter.setdefault("create_time_ts", {})["$gte"] = start_dt.timestamp()
-        except ValueError:
-            pass
+        for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                start_dt = datetime.datetime.strptime(start_date, fmt).replace(
+                    tzinfo=datetime.timezone.utc
+                )
+                storage_filter.setdefault("create_time_ts", {})["$gte"] = start_dt.timestamp()
+                break
+            except ValueError:
+                continue
     if end_date:
-        try:
-            end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, tzinfo=datetime.timezone.utc
-            )
-            storage_filter.setdefault("create_time_ts", {})["$lte"] = end_dt.timestamp()
-        except ValueError:
-            pass
+        for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                end_dt = datetime.datetime.strptime(end_date, fmt).replace(
+                    tzinfo=datetime.timezone.utc
+                )
+                if fmt == "%Y-%m-%d":
+                    end_dt += datetime.timedelta(days=1)
+                else:
+                    end_dt += datetime.timedelta(minutes=1)
+                storage_filter.setdefault("create_time_ts", {})["$lt"] = end_dt.timestamp()
+                break
+            except ValueError:
+                continue
 
     contexts_dict = await get_storage().get_all_processed_contexts(
         context_types=list(types),
