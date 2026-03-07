@@ -58,7 +58,7 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `get_all_processed_contexts` | `(context_types, limit, offset, filter, need_vector, user_id, device_id, agent_id, skip_slice) -> Dict[str, List[ProcessedContext]]` | Type-keyed dict. `skip_slice=True` skips per-type offset/limit slicing for correct cross-type pagination |
 | `get_processed_context` | `(id: str, context_type: str) -> ProcessedContext` | Single context |
 | `delete_processed_context` | `(id: str, context_type: str) -> bool` | Success flag |
-| `search` | `(query: Vectorize, top_k, context_types, filters, user_id, device_id, agent_id) -> List[Tuple[ProcessedContext, float]]` | Scored results |
+| `search` | `(query: Vectorize, top_k, context_types, filters, user_id, device_id, agent_id, score_threshold) -> List[Tuple[ProcessedContext, float]]` | Scored results. `score_threshold` (0-1) filters out low-similarity results at the database level when supported |
 | `get_processed_context_count` | `(context_type, filter, user_id, device_id, agent_id) -> int` | Count (all params except context_type are optional) |
 | `get_filtered_context_count` | `(context_types, filter, user_id, device_id, agent_id) -> int` | Total count across multiple types with filters (UnifiedStorage only) |
 | `get_all_processed_context_counts` | `() -> Dict[str, int]` | Type-keyed counts |

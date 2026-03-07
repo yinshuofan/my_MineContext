@@ -127,6 +127,7 @@ curl -X POST http://localhost:1733/api/search \
   -d '{
     "query": "project timeline and budget",
     "top_k": 20,
+    "score_threshold": 0.5,
     "drill_up": true,
     "user_id": "user_001",
     "device_id": "default",
@@ -247,6 +248,7 @@ curl -X POST http://localhost:1733/api/vector_search \
   -d '{
     "query": "microservice architecture patterns",
     "top_k": 10,
+    "score_threshold": 0.5,
     "context_types": ["knowledge", "document"],
     "filters": {},
     "user_id": "user_001",

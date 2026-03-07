@@ -1045,6 +1045,7 @@ class VikingDBBackend(IVectorStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
@@ -1110,6 +1111,9 @@ class VikingDBBackend(IVectorStorageBackend):
 
         except Exception as e:
             logger.exception(f"Vector search failed: {e}")
+
+        if score_threshold is not None:
+            all_results = [(ctx, s) for ctx, s in all_results if s >= score_threshold]
 
         all_results.sort(key=lambda x: x[1], reverse=True)
         return all_results[:top_k]

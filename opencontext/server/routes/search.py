@@ -152,6 +152,7 @@ async def _execute_search(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
+            score_threshold=request.score_threshold,
         )
 
     else:

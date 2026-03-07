@@ -394,6 +394,7 @@ class UnifiedStorage:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         """Vector search, supports context_type filtering
 
@@ -405,6 +406,7 @@ class UnifiedStorage:
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
+            score_threshold: Minimum similarity score (0-1), results below are excluded
         """
         try:
             # Execute vector search
@@ -416,6 +418,7 @@ class UnifiedStorage:
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
+                score_threshold=score_threshold,
             )
 
             return search_results

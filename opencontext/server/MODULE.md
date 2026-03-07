@@ -59,7 +59,7 @@ class OpenContext:
     # Delegated operations
     def add_context(self, context_data: RawContextProperties) -> bool
     def add_document(self, file_path: str) -> Optional[str]     # Returns error msg or None
-    def search(self, query, top_k, context_types, filters, user_id, device_id, agent_id) -> List[Dict]
+    def search(self, query, top_k, context_types, filters, user_id, device_id, agent_id, score_threshold) -> List[Dict]
     def get_all_contexts(self, limit, offset, filter_criteria) -> Dict[str, List[ProcessedContext]]
     def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]
     def update_context(self, doc_id: str, context: ProcessedContext) -> bool
@@ -105,7 +105,7 @@ class ContextOperations:
     def update_context(self, doc_id: str, context: ProcessedContext) -> bool
     def delete_context(self, doc_id: str, context_type: str) -> bool
     def add_document(self, file_path: str, context_processor_callback) -> Optional[str]
-    def search(self, query, top_k, context_types, filters, user_id, device_id, agent_id) -> List[Dict]
+    def search(self, query, top_k, context_types, filters, user_id, device_id, agent_id, score_threshold) -> List[Dict]
     def get_context_types(self) -> List[str]
 ```
 

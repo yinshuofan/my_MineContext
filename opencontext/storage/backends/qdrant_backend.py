@@ -422,6 +422,7 @@ class QdrantBackend(IVectorStorageBackend):
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         need_vector: bool = False,
+        score_threshold: Optional[float] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
@@ -474,6 +475,7 @@ class QdrantBackend(IVectorStorageBackend):
                         query=query_vector,
                         query_filter=filter_condition,
                         limit=top_k,
+                        score_threshold=score_threshold,
                         with_payload=True,
                         with_vectors=need_vector,
                     )

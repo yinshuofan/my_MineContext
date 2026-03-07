@@ -387,6 +387,7 @@ class OpenContext:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Perform vector search without LLM processing.
 
@@ -409,6 +410,7 @@ class OpenContext:
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
+            score_threshold=score_threshold,
         )
 
     def get_context_types(self) -> List[str]:
