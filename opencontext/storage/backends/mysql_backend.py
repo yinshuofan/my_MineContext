@@ -89,8 +89,6 @@ class MySQLBackend(IDocumentStorageBackend):
 
             # Create table structure
             await self._create_tables()
-            await self._migrate_schema_v2()
-            await self._migrate_profiles_drop_keywords()
 
             self._initialized = True
             logger.info(
@@ -312,47 +310,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 """
                 )
 
-                # One-time cleanup: drop legacy entities table
-                await cursor.execute("DROP TABLE IF EXISTS entities")
-
                 await conn.commit()
-
-    async def _migrate_schema_v2(self):
-        """Add device_id and agent_id to profiles table (idempotent)."""
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "ALTER TABLE profiles ADD COLUMN device_id VARCHAR(100) NOT NULL DEFAULT 'default' AFTER user_id"
-                    )
-                    await conn.commit()
-                    logger.info("Migration: added device_id column to profiles table")
-                except Exception:
-                    await conn.rollback()
-
-                try:
-                    await cursor.execute(
-                        "ALTER TABLE profiles DROP PRIMARY KEY, ADD PRIMARY KEY (user_id, device_id, agent_id)"
-                    )
-                    await conn.commit()
-                    logger.info(
-                        "Migration: updated profiles primary key to (user_id, device_id, agent_id)"
-                    )
-                except Exception:
-                    await conn.rollback()
-
-    async def _migrate_profiles_drop_keywords(self):
-        """Drop the keywords column from profiles table (idempotent)."""
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute("SHOW COLUMNS FROM profiles LIKE 'keywords'")
-                    if await cursor.fetchone():
-                        await cursor.execute("ALTER TABLE profiles DROP COLUMN keywords")
-                        await conn.commit()
-                        logger.info("Migration: dropped keywords column from profiles table")
-                except Exception:
-                    await conn.rollback()
 
     # Report table operations
     async def insert_vaults(

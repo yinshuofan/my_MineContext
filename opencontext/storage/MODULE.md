@@ -219,7 +219,7 @@ Module-level functions:
 | Connection model | `threading.local()` per-thread connections | SQLAlchemy `QueuePool` (pool_size=20, max_overflow=10) |
 | `_get_connection()` | Returns `sqlite3.Connection` (creates lazily per thread) | `@contextmanager` yielding pooled connection, auto-rollback on error |
 | Journal mode | WAL | InnoDB (default) |
-| Schema migration | `_create_tables()` + `_migrate_schema_v2()` | Same |
+| Schema migration | `_create_tables()` | Same |
 | Health check | `SELECT 1` on connection | `ping(reconnect=True)` on pool checkout |
 
 ## Internal Data Flow
@@ -300,6 +300,6 @@ get_storage()                          # global_storage.py -> UnifiedStorage
 - **MySQL `_get_connection()` is a context manager** -- always use `with self._get_connection() as conn:`. It auto-returns to pool and auto-rolls-back on exceptions.
 - **Qdrant `search_by_hierarchy`** uses in-code string comparison for `time_bucket` filtering because `models.Range` does not support string fields. Over-fetch with `top_k * 3`, then filter.
 - **VikingDB `hierarchy_level`** is stored as int64. Use `must` filter directly (e.g., `{"op": "must", "field": "hierarchy_level", "conds": [0]}`). Supports list filtering: `"conds": [0, 1, 2]`.
-- **MySQL `lastrowid` is 0 for VARCHAR PKs** (entities table). Always SELECT back the persisted ID.
+- **MySQL `lastrowid` is 0 for VARCHAR PKs**. Always SELECT back the persisted ID.
 - **Vector backends auto-vectorize** via `do_vectorize()` when `context.vectorize.vector` is None. This is a synchronous call to the embedding service.
 - **Todo collection creation** is gated by `consumption.enabled` config flag. If disabled, todo-related methods on vector backends are no-ops.

@@ -53,8 +53,6 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             # Create table structure
             await self._create_tables()
-            await self._migrate_schema_v2()
-            await self._migrate_profiles_drop_keywords()
 
             self._initialized = True
             logger.info(f"SQLite backend initialized successfully, database path: {self.db_path}")
@@ -322,107 +320,10 @@ class SQLiteBackend(IDocumentStorageBackend):
             "CREATE INDEX IF NOT EXISTS idx_message_thinking_sequence ON message_thinking(message_id, sequence)"
         )
 
-        # One-time cleanup: drop legacy entities table
-        await conn.execute("DROP TABLE IF EXISTS entities")
-
         await conn.commit()
 
         # Add default Quick Start document (only on first initialization)
         await self._insert_default_vault_document()
-
-    async def _migrate_schema_v2(self):
-        """Add device_id and agent_id to profiles table (idempotent)."""
-        conn = self._connection
-
-        # Check if device_id exists in profiles
-        cursor = await conn.execute("PRAGMA table_info(profiles)")
-        rows = await cursor.fetchall()
-        profile_columns = [col[1] for col in rows]
-
-        if "device_id" not in profile_columns:
-            try:
-                await conn.execute("ALTER TABLE profiles RENAME TO profiles_old")
-                await conn.execute(
-                    """
-                    CREATE TABLE profiles (
-                        user_id TEXT NOT NULL,
-                        device_id TEXT NOT NULL DEFAULT 'default',
-                        agent_id TEXT NOT NULL DEFAULT 'default',
-                        factual_profile TEXT NOT NULL,
-                        behavioral_profile TEXT,
-                        keywords TEXT,
-                        entities TEXT,
-                        importance INTEGER DEFAULT 0,
-                        metadata TEXT,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY (user_id, device_id, agent_id)
-                    )
-                """
-                )
-                await conn.execute(
-                    """
-                    INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, keywords,
-                                          entities, importance, metadata, created_at, updated_at)
-                    SELECT user_id, 'default', agent_id, content, keywords,
-                           entities, importance, metadata, created_at, updated_at
-                    FROM profiles_old
-                """
-                )
-                await conn.execute("DROP TABLE profiles_old")
-                await conn.commit()
-                logger.info("Migration: rebuilt profiles table with device_id")
-            except Exception as e:
-                await conn.rollback()
-                logger.error(f"Migration failed for profiles: {e}")
-
-    async def _migrate_profiles_drop_keywords(self):
-        """Drop the keywords column from profiles table (idempotent)."""
-        conn = self._connection
-
-        cursor = await conn.execute("PRAGMA table_info(profiles)")
-        rows = await cursor.fetchall()
-        columns = [col[1] for col in rows]
-
-        if "keywords" not in columns:
-            return
-
-        try:
-            await conn.execute("ALTER TABLE profiles RENAME TO profiles_old")
-            await conn.execute(
-                """
-                CREATE TABLE profiles (
-                    user_id TEXT NOT NULL,
-                    device_id TEXT NOT NULL DEFAULT 'default',
-                    agent_id TEXT NOT NULL DEFAULT 'default',
-                    factual_profile TEXT NOT NULL,
-                    behavioral_profile TEXT,
-                    entities TEXT,
-                    importance INTEGER DEFAULT 0,
-                    metadata TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (user_id, device_id, agent_id)
-                )
-            """
-            )
-            await conn.execute(
-                """
-                INSERT INTO profiles (user_id, device_id, agent_id, factual_profile,
-                                      behavioral_profile, entities, importance, metadata,
-                                      created_at, updated_at)
-                SELECT user_id, device_id, agent_id, factual_profile,
-                       behavioral_profile, entities, importance, metadata,
-                       created_at, updated_at
-                FROM profiles_old
-            """
-            )
-            await conn.execute("DROP TABLE profiles_old")
-            await conn.commit()
-            logger.info("Migration: dropped keywords column from profiles table")
-        except Exception as e:
-            await conn.rollback()
-            logger.error(f"Migration failed for profiles (drop keywords): {e}")
 
     async def _insert_default_vault_document(self):
         """Insert default Quick Start document"""
