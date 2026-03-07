@@ -39,14 +39,46 @@ async def read_contexts(
     page: int = 1,
     limit: int = 15,
     type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    hierarchy_level: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     opencontext: OpenContext = Depends(get_context_lab),
 ):
+    limit = min(max(limit, 1), 100)
     offset = (page - 1) * limit
     types = []
     if type:
         types.append(type)
+
+    # Build filter dict from query params
+    storage_filter: dict = {}
+    if hierarchy_level is not None:
+        storage_filter["hierarchy_level"] = hierarchy_level
+    if start_date:
+        try:
+            start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d").replace(
+                tzinfo=datetime.timezone.utc
+            )
+            storage_filter.setdefault("create_time_ts", {})["$gte"] = start_dt.timestamp()
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=datetime.timezone.utc
+            )
+            storage_filter.setdefault("create_time_ts", {})["$lte"] = end_dt.timestamp()
+        except ValueError:
+            pass
+
     contexts_dict = await get_storage().get_all_processed_contexts(
-        context_types=list(types), limit=limit + 1, offset=offset, need_vector=False
+        context_types=list(types),
+        limit=limit + 1,
+        offset=offset,
+        need_vector=False,
+        filter=storage_filter if storage_filter else None,
+        user_id=user_id,
     )
     contexts = []
     for backend_contexts in contexts_dict.values():
@@ -55,11 +87,8 @@ async def read_contexts(
     # Sort with timezone-aware datetime handling
     def get_sort_key(context):
         dt = context.properties.create_time
-        # Convert naive datetime to aware (assume UTC if naive)
         if dt.tzinfo is None:
-            import datetime as dt_module
-
-            dt = dt.replace(tzinfo=dt_module.timezone.utc)
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
         return dt
 
     contexts.sort(key=get_sort_key, reverse=True)
@@ -79,6 +108,10 @@ async def read_contexts(
             "page": page,
             "limit": limit,
             "type": type,
+            "user_id": user_id,
+            "hierarchy_level": hierarchy_level,
+            "start_date": start_date,
+            "end_date": end_date,
             "context_types": context_types,
             "has_next": has_next,
             "has_prev": page > 1,
