@@ -132,65 +132,71 @@
 
 <!-- Pagination -->
 {% if contexts %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div class="d-flex align-items-center gap-2">
-        <small class="text-muted">每页</small>
-        <select class="form-select form-select-sm" style="width: auto;" id="limit-select" onchange="changeLimit(this.value)">
+<div class="pager-bar">
+    {# Left: per-page selector + total info #}
+    <div class="pager-left">
+        <select class="pager-select" id="limit-select" onchange="changeLimit(this.value)">
             <option value="15" {% if limit == 15 %}selected{% endif %}>15</option>
             <option value="30" {% if limit == 30 %}selected{% endif %}>30</option>
             <option value="50" {% if limit == 50 %}selected{% endif %}>50</option>
         </select>
-        <small class="text-muted">条</small>
+        <span class="pager-info">条/页</span>
+        <span class="pager-divider"></span>
+        <span class="pager-info">共 <strong>{{ total_count }}</strong> 条</span>
     </div>
+
+    {# Center: page buttons #}
     {% if total_pages > 1 %}
-    <nav aria-label="Page navigation">
-        <ul class="pagination pagination-sm mb-0">
-            {% set filter_qs = '' %}
-            {% if type %}{% set filter_qs = filter_qs ~ '&type=' ~ (type | urlencode) %}{% endif %}
-            {% if user_id %}{% set filter_qs = filter_qs ~ '&user_id=' ~ (user_id | urlencode) %}{% endif %}
-            {% if device_id %}{% set filter_qs = filter_qs ~ '&device_id=' ~ (device_id | urlencode) %}{% endif %}
-            {% if agent_id %}{% set filter_qs = filter_qs ~ '&agent_id=' ~ (agent_id | urlencode) %}{% endif %}
-            {% if hierarchy_level is not none %}{% set filter_qs = filter_qs ~ '&hierarchy_level=' ~ hierarchy_level %}{% endif %}
-            {% if start_date %}{% set filter_qs = filter_qs ~ '&start_date=' ~ (start_date | urlencode) %}{% endif %}
-            {% if end_date %}{% set filter_qs = filter_qs ~ '&end_date=' ~ (end_date | urlencode) %}{% endif %}
-            {# Previous #}
-            <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                <a class="page-link" href="?page={{ page - 1 }}&limit={{ limit }}{{ filter_qs }}">&laquo;</a>
-            </li>
-            {# First page #}
-            {% if page > 3 %}
-            <li class="page-item">
-                <a class="page-link" href="?page=1&limit={{ limit }}{{ filter_qs }}">1</a>
-            </li>
-            {% endif %}
-            {% if page > 4 %}
-            <li class="page-item disabled"><span class="page-link">...</span></li>
-            {% endif %}
-            {# Page window #}
-            {% for p in range([1, page - 2]|max, [total_pages, page + 2]|min + 1) %}
-            <li class="page-item {% if p == page %}active{% endif %}">
-                {% if p == page %}
-                <span class="page-link">{{ p }}</span>
-                {% else %}
-                <a class="page-link" href="?page={{ p }}&limit={{ limit }}{{ filter_qs }}">{{ p }}</a>
-                {% endif %}
-            </li>
-            {% endfor %}
-            {# Trailing ellipsis + last page #}
-            {% if page < total_pages - 3 %}
-            <li class="page-item disabled"><span class="page-link">...</span></li>
-            {% endif %}
-            {% if page < total_pages - 2 %}
-            <li class="page-item">
-                <a class="page-link" href="?page={{ total_pages }}&limit={{ limit }}{{ filter_qs }}">{{ total_pages }}</a>
-            </li>
-            {% endif %}
-            {# Next #}
-            <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                <a class="page-link" href="?page={{ page + 1 }}&limit={{ limit }}{{ filter_qs }}">&raquo;</a>
-            </li>
-        </ul>
+    <nav class="pager-nav" aria-label="Page navigation">
+        {% set filter_qs = '' %}
+        {% if type %}{% set filter_qs = filter_qs ~ '&type=' ~ (type | urlencode) %}{% endif %}
+        {% if user_id %}{% set filter_qs = filter_qs ~ '&user_id=' ~ (user_id | urlencode) %}{% endif %}
+        {% if device_id %}{% set filter_qs = filter_qs ~ '&device_id=' ~ (device_id | urlencode) %}{% endif %}
+        {% if agent_id %}{% set filter_qs = filter_qs ~ '&agent_id=' ~ (agent_id | urlencode) %}{% endif %}
+        {% if hierarchy_level is not none %}{% set filter_qs = filter_qs ~ '&hierarchy_level=' ~ hierarchy_level %}{% endif %}
+        {% if start_date %}{% set filter_qs = filter_qs ~ '&start_date=' ~ (start_date | urlencode) %}{% endif %}
+        {% if end_date %}{% set filter_qs = filter_qs ~ '&end_date=' ~ (end_date | urlencode) %}{% endif %}
+
+        <a class="pager-btn {% if page == 1 %}disabled{% endif %}" href="?page={{ page - 1 }}&limit={{ limit }}{{ filter_qs }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </a>
+
+        {% if page > 3 %}
+        <a class="pager-btn" href="?page=1&limit={{ limit }}{{ filter_qs }}">1</a>
+        {% endif %}
+        {% if page > 4 %}
+        <span class="pager-ellipsis">&hellip;</span>
+        {% endif %}
+
+        {% for p in range([1, page - 2]|max, [total_pages, page + 2]|min + 1) %}
+        {% if p == page %}
+        <span class="pager-btn active">{{ p }}</span>
+        {% else %}
+        <a class="pager-btn" href="?page={{ p }}&limit={{ limit }}{{ filter_qs }}">{{ p }}</a>
+        {% endif %}
+        {% endfor %}
+
+        {% if page < total_pages - 3 %}
+        <span class="pager-ellipsis">&hellip;</span>
+        {% endif %}
+        {% if page < total_pages - 2 %}
+        <a class="pager-btn" href="?page={{ total_pages }}&limit={{ limit }}{{ filter_qs }}">{{ total_pages }}</a>
+        {% endif %}
+
+        <a class="pager-btn {% if page == total_pages %}disabled{% endif %}" href="?page={{ page + 1 }}&limit={{ limit }}{{ filter_qs }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </a>
     </nav>
+    {% endif %}
+
+    {# Right: jump-to-page #}
+    {% if total_pages > 1 %}
+    <div class="pager-right">
+        <span class="pager-info">第</span>
+        <input type="number" class="pager-jump-input" id="page-jump-input" min="1" max="{{ total_pages }}" value="{{ page }}" onkeydown="if(event.key==='Enter')goToPage('page-jump-input')">
+        <span class="pager-info">/ {{ total_pages }} 页</span>
+        <button class="pager-jump-btn" onclick="goToPage('page-jump-input')">Go</button>
+    </div>
     {% endif %}
 </div>
 {% endif %}
@@ -281,6 +287,152 @@
     .bg-purple {
         background-color: #6f42c1 !important;
     }
+
+    /* Pager Bar */
+    .pager-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        margin-bottom: 1.5rem;
+        background: #fff;
+        border-top: 3px solid #2c3e50;
+        border-radius: 0 0 6px 6px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    }
+    .pager-left, .pager-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+    .pager-select {
+        appearance: none;
+        -webkit-appearance: none;
+        padding: 4px 24px 4px 10px;
+        font-size: 0.78rem;
+        border: 1px solid #dfe3e8;
+        border-radius: 4px;
+        background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238892a0'/%3E%3C/svg%3E") no-repeat right 8px center;
+        color: #2c3e50;
+        cursor: pointer;
+        transition: border-color 0.15s;
+    }
+    .pager-select:focus {
+        outline: none;
+        border-color: #5a6872;
+        box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.08);
+    }
+    .pager-info {
+        font-size: 0.78rem;
+        color: #8892a0;
+        white-space: nowrap;
+    }
+    .pager-info strong {
+        color: #2c3e50;
+        font-weight: 600;
+    }
+    .pager-divider {
+        width: 1px;
+        height: 16px;
+        background: #e2e6ea;
+    }
+    .pager-nav {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .pager-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 32px;
+        height: 32px;
+        padding: 0 8px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #2c3e50;
+        background: #f8f9fa;
+        border: 1px solid #e2e6ea;
+        border-radius: 6px;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        user-select: none;
+    }
+    .pager-btn:hover:not(.active):not(.disabled) {
+        color: #2c3e50;
+        background: #eef1f4;
+        border-color: #c8cfd6;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 6px rgba(44, 62, 80, 0.12);
+        text-decoration: none;
+    }
+    .pager-btn.active {
+        color: #fff;
+        background: #2c3e50;
+        border-color: #2c3e50;
+        box-shadow: 0 2px 8px rgba(44, 62, 80, 0.25);
+        cursor: default;
+    }
+    .pager-btn.disabled {
+        color: #c8cfd6;
+        background: #f8f9fa;
+        border-color: #eef1f4;
+        cursor: default;
+        pointer-events: none;
+    }
+    .pager-ellipsis {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 32px;
+        font-size: 0.85rem;
+        color: #b0b8c1;
+        letter-spacing: 2px;
+        user-select: none;
+    }
+    .pager-jump-input {
+        width: 50px;
+        height: 30px;
+        padding: 0 6px;
+        font-size: 0.78rem;
+        text-align: center;
+        color: #2c3e50;
+        border: 1px solid #dfe3e8;
+        border-radius: 4px;
+        transition: border-color 0.15s;
+        -moz-appearance: textfield;
+    }
+    .pager-jump-input::-webkit-outer-spin-button,
+    .pager-jump-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    .pager-jump-input:focus {
+        outline: none;
+        border-color: #5a6872;
+        box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.08);
+    }
+    .pager-jump-btn {
+        height: 30px;
+        padding: 0 12px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #fff;
+        background: #2c3e50;
+        border: 1px solid #2c3e50;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.15s, box-shadow 0.15s;
+    }
+    .pager-jump-btn:hover {
+        background: #1a252f;
+        box-shadow: 0 2px 6px rgba(44, 62, 80, 0.25);
+    }
 </style>
 {% endblock %}
 
@@ -314,6 +466,14 @@
     function changeLimit(newLimit) {
         const params = buildFilterParams({ limit: newLimit, page: '1' });
         window.location.href = '/contexts?' + params;
+    }
+
+    function goToPage(inputId) {
+        const val = parseInt(document.getElementById(inputId).value);
+        if (val >= 1 && val <= {{ total_pages }}) {
+            const params = buildFilterParams({ page: val.toString() });
+            window.location.href = '/contexts?' + params;
+        }
     }
 
     function copyId(el, fullId) {

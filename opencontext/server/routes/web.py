@@ -138,6 +138,7 @@ async def read_contexts(
             "page": page,
             "limit": limit,
             "total_pages": total_pages,
+            "total_count": total_count,
             "type": type,
             "user_id": user_id,
             "device_id": device_id,
