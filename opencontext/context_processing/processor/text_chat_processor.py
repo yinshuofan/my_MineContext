@@ -88,24 +88,14 @@ class TextChatProcessor(BaseContextProcessor):
 
         # 6. 为每条 memory 构建 ProcessedContext
         processed_list = []
-        all_structured_entities = []
 
         for memory in memories:
             try:
                 pc = self._build_processed_context(memory, raw_context)
                 if pc:
                     processed_list.append(pc)
-                    raw_entities = memory.get("entities", [])
-                    if isinstance(raw_entities, list):
-                        all_structured_entities.extend(
-                            e for e in raw_entities if isinstance(e, dict) and "name" in e
-                        )
             except Exception as e:
                 logger.warning(f"Failed to build ProcessedContext for memory: {e}")
-
-        # 7. 跨记忆实体持久化：确保非 entity 类型记忆中的实体也能进入关系型 DB
-        if all_structured_entities and raw_context.user_id:
-            await self._persist_entities(all_structured_entities, raw_context)
 
         logger.debug(f"Extracted {len(processed_list)} memories from chat")
         return processed_list
@@ -227,28 +217,3 @@ class TextChatProcessor(BaseContextProcessor):
             ),
         )
 
-    async def _persist_entities(
-        self, structured_entities: List[Dict], raw_context: RawContextProperties
-    ) -> None:
-        """
-        将所有记忆中提取的实体持久化到关系型 DB。
-        确保非 entity 类型记忆中提到的实体也能进入实体表。
-        """
-        try:
-            from opencontext.context_processing.processor.entity_processor import (
-                refresh_entities,
-                validate_and_clean_entities,
-            )
-
-            entities_info = validate_and_clean_entities(structured_entities)
-            if entities_info:
-                await refresh_entities(
-                    entities_info=entities_info,
-                    context_text=raw_context.content_text or "",
-                    user_id=raw_context.user_id or "default",
-                    device_id=raw_context.device_id or "default",
-                    agent_id=raw_context.agent_id or "default",
-                )
-                logger.debug(f"Persisted {len(entities_info)} entities from chat analysis")
-        except Exception as e:
-            logger.warning(f"Entity persistence failed (non-fatal): {e}")

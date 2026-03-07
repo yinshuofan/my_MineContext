@@ -146,7 +146,6 @@ chat_workflow:
         - **Knowledge Entries**: Distilled concepts, principles, and operational workflows
         - **Document Content**: Summary or full content of relevant documents and files
         - **User Profile**: User's personal information, preferences, and habits
-        - **Entity Information**: Associated information about people, projects, teams, organizations
 
         ## Core Information Usage Principles (Important)
 
@@ -417,21 +416,19 @@ processing:
 
         ## Workflow
 
-        **Step 1 — Activity Event**: First, create ONE `event` type memory that comprehensively summarizes ALL user activities in this conversation. This event should cover everything the user did, discussed, mentioned, or expressed — including information that will also be extracted as other types (profile, entity, knowledge). This ensures the user's complete activity timeline is captured. If the conversation contains only trivial greetings with no meaningful activity, skip this step.
+        **Step 1 — Activity Event**: First, create ONE `event` type memory that comprehensively summarizes ALL user activities in this conversation. This event should cover everything the user did, discussed, mentioned, or expressed — including information that will also be extracted as other types (profile, knowledge). This ensures the user's complete activity timeline is captured. If the conversation contains only trivial greetings with no meaningful activity, skip this step.
 
-        **Step 2 — Other Memories**: Then, extract any additional structured memories of other types (profile, entity, knowledge, document) from the conversation. Each piece of distinct information should be a separate memory.
+        **Step 2 — Other Memories**: Then, extract any additional structured memories of other types (profile, knowledge, document) from the conversation. Each piece of distinct information should be a separate memory.
 
         ## Splitting Rules
         - The first memory should always be the comprehensive `event` (unless conversation is trivial)
-        - Different types of non-event information must be split into separate memories (e.g., user preference + entity info = 2 additional memories)
-        - When multiple distinct entities are mentioned, create a separate entity memory for EACH
+        - Different types of non-event information must be split into separate memories (e.g., user preference + knowledge concept = 2 additional memories)
         - Trivial greetings or filler with no informational value can be omitted entirely
         - Return an EMPTY array if there is nothing worth remembering
 
         ## Classification (ContextType)
         - `event`: **Always the first memory.** A comprehensive record of ALL user activities in this conversation — what they did, discussed, decided, expressed, or experienced. This should cover the full scope of the conversation, even if specific details are also extracted as other types below. See event output rules below.
         - `profile`: Information about the current user themselves. Only extract **explicitly stated** facts, no inference. See profile output rules below.
-        - `entity`: Information about entities other than the current user — people, projects, teams, organizations (e.g., "Li Si is a frontend engineer", "Project Alpha is our CRM system"). Create ONE entity memory per entity when possible.
         - `knowledge`: Abstract knowledge, concepts, principles, operational procedures (e.g., "React Hooks principles", "TCP handshake process", "Steps to deploy with Docker").
         - `document`: Content from uploaded documents or files (rarely from chat, only when user explicitly shares document content).
 
@@ -510,7 +507,7 @@ processing:
         1. **title**: Short descriptive title for this specific memory
         2. **summary**: Summary of this memory (event type uses layered bullet format, profile type uses section format)
         3. **keywords**: Keywords relevant to this specific memory
-        4. **context_type**: One of the 5 types above
+        4. **context_type**: One of the 4 types above
         5. **entities**: Key entities mentioned in this memory (person names, tool names, tech stacks) as structured objects
         6. **importance**: Score 0-10, technical decisions and personal preferences score high, casual greetings score low
         7. **confidence**: Score 0-10, how confident you are in the extraction accuracy
@@ -749,149 +746,6 @@ hierarchy_summary:
     {partial_summaries}
 
     Please generate a JSON summary object.
-
-entity_processing:
-  entity_extraction:
-    system: |
-      You are a professional entity recognition system. Identify and extract all relevant entities from given text.
-
-      ## Supported Entity Types
-      - person: Names (Chinese, English names, including job title appellations)
-      - project: Projects, systems, platforms, products, applications
-      - team: Teams, groups, departments, organizational internal units
-      - organization: Companies, enterprises, institutions, schools, universities
-      - other: Other types of named entities
-
-      ## Output Format Requirements
-      Please return results in JSON format, as follows:
-      ```json
-      {
-        "entities": [
-          {
-            "name": "Entity name",
-            "type": "Entity type",
-          }
-        ]
-      }
-      ```
-
-      ## Extraction Principles
-      1. Ensure accuracy: Only extract clear named entities
-      2. Avoid duplication: Extract same entity only once
-      3. Contextual understanding: Judge entity type in context
-      4. Confidence assessment: Provide confidence score of 0.1-1.0 for each entity
-      5. User self-identification: If text mentions "I", "my", "myself" and other words referring to user self, please extract entity text as "current_user", type as "person"
-    user: |
-      Please extract all entities from the following text:
-
-      Text content: "{text}"
-
-      Please return extraction results in JSON format.
-
-  # Entity metadata merging
-  entity_meta_merging:
-    system: |
-      You are an entity information merging expert. Your task is to intelligently merge entity metadata based on new context, generating a more complete and accurate entity profile.
-
-      ## Core Task
-      Analyze currently stored entity information and newly extracted information, intelligently merge in combination with context, generate updated entity profile.
-
-      ## Merge Strategy
-
-      ### 1. entity_canonical_name (Canonical Name)
-      - Prioritize retaining more formal, more complete names
-      - If new name is more accurate or more formal, use new name
-      - If old name is already accurate, keep unchanged
-      - Avoid using abbreviations or incomplete names as canonical names
-
-      ### 2. entity_metadata (Metadata)
-      - **Deep Merge Strategy**:
-        - Retain valuable fields in old data
-        - Fields in new data supplement existing data
-        - If same field exists in both new and old data and conflicts, need intelligent merge:
-        - Final metadata needs to be highly condensed, cannot contain low-quality or meaningless information
-
-      ### 3. entity_description (Description)
-      - Synthesize new and old descriptions, generate more complete description
-      - Retain key facts and important information
-      - Supplement or update description based on new context
-      - Description should be highly condensed, information dimension-rich, cannot contain irrelevant or low-quality information
-      - Avoid redundancy and duplicate information
-
-      ## Output Requirements
-      ```json
-      {
-        "entity_canonical_name": "Merged canonical name",
-        "entity_metadata": {
-          "key": "value"
-        },
-        "entity_description": "Merged description"
-      }
-
-      Important Notes:
-      - Must include all three fields, even if a field does not need updating
-      - entity_metadata must be object type, cannot be null
-      - Make intelligent judgments based on context, do not mechanically merge
-      - entity_aliases field is automatically processed by system, no need to merge here
-    user: |
-      Please merge the following entity information:
-
-      **Currently Stored Entity Information**:
-      {old_entity_data}
-
-      **Newly Extracted Entity Information**:
-      {new_entity_data}
-
-      **Related Context**:
-      {context_text}
-
-      Please analyze the above information and return merged JSON result.
-
-  # Entity matching and similarity calculation
-  entity_matching:
-    system: |
-      You are an entity matching expert. Your task is to judge whether a list of entity names extracted from text can match one of the candidate entities already stored in the system.
-
-      ## Core Task
-      Analyze extracted entity name list, judge whether they point to a certain entity in candidate entity list.
-
-      ## Matching Rules
-      1. **Canonical Name Matching**: Extracted name is exactly the same as candidate entity's name field
-      2. **Alias Matching**: Extracted name appears in candidate entity's entity_aliases list
-      3. **Semantic Equivalence**: Extracted name and candidate entity semantically point to same object
-         - For example: "Xiao Zhang" may match "Zhang San"
-         - For example: "OpenContext project" may match "OpenContext"
-      4. **Description Matching**: Judge whether same entity based on candidate entity's description
-
-      ## Judgment Strategy
-      - Prioritize complete matching and alias matching (highest confidence)
-      - Consider whether entity type is consistent
-      - When multiple candidates may match, choose most relevant one
-      - If none match, return is_match as false
-
-      ## Output Requirements
-      Must return standard JSON format, including following fields:
-      ```json
-      {
-        "is_match": true or false,
-        "matched_entity": "Matched entity's name field value",
-        "confidence": 0.95,
-      }
-      ```
-
-      Important Notes:
-      - matched_entity must be precise value of name field of some entity in candidate entities
-      - When is_match is false, matched_entity can be null or empty string
-      - confidence range 0-1, indicates matching confidence
-    user: |
-      Please judge whether extracted entity names match a candidate entity:
-
-      **Extracted Entity Name List**: {extracted_names}
-
-      **Candidate Entity List**:
-      {candidates}
-
-      Please analyze and return JSON format matching result.
 
 # Document Processing Module
 document_processing:

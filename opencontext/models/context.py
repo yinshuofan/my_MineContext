@@ -398,38 +398,6 @@ class ProfileData(BaseModel):
         return cls.model_validate(data)
 
 
-class EntityData(BaseModel):
-    """Entity profile — stored in relational DB (unique key: user_id + device_id + agent_id + entity_name)"""
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str  # Owner user
-    device_id: str = "default"  # Device identifier
-    agent_id: str = "default"  # Agent identifier
-    entity_name: str  # Unique key = user_id + device_id + agent_id + entity_name
-    entity_type: Optional[str] = None  # person / project / team / organization / other
-    content: str  # Entity description (LLM-merged result)
-    summary: Optional[str] = None
-    keywords: List[str] = Field(default_factory=list)
-    aliases: List[str] = Field(default_factory=list)
-    relationships: Dict[str, List[str]] = Field(default_factory=dict)
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
-    )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return self.model_dump(exclude_none=True)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "EntityData":
-        """Create model from dictionary"""
-        return cls.model_validate(data)
-
-
 class KnowledgeContextMetadata(BaseModel):
     """Knowledge context additional information"""
 

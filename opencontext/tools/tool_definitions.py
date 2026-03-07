@@ -3,7 +3,6 @@ Tool: tool_definitions
 """
 
 from opencontext.tools.operation_tools import *
-from opencontext.tools.profile_tools import *
 from opencontext.tools.retrieval_tools import *
 
 # Context retrieval tools (vector DB-based)
@@ -16,7 +15,6 @@ CONTEXT_RETRIEVAL_TOOLS = [
 # Profile retrieval tools (relational DB-based)
 ALL_PROFILE_TOOL_DEFINITIONS = [
     {"type": "function", "function": ProfileRetrievalTool.get_definition()},
-    {"type": "function", "function": ProfileEntityTool.get_definition()},
 ]
 
 WEB_SEARCH_TOOL_DEFINITION = [

@@ -52,7 +52,6 @@ class UserMemoryCacheManager:
             "max_recent_documents": raw.get("max_recent_documents", 10),
             "max_recent_knowledge": raw.get("max_recent_knowledge", 10),
             "accessed_ttl": raw.get("accessed_ttl", 604800),  # 7 days
-            "max_entities": raw.get("max_entities", 20),
         }
 
     def reload_config(self):
@@ -279,7 +278,7 @@ class UserMemoryCacheManager:
         recent_days: Optional[int],
         max_today_events: Optional[int],
     ) -> Dict[str, Any]:
-        """Build the snapshot from storage backends (profile + entities + recent memories)."""
+        """Build the snapshot from storage backends (profile + recent memories)."""
         t0 = time.perf_counter()
         storage = get_storage()
         days = recent_days if recent_days is not None else self._config["recent_days"]
@@ -297,14 +296,6 @@ class UserMemoryCacheManager:
         # Parallel queries
         tasks = {
             "profile": storage.get_profile(user_id, device_id, agent_id),
-            "entities": storage.list_entities(
-                user_id,
-                device_id,
-                agent_id,
-                None,
-                self._config["max_entities"],
-                0,
-            ),
             "today_events": storage.get_all_processed_contexts(
                 context_types=[ContextType.EVENT.value],
                 limit=max_events_today,
@@ -382,22 +373,6 @@ class UserMemoryCacheManager:
                 "behavioral_profile": profile_data.get("behavioral_profile"),
                 "metadata": profile_data.get("metadata", {}),
             }
-
-        # Entities
-        entity_data = results_map.get("entities")
-        if entity_data and not isinstance(entity_data, Exception):
-            snapshot["entities"] = [
-                {
-                    "id": e.get("id", ""),
-                    "entity_name": e.get("entity_name", ""),
-                    "entity_type": e.get("entity_type"),
-                    "content": e.get("content", ""),
-                    "summary": e.get("summary"),
-                    "aliases": e.get("aliases", []),
-                    "score": 1.0,
-                }
-                for e in entity_data
-            ]
 
         # Recent memories — hierarchical
         recent_memories: Dict[str, Any] = {}
@@ -532,7 +507,7 @@ class UserMemoryCacheManager:
         filtered_accessed = [
             item
             for item in accessed
-            if item.context_type not in ("profile", "entity") and item.id not in snapshot_ids
+            if item.context_type != "profile" and item.id not in snapshot_ids
         ]
 
         # Daily summaries (simplified: time_bucket + summary only)

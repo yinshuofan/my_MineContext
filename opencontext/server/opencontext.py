@@ -150,7 +150,7 @@ class OpenContext:
                 else:
                     vector_contexts.append(ctx)
 
-            # Store relational DB contexts (profile/entity) as a batch
+            # Store relational DB contexts (profile) as a batch
             # If any fails, the exception propagates and we skip cache invalidation
             affected_users = set()
             if db_contexts:
@@ -158,8 +158,6 @@ class OpenContext:
                     ctx_type = ctx.extracted_data.context_type
                     if ctx_type == ContextType.PROFILE:
                         await self._store_profile(ctx)
-                    elif ctx_type == ContextType.ENTITY:
-                        await self._store_entities(ctx)
                     uid = ctx.properties.user_id
                     if uid:
                         affected_users.add((uid, ctx.properties.device_id, ctx.properties.agent_id))
@@ -200,24 +198,6 @@ class OpenContext:
         logger.info(
             f"Profile stored for user={props.user_id}, device={props.device_id}, agent={props.agent_id}"
         )
-
-    async def _store_entities(self, ctx: ProcessedContext) -> None:
-        """Store entity contexts to relational DB."""
-        ed = ctx.extracted_data
-        props = ctx.properties
-        for entity_name in ed.entities:
-            await self.storage.upsert_entity(
-                user_id=props.user_id or "default",
-                device_id=props.device_id or "default",
-                agent_id=props.agent_id or "default",
-                entity_name=entity_name,
-                content=ed.summary or "",
-                entity_type=None,
-                summary=ed.summary,
-                keywords=ed.keywords,
-                metadata=ctx.metadata,
-            )
-            logger.info(f"Entity '{entity_name}' stored for user={props.user_id}")
 
     async def _invalidate_user_cache(
         self,

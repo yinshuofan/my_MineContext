@@ -53,7 +53,6 @@ class OpenContext:
     def _handle_captured_context(self, contexts: List[RawContextProperties]) -> bool
     def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool  # Routes by CONTEXT_STORAGE_BACKENDS
     def _store_profile(self, ctx: ProcessedContext) -> None     # -> storage.upsert_profile()
-    def _store_entities(self, ctx: ProcessedContext) -> None    # -> storage.upsert_entity() per entity
     def _invalidate_user_cache(self, user_id, device_id, agent_id) -> None  # Fire-and-forget
 
     # Delegated operations
@@ -159,9 +158,9 @@ class UserMemoryCacheManager:
 
 Caching architecture:
 - **Snapshot** (profile + today events + daily summaries): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot stores full internal data; response assembly in `_merge_response()` simplifies to `SimpleProfile` (factual_profile + behavioral_profile + keywords + metadata), `SimpleDailySummary` (time_bucket + summary), `SimpleTodayEvent` (title + summary + event_time).
-- **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile/entity excluded), always read real-time.
+- **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile excluded), always read real-time.
 - **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. If lock acquisition times out, tries cache once more then builds directly without caching.
-- **Snapshot build**: 6 parallel `asyncio.to_thread()` queries (profile, entities, today events, daily summaries, recent docs, recent knowledge). Response only exposes profile, today_events, daily_summaries, recently_accessed.
+- **Snapshot build**: 5 parallel `asyncio.to_thread()` queries (profile, today events, daily summaries, recent docs, recent knowledge). Response only exposes profile, today_events, daily_summaries, recently_accessed.
 
 ### Auth Middleware (middleware/auth.py)
 
@@ -347,7 +346,7 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
 | GET | `/` | `root` | Redirect to `/contexts` |
-| GET | `/contexts` | `read_contexts` | Contexts list page (card layout). Query params: `page`, `limit`, `type`, `user_id`, `device_id`, `agent_id`, `hierarchy_level` (0-3), `start_date` (datetime-local or date), `end_date` (datetime-local or date). Type filter excludes profile/entity (relational DB only) |
+| GET | `/contexts` | `read_contexts` | Contexts list page (card layout). Query params: `page`, `limit`, `type`, `user_id`, `device_id`, `agent_id`, `hierarchy_level` (0-3), `start_date` (datetime-local or date), `end_date` (datetime-local or date). Type filter excludes profile (relational DB only) |
 | GET | `/vector_search` | `vector_search_page` | Event search page |
 | GET | `/memory_cache` | `memory_cache_page` | Memory cache page |
 | GET | `/chat` | `chat_page` | Redirect to `/advanced_chat` |
@@ -430,7 +429,7 @@ TextChatCapture.process_messages_directly()
     -> Manager invokes callback with results:
       -> OpenContext._handle_processed_context()
          -> Routes by CONTEXT_STORAGE_BACKENDS:
-            profile/entity -> _store_profile()/_store_entities() -> storage.upsert_profile()/upsert_entity()
+            profile -> _store_profile() -> storage.upsert_profile()
             document/event/knowledge -> storage.batch_upsert_processed_context() -> vector DB
          -> _invalidate_user_cache() for affected users
 ```
@@ -524,13 +523,13 @@ get_user_memory_cache()
      HIT  -> _merge_response(snapshot, accessed)
      MISS -> acquire_lock()
           -> Double-check snapshot
-          -> _build_snapshot()          # 6 parallel asyncio.to_thread() queries
-             profile, entities, today_events, daily_summaries, recent_docs, recent_knowledge
+          -> _build_snapshot()          # 5 parallel asyncio.to_thread() queries
+             profile, today_events, daily_summaries, recent_docs, recent_knowledge
           -> cache.set_json(snapshot, ttl=300s)
           -> release_lock()
           -> _merge_response(snapshot, accessed)
              # Simplifies snapshot to: SimpleProfile (factual_profile+behavioral_profile+keywords+metadata), SimpleTodayEvent (title+summary+event_time), SimpleDailySummary
-             # Filters recently_accessed to exclude profile/entity types
+             # Filters recently_accessed to exclude profile type
 ```
 
 ### Cache Invalidation Flow
@@ -551,7 +550,7 @@ OpenContext._handle_processed_context()
 
 3. **All push/search endpoints use 60s/30s timeout** via `asyncio.wait_for()`. Memory cache uses 15s. Do not remove these timeouts.
 
-4. **3-key identifier required**: All profile/entity operations and cache keys use `(user_id, device_id, agent_id)`. Default to `"default"` for device_id and agent_id. Omitting them causes argument mismatches.
+4. **3-key identifier required**: All profile operations and cache keys use `(user_id, device_id, agent_id)`. Default to `"default"` for device_id and agent_id. Omitting them causes argument mismatches.
 
 5. **Search logic lives directly in `routes/search.py`**. No strategy abstraction layer — the route handler calls storage directly.
 

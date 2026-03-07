@@ -99,12 +99,6 @@ Extends `IStorageBackend`. All abstract methods that new document backends must 
 | `upsert_profile` | `(user_id, device_id, agent_id, factual_profile, behavioral_profile, keywords, entities, importance, metadata)` | `bool` |
 | `get_profile` | `(user_id, device_id, agent_id)` | `Optional[Dict]` |
 | `delete_profile` | `(user_id, device_id, agent_id)` | `bool` |
-| `upsert_entity` | `(user_id, device_id, agent_id, entity_name, content, entity_type, summary, keywords, aliases, metadata)` | `str` (entity ID) |
-| `get_entity` | `(user_id, device_id, agent_id, entity_name)` | `Optional[Dict]` |
-| `list_entities` | `(user_id, device_id, agent_id, entity_type, limit, offset)` | `List[Dict]` |
-| `search_entities` | `(user_id, device_id, agent_id, query_text, limit)` | `List[Dict]` |
-| `delete_entity` | `(user_id, device_id, agent_id, entity_name)` | `bool` |
-
 Note: Document backends also implement non-abstract methods for conversations, messages, message thinking, and monitoring (not listed in the interface but present in both SQLite and MySQL implementations).
 
 ### StorageBackendFactory -- `unified_storage.py`
@@ -236,11 +230,11 @@ Caller code
     v
 get_storage()                          # global_storage.py -> UnifiedStorage
     |
-    +-- Profile/Entity operations ------> _document_backend.upsert_profile() / upsert_entity()
+    +-- Profile operations ------> _document_backend.upsert_profile()
     |                                         |
     |                                         v
     |                                     SQLiteBackend or MySQLBackend
-    |                                     (profiles / entities tables)
+    |                                     (profiles table)
     |
     +-- Vector operations (contexts) ---> _vector_backend.batch_upsert_processed_context()
     |                                         |
@@ -293,15 +287,15 @@ get_storage()                          # global_storage.py -> UnifiedStorage
 ### Adding a new document backend
 
 1. Create `backends/new_backend.py` implementing `IDocumentStorageBackend`
-2. Implement all abstract methods (profile/entity CRUD, vaults, todos, tips)
+2. Implement all abstract methods (profile CRUD, vaults, todos, tips)
 3. Also implement non-abstract methods used by `UnifiedStorage`: conversations, messages, message thinking, monitoring
 4. Register in `StorageBackendFactory.__init__()` under `StorageType.DOCUMENT_DB`
 5. Follow same pattern as vector backend for imports and config
 
 ## Conventions and Constraints
 
-- **Always use `get_storage()`** from `global_storage.py` to access storage. Never use `GlobalStorage.get_instance()` or `get_global_storage()` directly -- they return the wrapper which lacks profile/entity/hierarchy methods.
-- **All profile/entity calls require the 3-key tuple** `(user_id, device_id, agent_id)`. Omitting `device_id` or `agent_id` causes positional argument mismatches.
+- **Always use `get_storage()`** from `global_storage.py` to access storage. Never use `GlobalStorage.get_instance()` or `get_global_storage()` directly -- they return the wrapper which lacks profile/hierarchy methods.
+- **All profile calls require the 3-key tuple** `(user_id, device_id, agent_id)`. Omitting `device_id` or `agent_id` causes positional argument mismatches.
 - **SQLite `_get_connection()` must be used for all method-level DB access.** Only `initialize()` and `close()` may use `self.connection` directly. This prevents thread-safety issues under `asyncio.to_thread()`.
 - **MySQL `_get_connection()` is a context manager** -- always use `with self._get_connection() as conn:`. It auto-returns to pool and auto-rolls-back on exceptions.
 - **Qdrant `search_by_hierarchy`** uses in-code string comparison for `time_bucket` filtering because `models.Range` does not support string fields. Over-fetch with `top_k * 3`, then filter.

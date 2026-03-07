@@ -15,7 +15,6 @@ from opencontext.models.context import ProcessedContext, Vectorize
 from opencontext.models.enums import ContextSimpleDescriptions, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.tools.base import BaseTool
-from opencontext.tools.profile_tools.profile_entity_tool import ProfileEntityTool
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -54,8 +53,6 @@ class BaseContextRetrievalTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        # Initialize user entity unification tool
-        self.profile_entity_tool = ProfileEntityTool()
 
         if self.CONTEXT_TYPE is None:
             raise ValueError("Subclass must define CONTEXT_TYPE")
@@ -78,22 +75,9 @@ class BaseContextRetrievalTool(BaseTool):
             if filters.time_range.end:
                 build_filter[time_type]["$lte"] = filters.time_range.end
 
-        # Entity filter with normalization via match_entity()
+        # Entity filter
         if filters.entities is not None and filters.entities:
-            unified_entities = []
-            for entity_name in filters.entities:
-                try:
-                    matched_name, _ = await self.profile_entity_tool.match_entity(
-                        entity_name,
-                        user_id=filters.user_id,
-                        device_id=filters.device_id,
-                        agent_id=filters.agent_id,
-                    )
-                    unified_entities.append(matched_name if matched_name else entity_name)
-                except Exception as e:
-                    logger.debug(f"Entity matching failed for '{entity_name}', using original: {e}")
-                    unified_entities.append(entity_name)
-            build_filter["entities"] = unified_entities
+            build_filter["entities"] = filters.entities
 
         return build_filter
 

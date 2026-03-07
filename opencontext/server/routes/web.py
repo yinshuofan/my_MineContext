@@ -84,7 +84,7 @@ async def read_contexts(
                 continue
 
     context_types = [
-        ct for ct in get_storage().get_available_context_types() if ct not in ("profile", "entity")
+        ct for ct in get_storage().get_available_context_types() if ct != "profile"
     ]
     types_for_query = list(types) if types else context_types
 

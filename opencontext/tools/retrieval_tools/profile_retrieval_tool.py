@@ -5,10 +5,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Profile retrieval tool - retrieves user profiles and entity profiles from the relational DB.
+Profile retrieval tool - retrieves user profiles from the relational DB.
 
 This tool operates on the relational database (not vector DB), providing access to
-user profile data and entity information via UnifiedStorage's profile/entity methods.
+user profile data via UnifiedStorage's profile methods.
 """
 
 from typing import Any, Dict
@@ -21,13 +21,10 @@ logger = get_logger(__name__)
 
 
 class ProfileRetrievalTool(BaseTool):
-    """Retrieves user profiles and entity profiles from the relational DB.
+    """Retrieves user profiles from the relational DB.
 
-    Supports four operations:
+    Supports one operation:
     - get_profile: Fetch a user's profile by user_id and agent_id
-    - find_entity: Look up a specific entity by exact name
-    - search_entities: Search entities by text query (fuzzy matching)
-    - list_entities: List entities with optional type filtering
     """
 
     @classmethod
@@ -36,19 +33,13 @@ class ProfileRetrievalTool(BaseTool):
 
     @classmethod
     def get_description(cls) -> str:
-        return """Retrieve user profiles and entity profiles from the relational database.
+        return """Retrieve user profiles from the relational database.
 
 **Supported operations:**
 - **get_profile**: Fetch a user's profile by user_id (and optional agent_id). Returns the full profile dict including preferences, history, and metadata.
-- **find_entity**: Look up a specific entity by exact name. Returns the entity's details including type, aliases, description, and metadata.
-- **search_entities**: Search entities by a text query with fuzzy matching. Useful when you don't know the exact entity name.
-- **list_entities**: List all entities for a user, optionally filtered by entity type (person, project, team, organization, other).
 
 **When to use this tool:**
 - When you need user profile information (preferences, settings, identity)
-- When looking up known entities (people, projects, teams, organizations)
-- When searching for entities related to a topic or keyword
-- When exploring what entities exist for a user
 
 **Note:** This tool queries the relational DB directly and does NOT perform vector similarity search."""
 
@@ -59,7 +50,7 @@ class ProfileRetrievalTool(BaseTool):
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["get_profile", "find_entity", "search_entities", "list_entities"],
+                    "enum": ["get_profile"],
                     "description": "The operation to perform",
                 },
                 "user_id": {
@@ -76,31 +67,13 @@ class ProfileRetrievalTool(BaseTool):
                     "description": "Agent ID (defaults to 'default')",
                     "default": "default",
                 },
-                "entity_name": {
-                    "type": "string",
-                    "description": "Exact entity name to look up (required for find_entity)",
-                },
-                "query": {
-                    "type": "string",
-                    "description": "Search query text for fuzzy entity matching (required for search_entities)",
-                },
-                "entity_type": {
-                    "type": "string",
-                    "enum": ["person", "project", "team", "organization", "other"],
-                    "description": "Entity type filter for list_entities (optional)",
-                },
-                "top_k": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return",
-                    "default": 5,
-                },
             },
             "required": ["operation", "user_id"],
             "additionalProperties": False,
         }
 
     async def execute(self, **kwargs) -> Dict[str, Any]:
-        """Execute the requested profile/entity retrieval operation."""
+        """Execute the requested profile retrieval operation."""
         operation = kwargs.get("operation")
         user_id = kwargs.get("user_id")
 
@@ -112,9 +85,6 @@ class ProfileRetrievalTool(BaseTool):
 
         operation_handlers = {
             "get_profile": self._handle_get_profile,
-            "find_entity": self._handle_find_entity,
-            "search_entities": self._handle_search_entities,
-            "list_entities": self._handle_list_entities,
         }
 
         handler = operation_handlers.get(operation)
@@ -157,93 +127,3 @@ class ProfileRetrievalTool(BaseTool):
             }
 
         return {"success": True, "data": profile, "operation": "get_profile"}
-
-    async def _handle_find_entity(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Look up a specific entity by exact name."""
-        user_id = params["user_id"]
-        device_id = params.get("device_id", "default")
-        agent_id = params.get("agent_id", "default")
-        entity_name = params.get("entity_name", "")
-
-        if not entity_name:
-            return {
-                "success": False,
-                "data": None,
-                "operation": "find_entity",
-                "error": "entity_name is required for find_entity operation",
-            }
-
-        storage = self._get_storage()
-        entity = await storage.get_entity(
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-            entity_name=entity_name,
-        )
-
-        if not entity:
-            return {
-                "success": False,
-                "data": None,
-                "operation": "find_entity",
-                "error": f"Entity '{entity_name}' not found for user_id='{user_id}'",
-            }
-
-        return {"success": True, "data": entity, "operation": "find_entity"}
-
-    async def _handle_search_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Search entities by text query with fuzzy matching."""
-        user_id = params["user_id"]
-        device_id = params.get("device_id", "default")
-        agent_id = params.get("agent_id", "default")
-        query = params.get("query", "")
-
-        if not query:
-            return {
-                "success": False,
-                "data": None,
-                "operation": "search_entities",
-                "error": "query is required for search_entities operation",
-            }
-
-        top_k = min(max(params.get("top_k", 5), 1), 100)
-
-        storage = self._get_storage()
-        results = await storage.search_entities(
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-            query_text=query,
-            limit=top_k,
-        )
-
-        return {
-            "success": True,
-            "data": results,
-            "operation": "search_entities",
-            "count": len(results),
-        }
-
-    async def _handle_list_entities(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """List entities with optional type filtering."""
-        user_id = params["user_id"]
-        device_id = params.get("device_id", "default")
-        agent_id = params.get("agent_id", "default")
-        entity_type = params.get("entity_type")
-        top_k = min(max(params.get("top_k", 5), 1), 100)
-
-        storage = self._get_storage()
-        results = await storage.list_entities(
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-            entity_type=entity_type,
-            limit=top_k,
-        )
-
-        return {
-            "success": True,
-            "data": results,
-            "operation": "list_entities",
-            "count": len(results),
-        }

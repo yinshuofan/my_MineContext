@@ -37,9 +37,9 @@ class LLMContextStrategy:
 
         # Toolset configuration
         self.retrieval_tools = ALL_RETRIEVAL_TOOL_DEFINITIONS
-        self.entity_tools = ALL_PROFILE_TOOL_DEFINITIONS
+        self.profile_tools = ALL_PROFILE_TOOL_DEFINITIONS
         self.web_search_tool = WEB_SEARCH_TOOL_DEFINITION
-        self.all_tools = self.retrieval_tools + self.entity_tools + self.web_search_tool
+        self.all_tools = self.retrieval_tools + self.profile_tools + self.web_search_tool
 
     async def analyze_and_plan_tools(
         self, intent: Intent, existing_context: ContextCollection, iteration: int = 1
@@ -326,8 +326,6 @@ class LLMContextStrategy:
             return DataSource.DOCUMENT
         elif "web" in tool_name_lower or "search" in tool_name_lower:
             return DataSource.WEB_SEARCH
-        elif "entity" in tool_name_lower:
-            return DataSource.ENTITY
         elif "processed" in tool_name_lower or "context" in tool_name_lower:
             return DataSource.PROCESSED
         else:

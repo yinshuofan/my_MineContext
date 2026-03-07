@@ -9,7 +9,6 @@
 
 from opencontext.models.context import (
     ContextProperties,
-    EntityData,
     ExtractedData,
     ProcessedContext,
     ProfileData,
@@ -23,7 +22,6 @@ __all__ = [
     "ExtractedData",
     "ContextProperties",
     "ProfileData",
-    "EntityData",
     "ContextSource",
     "ContentFormat",
 ]

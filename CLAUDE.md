@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MineContext is a **memory backend service** that captures, processes, stores, and retrieves context/memory from multiple sources (chat logs, documents, web links). It uses vector embeddings and LLM-powered analysis to organize information into 5 typed memory contexts with type-specific update strategies and storage routing.
+MineContext is a **memory backend service** that captures, processes, stores, and retrieves context/memory from multiple sources (chat logs, documents, web links). It uses vector embeddings and LLM-powered analysis to organize information into 4 typed memory contexts with type-specific update strategies and storage routing.
 
 ## Common Commands
 
@@ -63,14 +63,13 @@ When proposing code changes, **evaluate whether the solution fits the project's 
 
 ## Architecture
 
-### 5-Type Context System
+### 4-Type Context System
 
 All data flows through a unified `ProcessedContext` model, but each type has its own update strategy and storage destination. This is the central design decision — understand it before modifying any storage, processing, or retrieval code.
 
 | Type | Update Strategy | Storage | Description |
 |------|----------------|---------|-------------|
 | `profile` | OVERWRITE | Relational DB | User's own preferences, habits, communication style. Key: `(user_id, device_id, agent_id)` |
-| `entity` | OVERWRITE | Relational DB | Other people, projects, teams, organizations. Key: `(user_id, device_id, agent_id, entity_name)` |
 | `document` | OVERWRITE | Vector DB | Uploaded files and web links. Overwrite = delete old chunks + insert new. Tracked by `source_file_key` |
 | `event` | APPEND | Vector DB | Immutable activity records, meetings, status changes. Never modified after creation |
 | `knowledge` | APPEND_MERGE | Vector DB | Reusable concepts, procedures, patterns. Similar entries merged to avoid duplication |
@@ -86,15 +85,13 @@ Input → Processor → ProcessedContext → _handle_processed_context (routes b
 1. **Process** (`opencontext/context_processing/`): `ProcessorFactory` routes by `ContextSource`:
    - `LOCAL_FILE`, `VAULT`, `WEB_LINK` → `DocumentProcessor`
    - `CHAT_LOG`, `INPUT` → `TextChatProcessor`
-   - Entity extraction → `EntityProcessor`
 
 2. **Route** (`opencontext/server/opencontext.py` → `_handle_processed_context()`): The central routing point. Reads `CONTEXT_STORAGE_BACKENDS` to decide per context:
    - profile → `storage.upsert_profile()` → relational DB
-   - entity → `storage.upsert_entity()` → relational DB
    - document/event/knowledge → `storage.batch_upsert_processed_context()` → vector DB
 
 3. **Store** (`opencontext/storage/`): `UnifiedStorage` wraps dual backends:
-   - **Document DB** (MySQL or SQLite) — profiles table, entities table, plus context metadata
+   - **Document DB** (MySQL or SQLite) — profiles table, plus context metadata
    - **Vector DB** (VikingDB, ChromaDB, or Qdrant) — document/event/knowledge embeddings
 
 ### Hierarchical Event Indexing
@@ -105,7 +102,7 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 
 | Component | Location | Details |
 |-----------|----------|---------|
-| Retrieval Tools (4 type-aligned) | `opencontext/tools/` | `tools/MODULE.md` |
+| Retrieval Tools (3 type-aligned) | `opencontext/tools/` | `tools/MODULE.md` |
 | Search API (event search with hierarchy drill-up) | `opencontext/server/search/` | `server/MODULE.md` |
 | Memory Cache (user memory snapshot) | `opencontext/server/cache/` | `server/MODULE.md` |
 | Scheduling (user_activity / periodic) | `opencontext/scheduler/` | `scheduler/MODULE.md` |
@@ -114,7 +111,7 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 
 ### Storage Access
 
-**Always use `get_storage()` from `opencontext/storage/global_storage.py`** to get the `UnifiedStorage` instance. Do NOT use `GlobalStorage.get_instance()` or `get_global_storage()` — these return the raw wrapper which lacks profile/entity/hierarchy methods.
+**Always use `get_storage()` from `opencontext/storage/global_storage.py`** to get the `UnifiedStorage` instance. Do NOT use `GlobalStorage.get_instance()` or `get_global_storage()` — these return the raw wrapper which lacks profile/hierarchy methods.
 
 ### Server Layer
 
@@ -160,8 +157,8 @@ These are real bugs encountered during development. Check for them when modifyin
 ### Multi-instance deployment — all shared-state operations must be concurrency-safe
 This service runs as multiple instances sharing the same Redis and MySQL. Any "read-then-write" sequence on shared state is a potential race condition. Use atomic operations: Lua scripts for Redis (see `_CONDITIONAL_ZPOPMIN_LUA` in `redis_scheduler.py` for the pattern, executed via `RedisCache.eval_lua()`), database transactions for MySQL. When adding new Redis operations that check-then-modify, ask: "What happens if two instances run this at the same time?" If the answer is "data corruption or duplicate work", make it atomic.
 
-### All profile/entity operations require the 3-key identifier `(user_id, device_id, agent_id)`
-Every storage method for profiles and entities requires all three identifiers. `device_id` and `agent_id` default to `"default"`. Omitting them causes positional argument mismatches (e.g., `entity_name` gets interpreted as `device_id`). The same applies to tools, cache manager, and search strategies. Redis cache keys also use all three: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
+### All profile operations require the 3-key identifier `(user_id, device_id, agent_id)`
+Every storage method for profiles requires all three identifiers. `device_id` and `agent_id` default to `"default"`. Omitting them causes positional argument mismatches. The same applies to tools, cache manager, and search strategies. Redis cache keys also use all three: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
 
 ### Qdrant Range filter only supports numeric/datetime
 Qdrant's `models.Range(gte=..., lte=...)` does NOT work on string fields like `time_bucket`. Use in-code string comparison filtering instead (over-fetch with `top_k * 3`, then filter). See `qdrant_backend.py` `search_by_hierarchy()`.
@@ -185,9 +182,6 @@ The merger (`context_merger.py`) only processes `knowledge` contexts. Do not rou
 ### Prompt files must stay in sync
 `config/prompts_en.yaml` and `config/prompts_zh.yaml` must have identical keys. Update both files and `ContextDescriptions` in `enums.py` when changing classification logic.
 
-### EntityData.relationships stored in metadata JSON
-The `relationships` field on `EntityData` is not a separate DB column — it's serialized inside the `metadata` JSON column.
-
 ### Database connections are not thread-safe — use `_get_connection()` everywhere
 Both MySQL and SQLite backends use `threading.local()` for per-thread connections. `_get_connection()` is the only safe way to access connections from method-level code. In SQLite, `self.connection` is only for `initialize()` and `close()`.
 
@@ -195,7 +189,7 @@ Both MySQL and SQLite backends use `threading.local()` for per-thread connection
 VikingDB stores `hierarchy_level` as `int64`. Use `must` filter directly: `{"op": "must", "field": "hierarchy_level", "conds": [0]}`. Do NOT use `range` format — it's unnecessary for int64 fields. `must` also supports list filtering: `"conds": [0, 1, 2]`.
 
 ### Context type routing must match CONTEXT_STORAGE_BACKENDS
-`_handle_processed_context()` routes profile/entity to relational DB and others to vector DB. Bypassing this (e.g., calling `batch_upsert_processed_context()` for all types) makes profile/entity data unretrievable.
+`_handle_processed_context()` routes profile to relational DB and others to vector DB. Bypassing this (e.g., calling `batch_upsert_processed_context()` for all types) makes profile data unretrievable.
 
 ### Use `run_coroutine_threadsafe` not `create_task` from sync blocking code
 When sync code runs via `asyncio.to_thread`, `loop.create_task()` doesn't reliably wake the event loop. Use `asyncio.run_coroutine_threadsafe(coro, loop)` instead. The `_capture_loop()` pattern stores the loop reference from async entry points.

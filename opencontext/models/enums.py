@@ -74,10 +74,9 @@ class ContentFormat(str, Enum):
 
 
 class ContextType(str, Enum):
-    """Context type enumeration — 5 types with clear update strategy and storage location"""
+    """Context type enumeration — 4 types with clear update strategy and storage location"""
 
     PROFILE = "profile"
-    ENTITY = "entity"
     DOCUMENT = "document"
     EVENT = "event"
     KNOWLEDGE = "knowledge"
@@ -86,7 +85,7 @@ class ContextType(str, Enum):
 class UpdateStrategy(str, Enum):
     """Update strategy enumeration"""
 
-    OVERWRITE = "overwrite"  # profile, entity, document
+    OVERWRITE = "overwrite"  # profile, document
     APPEND = "append"  # event (immutable)
     APPEND_MERGE = "append_merge"  # knowledge (deduplicate + merge similar)
 
@@ -94,7 +93,6 @@ class UpdateStrategy(str, Enum):
 # Type → update strategy mapping
 CONTEXT_UPDATE_STRATEGIES = {
     ContextType.PROFILE: UpdateStrategy.OVERWRITE,
-    ContextType.ENTITY: UpdateStrategy.OVERWRITE,
     ContextType.DOCUMENT: UpdateStrategy.OVERWRITE,
     ContextType.EVENT: UpdateStrategy.APPEND,
     ContextType.KNOWLEDGE: UpdateStrategy.APPEND_MERGE,
@@ -103,7 +101,6 @@ CONTEXT_UPDATE_STRATEGIES = {
 # Type → storage backend mapping (for routing decisions)
 CONTEXT_STORAGE_BACKENDS = {
     ContextType.PROFILE: "document_db",  # Relational DB
-    ContextType.ENTITY: "document_db",  # Relational DB
     ContextType.DOCUMENT: "vector_db",  # Vector DB
     ContextType.EVENT: "vector_db",  # Vector DB
     ContextType.KNOWLEDGE: "vector_db",  # Vector DB
@@ -123,11 +120,6 @@ ContextSimpleDescriptions = {
         "name": ContextType.PROFILE.value,
         "description": "User profile and preferences management",
         "purpose": "Store and maintain user's personal information, preferences, habits, and communication style. Supports overwrite-based updates.",
-    },
-    ContextType.ENTITY: {
-        "name": ContextType.ENTITY.value,
-        "description": "Entity profile information management",
-        "purpose": "Record and manage profile information of various entities (people, projects, teams, organizations). Supports alias management and relationship tracking.",
     },
     ContextType.DOCUMENT: {
         "name": ContextType.DOCUMENT.value,
@@ -162,22 +154,6 @@ ContextDescriptions = {
             "I usually work from 9am to 6pm Beijing time",
         ],
         "classification_priority": 10,
-    },
-    ContextType.ENTITY: {
-        "name": ContextType.ENTITY.value,
-        "description": """Entity profile information — Record and manage profile information of various entities (people other than current user, projects, teams, organizations). This type answers "who/what is this entity" and is overwritten per entity.""",
-        "key_indicators": [
-            "Contains information about entities other than the current user",
-            "Describes basic attributes, roles, and characteristics of people/projects/teams",
-            "Records entity aliases, abbreviations, and full names",
-            "Involves relationships between entities",
-        ],
-        "examples": [
-            "Li Si is a senior frontend engineer specializing in React and TypeScript",
-            "Project Alpha is our company's new CRM system, deadline Q3 2026",
-            "The AI team consists of 5 members led by Wang Wu",
-        ],
-        "classification_priority": 9,
     },
     ContextType.DOCUMENT: {
         "name": ContextType.DOCUMENT.value,

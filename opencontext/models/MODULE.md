@@ -1,12 +1,12 @@
-# opencontext/models/ -- Core data models and enums for the 5-type context system.
+# opencontext/models/ -- Core data models and enums for the 4-type context system.
 
 ## File Overview
 
 | File | Responsibility |
 |------|---------------|
 | `enums.py` | All enums (`ContextType`, `ContextSource`, `UpdateStrategy`, etc.), type-to-strategy/storage mappings, context description dicts, and helper functions for prompt formatting |
-| `context.py` | Pydantic models: pipeline intermediates (`ProcessedContext`, `ContextProperties`, `ExtractedData`), API response models (`ProcessedContextModel`, `RawContextModel`), relational DB models (`ProfileData`, `EntityData`), and utilities (`Chunk`, `Vectorize`, `KnowledgeContextMetadata`) |
-| `__init__.py` | Re-exports: `ContextProperties`, `EntityData`, `ExtractedData`, `ProcessedContext`, `ProfileData`, `RawContextProperties`, `ContextSource`, `ContentFormat` |
+| `context.py` | Pydantic models: pipeline intermediates (`ProcessedContext`, `ContextProperties`, `ExtractedData`), API response models (`ProcessedContextModel`, `RawContextModel`), relational DB models (`ProfileData`), and utilities (`Chunk`, `Vectorize`, `KnowledgeContextMetadata`) |
+| `__init__.py` | Re-exports: `ContextProperties`, `ExtractedData`, `ProcessedContext`, `ProfileData`, `RawContextProperties`, `ContextSource`, `ContentFormat` |
 
 ## Key Enums (enums.py)
 
@@ -29,7 +29,7 @@ TEXT = "text"  |  IMAGE = "image"  |  FILE = "file"
 
 ### ContextType(str, Enum)
 ```
-PROFILE = "profile"  |  ENTITY = "entity"  |  DOCUMENT = "document"
+PROFILE = "profile"  |  DOCUMENT = "document"
 EVENT = "event"      |  KNOWLEDGE = "knowledge"
 ```
 
@@ -53,12 +53,12 @@ REFERENCE_SUGGESTION = "reference_suggestion"    |  CONTEXT_AWARE = "context_awa
 
 ```python
 CONTEXT_UPDATE_STRATEGIES = {
-    PROFILE: OVERWRITE, ENTITY: OVERWRITE, DOCUMENT: OVERWRITE,
+    PROFILE: OVERWRITE, DOCUMENT: OVERWRITE,
     EVENT: APPEND, KNOWLEDGE: APPEND_MERGE,
 }
 
 CONTEXT_STORAGE_BACKENDS = {
-    PROFILE: "document_db", ENTITY: "document_db",
+    PROFILE: "document_db",
     DOCUMENT: "vector_db", EVENT: "vector_db", KNOWLEDGE: "vector_db",
 }
 
@@ -186,28 +186,6 @@ Relational DB model. Composite PK: `(user_id, device_id, agent_id)`.
 
 Methods: `to_dict() -> Dict`, `from_dict(cls, data) -> ProfileData`
 
-### EntityData
-Relational DB model. Unique key: `(user_id, device_id, agent_id, entity_name)`.
-| Field | Type | Default |
-|-------|------|---------|
-| `id` | `str` | `uuid4()` |
-| `user_id` | `str` | required |
-| `device_id` | `str` | `"default"` |
-| `agent_id` | `str` | `"default"` |
-| `entity_name` | `str` | required |
-| `entity_type` | `Optional[str]` | `None` |
-| `content` | `str` | required |
-| `summary` | `Optional[str]` | `None` |
-| `keywords` | `List[str]` | `[]` |
-| `aliases` | `List[str]` | `[]` |
-| `relationships` | `Dict[str, List[str]]` | `{}` |
-| `metadata` | `Optional[Dict[str, Any]]` | `{}` |
-| `created_at`, `updated_at` | `datetime` | `now(utc)` |
-
-Methods: `to_dict() -> Dict`, `from_dict(cls, data) -> EntityData`
-
-Note: `relationships` is stored inside the `metadata` JSON column in the DB, not as a separate column.
-
 ### Chunk
 Document chunk. Fields: `text` (Optional[str]), `image` (Optional[bytes]), `chunk_index` (int), `keywords` (List[str]), `entities` (List[str]).
 
@@ -222,7 +200,7 @@ Fields: `knowledge_source`, `knowledge_file_path`, `knowledge_title`, `knowledge
 
 **Depended on by (nearly everything):**
 - `opencontext/context_processing/` -- processors produce `ProcessedContext`
-- `opencontext/storage/` -- stores/retrieves `ProcessedContext`, `ProfileData`, `EntityData`
+- `opencontext/storage/` -- stores/retrieves `ProcessedContext`, `ProfileData`
 - `opencontext/server/` -- uses API response models, routes by `ContextType`/`CONTEXT_STORAGE_BACKENDS`
 - `opencontext/tools/` -- uses `ContextType`, description helpers
 - `opencontext/config/prompt_manager.py` -- calls enum description helpers
@@ -231,8 +209,8 @@ Fields: `knowledge_source`, `knowledge_file_path`, `knowledge_title`, `knowledge
 ## Conventions and Constraints
 
 1. **ProcessedContextModel must mirror ContextProperties**: If you add a field to `ContextProperties`, also add it to `ProcessedContextModel` and update `from_processed_context()`, or it will be silently dropped from API responses.
-2. **All 5 types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files.
-3. **3-key identifier required**: `ProfileData` and `EntityData` always require `(user_id, device_id, agent_id)`. Defaults are `"default"` for `device_id` and `agent_id`.
+2. **All 4 types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files.
+3. **3-key identifier required**: `ProfileData` always requires `(user_id, device_id, agent_id)`. Defaults are `"default"` for `device_id` and `agent_id`.
 4. **Timezone-aware datetimes**: Use `datetime.now(tz=datetime.timezone.utc)`, never `datetime.utcnow()`.
 5. **`get_context_type_for_analysis()` falls back to KNOWLEDGE**: Unrecognized type strings from LLM output default to `KNOWLEDGE`, not `EVENT`.
 6. **Enum values are lowercase strings**: All `str, Enum` classes use lowercase values matching their `.value` attribute.

@@ -8,7 +8,6 @@ from typing import Any, Dict, List
 
 from opencontext.tools.base import BaseTool
 from opencontext.tools.operation_tools import *
-from opencontext.tools.profile_tools import ProfileEntityTool
 from opencontext.tools.retrieval_tools import *
 from opencontext.utils.logging_utils import get_logger
 
@@ -24,7 +23,6 @@ class ToolsExecutor:
             HierarchicalEventTool.get_name(): HierarchicalEventTool(),
             # Profile retrieval tools (relational DB)
             ProfileRetrievalTool.get_name(): ProfileRetrievalTool(),
-            ProfileEntityTool.get_name(): ProfileEntityTool(),
             # Operation tools
             WebSearchTool.get_name(): WebSearchTool(),
         }

@@ -54,7 +54,7 @@ class WebSearchTool(BaseTool):
 
 **When NOT to use this tool:**
 - For searching stored contexts or history → use text_search, filter_context
-- For entity lookups within the system → use profile_entity instead
+- For user profile lookups within the system → use retrieve_profile_context instead
 - When the answer can be found in local context → prioritize local tools first
 - For information that doesn't require real-time data
 

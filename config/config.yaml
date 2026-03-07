@@ -85,7 +85,7 @@ capture:
 # ============================================================
 processing:
   enabled: "${PROCESSING_ENABLED:true}" # 处理总开关
-  # 文本聊天处理器（从对话中提取 profile/entity/event/knowledge）
+  # 文本聊天处理器（从对话中提取 profile/event/knowledge）
   text_chat_processor:
     enabled: "${TEXT_CHAT_PROCESSOR_ENABLED:true}"
   # 文档处理器（处理上传文件和网页链接）
@@ -134,11 +134,10 @@ memory_cache:
   max_recent_documents: 10    # 缓存中近期文档的最大条数
   max_recent_knowledge: 10    # 缓存中近期知识的最大条数
   accessed_ttl: 604800        # 访问记录的 TTL（秒），默认 7 天
-  max_entities: 20            # 缓存中实体的最大条数
 
 # ============================================================
 # 存储模块
-# 双后端架构：向量库（语义检索）+ 关系型库（profile/entity）
+# 双后端架构：向量库（语义检索）+ 关系型库（profile）
 # ============================================================
 storage:
   enabled: true
@@ -189,7 +188,7 @@ storage:
     #     # api_key: "${QDRANT_API_KEY}"
 
     # ----------------------------------------------------------
-    # 关系型数据库 — 存储 profile/entity 及上下文元数据
+    # 关系型数据库 — 存储 profile 及上下文元数据
     # 二选一：MySQL / SQLite
     # ----------------------------------------------------------
 
