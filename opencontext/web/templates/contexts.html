@@ -46,11 +46,19 @@
             <div class="row g-2 align-items-end mt-1">
                 <div class="col-6 col-md-3">
                     <label class="form-label small mb-1">开始时间</label>
-                    <input type="datetime-local" name="start_date" class="form-control form-control-sm" value="{{ start_date or '' }}">
+                    <div class="d-flex gap-1">
+                        <input type="date" id="start_date_date" class="form-control form-control-sm">
+                        <input type="time" id="start_date_time" class="form-control form-control-sm" style="max-width:45%">
+                    </div>
+                    <input type="hidden" name="start_date" id="start_date_hidden">
                 </div>
                 <div class="col-6 col-md-3">
                     <label class="form-label small mb-1">结束时间</label>
-                    <input type="datetime-local" name="end_date" class="form-control form-control-sm" value="{{ end_date or '' }}">
+                    <div class="d-flex gap-1">
+                        <input type="date" id="end_date_date" class="form-control form-control-sm">
+                        <input type="time" id="end_date_time" class="form-control form-control-sm" style="max-width:45%">
+                    </div>
+                    <input type="hidden" name="end_date" id="end_date_hidden">
                 </div>
                 <div class="col-12 col-md-2">
                     <input type="hidden" name="page" value="1">
@@ -169,6 +177,9 @@
 {% block scripts %}
 <script>
     function buildFilterParams(overrides) {
+        // Populate hidden datetime fields before reading form
+        combineDatetime('start_date_date', 'start_date_time', 'start_date_hidden');
+        combineDatetime('end_date_date', 'end_date_time', 'end_date_hidden');
         const params = new URLSearchParams();
         const form = document.getElementById('filter-form');
         const formData = new FormData(form);
@@ -224,9 +235,36 @@
         }
     }
 
+    function combineDatetime(dateId, timeId, hiddenId) {
+        var d = document.getElementById(dateId).value;
+        var t = document.getElementById(timeId).value;
+        document.getElementById(hiddenId).value = d ? (t ? d + 'T' + t : d) : '';
+    }
+
+    function splitDatetime(value, dateId, timeId) {
+        if (!value) return;
+        if (value.includes('T')) {
+            var parts = value.split('T');
+            document.getElementById(dateId).value = parts[0];
+            document.getElementById(timeId).value = parts[1];
+        } else if (value.includes(' ')) {
+            var parts = value.split(' ');
+            document.getElementById(dateId).value = parts[0];
+            document.getElementById(timeId).value = parts[1];
+        } else {
+            document.getElementById(dateId).value = value;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
-        // Disable empty fields before submit to avoid 422 on Optional[int] params
+        // Backfill date/time inputs from server values
+        splitDatetime('{{ start_date or "" }}', 'start_date_date', 'start_date_time');
+        splitDatetime('{{ end_date or "" }}', 'end_date_date', 'end_date_time');
+
+        // Combine date+time into hidden fields before submit, then disable empties
         document.getElementById('filter-form').addEventListener('submit', function() {
+            combineDatetime('start_date_date', 'start_date_time', 'start_date_hidden');
+            combineDatetime('end_date_date', 'end_date_time', 'end_date_hidden');
             this.querySelectorAll('input, select').forEach(function(el) {
                 if (!el.value) el.disabled = true;
             });
