@@ -378,8 +378,8 @@ class UserMemoryCacheManager:
                 "user_id": profile_data.get("user_id", user_id),
                 "device_id": profile_data.get("device_id", device_id),
                 "agent_id": profile_data.get("agent_id", agent_id),
-                "content": profile_data.get("content", ""),
-                "summary": profile_data.get("summary"),
+                "factual_profile": profile_data.get("factual_profile", ""),
+                "behavioral_profile": profile_data.get("behavioral_profile"),
                 "keywords": profile_data.get("keywords", []),
                 "metadata": profile_data.get("metadata", {}),
             }
@@ -508,12 +508,13 @@ class UserMemoryCacheManager:
         ttl_remaining: int = 0,
     ) -> UserMemoryCacheResponse:
         """Merge snapshot data with real-time accessed items into final response."""
-        # Profile (simplified: content + keywords + metadata only)
+        # Profile (simplified: factual_profile + behavioral_profile + keywords + metadata only)
         profile = None
         profile_data = snapshot_data.get("profile")
         if profile_data:
             profile = SimpleProfile(
-                content=profile_data.get("content", ""),
+                factual_profile=profile_data.get("factual_profile", ""),
+                behavioral_profile=profile_data.get("behavioral_profile"),
                 keywords=profile_data.get("keywords", []),
                 metadata=profile_data.get("metadata", {}),
             )

@@ -376,8 +376,8 @@ class ProfileData(BaseModel):
     agent_id: str = (
         "default"  # Composite primary key part 3 (different agents can have different profiles)
     )
-    content: str  # Full profile text (LLM-merged result)
-    summary: Optional[str] = None
+    factual_profile: str  # Factual profile text (LLM-merged result)
+    behavioral_profile: Optional[str] = None  # Behavioral profile text
     keywords: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
     importance: int = 0

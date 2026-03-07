@@ -142,8 +142,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                 user_id TEXT NOT NULL,
                 device_id TEXT NOT NULL DEFAULT 'default',
                 agent_id TEXT NOT NULL DEFAULT 'default',
-                content TEXT NOT NULL,
-                summary TEXT,
+                factual_profile TEXT NOT NULL,
+                behavioral_profile TEXT,
                 keywords JSON,
                 entities JSON,
                 importance INTEGER DEFAULT 0,
@@ -899,8 +899,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        content: str = "",
-        summary: Optional[str] = None,
+        factual_profile: str = "",
+        behavioral_profile: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
@@ -919,12 +919,12 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             await conn.execute(
                 """
-                INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords,
-                                      entities, importance, metadata, created_at, updated_at)
+                INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, behavioral_profile,
+                                      keywords, entities, importance, metadata, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, device_id, agent_id) DO UPDATE SET
-                    content = excluded.content,
-                    summary = excluded.summary,
+                    factual_profile = excluded.factual_profile,
+                    behavioral_profile = excluded.behavioral_profile,
                     keywords = excluded.keywords,
                     entities = excluded.entities,
                     importance = excluded.importance,
@@ -935,8 +935,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                     user_id,
                     device_id,
                     agent_id,
-                    content,
-                    summary,
+                    factual_profile,
+                    behavioral_profile,
                     keywords_json,
                     entities_json,
                     importance,
@@ -966,8 +966,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor = await conn.execute(
                 """
-                SELECT user_id, device_id, agent_id, content, summary, keywords, entities,
-                       importance, metadata, created_at, updated_at
+                SELECT user_id, device_id, agent_id, factual_profile, behavioral_profile,
+                       keywords, entities, importance, metadata, created_at, updated_at
                 FROM profiles
                 WHERE user_id = ? AND device_id = ? AND agent_id = ?
                 """,

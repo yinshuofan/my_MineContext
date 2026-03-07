@@ -430,10 +430,40 @@ processing:
 
         ## Classification (ContextType)
         - `event`: **Always the first memory.** A comprehensive summary of ALL user activities in this conversation — what they did, discussed, decided, expressed, or experienced. This should cover the full scope of the conversation, even if specific details are also extracted as other types below.
-        - `profile`: Information about the current user themselves — personal info, preferences, habits, communication style (e.g., "I'm a backend developer", "I prefer dark mode").
+        - `profile`: Information about the current user themselves. Only extract **explicitly stated** facts, no inference. See profile output rules below.
         - `entity`: Information about entities other than the current user — people, projects, teams, organizations (e.g., "Li Si is a frontend engineer", "Project Alpha is our CRM system"). Create ONE entity memory per entity when possible.
         - `knowledge`: Abstract knowledge, concepts, principles, operational procedures (e.g., "React Hooks principles", "TCP handshake process", "Steps to deploy with Docker").
         - `document`: Content from uploaded documents or files (rarely from chat, only when user explicitly shares document content).
+
+        ## Profile Output Rules
+
+        When context_type is `profile`, the `summary` field MUST use Markdown section format, organized into the following 4 categories. Only include categories that have extracted information — omit empty categories.
+
+        **4 categories and their meaning**:
+        - `## Basic Information`: User's name/nickname, age, gender, location, occupation or education, important dates (birthday, anniversary, etc.)
+        - `## Interests & Focus`: User's hobbies (with engagement level), recent concerns (with time annotations), mentioned follow-up items (unresolved events like "job interview next week", "had a fight with parents")
+        - `## Social Relationships`: Important people the user mentioned — format: `Name (relationship): one-line note`
+        - `## Interaction Preferences`: User's expectations for the AI — AI role, chat style, name preferences, topic boundaries, explicit positive or negative feedback from the user
+
+        **Extraction principles**:
+        - Only extract facts the user **directly stated** — do not infer personality traits or behavioral patterns
+        - Strictly distinguish "user talking about themselves" vs "user discussing others" — "my colleague is getting married" is about the colleague, not the user
+        - Distinguish "user's statement" vs "user's hypothetical/joke" — "if I were a millionaire" does not mean the user is a millionaire
+        - Use `- key: value` format within each category, one item per line
+
+        **Example** (value of the summary field):
+        ```
+        ## Basic Information
+        - Name: Xiao Zhang
+        - Age: 28
+        - Occupation: Backend developer
+
+        ## Social Relationships
+        - Xiao Yu (girlfriend): Long-distance relationship, studying in Beijing
+
+        ## Interaction Preferences
+        - Name: Don't call me sir, call me Xiao Zhang
+        ```
 
         ## Per-Memory Fields
         1. **title**: Short descriptive title for this specific memory
@@ -533,28 +563,52 @@ merging:
 
   overwrite_merge:
     system: |
-      You are a profile/entity information merging expert. Your task is to intelligently merge NEW information into an EXISTING profile or entity record, producing an updated version.
+      You are a user profile merging expert. Your task is to intelligently merge newly extracted user information into an existing user profile, producing an updated version.
 
-      **Core Principles**:
-      1. **Overwrite with Intelligence**: New information updates and enriches the existing record. Contradictions should be resolved in favor of newer information.
-      2. **Preserve Valuable Content**: Retain important details from the existing record that are not contradicted by new information.
-      3. **Coherent Output**: The merged result should read as a single, well-organized profile — not a concatenation.
-      4. **Concise and Dense**: The output should be information-dense and avoid redundancy.
+      ## Profile Structure
 
-      **Output Format**:
-      Return a JSON object with:
-      - `content`: (string) The merged full-text description of the profile/entity.
-      - `summary`: (string) A brief one-line summary.
-      - `keywords`: (List[string]) Key descriptive terms.
-      - `entities`: (List[string]) Related entity names mentioned.
-      - `importance`: (integer) 0-10.
+      A user profile is a Markdown document containing the following 4 fixed categories (in this order):
+
+      1. `## Basic Information` — Name/nickname, age, gender, location, occupation or education, important dates
+      2. `## Interests & Focus` — Hobbies (with engagement level), recent concerns (with time annotations), follow-up items
+      3. `## Social Relationships` — Name (relationship type): emotional attitude and notes
+      4. `## Interaction Preferences` — AI role, chat style, name preferences, topic boundaries, user feedback
+
+      Each category uses `- key: value` format, one item per line.
+
+      ## Merge Rules
+
+      - **New information wins on contradictions**: User says "I moved to Shanghai" → overwrite old location
+      - **Preserve uncontradicted old information**: Items not mentioned in new information stay unchanged
+      - **Merge by category alignment**: Place new information into its corresponding category, do not mix across categories
+      - **Output all 4 categories**: Even if a category has no information, output the category header with `- (none yet)`
+      - **Maintain category order**: Always output in the 1-4 order listed above
+
+      ## Capacity Control
+
+      - Maximum 15 bullet items per category
+      - When exceeding, prioritize keeping: ① recently mentioned ② frequently mentioned ③ high importance
+      - Remove: items not mentioned for the longest time, mentioned only once, low importance
+      - In Interests & Focus, remove "recent concerns" with time annotations older than 2 months if the user hasn't mentioned them again
+
+      ## Legacy Format Compatibility
+
+      If the existing profile is not in Markdown section format (but free text instead), understand its content and distribute it into the appropriate categories. Do not lose valuable information.
+
+      ## Output Format
+
+      Return a JSON object:
+      - `factual_profile`: (string) The merged complete Markdown profile containing all 4 categories
+      - `keywords`: (List[string]) Key descriptive terms
+      - `entities`: (List[string]) Related entity names mentioned
+      - `importance`: (integer) 0-10
     user: |
-      Please merge the following new information into the existing record.
+      Please merge the following new information into the existing profile.
 
-      **Existing Record**:
+      **Existing Profile**:
       {existing_content}
 
-      **New Information**:
+      **Newly Extracted Information**:
       {new_content}
 
       Please generate an updated, merged JSON object.

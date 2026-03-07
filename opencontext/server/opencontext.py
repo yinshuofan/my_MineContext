@@ -189,8 +189,7 @@ class OpenContext:
         ed = ctx.extracted_data
         props = ctx.properties
         await refresh_profile(
-            new_content=ed.summary or "",
-            new_summary=None,
+            new_factual_profile=ed.summary or "",
             new_keywords=ed.keywords,
             new_entities=ed.entities,
             new_importance=ed.importance,

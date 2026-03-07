@@ -176,8 +176,7 @@ Standalone module (no class). Two public functions:
 
 ```python
 def refresh_profile(
-    new_content: str,
-    new_summary: Optional[str],
+    new_factual_profile: str,
     new_keywords: Optional[List[str]],
     new_entities: Optional[List[str]],
     new_importance: int,
@@ -188,9 +187,9 @@ def refresh_profile(
 ) -> bool
 ```
 
-`refresh_profile`: Checks if a profile exists via `storage.get_profile()`. If exists, calls `_merge_profile_with_llm()` to intelligently merge old and new data using the `merging.overwrite_merge` prompt, then upserts the merged result. If no existing profile, writes directly. Falls back to direct overwrite if LLM merge fails. **Note**: `summary` is always stored as `None` — profile no longer uses the summary field.
+`refresh_profile`: Checks if a profile exists via `storage.get_profile()`. If exists, calls `_merge_profile_with_llm()` to intelligently merge old and new data using the `merging.overwrite_merge` prompt, then upserts the merged result. If no existing profile, writes directly. Falls back to direct overwrite if LLM merge fails.
 
-`_merge_profile_with_llm`: Internal function. Loads `merging.overwrite_merge` prompt group, serializes old/new profile data as JSON (excluding `summary`), calls `generate_with_messages()` (sync), parses response JSON expecting `content`, `keywords`, `entities`, `importance` fields.
+`_merge_profile_with_llm`: Internal function. Loads `merging.overwrite_merge` prompt group, serializes old/new profile data as JSON, calls `generate_with_messages()` (sync), parses response JSON expecting `factual_profile`, `keywords`, `entities`, `importance` fields.
 
 Called from: `OpenContext._store_profile()` in `opencontext/server/opencontext.py`.
 

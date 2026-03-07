@@ -95,7 +95,7 @@ Extends `IStorageBackend`. All abstract methods that new document backends must 
 | `update_todo_status` | `(todo_id: int, status: int, end_time)` | `bool` |
 | `insert_tip` | `(content: str)` | `int` |
 | `get_tips` | `(limit, offset)` | `List[Dict]` |
-| `upsert_profile` | `(user_id, device_id, agent_id, content, summary, keywords, entities, importance, metadata)` | `bool` |
+| `upsert_profile` | `(user_id, device_id, agent_id, factual_profile, behavioral_profile, keywords, entities, importance, metadata)` | `bool` |
 | `get_profile` | `(user_id, device_id, agent_id)` | `Optional[Dict]` |
 | `delete_profile` | `(user_id, device_id, agent_id)` | `bool` |
 | `upsert_entity` | `(user_id, device_id, agent_id, entity_name, content, entity_type, summary, keywords, aliases, metadata)` | `str` (entity ID) |

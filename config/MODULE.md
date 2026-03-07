@@ -39,7 +39,7 @@
 |---|---|---|---|
 | `merging.context_merging_multiple` | ContextMerger (fallback) | `context_processing/merger/context_merger.py:285` | 通用多上下文合并 (后备方案) |
 | `merging.knowledge_merging` | ContextMerger | `context_processing/merger/context_merger.py:278` | knowledge 类型专用合并 (通过动态 key `merging.{type}_merging` 调用) |
-| `merging.overwrite_merge` | ProfileProcessor | `context_processing/processor/profile_processor.py:125` | profile 新旧信息 LLM 智能合并 |
+| `merging.overwrite_merge` | ProfileProcessor | `context_processing/processor/profile_processor.py:125` | profile 结构化 Markdown 画像合并 — 将新提取信息按 4 个分类（基本信息/兴趣与关注/社交关系/互动偏好）合并到现有 factual_profile 中，输出结构化 Markdown 格式的 factual_profile，支持旧自由文本格式自动迁移 |
 
 ### 4. `entity_processing` — 实体处理 (3 个 key)
 

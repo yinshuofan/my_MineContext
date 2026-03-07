@@ -438,8 +438,8 @@ class IDocumentStorageBackend(IStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        content: str = "",
-        summary: Optional[str] = None,
+        factual_profile: str = "",
+        behavioral_profile: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
@@ -451,8 +451,8 @@ class IDocumentStorageBackend(IStorageBackend):
             user_id: User identifier
             device_id: Device identifier
             agent_id: Agent identifier (same user can have different profiles per agent)
-            content: Full profile text (LLM-merged result)
-            summary: Profile summary
+            factual_profile: Factual profile text (LLM-merged result)
+            behavioral_profile: Behavioral profile text
             keywords: Keywords list
             entities: Entities list
             importance: Importance score

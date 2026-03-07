@@ -158,7 +158,7 @@ class UserMemoryCacheManager:
 ```
 
 Caching architecture:
-- **Snapshot** (profile + today events + daily summaries): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot stores full internal data; response assembly in `_merge_response()` simplifies to `SimpleProfile` (content + keywords + metadata), `SimpleDailySummary` (time_bucket + summary), `SimpleTodayEvent` (title + summary + event_time).
+- **Snapshot** (profile + today events + daily summaries): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot stores full internal data; response assembly in `_merge_response()` simplifies to `SimpleProfile` (factual_profile + behavioral_profile + keywords + metadata), `SimpleDailySummary` (time_bucket + summary), `SimpleTodayEvent` (title + summary + event_time).
 - **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile/entity excluded), always read real-time.
 - **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. If lock acquisition times out, tries cache once more then builds directly without caching.
 - **Snapshot build**: 6 parallel `asyncio.to_thread()` queries (profile, entities, today events, daily summaries, recent docs, recent knowledge). Response only exposes profile, today_events, daily_summaries, recently_accessed.
@@ -529,7 +529,7 @@ get_user_memory_cache()
           -> cache.set_json(snapshot, ttl=300s)
           -> release_lock()
           -> _merge_response(snapshot, accessed)
-             # Simplifies snapshot to: SimpleProfile, SimpleTodayEvent (title+summary+event_time), SimpleDailySummary
+             # Simplifies snapshot to: SimpleProfile (factual_profile+behavioral_profile+keywords+metadata), SimpleTodayEvent (title+summary+event_time), SimpleDailySummary
              # Filters recently_accessed to exclude profile/entity types
 ```
 

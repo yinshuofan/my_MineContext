@@ -182,8 +182,8 @@ class MySQLBackend(IDocumentStorageBackend):
                         user_id VARCHAR(255) NOT NULL,
                         device_id VARCHAR(100) NOT NULL DEFAULT 'default',
                         agent_id VARCHAR(100) NOT NULL DEFAULT 'default',
-                        content LONGTEXT NOT NULL,
-                        summary TEXT,
+                        factual_profile LONGTEXT NOT NULL,
+                        behavioral_profile LONGTEXT,
                         keywords JSON,
                         entities JSON,
                         importance INT DEFAULT 0,
@@ -699,8 +699,8 @@ class MySQLBackend(IDocumentStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        content: str = "",
-        summary: Optional[str] = None,
+        factual_profile: str = "",
+        behavioral_profile: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
@@ -719,20 +719,20 @@ class MySQLBackend(IDocumentStorageBackend):
 
                     await cursor.execute(
                         """
-                        INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords, entities,
-                                              importance, metadata, created_at, updated_at)
+                        INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, behavioral_profile,
+                                              keywords, entities, importance, metadata, created_at, updated_at)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
-                            content = VALUES(content),
-                            summary = VALUES(summary),
+                            factual_profile = VALUES(factual_profile),
+                            behavioral_profile = VALUES(behavioral_profile),
                             keywords = VALUES(keywords),
                             entities = VALUES(entities),
                             importance = VALUES(importance),
                             metadata = VALUES(metadata),
                             updated_at = VALUES(updated_at)
                         """,
-                        (user_id, device_id, agent_id, content, summary, keywords_json,
-                         entities_json, importance, metadata_json, now, now),
+                        (user_id, device_id, agent_id, factual_profile, behavioral_profile,
+                         keywords_json, entities_json, importance, metadata_json, now, now),
                     )
                     await conn.commit()
                     logger.info(f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}")
@@ -752,8 +752,8 @@ class MySQLBackend(IDocumentStorageBackend):
                 try:
                     await cursor.execute(
                         """
-                        SELECT user_id, device_id, agent_id, content, summary, keywords, entities,
-                               importance, metadata, created_at, updated_at
+                        SELECT user_id, device_id, agent_id, factual_profile, behavioral_profile,
+                               keywords, entities, importance, metadata, created_at, updated_at
                         FROM profiles
                         WHERE user_id = %s AND device_id = %s AND agent_id = %s
                         """,

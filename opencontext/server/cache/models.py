@@ -10,9 +10,10 @@ from pydantic import BaseModel, Field
 
 
 class SimpleProfile(BaseModel):
-    """Simplified profile for cache response (no user_id/device_id/agent_id/summary)."""
+    """Simplified profile for cache response (no user_id/device_id/agent_id)."""
 
-    content: str
+    factual_profile: str
+    behavioral_profile: Optional[str] = None
     keywords: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
