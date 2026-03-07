@@ -7,13 +7,13 @@
 </div>
 
 <!-- Filter Bar -->
-<div class="card mb-4">
-    <div class="card-body py-3">
+<div class="card mb-4 filter-panel">
+    <div class="card-body py-3 px-3">
         <form method="get" id="filter-form">
             <div class="row g-2 align-items-end">
                 <div class="col-6 col-md">
-                    <label class="form-label small mb-1">类型</label>
-                    <select name="type" class="form-select form-select-sm">
+                    <label class="filter-label">类型</label>
+                    <select name="type" class="form-select form-select-sm filter-input">
                         <option value="">全部</option>
                         {% for ct in context_types %}
                         <option value="{{ ct }}" {% if type == ct %}selected{% endif %}>{{ ct }}</option>
@@ -21,20 +21,20 @@
                     </select>
                 </div>
                 <div class="col-6 col-md">
-                    <label class="form-label small mb-1">User ID</label>
-                    <input type="text" name="user_id" class="form-control form-control-sm" placeholder="可选" value="{{ user_id or '' }}">
+                    <label class="filter-label">User ID</label>
+                    <input type="text" name="user_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ user_id or '' }}">
                 </div>
                 <div class="col-6 col-md">
-                    <label class="form-label small mb-1">Device ID</label>
-                    <input type="text" name="device_id" class="form-control form-control-sm" placeholder="可选" value="{{ device_id or '' }}">
+                    <label class="filter-label">Device ID</label>
+                    <input type="text" name="device_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ device_id or '' }}">
                 </div>
                 <div class="col-6 col-md">
-                    <label class="form-label small mb-1">Agent ID</label>
-                    <input type="text" name="agent_id" class="form-control form-control-sm" placeholder="可选" value="{{ agent_id or '' }}">
+                    <label class="filter-label">Agent ID</label>
+                    <input type="text" name="agent_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ agent_id or '' }}">
                 </div>
                 <div class="col-6 col-md">
-                    <label class="form-label small mb-1">层级</label>
-                    <select name="hierarchy_level" class="form-select form-select-sm">
+                    <label class="filter-label">层级</label>
+                    <select name="hierarchy_level" class="form-select form-select-sm filter-input">
                         <option value="">全部</option>
                         <option value="0" {% if hierarchy_level == 0 %}selected{% endif %}>L0 原始</option>
                         <option value="1" {% if hierarchy_level == 1 %}selected{% endif %}>L1 日</option>
@@ -43,31 +43,36 @@
                     </select>
                 </div>
             </div>
-            <div class="row g-2 align-items-end mt-1">
+            <hr class="filter-divider">
+            <div class="row g-2 align-items-end">
                 <div class="col-6 col-md-3">
-                    <label class="form-label small mb-1">开始时间</label>
-                    <div class="d-flex gap-1">
-                        <input type="date" id="start_date_date" class="form-control form-control-sm">
-                        <input type="time" id="start_date_time" class="form-control form-control-sm" style="max-width:45%">
+                    <label class="filter-label">
+                        <span data-feather="calendar" style="width:11px;height:11px;vertical-align:-1px;" class="me-1"></span>开始时间
+                    </label>
+                    <div class="datetime-group">
+                        <input type="date" id="start_date_date" class="form-control form-control-sm filter-input">
+                        <input type="time" id="start_date_time" class="form-control form-control-sm filter-input datetime-time">
                     </div>
                     <input type="hidden" name="start_date" id="start_date_hidden">
                 </div>
                 <div class="col-6 col-md-3">
-                    <label class="form-label small mb-1">结束时间</label>
-                    <div class="d-flex gap-1">
-                        <input type="date" id="end_date_date" class="form-control form-control-sm">
-                        <input type="time" id="end_date_time" class="form-control form-control-sm" style="max-width:45%">
+                    <label class="filter-label">
+                        <span data-feather="calendar" style="width:11px;height:11px;vertical-align:-1px;" class="me-1"></span>结束时间
+                    </label>
+                    <div class="datetime-group">
+                        <input type="date" id="end_date_date" class="form-control form-control-sm filter-input">
+                        <input type="time" id="end_date_time" class="form-control form-control-sm filter-input datetime-time">
                     </div>
                     <input type="hidden" name="end_date" id="end_date_hidden">
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-2 ms-auto">
                     <input type="hidden" name="page" value="1">
                     <input type="hidden" name="limit" value="{{ limit }}">
                     <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
-                            <span data-feather="search" style="width:14px;height:14px;" class="me-1"></span>筛选
+                        <button type="submit" class="btn btn-sm flex-grow-1 filter-btn-primary">
+                            <span data-feather="search" style="width:13px;height:13px;vertical-align:-1px;" class="me-1"></span>筛选
                         </button>
-                        <a href="/contexts" class="btn btn-outline-secondary btn-sm">重置</a>
+                        <a href="/contexts" class="btn btn-sm filter-btn-reset">重置</a>
                     </div>
                 </div>
             </div>
@@ -162,6 +167,82 @@
 {% endif %}
 
 <style>
+    /* Filter Panel */
+    .filter-panel {
+        border-top: 3px solid #2c3e50;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+    .filter-panel:hover {
+        transform: none;
+    }
+    .filter-label {
+        display: block;
+        font-size: 0.68rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #8892a0;
+        margin-bottom: 4px;
+    }
+    .filter-input {
+        border-color: #dfe3e8;
+        font-size: 0.8rem;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .filter-input:focus {
+        border-color: #5a6872;
+        box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.08);
+    }
+    .filter-input::placeholder {
+        color: #b8c2cc;
+        font-style: italic;
+    }
+    .filter-divider {
+        margin: 10px 0;
+        border-top: 1px dashed #e2e6ea;
+    }
+    .datetime-group {
+        display: flex;
+        gap: 0;
+    }
+    .datetime-group .filter-input:first-child {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+        border-right: none;
+    }
+    .datetime-time {
+        max-width: 45%;
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        border-left: 1px solid #e9ecef;
+    }
+    .filter-btn-primary {
+        background: #2c3e50;
+        color: #fff;
+        border: 1px solid #2c3e50;
+        font-size: 0.78rem;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+        transition: background 0.15s ease, box-shadow 0.15s ease;
+    }
+    .filter-btn-primary:hover {
+        background: #1a252f;
+        color: #fff;
+        box-shadow: 0 2px 6px rgba(44, 62, 80, 0.25);
+    }
+    .filter-btn-reset {
+        color: #8892a0;
+        border: 1px solid #dfe3e8;
+        font-size: 0.78rem;
+        font-weight: 500;
+        transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .filter-btn-reset:hover {
+        color: #e74c3c;
+        border-color: #e74c3c;
+    }
+
+    /* Context Cards */
     .context-card {
         transition: box-shadow 0.2s ease;
     }
