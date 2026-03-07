@@ -161,7 +161,7 @@ class UserMemoryCacheManager:
         agent_id: str = "default",
         recent_days: Optional[int] = None,
         max_recent_events_today: Optional[int] = None,
-        max_accessed: int = 20,
+        max_accessed: int = 5,
         force_refresh: bool = False,
     ) -> UserMemoryCacheResponse:
         """Get the user's memory cache with stampede prevention."""
@@ -423,6 +423,7 @@ class UserMemoryCacheManager:
                     {
                         "id": ctx.id,
                         "time_bucket": ctx.properties.time_bucket or "",
+                        "title": ctx.extracted_data.title if ctx.extracted_data else None,
                         "summary": ctx.extracted_data.summary if ctx.extracted_data else None,
                         "children_count": (
                             len(ctx.properties.children_ids) if ctx.properties.children_ids else 0
@@ -538,6 +539,7 @@ class UserMemoryCacheManager:
         daily_summaries = [
             SimpleDailySummary(
                 time_bucket=item.get("time_bucket", ""),
+                title=item.get("title"),
                 summary=item.get("summary"),
             )
             for item in rm_data.get("daily_summaries", [])

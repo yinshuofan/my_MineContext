@@ -29,7 +29,7 @@ async def get_user_memory_cache(
     agent_id: str = Query(default="default", description="Agent identifier"),
     recent_days: int = Query(default=None, description="Recent memory window in days"),
     max_recent_events_today: int = Query(default=None, description="Max today L0 events"),
-    max_accessed: int = Query(default=20, ge=1, le=100, description="Max recently accessed items"),
+    max_accessed: int = Query(default=5, ge=1, le=100, description="Max recently accessed items"),
     force_refresh: bool = Query(default=False, description="Force rebuild cache"),
     _auth: str = auth_dependency,
 ):

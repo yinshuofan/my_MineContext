@@ -33,11 +33,11 @@
                     </div>
                     <div class="mb-3">
                         <label for="maxTodayEvents" class="form-label">今日事件上限</label>
-                        <input type="number" class="form-control" id="maxTodayEvents" value="30" min="1" max="100">
+                        <input type="number" class="form-control" id="maxTodayEvents" value="10" min="1" max="100">
                     </div>
                     <div class="mb-3">
                         <label for="maxAccessed" class="form-label">最近访问数量</label>
-                        <input type="number" class="form-control" id="maxAccessed" value="20" min="1" max="100">
+                        <input type="number" class="form-control" id="maxAccessed" value="5" min="1" max="100">
                     </div>
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" id="forceRefresh">
@@ -213,7 +213,10 @@ function renderDailySummaries(summaries) {
     } else {
         content = summaries.map(s => `
             <div class="border rounded p-2 mb-2">
-                <div class="mb-1"><span class="badge bg-success">${s.time_bucket}</span></div>
+                <div class="mb-1">
+                    <span class="badge bg-success">${s.time_bucket}</span>
+                    ${s.title ? ` <span class="fw-semibold">${s.title}</span>` : ''}
+                </div>
                 ${s.summary ? `<small>${s.summary}</small>` : '<small class="text-muted">暂无摘要</small>'}
             </div>
         `).join('');

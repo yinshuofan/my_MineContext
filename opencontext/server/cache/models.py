@@ -58,6 +58,7 @@ class SimpleDailySummary(BaseModel):
     """Simplified daily summary for cache response."""
 
     time_bucket: str
+    title: Optional[str] = None
     summary: Optional[str] = None
 
 
