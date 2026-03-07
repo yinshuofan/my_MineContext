@@ -1410,7 +1410,8 @@ class VikingDBBackend(IVectorStorageBackend):
             data = {
                 "collection_name": self._collection_name,
                 "index_name": self._index_name,
-                "limit": 1,
+                "limit": 100000,
+                "output_fields": [],
                 "field": FIELD_CREATED_AT_TS,
                 "order": "desc",
             }
