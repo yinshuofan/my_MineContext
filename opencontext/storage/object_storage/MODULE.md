@@ -38,7 +38,7 @@ All S3-compatible services share the same protocol. `S3CompatibleBackend` works 
 
 | Service | endpoint |
 |---------|----------|
-| Volcengine TOS | `tos-cn-beijing.volces.com` |
+| Volcengine TOS | `tos-s3-cn-beijing.volces.com` |
 | Alibaba OSS | `oss-cn-hangzhou.aliyuncs.com` |
 | Tencent COS | `cos.ap-guangzhou.myqcloud.com` |
 | AWS S3 | `s3.us-east-1.amazonaws.com` |
@@ -51,7 +51,7 @@ All S3-compatible services share the same protocol. `S3CompatibleBackend` works 
 object_storage:
   backend: "${OBJECT_STORAGE_BACKEND:local}"   # "s3" or "local"
   s3:
-    endpoint: "${S3_ENDPOINT:tos-cn-beijing.volces.com}"
+    endpoint: "${S3_ENDPOINT:tos-s3-cn-beijing.volces.com}"
     access_key_id: "${S3_ACCESS_KEY_ID:}"       # empty = fallback to VIKINGDB credentials
     secret_access_key: "${S3_SECRET_ACCESS_KEY:}"
     bucket: "${S3_BUCKET:opencontext-media}"

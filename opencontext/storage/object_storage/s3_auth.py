@@ -36,7 +36,7 @@ class S3Auth:
 
         Args:
             method: HTTP method (PUT, DELETE, GET)
-            host: Host header value (e.g. "bucket.tos-cn-beijing.volces.com")
+            host: Host header value (e.g. "bucket.tos-s3-cn-beijing.volces.com")
             path: URL path (e.g. "/media/user1/image/abc.jpg")
             headers: Existing headers dict (will be mutated with auth headers)
             payload_hash: SHA256 hex digest of the request body

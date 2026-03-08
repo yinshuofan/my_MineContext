@@ -67,7 +67,7 @@ class GlobalObjectStorage:
                     secret_access_key = os.environ.get("VIKINGDB_SECRET_ACCESS_KEY", "")
 
             instance = S3CompatibleBackend(
-                endpoint=s3_config.get("endpoint", "tos-cn-beijing.volces.com"),
+                endpoint=s3_config.get("endpoint", "tos-s3-cn-beijing.volces.com"),
                 access_key_id=access_key_id,
                 secret_access_key=secret_access_key,
                 bucket=s3_config.get("bucket", "opencontext-media"),

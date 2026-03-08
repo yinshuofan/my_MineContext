@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 class S3CompatibleBackend(IObjectStorage):
     """
     S3-compatible object storage. Works with any S3-compatible service:
-    - Volcengine TOS (tos-cn-beijing.volces.com)
+    - Volcengine TOS (tos-s3-cn-beijing.volces.com)
     - Alibaba Cloud OSS (oss-cn-hangzhou.aliyuncs.com)
     - Tencent Cloud COS (cos.ap-guangzhou.myqcloud.com)
     - AWS S3 (s3.us-east-1.amazonaws.com)

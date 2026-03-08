@@ -85,6 +85,19 @@ storage:
         database: "${MYSQL_DATABASE:opencontext}"
         charset: "utf8mb4"
 
+# Object Storage Configuration
+object_storage:
+  backend: "${OBJECT_STORAGE_BACKEND:local}"
+  s3:
+    endpoint: "${S3_ENDPOINT:tos-s3-cn-beijing.volces.com}"
+    access_key_id: "${S3_ACCESS_KEY_ID:}"
+    secret_access_key: "${S3_SECRET_ACCESS_KEY:}"
+    bucket: "${S3_BUCKET:opencontext-media}"
+    region: "${S3_REGION:cn-beijing}"
+    use_https: true
+  local:
+    base_dir: "./uploads/media"
+
 # Consumption Configuration
 consumption:
   enabled: true
