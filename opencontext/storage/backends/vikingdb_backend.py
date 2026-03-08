@@ -541,7 +541,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
             # Ensure single collection and index exist
             index_type = vikingdb_config.get("index_type", "hnsw")
-            distance_type = vikingdb_config.get("distance_type", "ip")
+            distance_type = vikingdb_config.get("distance_type", "cosine")
 
             await self._ensure_collection_and_index(
                 dimension=self._dimension,
@@ -687,12 +687,13 @@ class VikingDBBackend(IVectorStorageBackend):
     async def _create_index(
         self,
         index_type: str = "hnsw",
-        distance_type: str = "ip",
+        distance_type: str = "cosine",
     ) -> None:
         """Create index for the collection."""
         vector_index = {
             "IndexType": index_type.upper(),
             "Distance": distance_type,
+            "Quant": "int8",
         }
 
         if index_type.lower() == "hnsw":
