@@ -94,6 +94,15 @@
                     {% set level_colors = {1: 'success', 2: 'warning', 3: 'danger'} %}
                     <span class="badge bg-{{ level_colors.get(context.hierarchy_level, 'info') }}">L{{ context.hierarchy_level }}</span>
                     {% endif %}
+                    {% if context.metadata and context.metadata.get('media_refs') %}
+                    {% set media_types = context.metadata['media_refs'] | map(attribute='type') | list %}
+                    {% if 'image' in media_types %}
+                    <span data-feather="image" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;" class="ms-1" title="含图片"></span>
+                    {% endif %}
+                    {% if 'video' in media_types %}
+                    <span data-feather="video" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;" class="ms-1" title="含视频"></span>
+                    {% endif %}
+                    {% endif %}
                 </div>
                 <small class="text-muted" title="点击复制: {{ context.id }}" style="cursor:pointer" onclick="copyId(this, '{{ context.id }}')">{{ context.id[:8] }}</small>
             </div>
