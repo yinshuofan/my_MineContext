@@ -17,7 +17,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from opencontext.llm.global_embedding_client import do_vectorize
-from opencontext.models.context import ProcessedContext, Vectorize, VideoInput
+from opencontext.models.context import ProcessedContext, Vectorize
 from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.search.models import (
@@ -53,7 +53,7 @@ async def search_events(
     summaries are parent nodes containing search hits as nested children.
     """
     start_time = time.monotonic()
-    query_preview = (request.query or "")[:50]
+    query_preview = str(request.query)[:50] if request.query else ""
 
     logger.info(
         f"Event search: query='{query_preview}', "
@@ -138,13 +138,12 @@ async def _execute_search(
         contexts = await storage.get_contexts_by_ids(request.event_ids, EVENT_TYPE)
         raw_results = [(ctx, 1.0) for ctx in contexts]
 
-    elif request.query or request.image_url or request.video_url:
+    elif request.query:
         # Path B: Semantic search with optional filters (supports multimodal query)
-        has_multimodal = bool(request.image_url or request.video_url)
+        query_types = {item.get("type") for item in request.query}
+        has_multimodal = bool(query_types & {"image_url", "video_url"})
         vectorize = Vectorize(
-            text=request.query,
-            images=[request.image_url] if request.image_url else None,
-            videos=[VideoInput(url=request.video_url)] if request.video_url else None,
+            input=request.query,
             content_format=(
                 ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
             ),
@@ -406,6 +405,10 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
     props = ctx.properties
     extracted = ctx.extracted_data
 
+    media_refs = []
+    if ctx.metadata and ctx.metadata.get("media_refs"):
+        media_refs = ctx.metadata["media_refs"]
+
     return EventNode(
         id=ctx.id,
         hierarchy_level=props.hierarchy_level if props else 0,
@@ -416,6 +419,7 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=False,
+        media_refs=media_refs,
     )
 
 
@@ -423,6 +427,10 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
     """Convert a ProcessedContext to a search-hit EventNode with full data."""
     props = ctx.properties
     extracted = ctx.extracted_data
+
+    media_refs = []
+    if ctx.metadata and ctx.metadata.get("media_refs"):
+        media_refs = ctx.metadata["media_refs"]
 
     return EventNode(
         id=ctx.id,
@@ -437,6 +445,7 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=True,
+        media_refs=media_refs,
     )
 
 
@@ -460,6 +469,7 @@ async def _track_accessed_safe(
                     "score": er.score,
                     "event_time": er.event_time,
                     "create_time": er.create_time,
+                    "media_refs": er.media_refs,
                 }
             )
         if items:

@@ -29,6 +29,7 @@ class RecentlyAccessedItem(BaseModel):
     score: Optional[float] = None  # Last search relevance score
     event_time: Optional[str] = None
     create_time: Optional[str] = None
+    media_refs: List[Dict[str, str]] = Field(default_factory=list)
 
 
 class RecentMemoryItem(BaseModel):

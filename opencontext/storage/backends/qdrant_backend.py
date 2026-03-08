@@ -14,7 +14,7 @@ from qdrant_client import AsyncQdrantClient, models
 
 from opencontext.llm.global_embedding_client import do_vectorize, do_vectorize_batch
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
-from opencontext.models.enums import ContentFormat, ContextType
+from opencontext.models.enums import ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
 from opencontext.utils.logging_utils import get_logger
 
@@ -145,8 +145,9 @@ class QdrantBackend(IVectorStorageBackend):
             payload.update(context.metadata)
 
         if context.vectorize:
-            if context.vectorize.content_format == ContentFormat.TEXT:
-                payload[FIELD_DOCUMENT] = context.vectorize.text
+            text = context.vectorize.get_text()
+            if text:
+                payload[FIELD_DOCUMENT] = text
 
         if context.properties:
             properties_dict = context.properties.model_dump(exclude_none=True)
@@ -517,7 +518,7 @@ class QdrantBackend(IVectorStorageBackend):
             vector = point.vector if need_vector else None
 
             if document:
-                vectorize_dict["text"] = document
+                vectorize_dict["input"] = [{"type": "text", "text": document}]
             if vector:
                 vectorize_dict["vector"] = vector
 

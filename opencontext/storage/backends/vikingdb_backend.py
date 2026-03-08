@@ -661,8 +661,6 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_CONTENT, "FieldType": "string"},
             {"FieldName": FIELD_CONTENT_MODALITIES, "FieldType": "string"},
             {"FieldName": FIELD_MEDIA_REFS, "FieldType": "string"},
-            {"FieldName": "images", "FieldType": "string"},
-            {"FieldName": "videos", "FieldType": "string"},
         ]
 
         data = {
@@ -795,17 +793,11 @@ class VikingDBBackend(IVectorStorageBackend):
             doc.update(context.metadata)
 
         if context.vectorize:
-            if context.vectorize.text:
-                doc[FIELD_DOCUMENT] = context.vectorize.text
+            text = context.vectorize.get_text()
+            if text:
+                doc[FIELD_DOCUMENT] = text
             # Store modality string for multimodal filtering
             doc[FIELD_CONTENT_MODALITIES] = context.vectorize.get_modality_string()
-            # Store images/videos as JSON strings for reconstruction
-            if context.vectorize.images:
-                doc["images"] = json.dumps(context.vectorize.images, ensure_ascii=False)
-            if context.vectorize.videos:
-                doc["videos"] = json.dumps(
-                    [v.model_dump() for v in context.vectorize.videos], ensure_ascii=False
-                )
 
         # Store media_refs from metadata
         if context.metadata and "media_refs" in context.metadata:
@@ -1163,9 +1155,9 @@ class VikingDBBackend(IVectorStorageBackend):
             vectorize_dict = {}
             metadata_dict = {}
 
-            document = fields.pop(FIELD_DOCUMENT, None)
-            if document:
-                vectorize_dict["text"] = document
+            doc_text = fields.pop(FIELD_DOCUMENT, None)
+            if doc_text:
+                vectorize_dict["input"] = [{"type": "text", "text": doc_text}]
 
             if need_vector and doc.get("vector"):
                 vectorize_dict["vector"] = doc["vector"]
@@ -1185,26 +1177,9 @@ class VikingDBBackend(IVectorStorageBackend):
                 else:
                     metadata_dict[FIELD_MEDIA_REFS] = media_refs_raw
 
-            # Reconstruct Vectorize images/videos from stored JSON strings
-            images_raw = fields.pop("images", None)
-            if images_raw:
-                if isinstance(images_raw, str):
-                    try:
-                        vectorize_dict["images"] = json.loads(images_raw)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                elif isinstance(images_raw, list):
-                    vectorize_dict["images"] = images_raw
-
-            videos_raw = fields.pop("videos", None)
-            if videos_raw:
-                if isinstance(videos_raw, str):
-                    try:
-                        vectorize_dict["videos"] = json.loads(videos_raw)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                elif isinstance(videos_raw, list):
-                    vectorize_dict["videos"] = videos_raw
+            # Pop legacy fields to prevent them leaking into metadata
+            fields.pop("images", None)
+            fields.pop("videos", None)
 
             original_id = fields.pop(FIELD_ORIGINAL_ID, None) or fields.pop("id", None)
             if not original_id:
