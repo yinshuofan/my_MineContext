@@ -10,11 +10,11 @@
 
 ## 2. 方案
 
-引入对象存储层。在 push.py 最早阶段将 base64 上传到对象存储，全管线使用 URL。
+引入对象存储层。在 push.py 最早阶段将 base64 上传到对象存储，全管线使用 HTTPS URL。
 
 ```
 Push API (base64 / HTTP URL)
-  → push.py: 上传到对象存储，获得 URL
+  → push.py: 上传到对象存储，获得 HTTPS URL
   → Redis buffer / direct: 消息中只存 URL 字符串
   → LLM: 用 HTTPS URL
   → Ark Embedding: 用 HTTPS URL
@@ -28,7 +28,7 @@ Push API (base64 / HTTP URL)
 ```python
 class IObjectStorage(ABC):
     async def upload(self, data: bytes, key: str, content_type: str) -> str:
-        """上传，返回 URL"""
+        """上传，返回 HTTPS URL"""
 
     def get_url(self, key: str) -> str:
         """获取对象的 HTTPS 访问 URL"""
@@ -44,20 +44,34 @@ class IObjectStorage(ABC):
 
 | 实现 | 场景 | URL 格式 |
 |------|------|----------|
-| `TOSBackend` | 生产环境（Volcengine） | `https://{bucket}.tos-{region}.volces.com/{key}` |
+| `S3CompatibleBackend` | 生产环境（任意 S3 兼容服务） | `https://{bucket}.{endpoint}/{key}` |
 | `LocalBackend` | 开发环境 | 存本地文件，API 调用时转 base64 data URI |
 
-### TOS 认证
+### S3 兼容覆盖范围
 
-复用 VikingDB 已有的 `VolcengineAuth` V4 签名，`service="tos"`。将 `VolcengineAuth` 从 `vikingdb_backend.py` 提取为独立模块。
+S3 协议是对象存储的事实标准。一个 `S3CompatibleBackend` 通过配置不同 endpoint 即可覆盖：
 
-### TOS 上传
+| 云厂商 | endpoint 配置 | 示例 URL |
+|--------|--------------|----------|
+| Volcengine TOS | `tos-cn-beijing.volces.com` | `https://bucket.tos-cn-beijing.volces.com/key` |
+| 阿里云 OSS | `oss-cn-hangzhou.aliyuncs.com` | `https://bucket.oss-cn-hangzhou.aliyuncs.com/key` |
+| 腾讯云 COS | `cos.ap-guangzhou.myqcloud.com` | `https://bucket.cos.ap-guangzhou.myqcloud.com/key` |
+| AWS S3 | `s3.us-east-1.amazonaws.com` | `https://bucket.s3.us-east-1.amazonaws.com/key` |
+| MinIO (自建) | `minio.internal:9000` | `https://bucket.minio.internal:9000/key` |
+
+### S3 认证
+
+使用 AWS Signature V4（S3 标准签名协议），所有 S3 兼容服务均支持。自行实现，不引入 boto3 依赖。
+
+### S3 上传
 
 ```
-PUT https://{bucket}.tos-{region}.volces.com/{key}
-Host: {bucket}.tos-{region}.volces.com
+PUT https://{bucket}.{endpoint}/{key}
+Host: {bucket}.{endpoint}
 Content-Type: image/jpeg
-Authorization: {V4 Signature}
+X-Amz-Content-Sha256: {sha256hex}
+X-Amz-Date: {timestamp}
+Authorization: AWS4-HMAC-SHA256 Credential=...
 
 {binary data}
 ```
@@ -74,12 +88,14 @@ media/{user_id}/{media_type}/{uuid}.{ext}
 
 ```yaml
 object_storage:
-  backend: "${OBJECT_STORAGE_BACKEND:local}"   # "tos" or "local"
-  tos:
-    access_key_id: "${TOS_ACCESS_KEY_ID:}"      # 为空时回退到 VIKINGDB_ACCESS_KEY_ID
-    secret_access_key: "${TOS_SECRET_ACCESS_KEY:}"
-    bucket: "${TOS_BUCKET:opencontext-media}"
-    region: "${TOS_REGION:cn-beijing}"
+  backend: "${OBJECT_STORAGE_BACKEND:local}"   # "s3" or "local"
+  s3:
+    endpoint: "${S3_ENDPOINT:tos-cn-beijing.volces.com}"
+    access_key_id: "${S3_ACCESS_KEY_ID:}"
+    secret_access_key: "${S3_SECRET_ACCESS_KEY:}"
+    bucket: "${S3_BUCKET:opencontext-media}"
+    region: "${S3_REGION:cn-beijing}"            # 用于签名
+    use_https: true                              # 默认 HTTPS
   local:
     base_dir: "./uploads/media"
 ```
@@ -105,7 +121,7 @@ async def _process_multimodal_messages(messages, user_id):
                 data = base64.b64decode(extract_base64(url))
                 key = f"media/{user_id}/{media_type}/{uuid4().hex}.{ext}"
                 url = await obj_storage.upload(data, key, content_type)
-                part["image_url"]["url"] = url   # 替换为对象存储 URL
+                part["image_url"]["url"] = url   # 替换为 HTTPS URL
             elif is_http_url(url):
                 pass  # HTTP URL 直接保留（后续可选 re-upload）
 ```
@@ -132,24 +148,23 @@ def build_ark_input(self) -> List[Dict[str, Any]]:
 
 ### Phase 1: 基础设施（2 个 Agent 并行）
 
-**Agent 1A: VolcengineAuth 提取 + 对象存储接口**
+**Agent 1A: 对象存储接口 + LocalBackend**
 
 | 任务 | 文件 |
 |------|------|
-| 提取 `VolcengineAuth` 为独立模块 | `opencontext/storage/volcengine_auth.py` (新建) |
-| 更新 VikingDB 后端导入 | `opencontext/storage/backends/vikingdb_backend.py` |
 | 创建 `IObjectStorage` 接口 | `opencontext/storage/object_storage/base.py` (新建) |
 | 创建 `LocalBackend` | `opencontext/storage/object_storage/local_backend.py` (新建) |
 | 创建全局单例 + 工厂 | `opencontext/storage/object_storage/global_object_storage.py` (新建) |
 | 创建 `__init__.py` | `opencontext/storage/object_storage/__init__.py` (新建) |
 
-**Agent 1B: TOS Backend 实现**
+**Agent 1B: S3CompatibleBackend 实现**
 
 | 任务 | 文件 |
 |------|------|
-| 实现 `TOSBackend` | `opencontext/storage/object_storage/tos_backend.py` (新建) |
+| 实现 AWS Signature V4 签名 | `opencontext/storage/object_storage/s3_auth.py` (新建) |
+| 实现 `S3CompatibleBackend` | `opencontext/storage/object_storage/s3_backend.py` (新建) |
 | 更新配置 | `config/config.yaml`, `.env.example` |
-| 创建验证脚本 | `scripts/test_tos_upload.py` (新建) |
+| 创建验证脚本 | `scripts/test_s3_upload.py` (新建) |
 
 ### Phase 2: 管线集成（1 个 Agent）
 
@@ -171,8 +186,8 @@ def build_ark_input(self) -> List[Dict[str, Any]]:
 ### Agent 总览
 
 ```
-Phase 1: [Agent-1A] Auth 提取 + 接口 + LocalBackend  ─┐ 并行
-         [Agent-1B] TOS Backend + 验证脚本             ─┘
+Phase 1: [Agent-1A] 接口 + LocalBackend               ─┐ 并行
+         [Agent-1B] S3 Backend + 签名 + 验证脚本        ─┘
              ↓
 Phase 2: [Agent-2]  管线集成 (push.py, context.py, processor, cli.py)
              ↓
@@ -181,7 +196,9 @@ Phase 3: [Agent-3]  文档
 
 ## 6. 注意事项
 
-- `VolcengineAuth.sign_request()` 的 `body` 参数用于计算 SHA256。TOS PUT 请求传的是二进制数据，需预计算 hash 后通过 `X-Content-Sha256` header 传入
+- AWS Signature V4 签名：`Authorization: AWS4-HMAC-SHA256 Credential={ak}/{date}/{region}/s3/aws4_request, SignedHeaders=..., Signature=...`
+- PUT 请求需要 `X-Amz-Content-Sha256` header（二进制内容的 SHA256 hex）
 - `_process_multimodal_messages` 改 async 后，push_chat 中的调用改为 await
 - `object_storage` 未配置或 `get_object_storage()` 返回 None 时，回退到现有本地文件保存
-- TOS `access_key_id` 为空时自动回退到 `VIKINGDB_ACCESS_KEY_ID`（同一 Volcengine 账号）
+- S3 `access_key_id` 为空时可自动回退到 `VIKINGDB_ACCESS_KEY_ID`（Volcengine TOS 的 S3 兼容接口使用相同凭证）
+- 不同云厂商的 S3 兼容程度略有差异，但 PUT Object 和 DELETE Object 是全兼容的核心操作
