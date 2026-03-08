@@ -61,10 +61,10 @@ class EventSearchRequest(BaseModel):
         description="Maximum number of results",
     )
     score_threshold: Optional[float] = Field(
-        default=0.75,
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Minimum similarity score (0-1). Results below this score are filtered out.",
+        description="Minimum similarity score (0-1). Results below this score are filtered out. Default: no threshold.",
     )
     user_id: Optional[str] = Field(
         default=None, description="User identifier for multi-user filtering"
