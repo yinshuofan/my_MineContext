@@ -29,7 +29,7 @@
                             <div id="mediaPreview" class="d-none" style="width:100%;">
                                 <div id="mediaPreviewContent" class="d-flex flex-wrap gap-2 align-items-start"></div>
                             </div>
-                            <input type="file" id="mediaFileInput" class="d-none" accept="image/*,video/*">
+                            <input type="file" id="mediaFileInput" class="d-none" accept="image/*,video/*" multiple>
                         </div>
                         <div id="mediaUploadProgress" class="progress mt-1 d-none" style="height: 4px;">
                             <div class="progress-bar" role="progressbar" style="width: 0%"></div>
@@ -213,12 +213,12 @@ function initMediaZone() {
         }
     });
 
-    // File input change
+    // File input change (supports multiple files)
     fileInput.addEventListener('change', function() {
-        if (fileInput.files.length > 0) {
-            uploadFile(fileInput.files[0]);
-            fileInput.value = '';
+        for (const f of fileInput.files) {
+            uploadFile(f);
         }
+        fileInput.value = '';
     });
 
     // Paste on form level — supports image and video files from clipboard (e.g. copied from Explorer)
@@ -263,6 +263,10 @@ function initMediaZone() {
     videoUrlConfirmBtn.addEventListener('click', function() {
         const url = videoUrlInput.value.trim();
         if (!url) return;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            alert('请输入有效的视频 URL（以 http:// 或 https:// 开头）');
+            return;
+        }
         addMedia({ url: url, type: 'video', filename: url.split('/').pop() || 'video' });
         videoUrlInput.value = '';
     });
@@ -312,6 +316,10 @@ function initMediaZone() {
     }
 
     function addMedia(media) {
+        if (uploadedMediaList.length >= 10) {
+            alert('最多支持 10 个媒体文件');
+            return;
+        }
         uploadedMediaList.push(media);
         renderMediaPreview();
     }
@@ -337,13 +345,17 @@ function initMediaZone() {
         preview.classList.remove('d-none');
         placeholder.classList.add('d-none');
         zone.classList.add('has-media');
-        previewContent.innerHTML = uploadedMediaList.map((m, i) => {
+        const items = uploadedMediaList.map((m, i) => {
             const removeHtml = `<button type="button" class="btn-close" style="position:absolute;top:-4px;right:-4px;font-size:0.5rem;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.2);padding:4px;" data-remove-idx="${i}" aria-label="移除"></button>`;
             if (m.type === 'image') {
                 return `<div style="position:relative;display:inline-block;"><img src="${escapeHtml(m.url)}" class="paste-preview-img" alt="preview">${removeHtml}</div>`;
             }
             return `<div style="position:relative;display:inline-flex;"><div class="paste-video-info"><i data-feather="film" style="width:16px;height:16px;"></i><span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.filename)}</span></div>${removeHtml}</div>`;
         }).join('');
+        const clearAllHtml = uploadedMediaList.length > 1
+            ? `<button type="button" class="btn btn-sm btn-outline-secondary" id="mediaClearAllBtn" style="font-size:0.7rem;padding:2px 8px;align-self:center;">全部清除</button>`
+            : '';
+        previewContent.innerHTML = items + clearAllHtml;
         feather.replace();
         // Bind remove buttons
         previewContent.querySelectorAll('[data-remove-idx]').forEach(btn => {
@@ -352,6 +364,13 @@ function initMediaZone() {
                 removeMedia(parseInt(this.dataset.removeIdx));
             });
         });
+        const clearAllBtn = document.getElementById('mediaClearAllBtn');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                clearMedia();
+            });
+        }
     }
 }
 
