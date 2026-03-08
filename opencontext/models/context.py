@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -147,74 +147,59 @@ class VideoInput(BaseModel):
 class Vectorize(BaseModel):
     """
     Vectorization configuration — supports text, image, video, and multimodal content.
+    Uses Ark API content parts format as unified internal representation.
     """
 
-    content_format: ContentFormat = ContentFormat.TEXT
-    image_path: Optional[str] = None  # Deprecated: use `images` instead
-    text: Optional[str] = None
-    images: Optional[List[str]] = None  # URLs or base64 strings
-    videos: Optional[List[VideoInput]] = None
+    input: List[Dict[str, Any]] = Field(default_factory=list)
     vector: Optional[List[float]] = None
-
-    @model_validator(mode="after")
-    def _compat_image_path(self) -> "Vectorize":
-        """Backward compatibility: migrate legacy image_path → images."""
-        if self.image_path and not self.images:
-            self.images = [self.image_path]
-        return self
+    content_format: ContentFormat = ContentFormat.TEXT
 
     def get_modality_string(self) -> str:
-        """Return a human-readable modality descriptor based on actual content.
+        """Return a human-readable modality descriptor based on input content types.
 
         Examples: "text", "text and image", "text and image and video", "image", etc.
         Falls back to "text" when no content is present.
         """
+        types = {item.get("type") for item in self.input}
         parts: List[str] = []
-        if self.text:
+        if "text" in types:
             parts.append("text")
-        if self.images:
+        if "image_url" in types:
             parts.append("image")
-        if self.videos:
+        if "video_url" in types:
             parts.append("video")
         return " and ".join(parts) if parts else "text"
 
     def build_ark_input(self) -> List[Dict[str, Any]]:
         """Build the input list for the Ark multimodal embedding API.
 
-        Local file paths are converted to base64 data URIs since remote APIs
-        cannot access local files.
+        Local file paths in image_url/video_url items are converted to
+        base64 data URIs since remote APIs cannot access local files.
         """
-        items: List[Dict[str, Any]] = []
-        if self.text:
-            items.append({"type": "text", "text": self.text})
-        for img in self.images or []:
-            if _is_local_path(img):
-                img = _file_to_data_uri(img)
-            items.append({"type": "image_url", "image_url": {"url": img}})
-        for vid in self.videos or []:
-            url = vid.url
-            if _is_local_path(url):
-                url = _file_to_data_uri(url)
-            items.append({"type": "video_url", "video_url": {"url": url, "fps": vid.fps}})
-        return items
+        result: List[Dict[str, Any]] = []
+        for item in self.input:
+            item_type = item.get("type")
+            if item_type == "image_url":
+                url = item["image_url"]["url"]
+                if _is_local_path(url):
+                    url = _file_to_data_uri(url)
+                result.append({"type": "image_url", "image_url": {"url": url}})
+            elif item_type == "video_url":
+                vid_info = item["video_url"]
+                url = vid_info["url"]
+                if _is_local_path(url):
+                    url = _file_to_data_uri(url)
+                new_vid = {k: v for k, v in vid_info.items()}
+                new_vid["url"] = url
+                result.append({"type": "video_url", "video_url": new_vid})
+            else:
+                result.append(item)
+        return result
 
-    def get_vectorize_content(self) -> Optional[str]:
-        """Get vectorization content.
-
-        For text-only content, returns the text string.
-        For image-only (legacy path), returns the image path.
-        For multimodal or other formats, returns the text component (may be None).
-        """
-        if self.content_format == ContentFormat.TEXT:
-            return self.text
-        elif self.content_format == ContentFormat.IMAGE:
-            return self.image_path
-        elif self.content_format in (ContentFormat.VIDEO, ContentFormat.MULTIMODAL):
-            # For multimodal content, return text component for text-based embedding.
-            # Callers needing full multimodal input should use build_ark_input() instead.
-            return self.text
-        else:
-            return ""
+    def get_text(self) -> Optional[str]:
+        """Extract text content from input items. Returns concatenated text or None."""
+        texts = [item["text"] for item in self.input if item.get("type") == "text"]
+        return "\n".join(texts) if texts else None
 
 
 class ProcessedContext(BaseModel):
