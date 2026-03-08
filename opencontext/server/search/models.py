@@ -109,7 +109,7 @@ class EventNode(BaseModel):
     children: List["EventNode"] = Field(default_factory=list)
 
     # Multimodal media references (L0 events carry media, summaries have empty list)
-    media_refs: List[Dict[str, str]] = Field(default_factory=list)
+    media_refs: List[Dict[str, Any]] = Field(default_factory=list)
 
     # Search-hit fields (populated only when is_search_hit=True)
     keywords: List[str] = Field(default_factory=list)
