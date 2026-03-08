@@ -15,7 +15,13 @@
                     <div class="mb-3">
                         <label for="query" class="form-label">查询内容</label>
                         <textarea class="form-control" id="query" rows="3" maxlength="2000" placeholder="输入语义搜索内容..."></textarea>
-                        <div class="form-text">支持自然语言查询</div>
+                        <div class="form-text">支持自然语言查询，可与图片组合进行多模态搜索</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="imageUrl" class="form-label">图片 URL（可选）</label>
+                        <input type="text" class="form-control" id="imageUrl" placeholder="https://... 或 data:image/...;base64,...">
+                        <div class="form-text">支持 HTTPS 图片链接或 base64 data URI，与文字组合进行多模态搜索</div>
                     </div>
 
                     <div class="mb-3">
@@ -99,7 +105,7 @@
                 <div id="searchResults">
                     <div class="text-muted text-center py-5">
                         <i data-feather="search" class="mb-3" style="width: 48px; height: 48px;"></i>
-                        <p>输入查询内容或选择层级过滤，然后点击"开始搜索"</p>
+                        <p>输入查询内容、图片 URL 或选择过滤条件，然后点击"开始搜索"</p>
                     </div>
                 </div>
             </div>
@@ -135,6 +141,11 @@
 .context-card-3 { border-left-color: #d63384; }
 .toggle-btn { cursor: pointer; user-select: none; }
 .toggle-btn:hover { opacity: 0.7; }
+.media-refs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.media-ref-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #dee2e6; cursor: pointer; }
+.media-ref-thumb:hover { opacity: 0.8; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+.media-ref-video { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 4px; background: #f0f0f0; font-size: 0.8rem; color: #495057; text-decoration: none; }
+.media-ref-video:hover { background: #e2e6ea; }
 </style>
 
 <script>
@@ -149,6 +160,7 @@ async function handleSearch(event) {
     event.preventDefault();
 
     const query = document.getElementById('query').value.trim();
+    const imageUrl = document.getElementById('imageUrl').value.trim();
     const topK = parseInt(document.getElementById('topK').value) || 10;
     const drillUp = document.getElementById('drillUp').checked;
     const startTime = document.getElementById('startTime').value;
@@ -161,10 +173,11 @@ async function handleSearch(event) {
         .map(cb => parseInt(cb.value));
 
     const hasQuery = query.length > 0;
+    const hasImage = imageUrl.length > 0;
     const hasLevels = selectedLevels.length > 0;
     const hasTimeRange = startTime || endTime;
 
-    if (!hasQuery && !hasLevels && !hasTimeRange) {
+    if (!hasQuery && !hasImage && !hasLevels && !hasTimeRange) {
         displayError('请至少输入查询内容、选择层级过滤或设置时间范围');
         return;
     }
@@ -177,7 +190,12 @@ async function handleSearch(event) {
             drill_up: drillUp
         };
 
-        if (hasQuery) requestBody.query = query;
+        if (hasQuery || hasImage) {
+            const queryParts = [];
+            if (hasQuery) queryParts.push({"type": "text", "text": query});
+            if (hasImage) queryParts.push({"type": "image_url", "image_url": {"url": imageUrl}});
+            requestBody.query = queryParts;
+        }
         if (hasLevels) requestBody.hierarchy_levels = selectedLevels;
         if (userId) requestBody.user_id = userId;
         if (deviceId) requestBody.device_id = deviceId;
@@ -370,6 +388,7 @@ function renderSearchHitCard(event) {
             </div>
             ${summaryHtml}
             ${keywords ? `<div class="mt-2">${keywords}</div>` : ''}
+            ${renderMediaRefs(event.media_refs)}
             <div class="d-flex justify-content-between align-items-center mt-2">
                 ${displayTime ? `<small class="text-muted">${eventTime ? '事件时间' : '创建时间'}: ${displayTime}</small>` : '<span></span>'}
                 <button onclick="viewContext('${event.id}', 'event')" class="btn btn-sm btn-outline-primary">查看详情</button>
@@ -432,6 +451,19 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function renderMediaRefs(mediaRefs) {
+    if (!mediaRefs || mediaRefs.length === 0) return '';
+    const items = mediaRefs.map(ref => {
+        if (ref.type === 'image') {
+            return `<a href="${escapeHtml(ref.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(ref.url)}" class="media-ref-thumb" alt="image" loading="lazy" onerror="this.style.display='none'"></a>`;
+        } else if (ref.type === 'video') {
+            return `<a href="${escapeHtml(ref.url)}" target="_blank" rel="noopener" class="media-ref-video"><i data-feather="play-circle" style="width:14px;height:14px;"></i> 视频</a>`;
+        }
+        return '';
+    }).filter(Boolean).join('');
+    return items ? `<div class="media-refs">${items}</div>` : '';
 }
 
 function displayError(message) {
