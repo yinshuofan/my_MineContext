@@ -23,7 +23,7 @@ from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.llm.global_embedding_client import do_vectorize as do_vectorize_fn
-from opencontext.models.context import ProcessedContext, Vectorize, VideoInput
+from opencontext.models.context import ProcessedContext, Vectorize
 from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.tools.base import BaseTool
@@ -314,10 +314,13 @@ class HierarchicalEventTool(BaseTool):
             search_filters["hierarchy_level"] = 0
 
             has_multimodal = bool(image_url or video_url)
+            ark_input = [{"type": "text", "text": query}]
+            if image_url:
+                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})
+            if video_url:
+                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})
             vectorize = Vectorize(
-                text=query,
-                images=[image_url] if image_url else None,
-                videos=[VideoInput(url=video_url)] if video_url else None,
+                input=ark_input,
                 content_format=(
                     ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
                 ),

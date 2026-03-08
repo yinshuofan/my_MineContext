@@ -325,9 +325,7 @@ class TextChatProcessor(BaseContextProcessor):
                             resolved_videos.append(item["url"])
                             media_refs.append({"type": "video", "url": item["url"]})
                 if resolved_videos:
-                    from opencontext.models.context import VideoInput
-
-                    vectorize_videos = [VideoInput(url=u) for u in resolved_videos]
+                    vectorize_videos = resolved_videos
 
             if vectorize_images or vectorize_videos:
                 vectorize_format = ContentFormat.MULTIMODAL
@@ -342,6 +340,22 @@ class TextChatProcessor(BaseContextProcessor):
             if vectorize_videos:
                 modalities.append("video")
             metadata["content_modalities"] = ",".join(modalities)
+
+        # Build content parts list for Vectorize
+        ark_input = [
+            {
+                "type": "text",
+                "text": f"{extracted_data.title}\n{extracted_data.summary}\n{' '.join(extracted_data.keywords)}",
+            }
+        ]
+        if vectorize_images:
+            for img_url in vectorize_images:
+                ark_input.append({"type": "image_url", "image_url": {"url": img_url}})
+        if vectorize_videos:
+            for vid_url in vectorize_videos:
+                ark_input.append(
+                    {"type": "video_url", "video_url": {"url": vid_url, "fps": 1.0}}
+                )
 
         return ProcessedContext(
             properties=ContextProperties(
@@ -358,10 +372,8 @@ class TextChatProcessor(BaseContextProcessor):
             ),
             extracted_data=extracted_data,
             vectorize=Vectorize(
+                input=ark_input,
                 content_format=vectorize_format,
-                text=f"{extracted_data.title}\n{extracted_data.summary}\n{' '.join(extracted_data.keywords)}",
-                images=vectorize_images,
-                videos=vectorize_videos,
             ),
             metadata=metadata if metadata else {},
         )

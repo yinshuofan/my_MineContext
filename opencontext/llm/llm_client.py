@@ -220,7 +220,7 @@ class LLMClient:
     async def vectorize(self, vectorize: Vectorize, **kwargs):
         if vectorize.vector:
             return
-        content = vectorize.get_vectorize_content()
+        content = vectorize.get_text()
         if not content:
             return
         vectorize.vector = await self.generate_embedding(content, **kwargs)

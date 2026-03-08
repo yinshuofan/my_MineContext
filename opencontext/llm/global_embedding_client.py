@@ -254,7 +254,7 @@ class GlobalEmbeddingClient:
             if v.vector is None:
                 logger.warning(
                     f"Failed to vectorize item {i} in batch "
-                    f"(text={v.text[:50] if v.text else 'N/A'}...)"
+                    f"(text={v.get_text()[:50] if v.get_text() else 'N/A'}...)"
                 )
 
 

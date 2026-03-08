@@ -150,7 +150,7 @@ class DocumentManagementTool:
         """Execute document search operation - directly use the built filter dictionary"""
         if query:
             # Semantic search
-            vectorize = Vectorize(text=query)
+            vectorize = Vectorize(input=[{"type": "text", "text": query}])
             return await self.storage.search(
                 query=vectorize, context_types=context_types, filters=filters, top_k=top_k
             )

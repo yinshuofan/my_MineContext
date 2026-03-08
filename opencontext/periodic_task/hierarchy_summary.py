@@ -1357,8 +1357,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         # Build vectorize object for semantic search (use parsed summary, not raw JSON)
         # 构建向量化对象以支持语义搜索（使用解析后的摘要，而非原始 JSON）
         vectorize = Vectorize(
+            input=[{"type": "text", "text": summary_body}],
             content_format=ContentFormat.TEXT,
-            text=summary_body,
         )
 
         # Generate embedding vector

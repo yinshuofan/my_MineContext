@@ -247,7 +247,9 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
         return ProcessedContext(
             extracted_data=extracted_data,
             properties=properties,
-            vectorize=Vectorize(text=extracted_data.title + " " + extracted_data.summary),
+            vectorize=Vectorize(
+                input=[{"type": "text", "text": extracted_data.title + " " + extracted_data.summary}],
+            ),
         )
 
 

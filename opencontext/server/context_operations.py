@@ -139,7 +139,7 @@ class ContextOperations:
         try:
             logger.debug(f"Searching with filters: {filters}")
             # Create query vector
-            query_vectorize = Vectorize(text=query)
+            query_vectorize = Vectorize(input=[{"type": "text", "text": query}])
 
             # Execute vector search with multi-user filtering
             search_results = await self.storage.search(
