@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## First Principles Thinking
+
+Think from first principles. Do not assume the user fully understands what they want or how best to achieve it. When receiving a request:
+
+1. **Examine motivation and goals**: If the motivation or end goal is unclear, stop and discuss with the user before executing literally.
+2. **Start from the root problem**: Go back to the original problem and think about what truly needs to be solved, rather than reflexively applying familiar patterns.
+3. **Challenge the path**: If the goal is clear but the proposed path is not the shortest or most effective, proactively tell the user and suggest a better approach.
+4. **Don't follow instructions blindly**: The user's instruction says WHAT to do, not necessarily the best HOW. Before executing, evaluate whether a simpler, more fundamental solution exists.
+
 ## Project Overview
 
 MineContext is a **memory backend service** that captures, processes, stores, and retrieves context/memory from multiple sources (chat logs, documents, web links). It uses vector embeddings and LLM-powered analysis to organize information into 4 typed memory contexts with type-specific update strategies and storage routing.
