@@ -71,8 +71,27 @@
                 <ul class="list-group list-group-flush">
                     {% for key, value in context.metadata.items() %}
                         <li class="list-group-item">
-                            <strong>{{ key }}:</strong> 
-                            {% if value is mapping %}
+                            <strong>{{ key }}:</strong>
+                            {% if key == 'media_refs' and value is iterable and value is not string %}
+                                <div class="mt-2 d-flex flex-wrap gap-2">
+                                    {% for ref in value %}
+                                        {% if ref.type == 'image' and ref.url %}
+                                            <a href="{{ ref.url }}" target="_blank" rel="noopener">
+                                                <img src="{{ ref.url }}" style="max-width:200px;max-height:200px;object-fit:cover;border-radius:6px;border:1px solid #dee2e6;" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'">
+                                                <span style="display:none" class="text-muted small">图片加载失败</span>
+                                            </a>
+                                        {% elif ref.type == 'video' and ref.url %}
+                                            <div style="max-width:320px;">
+                                                <video controls preload="metadata" style="width:100%;border-radius:6px;border:1px solid #dee2e6;">
+                                                    <source src="{{ ref.url }}">
+                                                </video>
+                                            </div>
+                                        {% else %}
+                                            <pre class="mb-0 bg-light p-2 rounded">{{ ref | tojson(indent=2) }}</pre>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            {% elif value is mapping %}
                                 <pre class="mb-0 bg-light p-2 rounded">{{ value | tojson(indent=2) }}</pre>
                             {% elif value is iterable and value is not string %}
                                 <div>
