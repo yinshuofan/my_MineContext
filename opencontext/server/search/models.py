@@ -30,6 +30,14 @@ class EventSearchRequest(BaseModel):
         max_length=2000,
         description="Semantic search query text. At least one of query/event_ids/time_range/hierarchy_levels must be provided.",
     )
+    image_url: Optional[str] = Field(
+        default=None,
+        description="Optional image URL for multimodal search. Can be an HTTP URL or data:image/...;base64,... string.",
+    )
+    video_url: Optional[str] = Field(
+        default=None,
+        description="Optional video URL for multimodal search. Can be an HTTP URL or data:video/...;base64,... string.",
+    )
     event_ids: Optional[List[str]] = Field(
         default=None,
         description="Exact event IDs to retrieve",
@@ -71,12 +79,15 @@ class EventSearchRequest(BaseModel):
     @model_validator(mode="after")
     def validate_search_criteria(self) -> "EventSearchRequest":
         has_query = self.query is not None and len(self.query.strip()) > 0
+        has_image = self.image_url is not None and len(self.image_url.strip()) > 0
+        has_video = self.video_url is not None and len(self.video_url.strip()) > 0
         has_ids = self.event_ids is not None and len(self.event_ids) > 0
         has_time = self.time_range is not None
         has_levels = self.hierarchy_levels is not None and len(self.hierarchy_levels) > 0
-        if not (has_query or has_ids or has_time or has_levels):
+        if not (has_query or has_image or has_video or has_ids or has_time or has_levels):
             raise ValueError(
-                "At least one of query, event_ids, time_range, or hierarchy_levels must be provided"
+                "At least one of query, image_url, video_url, event_ids, time_range, "
+                "or hierarchy_levels must be provided"
             )
         return self
 

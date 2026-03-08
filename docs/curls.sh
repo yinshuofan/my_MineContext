@@ -93,6 +93,50 @@ curl -X POST http://localhost:1733/api/push/chat \
   }'
 # -H "X-API-Key: your-api-key"
 
+# Push Multimodal Chat (text + image + video, OpenAI multimodal format)
+curl -X POST http://localhost:1733/api/push/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "Here is the photo from our team outing and a short video clip"},
+          {"type": "image_url", "image_url": {"url": "https://example.com/photos/team-outing.jpg"}},
+          {"type": "video_url", "video_url": {"url": "https://example.com/videos/team-clip.mp4"}}
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [{"type": "text", "text": "Nice! I have saved the team outing photo and video."}]
+      }
+    ],
+    "user_id": "user_001",
+    "device_id": "default",
+    "agent_id": "default",
+    "process_mode": "direct"
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Push Multimodal Chat (image via base64)
+curl -X POST http://localhost:1733/api/push/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "What do you see in this screenshot?"},
+          {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ..."}}
+        ]
+      }
+    ],
+    "user_id": "user_001",
+    "device_id": "default",
+    "agent_id": "default"
+  }'
+# -H "X-API-Key: your-api-key"
+
 
 # ============================================================================
 # 3. Push - Document
@@ -210,6 +254,21 @@ curl -X POST http://localhost:1733/api/search \
     "drill_up": false,
     "top_k": 10,
     "user_id": "user_001"
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Multimodal Search (text query + image, finds visually and semantically similar events)
+curl -X POST http://localhost:1733/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "team outing photos",
+    "image_url": "https://example.com/photos/reference-image.jpg",
+    "top_k": 10,
+    "score_threshold": 0.5,
+    "drill_up": true,
+    "user_id": "user_001",
+    "device_id": "default",
+    "agent_id": "default"
   }'
 # -H "X-API-Key: your-api-key"
 #

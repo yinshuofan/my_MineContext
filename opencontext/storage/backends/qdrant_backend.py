@@ -443,7 +443,7 @@ class QdrantBackend(IVectorStorageBackend):
         if query.vector and len(query.vector) > 0:
             query_vector = query.vector
         else:
-            await do_vectorize(query)
+            await do_vectorize(query, role="query")
             query_vector = query.vector
 
         if not query_vector:

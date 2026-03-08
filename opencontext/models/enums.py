@@ -70,6 +70,8 @@ class ContentFormat(str, Enum):
 
     TEXT = "text"
     IMAGE = "image"
+    VIDEO = "video"
+    MULTIMODAL = "multimodal"
     FILE = "file"
 
 

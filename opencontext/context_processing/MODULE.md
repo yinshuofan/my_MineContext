@@ -97,21 +97,27 @@ State fields: `config: dict`, `_is_initialized: bool`, `_callback: Optional[Call
 
 ### TextChatProcessor (`processor/text_chat_processor.py`)
 
-Processes `ContextSource.CHAT_LOG` + `ContentFormat.TEXT` inputs.
+Processes `ContextSource.CHAT_LOG` + `ContentFormat.TEXT` or `ContentFormat.MULTIMODAL` inputs.
 
 ```python
 def can_process(self, context: RawContextProperties) -> bool
 async def process(self, context: RawContextProperties) -> List[ProcessedContext]
 async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]
+
+# Multimodal support helpers
+@staticmethod _build_media_index(chat_history_str: str) -> List[Dict[str, str]]
+@staticmethod _build_multimodal_llm_messages(prompt_group, chat_history_str) -> List[Dict[str, Any]]
 ```
 
 Pipeline:
 1. Calls LLM with prompt `processing.extraction.chat_analyze`
-2. Parses JSON response -> `memories` array
-3. Builds `ProcessedContext` per memory via `_build_processed_context()`
-4. Returns `List[ProcessedContext]` — callback invocation is handled by `ContextProcessorManager`
+2. For multimodal messages (`ContentFormat.MULTIMODAL`): passes original multimodal content directly to the LLM so it can see images/videos. Builds a media index mapping media positions to URLs.
+3. For text-only messages: uses the standard text prompt format (backward compatible).
+4. Parses JSON response -> `memories` array
+5. Builds `ProcessedContext` per memory via `_build_processed_context(media_index=...)`
+6. Returns `List[ProcessedContext]` — callback invocation is handled by `ContextProcessorManager`
 
-The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, generates a `time_bucket` field with per-second granularity (`%Y-%m-%dT%H:%M:%S`) to support fine-grained time-based sorting in search results.
+The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, generates a `time_bucket` field with per-second granularity (`%Y-%m-%dT%H:%M:%S`) to support fine-grained time-based sorting in search results. When the LLM returns `related_media` (indices into the media index), resolves them to actual URLs and sets `vectorize.images`/`vectorize.videos` with `ContentFormat.MULTIMODAL`, and stores `media_refs` and `content_modalities` in `ProcessedContext.metadata`.
 
 ### DocumentProcessor (`processor/document_processor.py`)
 

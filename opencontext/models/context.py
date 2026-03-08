@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -134,24 +134,73 @@ class ContextProperties(BaseModel):
     source_file_key: Optional[str] = None  # Format: "user_id:file_path", identifies same document
 
 
+class VideoInput(BaseModel):
+    """视频输入"""
+
+    url: str  # HTTP URL, TOS path, or data:video/...;base64,...
+    fps: float = 1.0  # 0.2-5.0, frame extraction rate
+
+
 class Vectorize(BaseModel):
     """
-    Vectorization configuration
+    Vectorization configuration — supports text, image, video, and multimodal content.
     """
 
     content_format: ContentFormat = ContentFormat.TEXT
-    image_path: Optional[str] = None
+    image_path: Optional[str] = None  # Deprecated: use `images` instead
     text: Optional[str] = None
+    images: Optional[List[str]] = None  # URLs or base64 strings
+    videos: Optional[List[VideoInput]] = None
     vector: Optional[List[float]] = None
-    # Future extension for multimodal embedding:
-    # images: Optional[List[Any]] = None  # PIL Images or image data for multimodal models
+
+    @model_validator(mode="after")
+    def _compat_image_path(self) -> "Vectorize":
+        """Backward compatibility: migrate legacy image_path → images."""
+        if self.image_path and not self.images:
+            self.images = [self.image_path]
+        return self
+
+    def get_modality_string(self) -> str:
+        """Return a human-readable modality descriptor based on actual content.
+
+        Examples: "text", "text and image", "text and image and video", "image", etc.
+        Falls back to "text" when no content is present.
+        """
+        parts: List[str] = []
+        if self.text:
+            parts.append("text")
+        if self.images:
+            parts.append("image")
+        if self.videos:
+            parts.append("video")
+        return " and ".join(parts) if parts else "text"
+
+    def build_ark_input(self) -> List[Dict[str, Any]]:
+        """Build the input list for the Ark multimodal embedding API."""
+        items: List[Dict[str, Any]] = []
+        if self.text:
+            items.append({"type": "text", "text": self.text})
+        for img in self.images or []:
+            items.append({"type": "image_url", "image_url": {"url": img}})
+        for vid in self.videos or []:
+            items.append({"type": "video_url", "video_url": {"url": vid.url, "fps": vid.fps}})
+        return items
 
     def get_vectorize_content(self) -> Optional[str]:
-        """Get vectorization content"""
+        """Get vectorization content.
+
+        For text-only content, returns the text string.
+        For image-only (legacy path), returns the image path.
+        For multimodal or other formats, returns the text component (may be None).
+        """
         if self.content_format == ContentFormat.TEXT:
             return self.text
         elif self.content_format == ContentFormat.IMAGE:
             return self.image_path
+        elif self.content_format in (ContentFormat.VIDEO, ContentFormat.MULTIMODAL):
+            # For multimodal content, return text component for text-based embedding.
+            # Callers needing full multimodal input should use build_ark_input() instead.
+            return self.text
         else:
             return ""
 

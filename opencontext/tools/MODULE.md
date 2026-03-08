@@ -347,6 +347,27 @@ ALL_TOOL_DEFINITIONS = ALL_RETRIEVAL_TOOL_DEFINITIONS + ALL_PROFILE_TOOL_DEFINIT
 
 Same as above, but place in `operation_tools/` and add to `WEB_SEARCH_TOOL_DEFINITION` (or create a new category list).
 
+## Multimodal Query Support
+
+Retrieval tools support multimodal queries via optional `image_url` and `video_url` parameters in addition to the text `query`. When provided, the tool constructs a multimodal `Vectorize` object for embedding:
+
+```python
+vectorize = Vectorize(
+    text=query,
+    images=[image_url] if image_url else None,
+    videos=[VideoInput(url=video_url)] if video_url else None,
+    content_format=ContentFormat.MULTIMODAL if (image_url or video_url) else ContentFormat.TEXT,
+)
+await do_vectorize(vectorize, role="query")  # Uses query-side instruction
+```
+
+**Key details:**
+- `role="query"` triggers the query-side embedding instruction (includes `Target_modality` and task-specific `Instruction`), which differs from the default `role="corpus"` used during data ingestion. This separation is required by the `doubao-embedding-vision-251215` model for optimal retrieval accuracy.
+- The `image_url` parameter accepts HTTP URLs or `data:image/...;base64,...` strings.
+- The `video_url` parameter accepts HTTP URLs or `data:video/...;base64,...` strings.
+- Tools affected: `DocumentRetrievalTool`, `KnowledgeRetrievalTool`, `HierarchicalEventTool` (via `get_parameters()` schema extension and `execute()` implementation).
+- The Search API (`POST /api/search`) also supports `image_url` and `video_url` in `SearchRequest`, using the same multimodal embedding path.
+
 ## Conventions and Constraints
 
 - **Storage access**: All tools use `get_storage()` from `opencontext.storage.global_storage`, never `GlobalStorage.get_instance()`. Access is via a `@property` for lazy initialization.

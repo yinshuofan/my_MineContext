@@ -22,8 +22,9 @@ fallback so that recent events not yet rolled up are still discoverable.
 from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
-from opencontext.models.context import ProcessedContext, Vectorize
-from opencontext.models.enums import ContextType
+from opencontext.llm.global_embedding_client import do_vectorize as do_vectorize_fn
+from opencontext.models.context import ProcessedContext, Vectorize, VideoInput
+from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.tools.base import BaseTool
 from opencontext.utils.logging_utils import get_logger
@@ -97,6 +98,20 @@ class HierarchicalEventTool(BaseTool):
                         "Examples: 'team standup meetings last week', "
                         "'production incidents in January', 'project milestone reviews'. "
                         "Required for meaningful hierarchical retrieval."
+                    ),
+                },
+                "image_url": {
+                    "type": "string",
+                    "description": (
+                        "Optional image URL for multimodal search. "
+                        "Can be an HTTP URL or data:image/...;base64,... string."
+                    ),
+                },
+                "video_url": {
+                    "type": "string",
+                    "description": (
+                        "Optional video URL for multimodal search. "
+                        "Can be an HTTP URL or data:video/...;base64,... string."
                     ),
                 },
                 "time_range": {
@@ -286,6 +301,8 @@ class HierarchicalEventTool(BaseTool):
         agent_id: Optional[str],
         filters: Dict[str, Any],
         top_k: int,
+        image_url: Optional[str] = None,
+        video_url: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float, int]]:
         """
         Perform a direct semantic search over L0 events as a fallback.
@@ -296,7 +313,16 @@ class HierarchicalEventTool(BaseTool):
             search_filters = dict(filters)
             search_filters["hierarchy_level"] = 0
 
-            vectorize = Vectorize(text=query)
+            has_multimodal = bool(image_url or video_url)
+            vectorize = Vectorize(
+                text=query,
+                images=[image_url] if image_url else None,
+                videos=[VideoInput(url=video_url)] if video_url else None,
+                content_format=(
+                    ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
+                ),
+            )
+            await do_vectorize_fn(vectorize, role="query")
             raw_results = await self.storage.search(
                 query=vectorize,
                 context_types=[self.CONTEXT_TYPE.value],
@@ -362,6 +388,8 @@ class HierarchicalEventTool(BaseTool):
             context_type, hierarchy_level.
         """
         query: str = kwargs.get("query", "")
+        image_url: Optional[str] = kwargs.get("image_url")
+        video_url: Optional[str] = kwargs.get("video_url")
         time_range: Optional[Dict[str, Any]] = kwargs.get("time_range")
         top_k: int = kwargs.get("top_k", 5)
         user_id: Optional[str] = kwargs.get("user_id")
@@ -432,6 +460,8 @@ class HierarchicalEventTool(BaseTool):
                 agent_id=agent_id,
                 filters=time_filters,
                 top_k=top_k,
+                image_url=image_url,
+                video_url=video_url,
             )
 
             # ── Merge & deduplicate ──────────────────────────────────

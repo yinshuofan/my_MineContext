@@ -88,6 +88,10 @@ FIELD_TIME_BUCKET = "time_bucket"
 FIELD_SOURCE_FILE_KEY = "source_file_key"
 FIELD_CHILDREN_IDS = "children_ids"
 
+# Multimodal fields
+FIELD_CONTENT_MODALITIES = "content_modalities"
+FIELD_MEDIA_REFS = "media_refs"
+
 # Data type field (to distinguish between context and todo)
 FIELD_DATA_TYPE = "data_type"
 DATA_TYPE_CONTEXT = "context"
@@ -655,9 +659,14 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_DOCUMENT, "FieldType": "string"},
             {"FieldName": FIELD_TODO_ID, "FieldType": "string"},
             {"FieldName": FIELD_CONTENT, "FieldType": "string"},
+            {"FieldName": FIELD_CONTENT_MODALITIES, "FieldType": "string"},
+            {"FieldName": FIELD_MEDIA_REFS, "FieldType": "string"},
+            {"FieldName": "images", "FieldType": "string"},
+            {"FieldName": "videos", "FieldType": "string"},
         ]
 
         data = {
+            "ProjectName": "default",
             "CollectionName": self._collection_name,
             "Fields": fields,
             "Description": "OpenContext unified collection for all context types and todos",
@@ -724,6 +733,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_MERGE_COUNT,
                 FIELD_DURATION_COUNT,
                 FIELD_HIERARCHY_LEVEL,
+                FIELD_CONTENT_MODALITIES,
             ],
             "Description": f"Index for {self._collection_name}",
         }
@@ -784,8 +794,23 @@ class VikingDBBackend(IVectorStorageBackend):
             doc.update(context.metadata)
 
         if context.vectorize:
-            if context.vectorize.content_format == ContentFormat.TEXT:
-                doc[FIELD_DOCUMENT] = context.vectorize.text or ""
+            if context.vectorize.text:
+                doc[FIELD_DOCUMENT] = context.vectorize.text
+            # Store modality string for multimodal filtering
+            doc[FIELD_CONTENT_MODALITIES] = context.vectorize.get_modality_string()
+            # Store images/videos as JSON strings for reconstruction
+            if context.vectorize.images:
+                doc["images"] = json.dumps(context.vectorize.images, ensure_ascii=False)
+            if context.vectorize.videos:
+                doc["videos"] = json.dumps(
+                    [v.model_dump() for v in context.vectorize.videos], ensure_ascii=False
+                )
+
+        # Store media_refs from metadata
+        if context.metadata and "media_refs" in context.metadata:
+            doc[FIELD_MEDIA_REFS] = json.dumps(
+                context.metadata["media_refs"], ensure_ascii=False
+            )
 
         if context.properties:
             properties_dict = context.properties.model_dump(exclude_none=True)
@@ -1055,7 +1080,7 @@ class VikingDBBackend(IVectorStorageBackend):
             query_vector = list(query.vector)
         else:
             if query.text:
-                await do_vectorize(query)
+                await do_vectorize(query, role="query")
                 query_vector = list(query.vector) if query.vector else None
 
         if not query_vector:
@@ -1143,6 +1168,42 @@ class VikingDBBackend(IVectorStorageBackend):
 
             if need_vector and doc.get("vector"):
                 vectorize_dict["vector"] = doc["vector"]
+
+            # Parse multimodal fields
+            content_modalities = fields.pop(FIELD_CONTENT_MODALITIES, None)
+            if content_modalities:
+                metadata_dict[FIELD_CONTENT_MODALITIES] = content_modalities
+
+            media_refs_raw = fields.pop(FIELD_MEDIA_REFS, None)
+            if media_refs_raw:
+                if isinstance(media_refs_raw, str):
+                    try:
+                        metadata_dict[FIELD_MEDIA_REFS] = json.loads(media_refs_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        metadata_dict[FIELD_MEDIA_REFS] = media_refs_raw
+                else:
+                    metadata_dict[FIELD_MEDIA_REFS] = media_refs_raw
+
+            # Reconstruct Vectorize images/videos from stored JSON strings
+            images_raw = fields.pop("images", None)
+            if images_raw:
+                if isinstance(images_raw, str):
+                    try:
+                        vectorize_dict["images"] = json.loads(images_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                elif isinstance(images_raw, list):
+                    vectorize_dict["images"] = images_raw
+
+            videos_raw = fields.pop("videos", None)
+            if videos_raw:
+                if isinstance(videos_raw, str):
+                    try:
+                        vectorize_dict["videos"] = json.loads(videos_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                elif isinstance(videos_raw, list):
+                    vectorize_dict["videos"] = videos_raw
 
             original_id = fields.pop(FIELD_ORIGINAL_ID, None) or fields.pop("id", None)
             if not original_id:

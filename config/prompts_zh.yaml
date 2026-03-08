@@ -503,6 +503,16 @@ processing:
         - 同事小王推荐 Zustand 替代 Redux 做状态管理
         ```
 
+        ## 多模态输入
+
+        输入消息可能包含图片和/或视频（OpenAI 多模态消息格式）。当存在图片或视频时：
+        - 结合文本和视觉内容一起分析，提取更准确的记忆
+        - 如果某条记忆与输入中的特定图片或视频**强相关**，在该记忆的 JSON 输出中包含 `related_media` 字段
+        - `related_media` 字段使用索引引用所有消息中媒体项的位置（从 0 开始，仅计算 image_url 和 video_url 部分，按出现顺序编号）
+        - 仅当记忆的核心内容直接与特定媒体相关时才包含 `related_media`（例如”用户分享了新办公室的照片” → 关联该图片）
+        - 不要为仅与媒体同时出现但内容不直接相关的记忆包含 `related_media`
+        - 如果输入只包含纯文本（无图片/视频），直接省略 `related_media` 字段
+
         ## 每条记忆的字段
         1. **title**: 该条记忆的简短标题
         2. **summary**: 该条记忆的总结（event 类型使用分层要点格式，profile 类型使用分节格式）
@@ -512,6 +522,7 @@ processing:
         6. **importance**: 0-10分，技术决策、个人喜好为高分，普通寒暄为低分
         7. **confidence**: 0-10分，对提取准确性的置信度
         8. **event_time**: ISO 时间字符串（如果该记忆有明确时间），否则为 null
+        9. **related_media**（可选）: 仅用于与特定媒体强相关的记忆。格式：`{“images”: [索引], “videos”: [索引]}`，索引指向所有消息中媒体项的从 0 开始的位置
 
         请以 JSON 格式输出，不要包含 Markdown 标记：
         {
@@ -524,7 +535,8 @@ processing:
               “entities”: [{“name”: “实体名”, “type”: “类型”, “description”: “描述”}],
               “importance”: 8,
               “confidence”: 9,
-              “event_time”: “ISO时间字符串或null”
+              “event_time”: “ISO时间字符串或null”,
+              “related_media”: {“images”: [0, 2], “videos”: [1]}
             }
           ]
         }

@@ -43,14 +43,17 @@ vlm_model:
   provider: "doubao"
   max_concurrent: ${VLM_MAX_CONCURRENT:30}
 
-# Embedding 配置（向量嵌入模型，用于语义检索）
+# Embedding 配置（多模态向量嵌入模型，用于语义检索）
+# 使用 Ark multimodal embedding API（aiohttp 直调，非 SDK）
 embedding_model:
-  base_url: "${EMBEDDING_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
+  base_url: "${EMBEDDING_BASE_URL:https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal}"
   api_key: "${EMBEDDING_API_KEY}"
-  model: "${EMBEDDING_MODEL:doubao-embedding-large-text-240915}"
-  provider: "openai"
-  max_concurrent: ${EMBEDDING_MAX_CONCURRENT:60}
-  output_dim: 2048 # 嵌入维度，须与向量库 dimension 一致
+  model: "${EMBEDDING_MODEL:doubao-embedding-vision-251215}"
+  dimensions: 2048                                          # 向量维度，须与向量库 dimension 一致
+  max_concurrency: ${EMBEDDING_MAX_CONCURRENCY:15}          # 并发 embedding 请求数（Ark API 每请求返回 1 条）
+  max_concurrent: ${EMBEDDING_MAX_CONCURRENT:60}            # LLMClient 内部信号量上限
+  search_instruction: "根据这个查询，找到最相关的记忆内容"      # Query 侧 Instruction 中的 task 描述
+  target_modality: "text/image/video"                       # 语料库模态组成，用于 Query 侧 Target_modality
 
 # ============================================================
 # 上下文采集模块
@@ -156,7 +159,7 @@ storage:
         access_key_id: "${VIKINGDB_ACCESS_KEY_ID}"
         secret_access_key: "${VIKINGDB_SECRET_ACCESS_KEY}"
         region: "${VIKINGDB_REGION:cn-beijing}"
-        dimension: 2048               # 须与 embedding_model.output_dim 一致
+        dimension: 2048               # 须与 embedding_model.dimensions 一致
         max_connections: 100           # HTTP 连接池最大连接数
         max_connections_per_host: 20   # 每主机最大连接数
         collection_name: "opencontext"
@@ -178,7 +181,7 @@ storage:
     #   backend: "qdrant"
     #   default: true
     #   config:
-    #     vector_size: 2048  # 须与 embedding_model.output_dim 一致
+    #     vector_size: 2048  # 须与 embedding_model.dimensions 一致
     #     # 本地模式:
     #     path: "${CONTEXT_PATH:.}/persist/qdrant"
     #     # 远程模式（注释掉上面的 path，取消下面的注释）:

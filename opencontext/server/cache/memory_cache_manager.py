@@ -461,7 +461,7 @@ class UserMemoryCacheManager:
             else:
                 event_time = str(props.event_time)
 
-        return {
+        result = {
             "id": ctx.id,
             "title": ed.title if ed else None,
             "summary": ed.summary if ed else None,
@@ -472,6 +472,12 @@ class UserMemoryCacheManager:
             "create_time": create_time,
             "event_time": event_time,
         }
+
+        # Include media_refs from metadata if present (multimodal content)
+        if ctx.metadata and ctx.metadata.get("media_refs"):
+            result["media_refs"] = ctx.metadata["media_refs"]
+
+        return result
 
     # ─── Response Assembly ───
 

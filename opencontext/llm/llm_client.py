@@ -8,9 +8,11 @@ OpenContext module: llm_client
 """
 
 import asyncio
+import time as _time
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+import aiohttp
 from openai import APIError, AsyncOpenAI
 
 from opencontext.models.context import Vectorize
@@ -51,6 +53,10 @@ class LLMClient:
             timeout=self.timeout,
             max_retries=self.max_retries,
         )
+
+        # aiohttp session for multimodal embedding (lazy-initialized)
+        self._http_session: Optional[aiohttp.ClientSession] = None
+        self._http_session_lock = asyncio.Lock()
 
     @property
     def _sem(self) -> asyncio.Semaphore:
@@ -281,6 +287,128 @@ class LLMClient:
             result.append(embedding)
         return result
 
+    # ------------------------------------------------------------------
+    # Multimodal embedding via Ark HTTP API (aiohttp, not SDK)
+    # ------------------------------------------------------------------
+
+    async def _get_http_session(self) -> aiohttp.ClientSession:
+        """Get or create a reusable aiohttp session for multimodal embedding."""
+        if self._http_session is None or self._http_session.closed:
+            async with self._http_session_lock:
+                if self._http_session is None or self._http_session.closed:
+                    connector = aiohttp.TCPConnector(
+                        limit=100,
+                        limit_per_host=20,
+                        keepalive_timeout=30,
+                        enable_cleanup_closed=True,
+                    )
+                    timeout = aiohttp.ClientTimeout(total=self.timeout)
+                    self._http_session = aiohttp.ClientSession(
+                        connector=connector,
+                        timeout=timeout,
+                    )
+        return self._http_session
+
+    async def generate_multimodal_embedding(
+        self,
+        input_data: List[Dict[str, Any]],
+        instruction: str,
+        dimensions: int = 2048,
+    ) -> List[float]:
+        """Call Ark multimodal embedding API via HTTP (not SDK).
+
+        Args:
+            input_data: List of input items matching Ark API format
+                (e.g. [{"type": "text", "text": "..."}, {"type": "image_url", ...}]).
+            instruction: The instruction string for corpus or query side.
+            dimensions: Output vector dimension (default 2048).
+
+        Returns:
+            Embedding vector as a list of floats.
+
+        Raises:
+            Exception: On HTTP or API errors after exhausting retries.
+        """
+        payload = {
+            "model": self.model,
+            "encoding_format": "float",
+            "dimensions": dimensions,
+            "instructions": instruction,
+            "input": input_data,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        session = await self._get_http_session()
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with self._sem:
+                    request_start = _time.time()
+                    async with session.post(
+                        self.base_url, json=payload, headers=headers
+                    ) as resp:
+                        body = await resp.json()
+                        if resp.status != 200:
+                            error_msg = (
+                                body.get("error", {}).get("message", resp.reason)
+                                if isinstance(body, dict)
+                                else str(resp.reason)
+                            )
+                            raise Exception(
+                                f"Ark multimodal embedding API returned HTTP {resp.status}: "
+                                f"{error_msg}"
+                            )
+
+                        embedding = body["data"]["embedding"]
+
+                        # Record token usage
+                        usage = body.get("usage", {})
+                        if usage:
+                            try:
+                                from opencontext.monitoring import record_token_usage
+
+                                await record_token_usage(
+                                    model=self.model,
+                                    prompt_tokens=usage.get("prompt_tokens", 0),
+                                    completion_tokens=0,
+                                    total_tokens=usage.get("total_tokens", 0),
+                                )
+                            except ImportError:
+                                pass
+
+                        await record_processing_stage(
+                            "multimodal_embedding_cost",
+                            int((_time.time() - request_start) * 1000),
+                            status="success",
+                        )
+
+                        return embedding
+
+            except Exception as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    wait = min(2**attempt, 8)
+                    logger.warning(
+                        f"Multimodal embedding attempt {attempt + 1}/{self.max_retries + 1} "
+                        f"failed: {e}. Retrying in {wait}s..."
+                    )
+                    await asyncio.sleep(wait)
+                else:
+                    logger.error(
+                        f"Multimodal embedding failed after {self.max_retries + 1} attempts: {e}"
+                    )
+
+        raise last_exc  # type: ignore[misc]
+
+    async def close_http_session(self) -> None:
+        """Close the aiohttp session used for multimodal embedding."""
+        if self._http_session and not self._http_session.closed:
+            await self._http_session.close()
+
     async def validate(self) -> tuple[bool, str]:
         """
         Validate LLM configuration by making a simple API call.
@@ -372,9 +500,13 @@ class LLMClient:
                     return False, "Chat model returned empty response"
 
             elif self.llm_type == LLMType.EMBEDDING:
-                # Test with a simple text
-                response = await self.client.embeddings.create(model=self.model, input=["test"])
-                if response.data and len(response.data) > 0 and response.data[0].embedding:
+                # Test with a simple multimodal embedding call
+                instruction = "Instruction:Compress the text into one word.\nQuery:"
+                embedding = await self.generate_multimodal_embedding(
+                    input_data=[{"type": "text", "text": "test"}],
+                    instruction=instruction,
+                )
+                if embedding and len(embedding) > 0:
                     return True, "Embedding model validation successful"
                 else:
                     return False, "Embedding model returned empty response"

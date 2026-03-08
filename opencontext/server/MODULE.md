@@ -401,10 +401,15 @@ HTTP Request
 
 ### Push Flow (`POST /api/push/chat`)
 
+Both text-only and multimodal messages (OpenAI format) are supported. Before processing, `_process_multimodal_messages()` handles base64 media:
+- Text-only messages (`content` is a string): pass through unchanged
+- Multimodal messages (`content` is a list): base64 images/videos are saved to `./uploads/media/{uuid}.{ext}`, data URIs replaced with local file paths; HTTP URLs pass through unchanged; format and size constraints are validated (images < 10 MB, videos < 50 MB)
+
 Buffer mode (`process_mode="buffer"`):
 ```
 push_chat()
-  -> for msg in messages: text_chat.push_message()  # atomic Lua (rpush+expire+llen, 1 Redis call per msg)
+  -> _process_multimodal_messages()        # save base64 media, validate constraints
+  -> for msg in messages: text_chat.push_message()  # content can be str or List[Dict]
   -> if flush_immediately: text_chat.flush_user_buffer()
   -> BackgroundTasks: _schedule_user_task("memory_compression")
   -> BackgroundTasks: _schedule_user_task("hierarchy_summary")
@@ -413,6 +418,7 @@ push_chat()
 Direct mode (`process_mode="direct"`):
 ```
 push_chat()
+  -> _process_multimodal_messages()        # save base64 media, validate constraints
   -> BackgroundTasks: text_chat.process_messages_directly()
   -> BackgroundTasks: _schedule_user_task("memory_compression")
   -> BackgroundTasks: _schedule_user_task("hierarchy_summary")

@@ -12,10 +12,11 @@ replacing the automatic capture/pull mechanisms with a push-based architecture.
 
 import asyncio
 import base64
+import mimetypes
 import os
 import tempfile
 import uuid
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -157,6 +158,165 @@ def _save_base64_to_temp_file(base64_data: str, filename: str, storage_dir: str 
 
 
 # ============================================================================
+# Multimodal Media Processing
+# ============================================================================
+
+# Supported media formats and size limits
+_IMAGE_FORMATS = {"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"}
+_VIDEO_FORMATS = {"mp4", "avi", "mov"}
+_MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+_MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+_MEDIA_UPLOAD_DIR = "./uploads/media"
+
+
+def _detect_media_ext_from_data_uri(data_uri: str) -> Optional[str]:
+    """Extract file extension from a data URI (e.g., 'data:image/jpeg;base64,...' -> 'jpeg')."""
+    if not data_uri.startswith("data:"):
+        return None
+    try:
+        header = data_uri.split(",", 1)[0]  # "data:image/jpeg;base64"
+        mime = header.split(";")[0].replace("data:", "")  # "image/jpeg"
+        ext = mimetypes.guess_extension(mime, strict=False)
+        if ext:
+            return ext.lstrip(".")  # ".jpeg" -> "jpeg"
+        # Fallback: use the subtype directly
+        parts = mime.split("/")
+        if len(parts) == 2:
+            return parts[1]
+    except Exception:
+        pass
+    return None
+
+
+def _save_media_base64(data_uri: str, media_type: str) -> str:
+    """
+    Save a base64 data URI to a file in the media upload directory.
+
+    Args:
+        data_uri: Full data URI string (e.g., 'data:image/jpeg;base64,...')
+        media_type: 'image' or 'video'
+
+    Returns:
+        Local file path of the saved file.
+
+    Raises:
+        HTTPException: If media is invalid, too large, or unsupported format.
+    """
+    # Extract the base64 data
+    if "," not in data_uri:
+        raise HTTPException(status_code=400, detail=f"Invalid {media_type} data URI format")
+
+    base64_data = data_uri.split(",", 1)[1]
+
+    # Detect extension
+    ext = _detect_media_ext_from_data_uri(data_uri)
+    if not ext:
+        ext = "jpg" if media_type == "image" else "mp4"
+
+    # Validate format
+    allowed_formats = _IMAGE_FORMATS if media_type == "image" else _VIDEO_FORMATS
+    if ext.lower() not in allowed_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported {media_type} format: .{ext}. Allowed: {', '.join(sorted(allowed_formats))}",
+        )
+
+    # Decode and validate size
+    try:
+        file_data = base64.b64decode(base64_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 data for {media_type}: {e}")
+
+    max_size = _MAX_IMAGE_SIZE_BYTES if media_type == "image" else _MAX_VIDEO_SIZE_BYTES
+    if len(file_data) > max_size:
+        max_mb = max_size // (1024 * 1024)
+        actual_mb = len(file_data) / (1024 * 1024)
+        raise HTTPException(
+            status_code=400,
+            detail=f"{media_type.capitalize()} too large: {actual_mb:.1f} MB (max {max_mb} MB)",
+        )
+
+    # Save to file
+    os.makedirs(_MEDIA_UPLOAD_DIR, exist_ok=True)
+    unique_filename = f"{uuid.uuid4().hex}.{ext}"
+    file_path = os.path.join(_MEDIA_UPLOAD_DIR, unique_filename)
+
+    with open(file_path, "wb") as f:
+        f.write(file_data)
+
+    return file_path
+
+
+def _process_multimodal_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Process multimodal messages: save base64 media to files, validate constraints.
+
+    For each message, if `content` is a list (multimodal format), iterate over content parts:
+    - text parts: pass through unchanged
+    - image_url parts with base64 data URIs: save to file, replace with local file path
+    - video_url parts with base64 data URIs: save to file, replace with local file path
+    - HTTP URLs: pass through unchanged
+
+    Returns a new messages list with base64 data replaced by local file paths.
+    Text-only messages (content is a string) are passed through unchanged.
+    """
+    processed = []
+    for msg in messages:
+        content = msg.get("content")
+
+        # Text-only message: pass through unchanged
+        if not isinstance(content, list):
+            processed.append(msg)
+            continue
+
+        # Multimodal message: process each content part
+        new_content_parts = []
+        for part in content:
+            part_type = part.get("type", "")
+
+            if part_type == "text":
+                new_content_parts.append(part)
+
+            elif part_type == "image_url":
+                image_url_obj = part.get("image_url", {})
+                url = image_url_obj.get("url", "")
+
+                if url.startswith("data:"):
+                    # Base64 image -> save to file
+                    local_path = _save_media_base64(url, "image")
+                    new_content_parts.append(
+                        {"type": "image_url", "image_url": {"url": local_path}}
+                    )
+                else:
+                    # HTTP URL -> pass through
+                    new_content_parts.append(part)
+
+            elif part_type == "video_url":
+                video_url_obj = part.get("video_url", {})
+                url = video_url_obj.get("url", "")
+
+                if url.startswith("data:"):
+                    # Base64 video -> save to file
+                    local_path = _save_media_base64(url, "video")
+                    new_part = {"type": "video_url", "video_url": {"url": local_path}}
+                    # Preserve fps if specified
+                    if "fps" in video_url_obj:
+                        new_part["video_url"]["fps"] = video_url_obj["fps"]
+                    new_content_parts.append(new_part)
+                else:
+                    # HTTP URL -> pass through
+                    new_content_parts.append(part)
+
+            else:
+                # Unknown type -> pass through
+                new_content_parts.append(part)
+
+        processed.append({**msg, "content": new_content_parts})
+
+    return processed
+
+
+# ============================================================================
 # Chat Push Endpoint
 # ============================================================================
 
@@ -183,10 +343,13 @@ async def push_chat(
                 code=503, status=503, message="TextChatCapture component not available"
             )
 
+        # Process multimodal messages: save base64 media to files, validate constraints
+        messages = _process_multimodal_messages(request.messages)
+
         if request.process_mode == "buffer":
 
             async def _push_all_messages():
-                for msg in request.messages:
+                for msg in messages:
                     await text_chat.push_message(
                         role=msg.get("role", "user"),
                         content=msg.get("content", ""),
@@ -230,7 +393,7 @@ async def push_chat(
         else:  # direct
             background_tasks.add_task(
                 text_chat.process_messages_directly,
-                messages=request.messages,
+                messages=messages,
                 user_id=request.user_id,
                 device_id=request.device_id,
                 agent_id=request.agent_id,

@@ -201,6 +201,25 @@ Module-level functions:
 - `close_redis_cache()` -- async, closes global instance
 - `get_cache(config=None) -> Union[RedisCache, InMemoryCache]` -- async, returns Redis if connected, else InMemoryCache
 
+### VikingDB V2 API and Multimodal Fields
+
+**API version**: VikingDB backend uses V2 API format. Key differences from V1:
+
+- **Control plane** (collection/index management): PascalCase parameters (e.g., `CollectionName`, `Fields`, `IndexName`, `ProjectName`)
+- **Data plane** (upsert/search/delete/fetch): snake_case parameters, but with V2 naming:
+  - `fields` → `data` (in upsert and update requests)
+  - `primary_keys` → `ids` (in delete and fetch requests)
+  - Response format: `id` is separated from `fields` (not duplicated inside `fields`)
+
+**Multimodal collection fields** (stored as scalar fields in VikingDB):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content_modalities` | `string` | Comma-separated modality list, e.g. `"text"`, `"text,image"`, `"text,image,video"` |
+| `media_refs` | `string` | JSON-serialized array of media references: `[{"type": "image", "url": "...", "local_path": "..."}, ...]` |
+
+These fields are populated from `ProcessedContext.metadata["content_modalities"]` and `ProcessedContext.metadata["media_refs"]` during upsert, and parsed back during retrieval in `_doc_to_processed_context()`.
+
 ### Vector Backend Differences
 
 | Feature | ChromaDB | Qdrant | VikingDB | DashVector |

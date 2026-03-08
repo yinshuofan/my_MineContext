@@ -17,8 +17,8 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from opencontext.llm.global_embedding_client import do_vectorize
-from opencontext.models.context import ProcessedContext, Vectorize
-from opencontext.models.enums import ContextType
+from opencontext.models.context import ProcessedContext, Vectorize, VideoInput
+from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.search.models import (
     EventNode,
@@ -138,10 +138,18 @@ async def _execute_search(
         contexts = await storage.get_contexts_by_ids(request.event_ids, EVENT_TYPE)
         raw_results = [(ctx, 1.0) for ctx in contexts]
 
-    elif request.query:
-        # Path B: Semantic search with optional filters
-        vectorize = Vectorize(text=request.query)
-        await do_vectorize(vectorize)
+    elif request.query or request.image_url or request.video_url:
+        # Path B: Semantic search with optional filters (supports multimodal query)
+        has_multimodal = bool(request.image_url or request.video_url)
+        vectorize = Vectorize(
+            text=request.query,
+            images=[request.image_url] if request.image_url else None,
+            videos=[VideoInput(url=request.video_url)] if request.video_url else None,
+            content_format=(
+                ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
+            ),
+        )
+        await do_vectorize(vectorize, role="query")
 
         filters = _build_filters(request.time_range, None)
         raw_results = await storage.search(

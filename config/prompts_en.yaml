@@ -503,6 +503,16 @@ processing:
         - Colleague Xiao Wang recommended Zustand over Redux for state management
         ```
 
+        ## Multimodal Input
+
+        The input messages may contain images and/or videos alongside text (in OpenAI multimodal message format). When images or videos are present:
+        - Analyze the visual content together with the text to extract more accurate memories
+        - If a memory is **strongly related** to specific images or videos in the input, include a `related_media` field in that memory's JSON output
+        - The `related_media` field uses indices that reference the position of media items across all messages (0-based, counting only image_url and video_url parts in order of appearance)
+        - Only include `related_media` when the memory's core content is directly tied to specific media (e.g., "user shared a photo of their new office" -> relate to that image)
+        - Do NOT include `related_media` for memories that merely happen to co-occur with media but are not about the media content itself
+        - If the input contains only text (no images/videos), simply omit the `related_media` field entirely
+
         ## Per-Memory Fields
         1. **title**: Short descriptive title for this specific memory
         2. **summary**: Summary of this memory (event type uses layered bullet format, profile type uses section format)
@@ -512,6 +522,7 @@ processing:
         6. **importance**: Score 0-10, technical decisions and personal preferences score high, casual greetings score low
         7. **confidence**: Score 0-10, how confident you are in the extraction accuracy
         8. **event_time**: ISO time string if the memory has an explicit time, otherwise null
+        9. **related_media** (optional): Only for memories strongly tied to specific media. Format: `{"images": [indices], "videos": [indices]}` where indices refer to the 0-based position of media items across all messages
 
         Please output in JSON format without Markdown markers:
         {
@@ -524,7 +535,8 @@ processing:
               "entities": [{"name": "entity name", "type": "type", "description": "description"}],
               "importance": 8,
               "confidence": 9,
-              "event_time": "ISO time string or null"
+              "event_time": "ISO time string or null",
+              "related_media": {"images": [0, 2], "videos": [1]}
             }
           ]
         }

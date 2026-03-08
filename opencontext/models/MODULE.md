@@ -24,8 +24,11 @@ Text: `MD`, `TXT`
 
 ### ContentFormat(str, Enum)
 ```
-TEXT = "text"  |  IMAGE = "image"  |  FILE = "file"
+TEXT = "text"  |  IMAGE = "image"  |  VIDEO = "video"  |  MULTIMODAL = "multimodal"  |  FILE = "file"
 ```
+
+- `VIDEO`: Single video content (used when only video is present)
+- `MULTIMODAL`: Mixed-modality content (text + image and/or video combined)
 
 ### ContextType(str, Enum)
 ```
@@ -141,9 +144,28 @@ Tracking and hierarchy metadata. Fields:
 | `time_bucket` | `Optional[str]` | `None` | e.g. `"2026-02-21"`, `"2026-W08"` |
 | `source_file_key` | `Optional[str]` | `None` | `"user_id:file_path"` format |
 
+### VideoInput
+Video input model for multimodal embedding. Fields:
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `url` | `str` | required | HTTP URL, TOS path, or `data:video/...;base64,...` |
+| `fps` | `float` | `1.0` | Frame extraction rate (0.2-5.0). Lower = fewer tokens, higher = more detail |
+
 ### Vectorize
-Embedding configuration. Fields: `content_format` (ContentFormat, default `ContentFormat.TEXT`), `image_path` (Optional[str]), `text` (Optional[str]), `vector` (Optional[List[float]]).
-Method: `get_vectorize_content() -> str`
+Embedding configuration for text, image, video, and multimodal content. Fields:
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `content_format` | `ContentFormat` | `ContentFormat.TEXT` | |
+| `text` | `Optional[str]` | `None` | Text content for embedding |
+| `images` | `Optional[List[str]]` | `None` | Image URLs or base64 strings. Replaces deprecated `image_path` |
+| `videos` | `Optional[List[VideoInput]]` | `None` | Video inputs with URL and fps |
+| `image_path` | `Optional[str]` | `None` | **Deprecated** -- internally converted to `images=[image_path]` |
+| `vector` | `Optional[List[float]]` | `None` | Pre-computed embedding vector |
+
+Methods:
+- `get_vectorize_content() -> str` -- returns text content for display/logging
+- `get_modality_string() -> str` -- infers modality from actual content (e.g. `"text"`, `"text and image"`, `"text and image and video"`). Used to generate the `{modality}` placeholder in embedding instructions
+- `build_ark_input() -> List[Dict]` -- constructs the `input` array for the Ark multimodal embedding API. Converts `text` to `{"type": "text", "text": ...}`, `images` to `{"type": "image_url", "image_url": {"url": ...}}`, and `videos` to `{"type": "video_url", "video_url": {"url": ..., "fps": ...}}`
 
 ### ProcessedContext
 The universal intermediate format all processors produce. Fields:
