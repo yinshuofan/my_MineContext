@@ -55,6 +55,20 @@ async def search_events(
     start_time = time.monotonic()
     query_preview = str(request.query)[:50] if request.query else ""
 
+    query_text_for_meta = None
+    if request.query:
+        text_parts = [item["text"] for item in request.query if item.get("type") == "text"]
+        non_text = [item.get("type") for item in request.query if item.get("type") != "text"]
+        preview = " ".join(text_parts) if text_parts else ""
+        if non_text:
+            modalities = []
+            if "image_url" in non_text:
+                modalities.append("[图片]")
+            if "video_url" in non_text:
+                modalities.append("[视频]")
+            preview = (preview + " " + " ".join(modalities)).strip()
+        query_text_for_meta = preview or None
+
     logger.info(
         f"Event search: query='{query_preview}', "
         f"event_ids={bool(request.event_ids)}, "
@@ -91,7 +105,7 @@ async def search_events(
             success=True,
             events=tree_roots,
             metadata=SearchMetadata(
-                query=request.query,
+                query=query_text_for_meta,
                 total_results=len(search_hits),
                 search_time_ms=round(elapsed_ms, 2),
             ),
@@ -104,7 +118,7 @@ async def search_events(
             success=False,
             events=[],
             metadata=SearchMetadata(
-                query=request.query,
+                query=query_text_for_meta,
                 total_results=0,
                 search_time_ms=round(elapsed_ms, 2),
             ),
@@ -117,7 +131,7 @@ async def search_events(
             success=False,
             events=[],
             metadata=SearchMetadata(
-                query=request.query,
+                query=query_text_for_meta,
                 total_results=0,
                 search_time_ms=round(elapsed_ms, 2),
             ),
