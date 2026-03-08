@@ -247,19 +247,26 @@ def _save_media_base64(data_uri: str, media_type: str) -> str:
     return file_path
 
 
-def _process_multimodal_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+async def _process_multimodal_messages(
+    messages: List[Dict[str, Any]], user_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
-    Process multimodal messages: save base64 media to files, validate constraints.
+    Process multimodal messages: upload base64 media to object storage (or save locally).
 
     For each message, if `content` is a list (multimodal format), iterate over content parts:
     - text parts: pass through unchanged
-    - image_url parts with base64 data URIs: save to file, replace with local file path
-    - video_url parts with base64 data URIs: save to file, replace with local file path
+    - image_url parts with base64 data URIs: upload to object storage, replace with URL
+    - video_url parts with base64 data URIs: upload to object storage, replace with URL
     - HTTP URLs: pass through unchanged
 
-    Returns a new messages list with base64 data replaced by local file paths.
-    Text-only messages (content is a string) are passed through unchanged.
+    When object storage is configured (S3), base64 is uploaded and replaced with HTTPS URLs.
+    When not configured, falls back to saving files locally.
     """
+    from opencontext.storage.object_storage import get_object_storage
+
+    obj_storage = get_object_storage()
+    uid = user_id or "default"
+
     processed = []
     for msg in messages:
         content = msg.get("content")
@@ -282,13 +289,9 @@ def _process_multimodal_messages(messages: List[Dict[str, Any]]) -> List[Dict[st
                 url = image_url_obj.get("url", "")
 
                 if url.startswith("data:"):
-                    # Base64 image -> save to file
-                    local_path = _save_media_base64(url, "image")
-                    new_content_parts.append(
-                        {"type": "image_url", "image_url": {"url": local_path}}
-                    )
+                    url = await _upload_or_save_media(obj_storage, url, "image", uid)
+                    new_content_parts.append({"type": "image_url", "image_url": {"url": url}})
                 else:
-                    # HTTP URL -> pass through
                     new_content_parts.append(part)
 
             elif part_type == "video_url":
@@ -296,24 +299,85 @@ def _process_multimodal_messages(messages: List[Dict[str, Any]]) -> List[Dict[st
                 url = video_url_obj.get("url", "")
 
                 if url.startswith("data:"):
-                    # Base64 video -> save to file
-                    local_path = _save_media_base64(url, "video")
-                    new_part = {"type": "video_url", "video_url": {"url": local_path}}
-                    # Preserve fps if specified
+                    url = await _upload_or_save_media(obj_storage, url, "video", uid)
+                    new_part = {"type": "video_url", "video_url": {"url": url}}
                     if "fps" in video_url_obj:
                         new_part["video_url"]["fps"] = video_url_obj["fps"]
                     new_content_parts.append(new_part)
                 else:
-                    # HTTP URL -> pass through
                     new_content_parts.append(part)
 
             else:
-                # Unknown type -> pass through
                 new_content_parts.append(part)
 
         processed.append({**msg, "content": new_content_parts})
 
     return processed
+
+
+async def _upload_or_save_media(obj_storage, data_uri: str, media_type: str, user_id: str) -> str:
+    """Upload base64 data URI to object storage, or save locally as fallback.
+
+    Returns:
+        HTTPS URL (if object storage is available) or local file path.
+    """
+    # Validate and decode
+    if "," not in data_uri:
+        raise HTTPException(status_code=400, detail=f"Invalid {media_type} data URI format")
+
+    base64_data = data_uri.split(",", 1)[1]
+    ext = _detect_media_ext_from_data_uri(data_uri)
+    if not ext:
+        ext = "jpg" if media_type == "image" else "mp4"
+
+    allowed_formats = _IMAGE_FORMATS if media_type == "image" else _VIDEO_FORMATS
+    if ext.lower() not in allowed_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported {media_type} format: .{ext}. Allowed: {', '.join(sorted(allowed_formats))}",
+        )
+
+    try:
+        file_data = base64.b64decode(base64_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 data for {media_type}: {e}")
+
+    max_size = _MAX_IMAGE_SIZE_BYTES if media_type == "image" else _MAX_VIDEO_SIZE_BYTES
+    if len(file_data) > max_size:
+        max_mb = max_size // (1024 * 1024)
+        actual_mb = len(file_data) / (1024 * 1024)
+        raise HTTPException(
+            status_code=400,
+            detail=f"{media_type.capitalize()} too large: {actual_mb:.1f} MB (max {max_mb} MB)",
+        )
+
+    # Determine content type
+    _MIME_MAP = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "webp": "image/webp",
+        "bmp": "image/bmp",
+        "tiff": "image/tiff",
+        "mp4": "video/mp4",
+        "avi": "video/x-msvideo",
+        "mov": "video/quicktime",
+    }
+    content_type = _MIME_MAP.get(ext.lower(), f"{media_type}/{ext}")
+
+    key = f"media/{user_id}/{media_type}/{uuid.uuid4().hex}.{ext}"
+
+    if obj_storage:
+        # Upload to object storage (S3/TOS/OSS/etc.)
+        return await obj_storage.upload(file_data, key, content_type)
+    else:
+        # Fallback: save to local file
+        os.makedirs(_MEDIA_UPLOAD_DIR, exist_ok=True)
+        file_path = os.path.join(_MEDIA_UPLOAD_DIR, f"{uuid.uuid4().hex}.{ext}")
+        with open(file_path, "wb") as f:
+            f.write(file_data)
+        return file_path
 
 
 # ============================================================================
@@ -343,8 +407,8 @@ async def push_chat(
                 code=503, status=503, message="TextChatCapture component not available"
             )
 
-        # Process multimodal messages: save base64 media to files, validate constraints
-        messages = _process_multimodal_messages(request.messages)
+        # Process multimodal messages: upload to object storage or save locally
+        messages = await _process_multimodal_messages(request.messages, request.user_id)
 
         if request.process_mode == "buffer":
 

@@ -61,10 +61,8 @@ async def lifespan(app: FastAPI):
         if GlobalStorage.get_instance().get_storage() is not None:
             break
         if attempt < max_retries - 1:
-            delay = 3 * (2 ** attempt)  # 3, 6 seconds
-            logger.warning(
-                f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})"
-            )
+            delay = 3 * (2**attempt)  # 3, 6 seconds
+            logger.warning(f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})")
             await asyncio.sleep(delay)
     else:
         logger.error("Storage initialization failed after all retries")
@@ -110,6 +108,16 @@ async def lifespan(app: FastAPI):
         await get_config_reload_manager().stop()
     except Exception as e:
         logger.warning(f"Error stopping config reload manager: {e}")
+
+    # Close object storage (release HTTP sessions)
+    try:
+        from opencontext.storage.object_storage import get_object_storage
+
+        obj_storage = get_object_storage()
+        if obj_storage:
+            await obj_storage.close()
+    except Exception as e:
+        logger.warning(f"Error closing object storage: {e}")
 
     # Shutdown executor, waiting for in-flight thread pool tasks
     executor.shutdown(wait=True, cancel_futures=True)

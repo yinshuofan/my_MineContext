@@ -217,6 +217,23 @@ storage:
     #     path: "${CONTEXT_PATH:.}/persist/sqlite/app.db"
 
 # ============================================================
+# 对象存储配置
+# 多模态媒体文件（图片/视频）的持久化存储
+# S3 兼容协议，支持 TOS/OSS/COS/S3/MinIO
+# ============================================================
+object_storage:
+  backend: "${OBJECT_STORAGE_BACKEND:local}"   # "s3" or "local"
+  s3:
+    endpoint: "${S3_ENDPOINT:tos-cn-beijing.volces.com}"
+    access_key_id: "${S3_ACCESS_KEY_ID:}"
+    secret_access_key: "${S3_SECRET_ACCESS_KEY:}"
+    bucket: "${S3_BUCKET:opencontext-media}"
+    region: "${S3_REGION:cn-beijing}"
+    use_https: true
+  local:
+    base_dir: "./uploads/media"
+
+# ============================================================
 # 消费模块
 # 控制 tips/todos/activity/report 等消费组件，
 # 同时影响是否在向量库中创建 todo collection。

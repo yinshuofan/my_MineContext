@@ -401,14 +401,14 @@ HTTP Request
 
 ### Push Flow (`POST /api/push/chat`)
 
-Both text-only and multimodal messages (OpenAI format) are supported. Before processing, `_process_multimodal_messages()` handles base64 media:
+Both text-only and multimodal messages (OpenAI format) are supported. Before processing, `_process_multimodal_messages()` (async) handles base64 media:
 - Text-only messages (`content` is a string): pass through unchanged
-- Multimodal messages (`content` is a list): base64 images/videos are saved to `./uploads/media/{uuid}.{ext}`, data URIs replaced with local file paths; HTTP URLs pass through unchanged; format and size constraints are validated (images < 10 MB, videos < 50 MB)
+- Multimodal messages (`content` is a list): base64 images/videos are uploaded to object storage (if configured, via `get_object_storage()`) and replaced with HTTPS URLs; without object storage, files are saved locally to `./uploads/media/{uuid}.{ext}`; HTTP URLs pass through unchanged; format and size constraints are validated (images < 10 MB, videos < 50 MB)
 
 Buffer mode (`process_mode="buffer"`):
 ```
 push_chat()
-  -> _process_multimodal_messages()        # save base64 media, validate constraints
+  -> await _process_multimodal_messages()  # upload media to object storage, validate
   -> for msg in messages: text_chat.push_message()  # content can be str or List[Dict]
   -> if flush_immediately: text_chat.flush_user_buffer()
   -> BackgroundTasks: _schedule_user_task("memory_compression")
@@ -418,7 +418,7 @@ push_chat()
 Direct mode (`process_mode="direct"`):
 ```
 push_chat()
-  -> _process_multimodal_messages()        # save base64 media, validate constraints
+  -> await _process_multimodal_messages()  # upload media to object storage, validate
   -> BackgroundTasks: text_chat.process_messages_directly()
   -> BackgroundTasks: _schedule_user_task("memory_compression")
   -> BackgroundTasks: _schedule_user_task("hierarchy_summary")

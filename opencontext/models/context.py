@@ -6,8 +6,11 @@
 """
 Define core data models used in OpenContext
 """
+import base64
 import datetime
 import json
+import mimetypes
+import os
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -176,14 +179,23 @@ class Vectorize(BaseModel):
         return " and ".join(parts) if parts else "text"
 
     def build_ark_input(self) -> List[Dict[str, Any]]:
-        """Build the input list for the Ark multimodal embedding API."""
+        """Build the input list for the Ark multimodal embedding API.
+
+        Local file paths are converted to base64 data URIs since remote APIs
+        cannot access local files.
+        """
         items: List[Dict[str, Any]] = []
         if self.text:
             items.append({"type": "text", "text": self.text})
         for img in self.images or []:
+            if _is_local_path(img):
+                img = _file_to_data_uri(img)
             items.append({"type": "image_url", "image_url": {"url": img}})
         for vid in self.videos or []:
-            items.append({"type": "video_url", "video_url": {"url": vid.url, "fps": vid.fps}})
+            url = vid.url
+            if _is_local_path(url):
+                url = _file_to_data_uri(url)
+            items.append({"type": "video_url", "video_url": {"url": url, "fps": vid.fps}})
         return items
 
     def get_vectorize_content(self) -> Optional[str]:
@@ -454,3 +466,47 @@ class KnowledgeContextMetadata(BaseModel):
     knowledge_file_path: str = ""
     knowledge_title: str = ""
     knowledge_raw_id: str = ""
+
+
+# ============================================================================
+# Local file path → base64 data URI conversion helpers
+# Used when LocalBackend stores files locally but remote APIs need base64.
+# ============================================================================
+
+
+def _is_local_path(url: str) -> bool:
+    """Check if a URL is a local file path (not HTTP/HTTPS/data URI)."""
+    if not url:
+        return False
+    if url.startswith(("http://", "https://", "data:")):
+        return False
+    return True
+
+
+def _file_to_data_uri(file_path: str) -> str:
+    """Read a local file and convert to a base64 data URI.
+
+    Returns the original path if the file cannot be read.
+    """
+    try:
+        abs_path = os.path.abspath(file_path)
+        mime_type, _ = mimetypes.guess_type(abs_path)
+        if not mime_type:
+            ext = os.path.splitext(abs_path)[1].lower()
+            mime_type = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+                ".mp4": "video/mp4",
+                ".avi": "video/avi",
+                ".mov": "video/quicktime",
+            }.get(ext, "application/octet-stream")
+        with open(abs_path, "rb") as f:
+            data = f.read()
+        b64 = base64.b64encode(data).decode("ascii")
+        return f"data:{mime_type};base64,{b64}"
+    except Exception as e:
+        logger.warning(f"Failed to convert file to data URI: {file_path}: {e}")
+        return file_path

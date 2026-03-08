@@ -16,6 +16,7 @@
 | `backends/dashvector_backend.py` | `DashVectorBackend` -- Aliyun DashVector (HTTP API, per-type collections) |
 | `backends/sqlite_backend.py` | `SQLiteBackend` -- SQLite relational storage (profiles, entities, vaults, todos, monitoring) |
 | `backends/mysql_backend.py` | `MySQLBackend` -- MySQL relational storage (same schema as SQLite, connection pooled) |
+| `object_storage/` | Object storage sub-module for multimodal media files (see `object_storage/MODULE.md`) |
 
 ## Class Hierarchy
 

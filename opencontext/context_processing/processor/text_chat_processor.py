@@ -70,9 +70,7 @@ class TextChatProcessor(BaseContextProcessor):
         if is_multimodal:
             # For multimodal messages, pass the original messages directly to the LLM
             # so it can see images and videos, producing more accurate memory extraction
-            messages = self._build_multimodal_llm_messages(
-                prompt_group, chat_history_str
-            )
+            messages = self._build_multimodal_llm_messages(prompt_group, chat_history_str)
         else:
             messages = [
                 {"role": "system", "content": prompt_group.get("system", "")},
@@ -106,9 +104,7 @@ class TextChatProcessor(BaseContextProcessor):
 
         for memory in memories:
             try:
-                pc = self._build_processed_context(
-                    memory, raw_context, media_index=media_index
-                )
+                pc = self._build_processed_context(memory, raw_context, media_index=media_index)
                 if pc:
                     processed_list.append(pc)
             except Exception as e:
@@ -157,7 +153,12 @@ class TextChatProcessor(BaseContextProcessor):
         The system prompt is sent as the first message. Then, the original multimodal
         chat messages are included directly so the LLM can see images/videos.
         Finally, a user message with the analysis instruction is appended.
+
+        Local file paths in media URLs are converted to base64 data URIs so the
+        remote LLM API can access the content.
         """
+        from opencontext.models.context import _file_to_data_uri, _is_local_path
+
         llm_messages: List[Dict[str, Any]] = [
             {"role": "system", "content": prompt_group.get("system", "")},
         ]
@@ -166,9 +167,11 @@ class TextChatProcessor(BaseContextProcessor):
         try:
             chat_messages = json.loads(chat_history_str)
             for msg in chat_messages:
-                llm_messages.append(
-                    {"role": msg.get("role", "user"), "content": msg.get("content", "")}
-                )
+                content = msg.get("content", "")
+                # Convert local file paths in content parts to base64 data URIs
+                if isinstance(content, list):
+                    content = _convert_local_paths_in_content(content)
+                llm_messages.append({"role": msg.get("role", "user"), "content": content})
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f"Failed to parse multimodal messages, falling back to text: {e}")
             llm_messages.append({"role": "user", "content": chat_history_str})
@@ -367,3 +370,24 @@ class TextChatProcessor(BaseContextProcessor):
             metadata=metadata if metadata else {},
         )
 
+
+def _convert_local_paths_in_content(content_parts: List[Dict]) -> List[Dict]:
+    """Convert local file paths in multimodal content parts to base64 data URIs."""
+    from opencontext.models.context import _file_to_data_uri, _is_local_path
+
+    result = []
+    for part in content_parts:
+        part_type = part.get("type", "")
+        if part_type == "image_url":
+            url = part.get("image_url", {}).get("url", "")
+            if _is_local_path(url):
+                part = {"type": "image_url", "image_url": {"url": _file_to_data_uri(url)}}
+        elif part_type == "video_url":
+            url = part.get("video_url", {}).get("url", "")
+            if _is_local_path(url):
+                new_video = {"url": _file_to_data_uri(url)}
+                if "fps" in part.get("video_url", {}):
+                    new_video["fps"] = part["video_url"]["fps"]
+                part = {"type": "video_url", "video_url": new_video}
+        result.append(part)
+    return result
