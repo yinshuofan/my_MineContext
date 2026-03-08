@@ -169,7 +169,7 @@ curl -X POST http://localhost:1733/api/push/document/upload \
 curl -X POST http://localhost:1733/api/search \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "project timeline and budget",
+    "query": [{"type": "text", "text": "project timeline and budget"}],
     "top_k": 20,
     "score_threshold": 0.5,
     "drill_up": true,
@@ -249,7 +249,7 @@ curl -X POST http://localhost:1733/api/search \
 curl -X POST http://localhost:1733/api/search \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "meeting with John",
+    "query": [{"type": "text", "text": "meeting with John"}],
     "hierarchy_levels": [0],
     "drill_up": false,
     "top_k": 10,
@@ -261,8 +261,10 @@ curl -X POST http://localhost:1733/api/search \
 curl -X POST http://localhost:1733/api/search \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "team outing photos",
-    "image_url": "https://example.com/photos/reference-image.jpg",
+    "query": [
+      {"type": "text", "text": "team outing photos"},
+      {"type": "image_url", "image_url": {"url": "https://example.com/photos/reference-image.jpg"}}
+    ],
     "top_k": 10,
     "score_threshold": 0.5,
     "drill_up": true,
