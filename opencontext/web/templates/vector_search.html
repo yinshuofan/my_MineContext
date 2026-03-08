@@ -19,9 +19,18 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="imageUrl" class="form-label">图片 URL（可选）</label>
-                        <input type="text" class="form-control" id="imageUrl" placeholder="https://... 或 data:image/...;base64,...">
-                        <div class="form-text">支持 HTTPS 图片链接或 base64 data URI，与文字组合进行多模态搜索</div>
+                        <label class="form-label">搜索图片（可选）</label>
+                        <div id="imagePasteZone" class="paste-zone" tabindex="0">
+                            <div id="imagePlaceholder" class="paste-placeholder">
+                                <i data-feather="image" style="width: 24px; height: 24px;" class="mb-1"></i>
+                                <div>Ctrl+V 粘贴图片 / 拖放图片到此处</div>
+                                <small class="text-muted">也可粘贴图片 URL</small>
+                            </div>
+                            <div id="imagePreview" class="paste-preview d-none">
+                                <img id="imagePreviewImg" class="paste-preview-img" alt="preview">
+                                <button type="button" class="btn-close paste-remove" id="imageRemoveBtn" aria-label="移除"></button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -105,7 +114,7 @@
                 <div id="searchResults">
                     <div class="text-muted text-center py-5">
                         <i data-feather="search" class="mb-3" style="width: 48px; height: 48px;"></i>
-                        <p>输入查询内容、图片 URL 或选择过滤条件，然后点击"开始搜索"</p>
+                        <p>输入查询内容、粘贴图片或选择过滤条件，然后点击"开始搜索"</p>
                     </div>
                 </div>
             </div>
@@ -141,6 +150,14 @@
 .context-card-3 { border-left-color: #d63384; }
 .toggle-btn { cursor: pointer; user-select: none; }
 .toggle-btn:hover { opacity: 0.7; }
+.paste-zone { border: 2px dashed #dee2e6; border-radius: 6px; padding: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; outline: none; position: relative; min-height: 70px; display: flex; align-items: center; justify-content: center; }
+.paste-zone:hover, .paste-zone:focus { border-color: #0d6efd; background-color: #f8f9ff; }
+.paste-zone.drag-over { border-color: #198754; background-color: #f0fff4; }
+.paste-zone.has-image { border-style: solid; border-color: #198754; padding: 8px; }
+.paste-placeholder { color: #6c757d; font-size: 0.85rem; }
+.paste-preview { position: relative; display: inline-block; }
+.paste-preview-img { max-width: 100%; max-height: 120px; border-radius: 4px; }
+.paste-remove { position: absolute; top: -6px; right: -6px; background: #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
 .media-refs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .media-ref-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #dee2e6; cursor: pointer; }
 .media-ref-thumb:hover { opacity: 0.8; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
@@ -152,15 +169,96 @@
 const LEVEL_LABELS = {0: 'L0 原始事件', 1: 'L1 日总结', 2: 'L2 周总结', 3: 'L3 月总结'};
 const LEVEL_SHORT = {0: 'L0', 1: 'L1', 2: 'L2', 3: 'L3'};
 
+let pastedImageDataUri = null;
+
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('eventSearchForm').addEventListener('submit', handleSearch);
+    initImagePasteZone();
 });
+
+function initImagePasteZone() {
+    const zone = document.getElementById('imagePasteZone');
+    const preview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('imagePreviewImg');
+    const placeholder = document.getElementById('imagePlaceholder');
+    const removeBtn = document.getElementById('imageRemoveBtn');
+
+    // Paste — works on zone focus or anywhere in the form
+    document.getElementById('eventSearchForm').addEventListener('paste', function(e) {
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+
+        // Check for image file in clipboard
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const blob = item.getAsFile();
+                readImageBlob(blob);
+                return;
+            }
+        }
+
+        // Check for pasted text that looks like an image URL
+        const text = e.clipboardData.getData('text/plain').trim();
+        if (text && (text.startsWith('http') || text.startsWith('data:image')) && /\.(jpg|jpeg|png|gif|webp|bmp)/i.test(text)) {
+            e.preventDefault();
+            setImage(text);
+        }
+    });
+
+    // Drag and drop
+    zone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        zone.classList.add('drag-over');
+    });
+    zone.addEventListener('dragleave', function() {
+        zone.classList.remove('drag-over');
+    });
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type.startsWith('image/')) {
+            readImageBlob(files[0]);
+        }
+    });
+
+    // Remove
+    removeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        clearImage();
+    });
+
+    function readImageBlob(blob) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            setImage(e.target.result);
+        };
+        reader.readAsDataURL(blob);
+    }
+
+    function setImage(dataUri) {
+        pastedImageDataUri = dataUri;
+        previewImg.src = dataUri;
+        preview.classList.remove('d-none');
+        placeholder.classList.add('d-none');
+        zone.classList.add('has-image');
+    }
+
+    function clearImage() {
+        pastedImageDataUri = null;
+        previewImg.src = '';
+        preview.classList.add('d-none');
+        placeholder.classList.remove('d-none');
+        zone.classList.remove('has-image');
+    }
+}
 
 async function handleSearch(event) {
     event.preventDefault();
 
     const query = document.getElementById('query').value.trim();
-    const imageUrl = document.getElementById('imageUrl').value.trim();
+    const imageUrl = pastedImageDataUri || '';
     const topK = parseInt(document.getElementById('topK').value) || 10;
     const drillUp = document.getElementById('drillUp').checked;
     const startTime = document.getElementById('startTime').value;
