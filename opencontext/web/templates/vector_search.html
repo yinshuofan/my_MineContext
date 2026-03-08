@@ -302,7 +302,8 @@ function initMediaZone() {
             progressBar.querySelector('.progress-bar').style.width = '100%';
 
             if (!resp.ok) {
-                throw new Error(data.error || data.detail || '上传失败');
+                const msg = data.error || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail) || '上传失败';
+                throw new Error(msg);
             }
 
             setMedia(data);
