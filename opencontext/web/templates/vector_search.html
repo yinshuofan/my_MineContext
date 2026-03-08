@@ -346,7 +346,7 @@ function initMediaZone() {
         placeholder.classList.add('d-none');
         zone.classList.add('has-media');
         const items = uploadedMediaList.map((m, i) => {
-            const removeHtml = `<button type="button" class="btn-close" style="position:absolute;top:-4px;right:-4px;font-size:0.5rem;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.2);padding:4px;" data-remove-idx="${i}" aria-label="移除"></button>`;
+            const removeHtml = `<button type="button" class="btn-close" style="position:absolute;top:-4px;right:-4px;font-size:0.5rem;background-color:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.2);padding:4px;" data-remove-idx="${i}" aria-label="移除"></button>`;
             if (m.type === 'image') {
                 return `<div style="position:relative;display:inline-block;"><img src="${escapeHtml(m.url)}" class="paste-preview-img" alt="preview">${removeHtml}</div>`;
             }
