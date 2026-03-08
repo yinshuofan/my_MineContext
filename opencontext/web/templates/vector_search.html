@@ -26,9 +26,8 @@
                                 <div>粘贴图片 / 拖放文件 / <a href="#" id="mediaFileLink" class="text-decoration-none">选择文件</a></div>
                                 <small class="text-muted">支持图片和视频（jpg, png, gif, mp4, mov...）</small>
                             </div>
-                            <div id="mediaPreview" class="paste-preview d-none">
-                                <div id="mediaPreviewContent"></div>
-                                <button type="button" class="btn-close paste-remove" id="mediaRemoveBtn" aria-label="移除"></button>
+                            <div id="mediaPreview" class="d-none" style="width:100%;">
+                                <div id="mediaPreviewContent" class="d-flex flex-wrap gap-2 align-items-start"></div>
                             </div>
                             <input type="file" id="mediaFileInput" class="d-none" accept="image/*,video/*">
                         </div>
@@ -182,7 +181,7 @@
 const LEVEL_LABELS = {0: 'L0 原始事件', 1: 'L1 日总结', 2: 'L2 周总结', 3: 'L3 月总结'};
 const LEVEL_SHORT = {0: 'L0', 1: 'L1', 2: 'L2', 3: 'L3'};
 
-let uploadedMedia = null;  // { url: string, type: 'image'|'video', filename: string }
+let uploadedMediaList = [];  // [{ url: string, type: 'image'|'video', filename: string }, ...]
 
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('eventSearchForm').addEventListener('submit', handleSearch);
@@ -194,7 +193,6 @@ function initMediaZone() {
     const placeholder = document.getElementById('mediaPlaceholder');
     const preview = document.getElementById('mediaPreview');
     const previewContent = document.getElementById('mediaPreviewContent');
-    const removeBtn = document.getElementById('mediaRemoveBtn');
     const fileInput = document.getElementById('mediaFileInput');
     const fileLink = document.getElementById('mediaFileLink');
     const progressBar = document.getElementById('mediaUploadProgress');
@@ -265,17 +263,11 @@ function initMediaZone() {
     videoUrlConfirmBtn.addEventListener('click', function() {
         const url = videoUrlInput.value.trim();
         if (!url) return;
-        setMedia({ url: url, type: 'video', filename: url.split('/').pop() || 'video' });
+        addMedia({ url: url, type: 'video', filename: url.split('/').pop() || 'video' });
         videoUrlInput.value = '';
     });
     videoUrlInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); videoUrlConfirmBtn.click(); }
-    });
-
-    // Remove
-    removeBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        clearMedia();
     });
 
     async function uploadFile(file) {
@@ -306,7 +298,7 @@ function initMediaZone() {
                 throw new Error(msg);
             }
 
-            setMedia(data);
+            addMedia(data);
         } catch (err) {
             console.error('Upload failed:', err);
             alert('媒体上传失败: ' + err.message);
@@ -319,29 +311,47 @@ function initMediaZone() {
         }
     }
 
-    function setMedia(media) {
-        uploadedMedia = media;
-        if (media.type === 'image') {
-            previewContent.innerHTML = `<img src="${escapeHtml(media.url)}" class="paste-preview-img" alt="preview">`;
-        } else {
-            previewContent.innerHTML = `
-                <div class="paste-video-info">
-                    <i data-feather="film" style="width:20px;height:20px;"></i>
-                    <span>${escapeHtml(media.filename)}</span>
-                </div>`;
-            feather.replace();
+    function addMedia(media) {
+        uploadedMediaList.push(media);
+        renderMediaPreview();
+    }
+
+    function removeMedia(index) {
+        uploadedMediaList.splice(index, 1);
+        renderMediaPreview();
+    }
+
+    function clearMedia() {
+        uploadedMediaList = [];
+        renderMediaPreview();
+    }
+
+    function renderMediaPreview() {
+        if (uploadedMediaList.length === 0) {
+            previewContent.innerHTML = '';
+            preview.classList.add('d-none');
+            placeholder.classList.remove('d-none');
+            zone.classList.remove('has-media');
+            return;
         }
         preview.classList.remove('d-none');
         placeholder.classList.add('d-none');
         zone.classList.add('has-media');
-    }
-
-    function clearMedia() {
-        uploadedMedia = null;
-        previewContent.innerHTML = '';
-        preview.classList.add('d-none');
-        placeholder.classList.remove('d-none');
-        zone.classList.remove('has-media');
+        previewContent.innerHTML = uploadedMediaList.map((m, i) => {
+            const removeHtml = `<button type="button" class="btn-close" style="position:absolute;top:-4px;right:-4px;font-size:0.5rem;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.2);padding:4px;" data-remove-idx="${i}" aria-label="移除"></button>`;
+            if (m.type === 'image') {
+                return `<div style="position:relative;display:inline-block;"><img src="${escapeHtml(m.url)}" class="paste-preview-img" alt="preview">${removeHtml}</div>`;
+            }
+            return `<div style="position:relative;display:inline-flex;"><div class="paste-video-info"><i data-feather="film" style="width:16px;height:16px;"></i><span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.filename)}</span></div>${removeHtml}</div>`;
+        }).join('');
+        feather.replace();
+        // Bind remove buttons
+        previewContent.querySelectorAll('[data-remove-idx]').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                removeMedia(parseInt(this.dataset.removeIdx));
+            });
+        });
     }
 }
 
@@ -361,7 +371,7 @@ async function handleSearch(event) {
         .map(cb => parseInt(cb.value));
 
     const hasQuery = query.length > 0;
-    const hasMedia = !!uploadedMedia;
+    const hasMedia = uploadedMediaList.length > 0;
     const hasLevels = selectedLevels.length > 0;
     const hasTimeRange = startTime || endTime;
 
@@ -381,11 +391,11 @@ async function handleSearch(event) {
         if (hasQuery || hasMedia) {
             const queryParts = [];
             if (hasQuery) queryParts.push({"type": "text", "text": query});
-            if (hasMedia) {
-                if (uploadedMedia.type === 'image') {
-                    queryParts.push({"type": "image_url", "image_url": {"url": uploadedMedia.url}});
+            for (const media of uploadedMediaList) {
+                if (media.type === 'image') {
+                    queryParts.push({"type": "image_url", "image_url": {"url": media.url}});
                 } else {
-                    queryParts.push({"type": "video_url", "video_url": {"url": uploadedMedia.url, "fps": 1.0}});
+                    queryParts.push({"type": "video_url", "video_url": {"url": media.url, "fps": 1.0}});
                 }
             }
             requestBody.query = queryParts;
