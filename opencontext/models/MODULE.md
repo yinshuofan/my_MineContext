@@ -151,21 +151,29 @@ Video input model for multimodal embedding. Fields:
 | `url` | `str` | required | HTTP URL, TOS path, or `data:video/...;base64,...` |
 | `fps` | `float` | `1.0` | Frame extraction rate (0.2-5.0). Lower = fewer tokens, higher = more detail |
 
+Note: `VideoInput` is kept for reference but is no longer used by `Vectorize` directly. Video inputs are now represented as content parts dicts: `{"type": "video_url", "video_url": {"url": "...", "fps": 1.0}}`.
+
 ### Vectorize
-Embedding configuration for text, image, video, and multimodal content. Fields:
+Unified embedding configuration using Ark API content parts format. Fields:
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `content_format` | `ContentFormat` | `ContentFormat.TEXT` | |
-| `text` | `Optional[str]` | `None` | Text content for embedding |
-| `images` | `Optional[List[str]]` | `None` | Image URLs or base64 strings. Replaces deprecated `image_path` |
-| `videos` | `Optional[List[VideoInput]]` | `None` | Video inputs with URL and fps |
-| `image_path` | `Optional[str]` | `None` | **Deprecated** -- internally converted to `images=[image_path]` |
+| `input` | `List[Dict[str, Any]]` | `[]` | Ark API content parts list (see format below) |
 | `vector` | `Optional[List[float]]` | `None` | Pre-computed embedding vector |
+| `content_format` | `ContentFormat` | `ContentFormat.TEXT` | |
+
+**`input` format** (OpenAI content parts, same format used by Ark multimodal embedding API):
+```python
+[
+    {"type": "text", "text": "..."},
+    {"type": "image_url", "image_url": {"url": "https://... or data:image/...;base64,..."}},
+    {"type": "video_url", "video_url": {"url": "https://...", "fps": 1.0}},
+]
+```
 
 Methods:
-- `get_vectorize_content() -> str` -- returns text content for display/logging
-- `get_modality_string() -> str` -- infers modality from actual content (e.g. `"text"`, `"text and image"`, `"text and image and video"`). Used to generate the `{modality}` placeholder in embedding instructions
-- `build_ark_input() -> List[Dict]` -- constructs the `input` array for the Ark multimodal embedding API. Converts `text` to `{"type": "text", "text": ...}`, `images` to `{"type": "image_url", "image_url": {"url": ...}}`, and `videos` to `{"type": "video_url", "video_url": {"url": ..., "fps": ...}}`
+- `get_text() -> Optional[str]` -- extracts and joins all text parts from `input`; returns `None` if no text parts. Used for display/logging and storage text fields
+- `get_modality_string() -> str` -- scans `input` list `type` fields, returns e.g. `"text"`, `"text and image"`, `"text and image and video"`. Used to generate the `{modality}` placeholder in embedding instructions
+- `build_ark_input() -> List[Dict]` -- returns `input` with local file paths converted to base64 data URIs (images and videos). HTTPS URLs and data URIs pass through unchanged
 
 ### ProcessedContext
 The universal intermediate format all processors produce. Fields:

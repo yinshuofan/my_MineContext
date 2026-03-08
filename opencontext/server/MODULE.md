@@ -29,10 +29,10 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/web.py` | HTML pages -- contexts list, vector search, chat, monitoring, settings, file serving |
 | `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | **search/** | |
-| `search/models.py` | Pydantic models: `EventSearchRequest`, `EventSearchResponse`, `EventNode`, `SearchMetadata`, `TimeRange` |
+| `search/models.py` | Pydantic models: `EventSearchRequest` (multimodal content parts query), `EventSearchResponse`, `EventNode` (with `media_refs`), `SearchMetadata`, `TimeRange` |
 | **cache/** | |
 | `cache/memory_cache_manager.py` | `UserMemoryCacheManager` singleton -- builds/caches per-user memory snapshots in Redis |
-| `cache/models.py` | Response models: `UserMemoryCacheResponse`, `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`, `RecentlyAccessedItem`; internal models: `RecentMemoryItem`, `DailySummaryItem` |
+| `cache/models.py` | Response models: `UserMemoryCacheResponse`, `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`, `RecentlyAccessedItem` (with `media_refs`); internal models: `RecentMemoryItem`, `DailySummaryItem` |
 | **middleware/** | |
 | `middleware/auth.py` | API key authentication via `X-API-Key` header or `api_key` query param |
 | `middleware/request_id.py` | `RequestIDMiddleware` -- assigns 8-char UUID per request, stored in `ContextVar` |
@@ -444,16 +444,21 @@ Processors return `List[ProcessedContext]` to the manager, which centrally invok
 
 ### Search Flow (`POST /api/search`)
 
+Query format uses OpenAI content parts (multimodal):
+```json
+{"query": [{"type": "text", "text": "找会议截图"}, {"type": "image_url", "image_url": {"url": "https://..."}}]}
+```
+
 ```
 search_events()
   -> Validate request (query/event_ids/time_range/hierarchy_levels at least one)
   -> _execute_search() with 30s timeout
      Path A (event_ids): storage.get_contexts_by_ids()
-     Path B (query):     do_vectorize() -> storage.search([EVENT], time_filter_only)
+     Path B (query):     Vectorize(input=request.query) -> do_vectorize() -> storage.search([EVENT], time_filter_only)
      Path C (filters):   storage.search_hierarchy() per level, or get_all_processed_contexts()
   -> _collect_ancestors() if drill_up=True     # Batch iterative parent fetch (max 3 rounds)
   -> Build tree: node map → parent-child linking → recursive sort by time_bucket ASC
-  -> Fire-and-forget _track_accessed_safe()
+  -> Fire-and-forget _track_accessed_safe()     # Includes media_refs in tracked items
   -> Return EventSearchResponse (tree roots + search hit count)
 ```
 
@@ -486,6 +491,7 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
           "event_time": "2026-03-04T09:17:26.626423+00:00",
           "create_time": "2026-03-04T09:17:26.626077",
           "is_search_hit": true,
+          "media_refs": [{"type": "image", "url": "https://..."}],
           "children": [],
           "content": "id: ...\ntitle: ...\nsummary: ...\n...",
           "keywords": ["keyword1", "keyword2"],
@@ -512,7 +518,8 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 
 **Field notes:**
 - `events`: List of root nodes (tree roots). When `drill_up=true`, ancestors become parent nodes with search hits nested as children. When `drill_up=false`, all search hits are flat root nodes.
-- `is_search_hit`: `true` for search results (content/keywords/entities/score/metadata populated), `false` for ancestor context nodes (only id/level/time_bucket/title/summary)
+- `is_search_hit`: `true` for search results (content/keywords/entities/score/metadata/media_refs populated), `false` for ancestor context nodes (only id/level/time_bucket/title/summary)
+- `media_refs`: List of media references for L0 events, e.g. `[{"type": "image", "url": "https://..."}, {"type": "video", "url": "https://..."}]`. Empty list for L1/L2/L3 summaries. Extracted from `ProcessedContext.metadata["media_refs"]`.
 - `children`: Nested child nodes, sorted by `time_bucket` ASC. Root nodes are also sorted by `time_bucket` ASC.
 - `hierarchy_level`: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
 - `time_bucket`: `"YYYY-MM-DDTHH:MM:SS"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
