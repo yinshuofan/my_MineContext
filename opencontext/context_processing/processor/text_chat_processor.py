@@ -311,9 +311,7 @@ class TextChatProcessor(BaseContextProcessor):
                         item = media_index[idx]
                         if item["type"] == "image":
                             resolved_images.append(item["url"])
-                            media_refs.append(
-                                {"type": "image", "url": item["url"], "media_index": idx}
-                            )
+                            media_refs.append({"type": "image", "url": item["url"]})
                 if resolved_images:
                     vectorize_images = resolved_images
 
@@ -325,9 +323,7 @@ class TextChatProcessor(BaseContextProcessor):
                         item = media_index[idx]
                         if item["type"] == "video":
                             resolved_videos.append(item["url"])
-                            media_refs.append(
-                                {"type": "video", "url": item["url"], "media_index": idx}
-                            )
+                            media_refs.append({"type": "video", "url": item["url"]})
                 if resolved_videos:
                     from opencontext.models.context import VideoInput
 
