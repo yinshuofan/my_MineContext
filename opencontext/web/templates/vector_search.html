@@ -223,16 +223,26 @@ function initMediaZone() {
         }
     });
 
-    // Paste on form level
+    // Paste on form level — supports image and video files from clipboard (e.g. copied from Explorer)
     document.getElementById('eventSearchForm').addEventListener('paste', function(e) {
         if (document.activeElement === videoUrlInput) return;
         const items = e.clipboardData && e.clipboardData.items;
         if (!items) return;
         for (const item of items) {
-            if (item.type.startsWith('image/')) {
+            if (item.kind === 'file' && (item.type.startsWith('image/') || item.type.startsWith('video/'))) {
                 e.preventDefault();
                 uploadFile(item.getAsFile());
                 return;
+            }
+        }
+        // Fallback: check clipboardData.files for copied files with no MIME type
+        const files = e.clipboardData.files;
+        if (files && files.length > 0) {
+            const f = files[0];
+            const ext = (f.name || '').split('.').pop().toLowerCase();
+            if (['jpg','jpeg','png','gif','webp','bmp','mp4','avi','mov','webm'].includes(ext)) {
+                e.preventDefault();
+                uploadFile(f);
             }
         }
     });
