@@ -230,8 +230,10 @@ function initMediaZone() {
         if (!items) return;
         for (const item of items) {
             if (item.kind === 'file' && (item.type.startsWith('image/') || item.type.startsWith('video/'))) {
+                const f = item.getAsFile();
+                if (!f) continue;
                 e.preventDefault();
-                uploadFile(item.getAsFile());
+                uploadFile(f);
                 return;
             }
         }
@@ -277,6 +279,10 @@ function initMediaZone() {
     });
 
     async function uploadFile(file) {
+        if (!file) {
+            alert('无法读取剪贴板文件，请使用文件选择或拖拽方式上传');
+            return;
+        }
         zone.classList.add('uploading');
         progressBar.classList.remove('d-none');
         progressBar.querySelector('.progress-bar').style.width = '30%';
