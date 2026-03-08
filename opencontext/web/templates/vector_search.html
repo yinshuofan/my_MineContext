@@ -19,16 +19,27 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">搜索图片（可选）</label>
-                        <div id="imagePasteZone" class="paste-zone" tabindex="0">
-                            <div id="imagePlaceholder" class="paste-placeholder">
-                                <i data-feather="image" style="width: 24px; height: 24px;" class="mb-1"></i>
-                                <div>Ctrl+V 粘贴图片 / 拖放图片到此处</div>
-                                <small class="text-muted">也可粘贴图片 URL</small>
+                        <label class="form-label">搜索媒体（可选）</label>
+                        <div id="mediaPasteZone" class="paste-zone" tabindex="0">
+                            <div id="mediaPlaceholder" class="paste-placeholder">
+                                <i data-feather="upload" style="width: 24px; height: 24px;" class="mb-1"></i>
+                                <div>粘贴图片 / 拖放文件 / <a href="#" id="mediaFileLink" class="text-decoration-none">选择文件</a></div>
+                                <small class="text-muted">支持图片和视频（jpg, png, gif, mp4, mov...）</small>
                             </div>
-                            <div id="imagePreview" class="paste-preview d-none">
-                                <img id="imagePreviewImg" class="paste-preview-img" alt="preview">
-                                <button type="button" class="btn-close paste-remove" id="imageRemoveBtn" aria-label="移除"></button>
+                            <div id="mediaPreview" class="paste-preview d-none">
+                                <div id="mediaPreviewContent"></div>
+                                <button type="button" class="btn-close paste-remove" id="mediaRemoveBtn" aria-label="移除"></button>
+                            </div>
+                            <input type="file" id="mediaFileInput" class="d-none" accept="image/*,video/*">
+                        </div>
+                        <div id="mediaUploadProgress" class="progress mt-1 d-none" style="height: 4px;">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text" style="font-size: 0.8rem;">视频 URL</span>
+                                <input type="text" class="form-control" id="videoUrlInput" placeholder="https://... (已有视频链接可直接粘贴)">
+                                <button class="btn btn-outline-secondary" type="button" id="videoUrlConfirmBtn" style="font-size: 0.8rem;">确认</button>
                             </div>
                         </div>
                     </div>
@@ -150,14 +161,16 @@
 .context-card-3 { border-left-color: #d63384; }
 .toggle-btn { cursor: pointer; user-select: none; }
 .toggle-btn:hover { opacity: 0.7; }
-.paste-zone { border: 2px dashed #dee2e6; border-radius: 6px; padding: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; outline: none; position: relative; min-height: 70px; display: flex; align-items: center; justify-content: center; }
+.paste-zone { border: 2px dashed #dee2e6; border-radius: 6px; padding: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; outline: none; position: relative; min-height: 80px; display: flex; align-items: center; justify-content: center; }
 .paste-zone:hover, .paste-zone:focus { border-color: #0d6efd; background-color: #f8f9ff; }
 .paste-zone.drag-over { border-color: #198754; background-color: #f0fff4; }
-.paste-zone.has-image { border-style: solid; border-color: #198754; padding: 8px; }
+.paste-zone.has-media { border-style: solid; border-color: #198754; padding: 8px; }
+.paste-zone.uploading { border-color: #ffc107; background-color: #fffdf0; pointer-events: none; opacity: 0.8; }
 .paste-placeholder { color: #6c757d; font-size: 0.85rem; }
 .paste-preview { position: relative; display: inline-block; }
 .paste-preview-img { max-width: 100%; max-height: 120px; border-radius: 4px; }
 .paste-remove { position: absolute; top: -6px; right: -6px; background: #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+.paste-video-info { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; font-size: 0.85rem; }
 .media-refs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .media-ref-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #dee2e6; cursor: pointer; }
 .media-ref-thumb:hover { opacity: 0.8; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
@@ -169,88 +182,149 @@
 const LEVEL_LABELS = {0: 'L0 原始事件', 1: 'L1 日总结', 2: 'L2 周总结', 3: 'L3 月总结'};
 const LEVEL_SHORT = {0: 'L0', 1: 'L1', 2: 'L2', 3: 'L3'};
 
-let pastedImageDataUri = null;
+let uploadedMedia = null;  // { url: string, type: 'image'|'video', filename: string }
 
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('eventSearchForm').addEventListener('submit', handleSearch);
-    initImagePasteZone();
+    initMediaZone();
 });
 
-function initImagePasteZone() {
-    const zone = document.getElementById('imagePasteZone');
-    const preview = document.getElementById('imagePreview');
-    const previewImg = document.getElementById('imagePreviewImg');
-    const placeholder = document.getElementById('imagePlaceholder');
-    const removeBtn = document.getElementById('imageRemoveBtn');
+function initMediaZone() {
+    const zone = document.getElementById('mediaPasteZone');
+    const placeholder = document.getElementById('mediaPlaceholder');
+    const preview = document.getElementById('mediaPreview');
+    const previewContent = document.getElementById('mediaPreviewContent');
+    const removeBtn = document.getElementById('mediaRemoveBtn');
+    const fileInput = document.getElementById('mediaFileInput');
+    const fileLink = document.getElementById('mediaFileLink');
+    const progressBar = document.getElementById('mediaUploadProgress');
+    const videoUrlInput = document.getElementById('videoUrlInput');
+    const videoUrlConfirmBtn = document.getElementById('videoUrlConfirmBtn');
 
-    // Paste — works on zone focus or anywhere in the form
+    // Click "选择文件" link opens file dialog
+    fileLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        fileInput.click();
+    });
+
+    // Click zone opens file dialog
+    zone.addEventListener('click', function(e) {
+        if (e.target === zone || e.target.closest('.paste-placeholder')) {
+            fileInput.click();
+        }
+    });
+
+    // File input change
+    fileInput.addEventListener('change', function() {
+        if (fileInput.files.length > 0) {
+            uploadFile(fileInput.files[0]);
+            fileInput.value = '';
+        }
+    });
+
+    // Paste on form level
     document.getElementById('eventSearchForm').addEventListener('paste', function(e) {
+        if (document.activeElement === videoUrlInput) return;
         const items = e.clipboardData && e.clipboardData.items;
         if (!items) return;
-
-        // Check for image file in clipboard
         for (const item of items) {
             if (item.type.startsWith('image/')) {
                 e.preventDefault();
-                const blob = item.getAsFile();
-                readImageBlob(blob);
+                uploadFile(item.getAsFile());
                 return;
             }
-        }
-
-        // Check for pasted text that looks like an image URL
-        const text = e.clipboardData.getData('text/plain').trim();
-        if (text && (text.startsWith('http') || text.startsWith('data:image')) && /\.(jpg|jpeg|png|gif|webp|bmp)/i.test(text)) {
-            e.preventDefault();
-            setImage(text);
         }
     });
 
     // Drag and drop
-    zone.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        zone.classList.add('drag-over');
-    });
-    zone.addEventListener('dragleave', function() {
-        zone.classList.remove('drag-over');
-    });
+    zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
     zone.addEventListener('drop', function(e) {
         e.preventDefault();
         zone.classList.remove('drag-over');
         const files = e.dataTransfer.files;
-        if (files.length > 0 && files[0].type.startsWith('image/')) {
-            readImageBlob(files[0]);
+        if (files.length > 0 && (files[0].type.startsWith('image/') || files[0].type.startsWith('video/'))) {
+            uploadFile(files[0]);
         }
+    });
+
+    // Video URL confirm
+    videoUrlConfirmBtn.addEventListener('click', function() {
+        const url = videoUrlInput.value.trim();
+        if (!url) return;
+        setMedia({ url: url, type: 'video', filename: url.split('/').pop() || 'video' });
+        videoUrlInput.value = '';
+    });
+    videoUrlInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); videoUrlConfirmBtn.click(); }
     });
 
     // Remove
     removeBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        clearImage();
+        clearMedia();
     });
 
-    function readImageBlob(blob) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            setImage(e.target.result);
-        };
-        reader.readAsDataURL(blob);
+    async function uploadFile(file) {
+        zone.classList.add('uploading');
+        progressBar.classList.remove('d-none');
+        progressBar.querySelector('.progress-bar').style.width = '30%';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            progressBar.querySelector('.progress-bar').style.width = '60%';
+
+            const resp = await fetch('/api/media/upload', {
+                method: 'POST',
+                body: formData,
+            });
+            const data = await resp.json();
+
+            progressBar.querySelector('.progress-bar').style.width = '100%';
+
+            if (!resp.ok) {
+                throw new Error(data.error || data.detail || '上传失败');
+            }
+
+            setMedia(data);
+        } catch (err) {
+            console.error('Upload failed:', err);
+            alert('媒体上传失败: ' + err.message);
+        } finally {
+            zone.classList.remove('uploading');
+            setTimeout(() => {
+                progressBar.classList.add('d-none');
+                progressBar.querySelector('.progress-bar').style.width = '0%';
+            }, 500);
+        }
     }
 
-    function setImage(dataUri) {
-        pastedImageDataUri = dataUri;
-        previewImg.src = dataUri;
+    function setMedia(media) {
+        uploadedMedia = media;
+        if (media.type === 'image') {
+            previewContent.innerHTML = `<img src="${escapeHtml(media.url)}" class="paste-preview-img" alt="preview">`;
+        } else {
+            previewContent.innerHTML = `
+                <div class="paste-video-info">
+                    <i data-feather="film" style="width:20px;height:20px;"></i>
+                    <span>${escapeHtml(media.filename)}</span>
+                </div>`;
+            feather.replace();
+        }
         preview.classList.remove('d-none');
         placeholder.classList.add('d-none');
-        zone.classList.add('has-image');
+        zone.classList.add('has-media');
     }
 
-    function clearImage() {
-        pastedImageDataUri = null;
-        previewImg.src = '';
+    function clearMedia() {
+        uploadedMedia = null;
+        previewContent.innerHTML = '';
         preview.classList.add('d-none');
         placeholder.classList.remove('d-none');
-        zone.classList.remove('has-image');
+        zone.classList.remove('has-media');
     }
 }
 
@@ -258,7 +332,6 @@ async function handleSearch(event) {
     event.preventDefault();
 
     const query = document.getElementById('query').value.trim();
-    const imageUrl = pastedImageDataUri || '';
     const topK = parseInt(document.getElementById('topK').value) || 10;
     const drillUp = document.getElementById('drillUp').checked;
     const startTime = document.getElementById('startTime').value;
@@ -271,11 +344,11 @@ async function handleSearch(event) {
         .map(cb => parseInt(cb.value));
 
     const hasQuery = query.length > 0;
-    const hasImage = imageUrl.length > 0;
+    const hasMedia = !!uploadedMedia;
     const hasLevels = selectedLevels.length > 0;
     const hasTimeRange = startTime || endTime;
 
-    if (!hasQuery && !hasImage && !hasLevels && !hasTimeRange) {
+    if (!hasQuery && !hasMedia && !hasLevels && !hasTimeRange) {
         displayError('请至少输入查询内容、选择层级过滤或设置时间范围');
         return;
     }
@@ -288,10 +361,16 @@ async function handleSearch(event) {
             drill_up: drillUp
         };
 
-        if (hasQuery || hasImage) {
+        if (hasQuery || hasMedia) {
             const queryParts = [];
             if (hasQuery) queryParts.push({"type": "text", "text": query});
-            if (hasImage) queryParts.push({"type": "image_url", "image_url": {"url": imageUrl}});
+            if (hasMedia) {
+                if (uploadedMedia.type === 'image') {
+                    queryParts.push({"type": "image_url", "image_url": {"url": uploadedMedia.url}});
+                } else {
+                    queryParts.push({"type": "video_url", "video_url": {"url": uploadedMedia.url, "fps": 1.0}});
+                }
+            }
             requestBody.query = queryParts;
         }
         if (hasLevels) requestBody.hierarchy_levels = selectedLevels;
