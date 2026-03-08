@@ -172,6 +172,11 @@ function renderRecentlyAccessed(items) {
                             <span class="fw-semibold">${item.title || '未命名'}</span>
                         </div>
                         ${item.summary ? `<small class="text-muted">${item.summary.substring(0, 100)}${item.summary.length > 100 ? '...' : ''}</small>` : ''}
+                        ${(item.media_refs && item.media_refs.length > 0) ? `<div class="mt-1">${item.media_refs.map(ref => {
+                            if (ref.type === 'image') return `<a href="${ref.url}" target="_blank" rel="noopener"><img src="${ref.url}" style="width:40px;height:40px;object-fit:cover;border-radius:3px;border:1px solid #dee2e6;margin-right:4px;" loading="lazy" onerror="this.style.display='none'"></a>`;
+                            if (ref.type === 'video') return `<a href="${ref.url}" target="_blank" rel="noopener" class="badge bg-dark me-1">▶ 视频</a>`;
+                            return '';
+                        }).join('')}</div>` : ''}
                     </div>
                     <div class="text-end ms-2" style="min-width: 100px;">
                         ${item.score != null ? `<span class="badge bg-primary">${item.score.toFixed(3)}</span>` : ''}
