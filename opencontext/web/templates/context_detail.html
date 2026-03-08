@@ -194,12 +194,21 @@
                             </div>
                             <div class="card-body">
                                 {% if raw_context.content_format == 'image' and raw_context.content_path %}
-                                    <img src="/files/{{ raw_context.content_path }}" class="img-fluid rounded" alt="Image">
+                                    {% if raw_context.content_path.startswith('http') %}
+                                    <img src="{{ raw_context.content_path }}" class="img-fluid rounded" alt="Image" loading="lazy" style="max-width:400px;">
+                                    {% else %}
+                                    <img src="/files/{{ raw_context.content_path }}" class="img-fluid rounded" alt="Image" loading="lazy" style="max-width:400px;">
+                                    {% endif %}
                                 {% elif raw_context.content_format == 'video' and raw_context.content_path %}
-                                    <video controls class="img-fluid rounded">
-                                        <source src="/files/{{ raw_context.content_path }}" type="video/mp4">
-                                        Your browser does not support the video tag.
+                                    {% if raw_context.content_path.startswith('http') %}
+                                    <video controls class="img-fluid rounded" style="max-width:480px;">
+                                        <source src="{{ raw_context.content_path }}">
                                     </video>
+                                    {% else %}
+                                    <video controls class="img-fluid rounded" style="max-width:480px;">
+                                        <source src="/files/{{ raw_context.content_path }}" type="video/mp4">
+                                    </video>
+                                    {% endif %}
                                 {% elif raw_context.content_text is mapping %}
                                     <pre class="content-pre bg-light p-3 rounded">{{ raw_context.content_text | tojson(indent=2) }}</pre>
                                 {% elif raw_context.content_text is string and (raw_context.content_text.strip().startswith('{') or raw_context.content_text.strip().startswith('[')) %}
