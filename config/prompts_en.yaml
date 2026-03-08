@@ -505,13 +505,53 @@ processing:
 
         ## Multimodal Input
 
-        The input messages may contain images and/or videos alongside text (in OpenAI multimodal message format). When images or videos are present:
-        - Analyze the visual content together with the text to extract more accurate memories
-        - If a memory is **strongly related** to specific images or videos in the input, include a `related_media` field in that memory's JSON output
-        - The `related_media` field uses indices that reference the position of media items across all messages (0-based, counting only image_url and video_url parts in order of appearance)
-        - Only include `related_media` when the memory's core content is directly tied to specific media (e.g., "user shared a photo of their new office" -> relate to that image)
-        - Do NOT include `related_media` for memories that merely happen to co-occur with media but are not about the media content itself
-        - If the input contains only text (no images/videos), simply omit the `related_media` field entirely
+        The input messages may contain images and/or videos (OpenAI multimodal message format).
+
+        ### Visual Content Analysis
+
+        **Photos/real-world images**: Identify scenes, locations, people, objects — extract facts that have memory value. Incorporate visual information into event bullet points:
+        - ✅ `Moved into new office, open-plan workspace, ~20 seats` — extracted facts from visual content
+        - ❌ `User shared a photo of the office` — did not utilize the visual information
+
+        **Screenshots (app interfaces, web pages, chat logs, code, etc.)**: Extract key text from screenshots (error messages, code snippets, config values, data) and incorporate into summary. Do not describe UI layout.
+        - ✅ `Deployment failed, error log: OOM: Container killed (limit 512Mi)` — extracted key info from screenshot
+        - ❌ `Shared a screenshot of a deployment error` — wasted the visual information
+
+        **Charts/data visualizations**: Extract key values, trends, and conclusions. Do not enumerate every data point.
+
+        **Videos**: You see sampled keyframes, not the full video. Extract information from visible frames; if frame content is insufficient, combine with conversation text to understand the video's topic. Do not speculate about content between frames.
+
+        **Media-only messages (no text)**: If the user sent only images/videos with no accompanying text, generate memories based entirely on the visual content. The event overview sentence should describe the visual content's topic.
+
+        ### related_media Association Rules
+
+        `related_media` associates a memory with specific media for multimodal vector search. Only associate when the memory's **core content originates from or describes the media**.
+
+        **Should associate** ✅:
+        - User shared a photo of the new office, event records the office move → associate the photo
+        - User sent a bug screenshot and discussed the fix, event records the bug fix → associate the screenshot
+        - User sent a travel video, event records the travel activity → associate the video
+
+        **Should NOT associate** ❌:
+        - User sent a meme/sticker while discussing work progress → the work-related event should not associate the meme
+        - User sent a screenshot as a conversation starter, but the subsequent discussion has moved beyond the screenshot content → do not associate
+        - The conversation contains images, but the extracted memory is a user preference (profile) → profile memories should not associate images
+        - The conversation contains media, but the extracted memory is an abstract knowledge concept (knowledge) → knowledge should not associate
+
+        **Large amounts of media**: If the user sent many similar photos (e.g., a set of travel photos), associate only the 1-3 most representative ones in the event — not all of them.
+
+        ### Media Index Calculation
+
+        `related_media` uses indices to reference media positions: 0-based, counting only image_url and video_url parts across all messages, in order of appearance.
+
+        **Example** — index calculation across 3 messages:
+        - Message 1: [text, imageA, imageB] → imageA=0, imageB=1
+        - Message 2: [text] → no media, no index contribution
+        - Message 3: [videoC, text, imageD] → videoC=2, imageD=3
+
+        If a memory is associated with imageB and imageD: `"related_media": {"images": [1, 3]}`
+
+        If the input contains only text (no images/videos), omit the `related_media` field.
 
         ## Per-Memory Fields
         1. **title**: Short descriptive title for this specific memory
@@ -528,15 +568,25 @@ processing:
         {
           "memories": [
             {
-              "title": "Short title",
-              "summary": "Core topic overview sentence.\n- bullet 1\n- bullet 2\n- bullet 3",
-              "keywords": ["keyword1", "keyword2"],
+              "title": "React admin architecture discussion and deployment fix",
+              "summary": "Discussed React admin architecture and resolved deployment OOM issue.\n- Architecture decision: adopted Next.js framework\n- Deployment failure: container memory limit 512Mi insufficient, adjusted to 1Gi\n- Plan to complete auth module by next Wednesday",
+              "keywords": ["React", "Next.js", "OOM", "deployment"],
               "context_type": "event",
-              "entities": [{"name": "entity name", "type": "type", "description": "description"}],
+              "entities": [{"name": "Next.js", "type": "framework", "description": "frontend framework"}],
               "importance": 8,
               "confidence": 9,
-              "event_time": "ISO time string or null",
-              "related_media": {"images": [0, 2], "videos": [1]}
+              "event_time": "2026-03-08T14:30:00",
+              "related_media": {"images": [0]}
+            },
+            {
+              "title": "User tech preferences",
+              "summary": "## Interests & Focus\n- Tech stack: prefers React ecosystem, currently learning Next.js",
+              "keywords": ["React", "Next.js"],
+              "context_type": "profile",
+              "entities": [],
+              "importance": 6,
+              "confidence": 8,
+              "event_time": null
             }
           ]
         }
