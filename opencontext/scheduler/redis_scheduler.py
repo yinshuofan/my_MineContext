@@ -669,6 +669,16 @@ class RedisTaskScheduler(ITaskScheduler):
             if config.trigger_mode != TriggerMode.PERIODIC:
                 continue
 
+            # Runtime guard: check if task type is still enabled in Redis
+            try:
+                enabled = await self._redis.hget(
+                    f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled"
+                )
+                if enabled != "true":
+                    continue
+            except Exception:
+                pass  # Fail-open: on Redis error, allow execution
+
             # Check if handler is registered
             handler = self._task_handlers.get(task_type)
             if not handler:
