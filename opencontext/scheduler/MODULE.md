@@ -249,7 +249,7 @@ _executor_loop (coordinator)
 Each _type_worker (independent per-type, concurrent execution):
   while _running:
     runtime guard: HGET scheduler:task_type:{type} enabled
-      if != "true": sleep(check_interval), continue
+      if == "false": sleep(check_interval), continue
     drain loop:
       sem.acquire(timeout=1s)            # backpressure: max N total in-flight
       task = get_pending_task(type)       # Lua atomic pop (only if score <= now), orphan cleanup, acquire lock
@@ -316,7 +316,7 @@ _periodic_worker (independent loop, runs alongside _type_workers)
   while _running:
     _process_periodic_tasks()
       ├─ Iterate config["tasks"] where trigger_mode == "periodic" and enabled
-      ├─ Runtime guard: HGET scheduler:task_type:{type} enabled, skip if != "true"
+      ├─ Runtime guard: HGET scheduler:task_type:{type} enabled, skip if == "false"
       ├─ Check next_run from Redis hash
       ├─ Acquire global lock (scheduler:lock:{type}:global)
       ├─ await handler(None, None, None)  -- async handler, no user context
