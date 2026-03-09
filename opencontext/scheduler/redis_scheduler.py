@@ -514,7 +514,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 enabled = await self._redis.hget(
                     f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled"
                 )
-                if enabled != "true":
+                if enabled == "false":
                     if self._running:
                         try:
                             await asyncio.sleep(self._check_interval)
@@ -674,7 +674,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 enabled = await self._redis.hget(
                     f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled"
                 )
-                if enabled != "true":
+                if enabled == "false":
                     continue
             except Exception:
                 pass  # Fail-open: on Redis error, allow execution
