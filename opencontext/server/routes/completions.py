@@ -246,7 +246,7 @@ async def get_completion_stats(_auth: str = auth_dependency):
         completion_service = get_completion_service()
 
         # Get cache statistics
-        cache_stats = completion_service.get_cache_stats()
+        cache_stats = await completion_service.get_cache_stats()
 
         # TODO: Add more statistics
         stats = {
@@ -268,7 +268,7 @@ async def get_cache_stats(_auth: str = auth_dependency):
     """Get completion cache statistics"""
     try:
         completion_service = get_completion_service()
-        stats = completion_service.get_cache_stats()
+        stats = await completion_service.get_cache_stats()
 
         return JSONResponse(
             {"success": True, "data": stats, "timestamp": datetime.now().isoformat()}
@@ -284,10 +284,10 @@ async def optimize_cache(_auth: str = auth_dependency):
     """Optimize completion cache"""
     try:
         completion_service = get_completion_service()
-        completion_service.optimize_cache()
+        await completion_service.optimize_cache()
 
         # Get statistics after optimization
-        stats = completion_service.get_cache_stats()
+        stats = await completion_service.get_cache_stats()
 
         return JSONResponse(
             {"success": True, "message": "Cache optimization completed", "stats": stats}
@@ -303,7 +303,7 @@ async def precompute_document_context(document_id: int, content: str, _auth: str
     """Precompute document context"""
     try:
         completion_service = get_completion_service()
-        completion_service.precompute_document_context(document_id, content)
+        await completion_service.precompute_document_context(document_id, content)
 
         return JSONResponse(
             {"success": True, "message": f"Document {document_id} context precomputation completed"}
@@ -319,7 +319,7 @@ async def clear_completion_cache(_auth: str = auth_dependency):
     """Clear completion cache"""
     try:
         completion_service = get_completion_service()
-        completion_service.clear_cache()
+        await completion_service.clear_cache()
 
         return JSONResponse({"success": True, "message": "Cache cleared"})
 
