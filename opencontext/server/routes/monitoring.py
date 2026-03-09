@@ -231,7 +231,7 @@ async def get_scheduler_metrics(
 async def get_scheduler_queue_depths(
     _auth: str = auth_dependency,
 ):
-    """Get current queue depths for all scheduler task types (real-time from Redis)"""
+    """Get current queue depths and enabled status for all scheduler task types (real-time from Redis)"""
     try:
         import json
 
@@ -239,23 +239,34 @@ async def get_scheduler_queue_depths(
 
         scheduler = get_scheduler()
         if scheduler:
-            queues = await scheduler.get_queue_depths()
+            queues = await scheduler.get_queue_status()
             return {"success": True, "data": {"queues": queues}}
 
-        # Fallback: read from Redis heartbeat
-        from opencontext.scheduler import read_scheduler_heartbeat, read_scheduler_queue_depths
+        # Fallback: read from Redis heartbeat + config
+        from opencontext.scheduler import read_scheduler_heartbeat, read_scheduler_queue_status
         from opencontext.storage.redis_cache import get_redis_cache
 
         redis_cache = get_redis_cache()
         if not redis_cache:
             return {"success": True, "data": {"queues": {}, "message": "Redis not available"}}
 
-        heartbeat = await read_scheduler_heartbeat(redis_cache)
-        if not heartbeat:
-            return {"success": True, "data": {"queues": {}, "message": "Scheduler not running"}}
+        # Get all task types from config
+        from opencontext.config import GlobalConfig
 
-        task_types = json.loads(heartbeat.get("registered_handlers", "[]"))
-        queues = await read_scheduler_queue_depths(redis_cache, task_types)
+        config = GlobalConfig.get_instance().config
+        all_task_types = list(config.get("scheduler", {}).get("tasks", {}).keys())
+
+        if not all_task_types:
+            # Fallback to heartbeat registered handlers
+            heartbeat = await read_scheduler_heartbeat(redis_cache)
+            if not heartbeat:
+                return {
+                    "success": True,
+                    "data": {"queues": {}, "message": "Scheduler not running"},
+                }
+            all_task_types = json.loads(heartbeat.get("registered_handlers", "[]"))
+
+        queues = await read_scheduler_queue_status(redis_cache, all_task_types)
         return {"success": True, "data": {"queues": queues}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get queue depths: {str(e)}")
