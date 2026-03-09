@@ -131,7 +131,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
 
             # Save user message if conversation_id is provided
             if request.conversation_id:
-                user_message_id = storage.create_message(
+                user_message_id = await storage.create_message(
                     conversation_id=request.conversation_id,
                     role="user",
                     content=request.query,
@@ -143,10 +143,10 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
 
                 # Update conversation title with user's question only if not already set
                 if request.query and request.query.strip():
-                    conversation = storage.get_conversation(request.conversation_id)
+                    conversation = await storage.get_conversation(request.conversation_id)
                     if conversation and not conversation.get("title"):
                         title = request.query[:50].strip()
-                        storage.update_conversation(
+                        await storage.update_conversation(
                             conversation_id=request.conversation_id, title=title
                         )
                         logger.info(
@@ -155,7 +155,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
 
             # Create streaming assistant message if conversation_id is provided
             if request.conversation_id:
-                assistant_message_id = storage.create_streaming_message(
+                assistant_message_id = await storage.create_streaming_message(
                     conversation_id=request.conversation_id, role="assistant"
                 )
                 logger.info(f"Created assistant streaming message {assistant_message_id}")
@@ -192,7 +192,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                     # Check if this is a thinking event
                     if event.type == EventType.THINKING:
                         # Save thinking messages separately to message_thinking table
-                        storage.add_message_thinking(
+                        await storage.add_message_thinking(
                             message_id=assistant_message_id,
                             content=event.content,
                             stage=event.stage.value if event.stage else None,
@@ -205,7 +205,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                     elif event.type == EventType.STREAM_CHUNK:
                         # Only stream_chunk content goes to message.content
                         accumulated_content += event.content
-                        storage.append_message_content(
+                        await storage.append_message_content(
                             message_id=assistant_message_id,
                             content_chunk=event.content,
                             token_count=1,  # Approximate token count
@@ -237,7 +237,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                 if event.stage in [WorkflowStage.COMPLETED, WorkflowStage.FAILED]:
                     # Update metadata with collected events before finishing
                     if assistant_message_id and event_metadata:
-                        storage.update_message_metadata(
+                        await storage.update_message_metadata(
                             message_id=assistant_message_id, metadata=event_metadata
                         )
                         logger.info(
@@ -247,7 +247,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                     # Mark assistant message as finished
                     if assistant_message_id:
                         status = "completed" if event.stage == WorkflowStage.COMPLETED else "failed"
-                        storage.mark_message_finished(
+                        await storage.mark_message_finished(
                             message_id=assistant_message_id,
                             status=status,
                             error_message=event.metadata.get("error")
@@ -261,7 +261,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
             if interrupted and assistant_message_id:
                 # Update metadata with collected events
                 if event_metadata:
-                    storage.update_message_metadata(
+                    await storage.update_message_metadata(
                         message_id=assistant_message_id, metadata=event_metadata
                     )
                     logger.info(
@@ -279,7 +279,7 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
             # Mark assistant message as failed if it exists
             if assistant_message_id and storage:
                 try:
-                    storage.mark_message_finished(
+                    await storage.mark_message_finished(
                         message_id=assistant_message_id, status="failed", error_message=str(e)
                     )
                 except Exception as mark_error:
