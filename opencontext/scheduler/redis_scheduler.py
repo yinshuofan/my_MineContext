@@ -129,9 +129,30 @@ class RedisTaskScheduler(ITaskScheduler):
 
     async def init_task_types(self) -> None:
         """Initialize task types in Redis (async)"""
+        enabled_names: Set[str] = set()
         for config in self._pending_task_configs:
             await self.register_task_type(config)
+            enabled_names.add(config.name)
         self._pending_task_configs.clear()
+
+        # Mark disabled task types in Redis so other workers' runtime guards take effect
+        await self._sync_disabled_task_types(enabled_names)
+
+    async def _sync_disabled_task_types(self, enabled_names: Set[str]) -> None:
+        """Mark task types not in enabled_names as disabled in Redis.
+
+        Reads all task type names from config (including disabled ones).
+        For any that exist in Redis but are NOT in enabled_names,
+        sets their 'enabled' field to 'false'. This ensures other
+        workers' runtime guards see the updated state immediately.
+        """
+        all_task_names = set(self._config.get("tasks", {}).keys())
+        disabled_names = all_task_names - enabled_names
+        for name in disabled_names:
+            key = f"{self.TASK_TYPE_PREFIX}{name}"
+            if await self._redis.exists(key):
+                await self._redis.hset(key, field="enabled", value="false")
+                logger.info(f"Marked task type as disabled in Redis: {name}")
 
     @property
     def user_key_builder(self) -> UserKeyBuilder:
