@@ -811,7 +811,11 @@
             updateQueueDepths(queues);
 
             // 更新概览卡片中的队列深度总数
-            const totalDepth = Object.values(queues).reduce((sum, v) => sum + v, 0);
+            let totalDepth = 0;
+            for (const key of Object.keys(queues)) {
+                const val = queues[key];
+                totalDepth += (typeof val === 'object') ? (val.depth || 0) : val;
+            }
             document.getElementById('schedulerQueueDepth').textContent = totalDepth.toLocaleString();
 
             document.getElementById('queueLastUpdate').textContent =
@@ -878,16 +882,25 @@
 
         let html = '<div class="d-flex flex-wrap gap-3">';
         for (const taskType of taskTypes) {
-            const count = queues[taskType];
+            const val = queues[taskType];
+            // Support both new format {depth, enabled} and legacy format (number)
+            const count = (typeof val === 'object') ? (val.depth || 0) : val;
+            const enabled = (typeof val === 'object') ? val.enabled : true;
+
             let badgeClass = 'bg-success';
             if (count > 5) {
                 badgeClass = 'bg-danger';
             } else if (count > 0) {
                 badgeClass = 'bg-warning text-dark';
             }
+
+            const pausedBadge = !enabled
+                ? ' <span class="badge bg-secondary">已暂停</span>'
+                : '';
+
             html += `<div class="d-flex align-items-center gap-2">
                 <span>${taskType}</span>
-                <span class="badge ${badgeClass} queue-badge">${count}</span>
+                <span class="badge ${badgeClass} queue-badge">${count}</span>${pausedBadge}
             </div>`;
         }
         html += '</div>';
