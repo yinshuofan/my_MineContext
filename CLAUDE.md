@@ -207,6 +207,9 @@ When sync code runs via `asyncio.to_thread`, `loop.create_task()` doesn't reliab
 - **`periodic` mode passes `user_id=None`**: Any task requiring non-null `user_id` will silently fail. Use `user_activity` trigger mode for per-user tasks; `periodic` is only for global system tasks.
 - **Disabled tasks cause silent failures**: `schedule_user_task()` silently returns `False` if the task type isn't registered (enabled). The push endpoint continues normally — no error is raised.
 
+### Scheduler task disable requires Redis `enabled` flag, not just config skip
+Disabling a task type in config only prevents NEW registration and handler creation. Existing Redis queue entries and other multi-instance workers remain unaffected. The Redis `scheduler:task_type:{type}.enabled` field is the **runtime authority** — `init_task_types()` marks disabled tasks as `enabled: "false"`, and both `_type_worker()` and `_process_periodic_tasks()` check this flag each cycle. If you add a new execution path for scheduled tasks, it must also check this flag.
+
 ### Hierarchy summary generation is idempotent, not day-gated
 `execute()` always tries to generate summaries for the most recent completed period. The existing dedup check (`search_hierarchy`) prevents regeneration. This allows generation whenever the user next becomes active.
 

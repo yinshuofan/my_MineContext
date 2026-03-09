@@ -146,6 +146,7 @@ Implements `ITaskScheduler`. Stores all state in Redis via `RedisCache`.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `get_queue_depths` | `async () -> Dict[str, int]` | Returns a mapping of `task_type` to pending task count. Iterates all registered task types and calls Redis `zcard` on each `scheduler:queue:{type}` sorted set. Useful for monitoring queue backlog in real time |
+| `get_queue_status` | `async () -> Dict[str, Dict[str, Any]]` | Returns a mapping of `task_type` to `{"depth": int, "enabled": bool}` for ALL configured task types (including disabled ones). Unlike `get_queue_depths()` which only covers handler-registered types, this includes disabled task types that may still have pending queue entries. Used by the monitoring API |
 
 **Observability instrumentation**:
 
@@ -182,6 +183,7 @@ Metrics are stored in an in-memory buffer and periodically persisted to the MySQ
 **Remote observation functions** (module-level, for server processes without a local scheduler):
 - `read_scheduler_heartbeat(redis_cache: RedisCache) -> Optional[Dict[str, str]]` -- reads the heartbeat hash from Redis. Returns `None` if no heartbeat exists (scheduler never started or TTL expired)
 - `read_scheduler_queue_depths(redis_cache: RedisCache, task_types: List[str]) -> Dict[str, int]` -- reads `zcard` for each task type's queue sorted set
+- `read_scheduler_queue_status(redis_cache: RedisCache, task_types: List[str]) -> Dict[str, Dict[str, Any]]` -- reads queue depth and `enabled` flag for each task type from Redis. Returns `{"depth": int, "enabled": bool}` per type
 
 ### Heartbeat Mechanism
 
