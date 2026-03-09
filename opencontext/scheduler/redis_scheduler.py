@@ -509,6 +509,24 @@ class RedisTaskScheduler(ITaskScheduler):
         Then sleeps for check_interval before the next drain cycle.
         """
         while self._running:
+            # --- runtime guard: skip drain if task type disabled in Redis ---
+            try:
+                enabled = await self._redis.hget(
+                    f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled"
+                )
+                if enabled != "true":
+                    if self._running:
+                        try:
+                            await asyncio.sleep(self._check_interval)
+                        except asyncio.CancelledError:
+                            break
+                    continue
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Failed to check enabled status for {task_type}: {e}")
+                # On Redis error, fall through to normal drain (fail-open)
+
             # --- drain phase: claim tasks and fire them off concurrently ---
             try:
                 while self._running:
