@@ -11,14 +11,13 @@ Supports both Redis (for multi-instance) and in-memory (fallback) caching.
 """
 
 import hashlib
-import json
 import sys
 import threading
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -362,6 +361,10 @@ class CompletionCache:
                 keys = await self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*{pattern}*")
                 if keys:
                     await self._redis_cache.delete(*keys)
+                    # Clean up sorted set entries to prevent orphaned members
+                    for key in keys:
+                        short_key = key.removeprefix(self.CACHE_KEY_PREFIX)
+                        await self._redis_cache.zrem(self.ACCESS_ORDER_KEY, short_key)
                 logger.info(f"Invalidated Redis cache by pattern: {pattern} ({len(keys)} items)")
         except Exception as e:
             logger.error(f"Redis invalidate error: {e}")
@@ -416,16 +419,25 @@ class CompletionCache:
 
     def _evict_entries_local(self):
         """Evict entries from local cache"""
+        seen = 0
         while len(self._local_cache) >= self.max_size and self._local_access_order:
+            if seen >= len(self._local_access_order):
+                # All remaining entries are hot keys; force-evict the oldest
+                oldest_key = self._local_access_order[0]
+                self._evict_local(oldest_key)
+                break
+
             oldest_key = self._local_access_order[0]
 
             # Protect hot keys
             if oldest_key in self._hot_keys and len(self._local_cache) < self.max_size * 1.2:
                 self._local_access_order.remove(oldest_key)
                 self._local_access_order.append(oldest_key)
+                seen += 1
                 continue
 
             self._evict_local(oldest_key)
+            seen = 0  # Reset after successful eviction
 
     def _evict_local(self, key: str):
         """Evict a single entry from local cache"""
@@ -605,24 +617,20 @@ class CompletionCache:
                 "total_requests": total_requests,
                 "average_response_time_ms": round(self._stats["average_response_time"] * 1000, 2),
             }
-
-            if self._redis_configured:
-                try:
-                    stats["redis_cache_size"] = await self._redis_cache.zcard(
-                        self.ACCESS_ORDER_KEY
-                    )
-                    stats["redis_hot_keys_count"] = await self._redis_cache.scard(
-                        self.HOT_KEYS_KEY
-                    )
-                except Exception as e:
-                    logger.debug(f"Failed to get Redis cache statistics: {e}")
-
             stats["local_cache_size"] = len(self._local_cache)
             stats["local_hot_keys_count"] = len(self._hot_keys)
             stats["precomputed_contexts"] = len(self._precomputed_contexts)
             stats["memory_usage_estimate"] = self._estimate_memory_usage()
 
-            return stats
+        # Redis calls OUTSIDE the lock
+        if self._redis_configured:
+            try:
+                stats["redis_cache_size"] = await self._redis_cache.zcard(self.ACCESS_ORDER_KEY)
+                stats["redis_hot_keys_count"] = await self._redis_cache.scard(self.HOT_KEYS_KEY)
+            except Exception as e:
+                logger.debug(f"Failed to get Redis cache statistics: {e}")
+
+        return stats
 
     def _estimate_memory_usage(self) -> Dict[str, Any]:
         """Estimate memory usage"""
@@ -662,39 +670,43 @@ class CompletionCache:
             except Exception as e:
                 logger.debug(f"Redis hot key access failed: {e}")
 
+        # Collect local entries under the lock
+        local_entries = {}
+        keys_needing_redis = []
         with self._lock:
             for key in hot_keys:
-                entry = None
-
-                # Try local cache first
                 if key in self._local_cache:
-                    entry = self._local_cache[key]
+                    local_entries[key] = self._local_cache[key]
                 elif self._redis_configured:
-                    # Try Redis
-                    try:
-                        data = await self._redis_cache.get_json(self._make_cache_key(key))
-                        if data:
-                            entry = CacheEntry.from_dict(data)
-                    except Exception as e:
-                        logger.debug(f"Redis hot key access failed: {e}")
+                    keys_needing_redis.append(key)
 
-                if entry:
-                    hot_patterns.append(
-                        {
-                            "key_hash": hashlib.md5(key.encode()).hexdigest(),
-                            "access_count": entry.access_count,
-                            "confidence_score": entry.confidence_score,
-                            "suggestion_types": [
-                                (
-                                    getattr(s, "completion_type", {}).get("value", "unknown")
-                                    if hasattr(s, "completion_type")
-                                    else "unknown"
-                                )
-                                for s in entry.suggestions
-                            ],
-                            "suggestion_count": len(entry.suggestions),
-                        }
-                    )
+        # Fetch remaining entries from Redis OUTSIDE the lock
+        for key in keys_needing_redis:
+            try:
+                data = await self._redis_cache.get_json(self._make_cache_key(key))
+                if data:
+                    local_entries[key] = CacheEntry.from_dict(data)
+            except Exception as e:
+                logger.debug(f"Redis hot key access failed: {e}")
+
+        # Build patterns from all collected entries
+        for key, entry in local_entries.items():
+            hot_patterns.append(
+                {
+                    "key_hash": hashlib.md5(key.encode()).hexdigest(),
+                    "access_count": entry.access_count,
+                    "confidence_score": entry.confidence_score,
+                    "suggestion_types": [
+                        (
+                            getattr(s, "completion_type", {}).get("value", "unknown")
+                            if hasattr(s, "completion_type")
+                            else "unknown"
+                        )
+                        for s in entry.suggestions
+                    ],
+                    "suggestion_count": len(entry.suggestions),
+                }
+            )
 
         return hot_patterns
 
