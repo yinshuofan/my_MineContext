@@ -163,15 +163,16 @@ Metrics are stored in an in-memory buffer and periodically persisted to the MySQ
 | Method | Description |
 |--------|-------------|
 | `_collect_task_types()` | Reads `config["tasks"]` and queues enabled tasks for async registration |
-| `init_task_types()` | `async` -- registers queued task configs in Redis (called from `start()`) |
+| `init_task_types()` | `async` -- registers queued task configs in Redis (called from `start()`), then calls `_sync_disabled_task_types()` to mark non-enabled task types as `enabled: "false"` in Redis |
+| `_sync_disabled_task_types(enabled_names)` | `async` -- reads all task names from config, marks any not in `enabled_names` as `enabled: "false"` in their Redis `scheduler:task_type:{name}` hash. Called by `init_task_types()` after registration |
 | `_executor_loop()` | `async` -- coordinator that writes initial heartbeat, then creates one `_type_worker` per registered handler + one `_periodic_worker` + one `_heartbeat_worker`, then `asyncio.gather`s them. On `CancelledError`, cascades cancel to all workers and awaits in-flight tasks |
 | `_write_heartbeat()` | `async` -- writes heartbeat hash to Redis via pipeline (`hset` + `expire`). Called by `_heartbeat_worker` on each cycle and once at the start of `_executor_loop` |
 | `_heartbeat_worker()` | `async` -- independent loop that calls `_write_heartbeat()` every `check_interval` seconds. Handles `CancelledError` for clean shutdown |
-| `_type_worker(task_type)` | `async` -- independent per-type worker. Drain loop: acquires `_concurrency_sem` (1s timeout for shutdown responsiveness), calls `get_pending_task()`, fires off `_run_and_release` via `create_task` (fire-and-forget). Sleeps `check_interval` between drain cycles |
+| `_type_worker(task_type)` | `async` -- independent per-type worker. Each cycle starts with a **runtime enabled guard**: reads `enabled` from `scheduler:task_type:{type}` in Redis; if not `"true"`, skips drain and sleeps (fail-open on Redis error). Drain loop: acquires `_concurrency_sem` (1s timeout for shutdown responsiveness), calls `get_pending_task()`, fires off `_run_and_release` via `create_task` (fire-and-forget). Sleeps `check_interval` between drain cycles |
 | `_run_and_release(task_type, task_info)` | `async` -- wraps `_execute_task` in `try/finally: _concurrency_sem.release()` to guarantee semaphore release |
 | `_execute_task(task_type, task_info)` | `async` -- executes a single claimed task. Awaits async handler directly, calls `complete_task`. Uses `lock_released` flag + `finally` block with `asyncio.shield` to ensure lock is always released even on `CancelledError` |
 | `_periodic_worker()` | `async` -- independent loop wrapping `_process_periodic_tasks()` with `check_interval` sleep. Handles `CancelledError` for clean shutdown |
-| `_process_periodic_tasks()` | `async` -- iterates periodic task configs, checks `next_run`, acquires global lock, awaits async handler with `(None, None, None)` |
+| `_process_periodic_tasks()` | `async` -- iterates periodic task configs. For each, checks **runtime enabled guard** from Redis (fail-open on error), then checks `next_run`, acquires global lock, awaits async handler with `(None, None, None)` |
 
 **Global singleton functions**:
 - `get_scheduler() -> Optional[RedisTaskScheduler]`
@@ -245,6 +246,8 @@ _executor_loop (coordinator)
 
 Each _type_worker (independent per-type, concurrent execution):
   while _running:
+    runtime guard: HGET scheduler:task_type:{type} enabled
+      if != "true": sleep(check_interval), continue
     drain loop:
       sem.acquire(timeout=1s)            # backpressure: max N total in-flight
       task = get_pending_task(type)       # Lua atomic pop (only if score <= now), orphan cleanup, acquire lock
@@ -311,6 +314,7 @@ _periodic_worker (independent loop, runs alongside _type_workers)
   while _running:
     _process_periodic_tasks()
       ├─ Iterate config["tasks"] where trigger_mode == "periodic" and enabled
+      ├─ Runtime guard: HGET scheduler:task_type:{type} enabled, skip if != "true"
       ├─ Check next_run from Redis hash
       ├─ Acquire global lock (scheduler:lock:{type}:global)
       ├─ await handler(None, None, None)  -- async handler, no user context
@@ -337,6 +341,7 @@ _periodic_worker (independent loop, runs alongside _type_workers)
 - **Handlers are async**: The scheduler awaits them directly on the event loop. All `create_*_handler()` factories return async closures.
 - **Periodic handlers receive `(None, None, None)`**: Tasks that need `user_id` must use `user_activity` trigger mode, not `periodic`.
 - **Disabled tasks silently skip**: If `enabled: false` in config, `_collect_task_types()` skips registration, and `schedule_user_task()` returns `False` with a warning log. No error is raised.
+- **Runtime disable via Redis `enabled` flag**: When a task type is disabled via settings reload, `init_task_types()` marks it as `enabled: "false"` in Redis. Both `_type_worker()` and `_process_periodic_tasks()` check this flag each cycle before consuming tasks. This ensures all multi-instance workers stop executing disabled tasks within one `check_interval` (default 10s), without clearing the queue — pending tasks are preserved for re-enablement. The guard is **fail-open**: Redis errors do not block task execution.
 - **Concurrent execution with global backpressure**: Each `_type_worker` drains its queue fully each cycle, firing off tasks concurrently via `create_task`. Total concurrency across all types is bounded by `_concurrency_sem` (default 5). Workers block on semaphore acquisition (1s timeout) before claiming tasks, providing natural backpressure.
 - **Lock token is required for `complete_task`**: Always pass the `lock_token` from `TaskInfo` to `complete_task()`.
 - **`check_interval` and `max_concurrent` read from `executor` sub-key**: Config path is `config["executor"]["check_interval"]` (default 10) and `config["executor"]["max_concurrent"]` (default 5). Not top-level scheduler config keys.
