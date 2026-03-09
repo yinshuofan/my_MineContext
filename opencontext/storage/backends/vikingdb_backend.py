@@ -83,6 +83,10 @@ FIELD_PARENT_ID = "parent_id"
 FIELD_TIME_BUCKET = "time_bucket"
 FIELD_CHILDREN_IDS = "children_ids"
 
+# Multimodal fields
+FIELD_CONTENT_MODALITIES = "content_modalities"
+FIELD_MEDIA_REFS = "media_refs"
+
 # Data type field
 FIELD_DATA_TYPE = "data_type"
 DATA_TYPE_CONTEXT = "context"
@@ -531,7 +535,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
             # Ensure single collection and index exist
             index_type = vikingdb_config.get("index_type", "hnsw")
-            distance_type = vikingdb_config.get("distance_type", "ip")
+            distance_type = vikingdb_config.get("distance_type", "cosine")
 
             await self._ensure_collection_and_index(
                 dimension=self._dimension,
@@ -644,9 +648,12 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_TIME_BUCKET, "FieldType": "string"},
             {"FieldName": FIELD_CHILDREN_IDS, "FieldType": "string"},
             {"FieldName": FIELD_DOCUMENT, "FieldType": "string"},
+            {"FieldName": FIELD_CONTENT_MODALITIES, "FieldType": "string"},
+            {"FieldName": FIELD_MEDIA_REFS, "FieldType": "string"},
         ]
 
         data = {
+            "ProjectName": "default",
             "CollectionName": self._collection_name,
             "Fields": fields,
             "Description": "OpenContext unified collection for all context types",
@@ -667,12 +674,13 @@ class VikingDBBackend(IVectorStorageBackend):
     async def _create_index(
         self,
         index_type: str = "hnsw",
-        distance_type: str = "ip",
+        distance_type: str = "cosine",
     ) -> None:
         """Create index for the collection."""
         vector_index = {
             "IndexType": index_type.upper(),
             "Distance": distance_type,
+            "Quant": "int8",
         }
 
         if index_type.lower() == "hnsw":
@@ -709,6 +717,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_MERGE_COUNT,
                 FIELD_DURATION_COUNT,
                 FIELD_HIERARCHY_LEVEL,
+                FIELD_CONTENT_MODALITIES,
             ],
             "Description": f"Index for {self._collection_name}",
         }
@@ -769,8 +778,17 @@ class VikingDBBackend(IVectorStorageBackend):
             doc.update(context.metadata)
 
         if context.vectorize:
-            if context.vectorize.content_format == ContentFormat.TEXT:
-                doc[FIELD_DOCUMENT] = context.vectorize.text or ""
+            text = context.vectorize.get_text()
+            if text:
+                doc[FIELD_DOCUMENT] = text
+            # Store modality string for multimodal filtering
+            doc[FIELD_CONTENT_MODALITIES] = context.vectorize.get_modality_string()
+
+        # Store media_refs from metadata
+        if context.metadata and "media_refs" in context.metadata:
+            doc[FIELD_MEDIA_REFS] = json.dumps(
+                context.metadata["media_refs"], ensure_ascii=False
+            )
 
         if context.properties:
             properties_dict = context.properties.model_dump(exclude_none=True)
@@ -923,6 +941,7 @@ class VikingDBBackend(IVectorStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        skip_slice: bool = False,
     ) -> Dict[str, List[ProcessedContext]]:
         if not self._initialized:
             return {}
@@ -955,11 +974,18 @@ class VikingDBBackend(IVectorStorageBackend):
                     data_type=DATA_TYPE_CONTEXT,
                 )
 
+                if skip_slice:
+                    fetch_limit = limit + offset
+                    fetch_offset = 0
+                else:
+                    fetch_limit = limit
+                    fetch_offset = offset
+
                 data = {
                     "collection_name": self._collection_name,
                     "index_name": self._index_name,
-                    "limit": limit,
-                    "offset": offset,
+                    "limit": fetch_limit,
+                    "offset": fetch_offset,
                     "field": FIELD_CREATED_AT_TS,
                     "order": "desc",
                 }
@@ -972,7 +998,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
                 if query_result.get("code") == "Success":
                     output = query_result.get("result", {}).get("data", [])
-                    if len(output) > limit:
+                    if not skip_slice and len(output) > limit:
                         output = output[:limit]
 
                     contexts = []
@@ -1029,6 +1055,7 @@ class VikingDBBackend(IVectorStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
@@ -1038,7 +1065,7 @@ class VikingDBBackend(IVectorStorageBackend):
             query_vector = list(query.vector)
         else:
             if query.text:
-                await do_vectorize(query)
+                await do_vectorize(query, role="query")
                 query_vector = list(query.vector) if query.vector else None
 
         if not query_vector:
@@ -1095,6 +1122,9 @@ class VikingDBBackend(IVectorStorageBackend):
         except Exception as e:
             logger.exception(f"Vector search failed: {e}")
 
+        if score_threshold is not None:
+            all_results = [(ctx, s) for ctx, s in all_results if s >= score_threshold]
+
         all_results.sort(key=lambda x: x[1], reverse=True)
         return all_results[:top_k]
 
@@ -1117,12 +1147,31 @@ class VikingDBBackend(IVectorStorageBackend):
             vectorize_dict = {}
             metadata_dict = {}
 
-            document = fields.pop(FIELD_DOCUMENT, None)
-            if document:
-                vectorize_dict["text"] = document
+            doc_text = fields.pop(FIELD_DOCUMENT, None)
+            if doc_text:
+                vectorize_dict["input"] = [{"type": "text", "text": doc_text}]
 
             if need_vector and doc.get("vector"):
                 vectorize_dict["vector"] = doc["vector"]
+
+            # Parse multimodal fields
+            content_modalities = fields.pop(FIELD_CONTENT_MODALITIES, None)
+            if content_modalities:
+                metadata_dict[FIELD_CONTENT_MODALITIES] = content_modalities
+
+            media_refs_raw = fields.pop(FIELD_MEDIA_REFS, None)
+            if media_refs_raw:
+                if isinstance(media_refs_raw, str):
+                    try:
+                        metadata_dict[FIELD_MEDIA_REFS] = json.loads(media_refs_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        metadata_dict[FIELD_MEDIA_REFS] = media_refs_raw
+                else:
+                    metadata_dict[FIELD_MEDIA_REFS] = media_refs_raw
+
+            # Pop legacy fields to prevent them leaking into metadata
+            fields.pop("images", None)
+            fields.pop("videos", None)
 
             context_id = fields.pop("id", None)
             if not context_id:
@@ -1369,12 +1418,23 @@ class VikingDBBackend(IVectorStorageBackend):
         logger.debug(f"Built VikingDB filter: {filter_dict}")
         return filter_dict
 
-    async def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(
+        self,
+        context_type: str,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
         if not self._initialized:
             return 0
 
         try:
             filter_dict = self._build_filter_dict(
+                filters=filter,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
                 context_type=context_type,
                 data_type=DATA_TYPE_CONTEXT,
             )
@@ -1382,7 +1442,8 @@ class VikingDBBackend(IVectorStorageBackend):
             data = {
                 "collection_name": self._collection_name,
                 "index_name": self._index_name,
-                "limit": 1,
+                "limit": 100000,
+                "output_fields": [],
                 "field": FIELD_CREATED_AT_TS,
                 "order": "desc",
             }

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from opencontext.models.context import ProcessedContextModel
 from opencontext.models.enums import ContentFormat, ContextSource
@@ -64,6 +64,12 @@ class VectorSearchRequest(BaseModel):
     top_k: int = 10
     context_types: Optional[List[str]] = None
     filters: Optional[Dict[str, Any]] = None
+    score_threshold: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity score (0-1). Results below this score are filtered out.",
+    )
     # Multi-user support fields
     user_id: Optional[str] = None
     device_id: Optional[str] = None
@@ -152,6 +158,7 @@ async def vector_search(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
+            score_threshold=request.score_threshold,
         )
 
         return convert_resp(

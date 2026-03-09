@@ -31,7 +31,7 @@
 
 | 提示词 Key | 使用位置 | 文件路径:行号 | 作用 |
 |---|---|---|---|
-| `processing.extraction.chat_analyze` | TextChatProcessor | `context_processing/processor/text_chat_processor.py:77` | 从聊天记录中提取结构化记忆 (profile/entity/event/knowledge/document) |
+| `processing.extraction.chat_analyze` | TextChatProcessor | `context_processing/processor/text_chat_processor.py:77` | 从聊天记录中提取结构化记忆 (profile/event/knowledge/document) |
 
 ### 3. `merging` — 合并 (3 个 key)
 
@@ -39,17 +39,9 @@
 |---|---|---|---|
 | `merging.context_merging_multiple` | ContextMerger (fallback) | `context_processing/merger/context_merger.py:285` | 通用多上下文合并 (后备方案) |
 | `merging.knowledge_merging` | ContextMerger | `context_processing/merger/context_merger.py:278` | knowledge 类型专用合并 (通过动态 key `merging.{type}_merging` 调用) |
-| `merging.overwrite_merge` | ProfileProcessor | `context_processing/processor/profile_processor.py:125` | profile 新旧信息 LLM 智能合并 |
+| `merging.overwrite_merge` | ProfileProcessor | `context_processing/processor/profile_processor.py:125` | profile 结构化 Markdown 画像合并 — 将新提取信息按 4 个分类（基本信息/兴趣与关注/社交关系/互动偏好）合并到现有 factual_profile 中，输出结构化 Markdown 格式的 factual_profile，支持旧自由文本格式自动迁移 |
 
-### 4. `entity_processing` — 实体处理 (3 个 key)
-
-| 提示词 Key | 使用位置 | 文件路径:行号 | 作用 |
-|---|---|---|---|
-| `entity_processing.entity_extraction` | Intent 节点 | `context_consumption/context_agent/nodes/intent.py:231` | 从用户查询中提取命名实体 (person/project/team/organization) |
-| `entity_processing.entity_meta_merging` | **未被使用** | — | 实体元数据合并 (新旧实体数据融合) |
-| `entity_processing.entity_matching` | **未被使用** | — | 实体名称匹配 (判断提取的实体是否匹配已存储实体) |
-
-### 5. `document_processing` — 文档处理 (3 个 key)
+### 4. `document_processing` — 文档处理 (3 个 key)
 
 | 提示词 Key | 使用位置 | 文件路径:行号 | 作用 |
 |---|---|---|---|
@@ -57,7 +49,7 @@
 | `document_processing.text_chunking` | DocumentTextChunker | `context_processing/chunker/document_text_chunker.py:194` | LLM 智能文本分块 |
 | `document_processing.global_semantic_chunking` | DocumentTextChunker | `context_processing/chunker/document_text_chunker.py:272` | 全局语义分块 (保留原文，添加上下文前缀) |
 
-### 6. `hierarchy_summary` — 层级摘要 (10 个 key)
+### 5. `hierarchy_summary` — 层级摘要 (10 个 key)
 
 | 提示词 Key | 使用位置 | 文件路径:行号 | 作用 |
 |---|---|---|---|
@@ -76,13 +68,11 @@
 
 ## 问题清单
 
-### YAML 中定义但代码中未使用的提示词 (3 个)
+### YAML 中定义但代码中未使用的提示词 (1 个)
 
 | 提示词 Key | 设计意图 | 备注 |
 |---|---|---|
 | `chat_workflow.context_collection.context_filter` | 判断上下文与问题的相关性，返回相关 ID | 可能被 `tool_result_validation` 取代 |
-| `entity_processing.entity_meta_merging` | 合并新旧实体元数据 | 实体处理流程可能尚未完整实现 |
-| `entity_processing.entity_matching` | 判断提取实体是否匹配已存储实体 | 同上 |
 
 ### 代码中引用但 YAML 中未定义的提示词 (3 个)
 
@@ -94,7 +84,7 @@
 
 ## 统计
 
-- **YAML 中定义的提示词总数**: 30 个
-- **实际被代码使用**: 27 个
-- **未使用**: 3 个
+- **YAML 中定义的提示词总数**: 27 个
+- **实际被代码使用**: 26 个
+- **未使用**: 1 个
 - **代码引用但 YAML 缺失**: 1 个

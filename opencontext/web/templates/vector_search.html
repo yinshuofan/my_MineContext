@@ -15,12 +15,37 @@
                     <div class="mb-3">
                         <label for="query" class="form-label">查询内容</label>
                         <textarea class="form-control" id="query" rows="3" maxlength="2000" placeholder="输入语义搜索内容..."></textarea>
-                        <div class="form-text">支持自然语言查询</div>
+                        <div class="form-text">支持自然语言查询，可与图片组合进行多模态搜索</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">搜索媒体（可选）</label>
+                        <div id="mediaPasteZone" class="paste-zone" tabindex="0">
+                            <div id="mediaPlaceholder" class="paste-placeholder">
+                                <i data-feather="upload" style="width: 24px; height: 24px;" class="mb-1"></i>
+                                <div>粘贴图片 / 拖放文件 / <a href="#" id="mediaFileLink" class="text-decoration-none">选择文件</a></div>
+                                <small class="text-muted">支持图片和视频（jpg, png, gif, mp4, mov...）</small>
+                            </div>
+                            <div id="mediaPreview" class="d-none" style="width:100%;">
+                                <div id="mediaPreviewContent" class="d-flex flex-wrap gap-2 align-items-start"></div>
+                            </div>
+                            <input type="file" id="mediaFileInput" class="d-none" accept="image/*,video/*" multiple>
+                        </div>
+                        <div id="mediaUploadProgress" class="progress mt-1 d-none" style="height: 4px;">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text" style="font-size: 0.8rem;">视频 URL</span>
+                                <input type="text" class="form-control" id="videoUrlInput" placeholder="https://... (已有视频链接可直接粘贴)">
+                                <button class="btn btn-outline-secondary" type="button" id="videoUrlConfirmBtn" style="font-size: 0.8rem;">确认</button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mb-3">
                         <label for="topK" class="form-label">返回数量 (Top-K)</label>
-                        <input type="number" class="form-control" id="topK" value="20" min="1" max="100">
+                        <input type="number" class="form-control" id="topK" value="10" min="1" max="100">
                     </div>
 
                     <div class="mb-3">
@@ -99,7 +124,7 @@
                 <div id="searchResults">
                     <div class="text-muted text-center py-5">
                         <i data-feather="search" class="mb-3" style="width: 48px; height: 48px;"></i>
-                        <p>输入查询内容或选择层级过滤，然后点击"开始搜索"</p>
+                        <p>输入查询内容、粘贴图片或选择过滤条件，然后点击"开始搜索"</p>
                     </div>
                 </div>
             </div>
@@ -111,13 +136,15 @@
 
 {% block scripts %}
 <style>
-.event-card { transition: box-shadow 0.15s; }
+.event-card { transition: box-shadow 0.15s; border-left: 3px solid #198754; }
 .event-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .level-badge { font-size: 0.75rem; font-weight: 600; }
 .level-badge-0 { background-color: #6c757d; }
 .level-badge-1 { background-color: #0d6efd; }
 .level-badge-2 { background-color: #6f42c1; }
 .level-badge-3 { background-color: #d63384; }
+.hit-badge { background-color: #198754; font-size: 0.7rem; font-weight: 500; }
+.ctx-badge { background-color: #6c757d; opacity: 0.6; font-size: 0.7rem; font-weight: 500; }
 .summary-text { max-height: 4.5em; overflow: hidden; position: relative; }
 .summary-text.expanded { max-height: none; }
 .score-badge { font-size: 0.8rem; }
@@ -126,28 +153,232 @@
 .tree-children-1 { border-color: #0d6efd; }
 .tree-children-2 { border-color: #6f42c1; }
 .tree-children-3 { border-color: #d63384; }
-.context-card { background-color: #f8f9fa; border-left: 3px solid; border-radius: 4px; padding: 10px 14px; margin-bottom: 8px; }
+.context-card { background-color: #f8f9fa; border-left: 3px dashed; border-radius: 4px; padding: 10px 14px; margin-bottom: 8px; opacity: 0.85; }
 .context-card-0 { border-left-color: #6c757d; }
 .context-card-1 { border-left-color: #0d6efd; }
 .context-card-2 { border-left-color: #6f42c1; }
 .context-card-3 { border-left-color: #d63384; }
 .toggle-btn { cursor: pointer; user-select: none; }
 .toggle-btn:hover { opacity: 0.7; }
+.paste-zone { border: 2px dashed #dee2e6; border-radius: 6px; padding: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; outline: none; position: relative; min-height: 80px; display: flex; align-items: center; justify-content: center; }
+.paste-zone:hover, .paste-zone:focus { border-color: #0d6efd; background-color: #f8f9ff; }
+.paste-zone.drag-over { border-color: #198754; background-color: #f0fff4; }
+.paste-zone.has-media { border-style: solid; border-color: #198754; padding: 8px; }
+.paste-zone.uploading { border-color: #ffc107; background-color: #fffdf0; pointer-events: none; opacity: 0.8; }
+.paste-placeholder { color: #6c757d; font-size: 0.85rem; }
+.paste-preview { position: relative; display: inline-block; }
+.paste-preview-img { max-width: 100%; max-height: 120px; border-radius: 4px; }
+.paste-remove { position: absolute; top: -6px; right: -6px; background: #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+.paste-video-info { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; font-size: 0.85rem; }
+.media-refs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.media-ref-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #dee2e6; cursor: pointer; }
+.media-ref-thumb:hover { opacity: 0.8; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+.media-ref-video { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 4px; background: #f0f0f0; font-size: 0.8rem; color: #495057; text-decoration: none; }
+.media-ref-video:hover { background: #e2e6ea; }
 </style>
 
 <script>
 const LEVEL_LABELS = {0: 'L0 原始事件', 1: 'L1 日总结', 2: 'L2 周总结', 3: 'L3 月总结'};
 const LEVEL_SHORT = {0: 'L0', 1: 'L1', 2: 'L2', 3: 'L3'};
 
+let uploadedMediaList = [];  // [{ url: string, type: 'image'|'video', filename: string }, ...]
+
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('eventSearchForm').addEventListener('submit', handleSearch);
+    initMediaZone();
 });
+
+function initMediaZone() {
+    const zone = document.getElementById('mediaPasteZone');
+    const placeholder = document.getElementById('mediaPlaceholder');
+    const preview = document.getElementById('mediaPreview');
+    const previewContent = document.getElementById('mediaPreviewContent');
+    const fileInput = document.getElementById('mediaFileInput');
+    const fileLink = document.getElementById('mediaFileLink');
+    const progressBar = document.getElementById('mediaUploadProgress');
+    const videoUrlInput = document.getElementById('videoUrlInput');
+    const videoUrlConfirmBtn = document.getElementById('videoUrlConfirmBtn');
+
+    // Click "选择文件" link opens file dialog
+    fileLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        fileInput.click();
+    });
+
+    // Click zone opens file dialog
+    zone.addEventListener('click', function(e) {
+        if (e.target === zone || e.target.closest('.paste-placeholder')) {
+            fileInput.click();
+        }
+    });
+
+    // File input change (supports multiple files)
+    fileInput.addEventListener('change', function() {
+        for (const f of fileInput.files) {
+            uploadFile(f);
+        }
+        fileInput.value = '';
+    });
+
+    // Paste on form level — supports image and video files from clipboard (e.g. copied from Explorer)
+    document.getElementById('eventSearchForm').addEventListener('paste', function(e) {
+        if (document.activeElement === videoUrlInput) return;
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.kind === 'file' && (item.type.startsWith('image/') || item.type.startsWith('video/'))) {
+                const f = item.getAsFile();
+                if (!f) continue;
+                e.preventDefault();
+                uploadFile(f);
+                return;
+            }
+        }
+        // Fallback: check clipboardData.files for copied files with no MIME type
+        const files = e.clipboardData.files;
+        if (files && files.length > 0) {
+            const f = files[0];
+            const ext = (f.name || '').split('.').pop().toLowerCase();
+            if (['jpg','jpeg','png','gif','webp','bmp','mp4','avi','mov','webm'].includes(ext)) {
+                e.preventDefault();
+                uploadFile(f);
+            }
+        }
+    });
+
+    // Drag and drop
+    zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && (files[0].type.startsWith('image/') || files[0].type.startsWith('video/'))) {
+            uploadFile(files[0]);
+        }
+    });
+
+    // Video URL confirm
+    videoUrlConfirmBtn.addEventListener('click', function() {
+        const url = videoUrlInput.value.trim();
+        if (!url) return;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            alert('请输入有效的视频 URL（以 http:// 或 https:// 开头）');
+            return;
+        }
+        addMedia({ url: url, type: 'video', filename: url.split('/').pop() || 'video' });
+        videoUrlInput.value = '';
+    });
+    videoUrlInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); videoUrlConfirmBtn.click(); }
+    });
+
+    async function uploadFile(file) {
+        if (!file) {
+            alert('无法读取剪贴板文件，请使用文件选择或拖拽方式上传');
+            return;
+        }
+        zone.classList.add('uploading');
+        progressBar.classList.remove('d-none');
+        progressBar.querySelector('.progress-bar').style.width = '30%';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            progressBar.querySelector('.progress-bar').style.width = '60%';
+
+            const resp = await fetch('/api/media/upload', {
+                method: 'POST',
+                body: formData,
+            });
+            const data = await resp.json();
+
+            progressBar.querySelector('.progress-bar').style.width = '100%';
+
+            if (!resp.ok) {
+                const msg = data.error || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail) || '上传失败';
+                throw new Error(msg);
+            }
+
+            addMedia(data);
+        } catch (err) {
+            console.error('Upload failed:', err);
+            alert('媒体上传失败: ' + err.message);
+        } finally {
+            zone.classList.remove('uploading');
+            setTimeout(() => {
+                progressBar.classList.add('d-none');
+                progressBar.querySelector('.progress-bar').style.width = '0%';
+            }, 500);
+        }
+    }
+
+    function addMedia(media) {
+        if (uploadedMediaList.length >= 10) {
+            alert('最多支持 10 个媒体文件');
+            return;
+        }
+        uploadedMediaList.push(media);
+        renderMediaPreview();
+    }
+
+    function removeMedia(index) {
+        uploadedMediaList.splice(index, 1);
+        renderMediaPreview();
+    }
+
+    function clearMedia() {
+        uploadedMediaList = [];
+        renderMediaPreview();
+    }
+
+    function renderMediaPreview() {
+        if (uploadedMediaList.length === 0) {
+            previewContent.innerHTML = '';
+            preview.classList.add('d-none');
+            placeholder.classList.remove('d-none');
+            zone.classList.remove('has-media');
+            return;
+        }
+        preview.classList.remove('d-none');
+        placeholder.classList.add('d-none');
+        zone.classList.add('has-media');
+        const items = uploadedMediaList.map((m, i) => {
+            const removeHtml = `<button type="button" class="btn-close" style="position:absolute;top:-4px;right:-4px;font-size:0.5rem;background-color:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.2);padding:4px;" data-remove-idx="${i}" aria-label="移除"></button>`;
+            if (m.type === 'image') {
+                return `<div style="position:relative;display:inline-block;"><img src="${escapeHtml(m.url)}" class="paste-preview-img" alt="preview">${removeHtml}</div>`;
+            }
+            return `<div style="position:relative;display:inline-flex;"><div class="paste-video-info"><i data-feather="film" style="width:16px;height:16px;"></i><span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.filename)}</span></div>${removeHtml}</div>`;
+        }).join('');
+        const clearAllHtml = uploadedMediaList.length > 1
+            ? `<button type="button" class="btn btn-sm btn-outline-secondary" id="mediaClearAllBtn" style="font-size:0.7rem;padding:2px 8px;align-self:center;">全部清除</button>`
+            : '';
+        previewContent.innerHTML = items + clearAllHtml;
+        feather.replace();
+        // Bind remove buttons
+        previewContent.querySelectorAll('[data-remove-idx]').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                removeMedia(parseInt(this.dataset.removeIdx));
+            });
+        });
+        const clearAllBtn = document.getElementById('mediaClearAllBtn');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                clearMedia();
+            });
+        }
+    }
+}
 
 async function handleSearch(event) {
     event.preventDefault();
 
     const query = document.getElementById('query').value.trim();
-    const topK = parseInt(document.getElementById('topK').value) || 20;
+    const topK = parseInt(document.getElementById('topK').value) || 10;
     const drillUp = document.getElementById('drillUp').checked;
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
@@ -159,10 +390,11 @@ async function handleSearch(event) {
         .map(cb => parseInt(cb.value));
 
     const hasQuery = query.length > 0;
+    const hasMedia = uploadedMediaList.length > 0;
     const hasLevels = selectedLevels.length > 0;
     const hasTimeRange = startTime || endTime;
 
-    if (!hasQuery && !hasLevels && !hasTimeRange) {
+    if (!hasQuery && !hasMedia && !hasLevels && !hasTimeRange) {
         displayError('请至少输入查询内容、选择层级过滤或设置时间范围');
         return;
     }
@@ -175,7 +407,18 @@ async function handleSearch(event) {
             drill_up: drillUp
         };
 
-        if (hasQuery) requestBody.query = query;
+        if (hasQuery || hasMedia) {
+            const queryParts = [];
+            if (hasQuery) queryParts.push({"type": "text", "text": query});
+            for (const media of uploadedMediaList) {
+                if (media.type === 'image') {
+                    queryParts.push({"type": "image_url", "image_url": {"url": media.url}});
+                } else {
+                    queryParts.push({"type": "video_url", "video_url": {"url": media.url, "fps": 1.0}});
+                }
+            }
+            requestBody.query = queryParts;
+        }
         if (hasLevels) requestBody.hierarchy_levels = selectedLevels;
         if (userId) requestBody.user_id = userId;
         if (deviceId) requestBody.device_id = deviceId;
@@ -250,23 +493,28 @@ function displayMetadata(metadata) {
     `;
 }
 
-function countSearchHits(nodes) {
-    let count = 0;
+function countNodes(nodes) {
+    let hits = 0, total = 0;
     for (const node of nodes) {
-        if (node.is_search_hit) count++;
+        total++;
+        if (node.is_search_hit) hits++;
         if (node.children && node.children.length > 0) {
-            count += countSearchHits(node.children);
+            const child = countNodes(node.children);
+            hits += child.hits;
+            total += child.total;
         }
     }
-    return count;
+    return { hits, total };
 }
 
 function displayResults(events) {
     const container = document.getElementById('searchResults');
     const resultCount = document.getElementById('resultCount');
 
-    const hitCount = countSearchHits(events);
-    resultCount.textContent = `${hitCount} 条命中`;
+    const { hits: hitCount, total: totalCount } = countNodes(events);
+    resultCount.textContent = totalCount > hitCount
+        ? `${hitCount} 条命中 / ${totalCount} 条总计`
+        : `${hitCount} 条命中`;
 
     if (!events || events.length === 0) {
         container.innerHTML = `
@@ -352,6 +600,7 @@ function renderSearchHitCard(event) {
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span class="badge level-badge level-badge-${level}">${LEVEL_SHORT[level] || 'L?'}</span>
+                    <span class="badge hit-badge">命中</span>
                     <h6 class="mb-0">
                         <a href="#" onclick="viewContext('${event.id}', 'event'); return false;" class="text-decoration-none">${escapeHtml(title)}</a>
                     </h6>
@@ -362,6 +611,7 @@ function renderSearchHitCard(event) {
             </div>
             ${summaryHtml}
             ${keywords ? `<div class="mt-2">${keywords}</div>` : ''}
+            ${renderMediaRefs(event.media_refs)}
             <div class="d-flex justify-content-between align-items-center mt-2">
                 ${displayTime ? `<small class="text-muted">${eventTime ? '事件时间' : '创建时间'}: ${displayTime}</small>` : '<span></span>'}
                 <button onclick="viewContext('${event.id}', 'event')" class="btn btn-sm btn-outline-primary">查看详情</button>
@@ -391,6 +641,7 @@ function renderContextCard(node) {
             <div class="d-flex align-items-center gap-2">
                 ${toggleHtml}
                 <span class="badge level-badge level-badge-${level}">${LEVEL_SHORT[level] || 'L?'}</span>
+                <span class="badge ctx-badge">上下文</span>
                 ${timeBucket ? `<small class="text-muted">${escapeHtml(timeBucket)}</small>` : ''}
                 ${titleHtml}
             </div>
@@ -423,6 +674,19 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function renderMediaRefs(mediaRefs) {
+    if (!mediaRefs || mediaRefs.length === 0) return '';
+    const items = mediaRefs.map(ref => {
+        if (ref.type === 'image') {
+            return `<a href="${escapeHtml(ref.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(ref.url)}" class="media-ref-thumb" alt="image" loading="lazy" onerror="this.style.display='none'"></a>`;
+        } else if (ref.type === 'video') {
+            return `<a href="${escapeHtml(ref.url)}" target="_blank" rel="noopener" class="media-ref-video"><i data-feather="play-circle" style="width:14px;height:14px;"></i> 视频</a>`;
+        }
+        return '';
+    }).filter(Boolean).join('');
+    return items ? `<div class="media-refs">${items}</div>` : '';
 }
 
 function displayError(message) {

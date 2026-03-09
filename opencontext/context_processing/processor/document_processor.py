@@ -253,8 +253,8 @@ class DocumentProcessor(BaseContextProcessor):
                     context_type=ContextType.DOCUMENT,
                 ),
                 vectorize=Vectorize(
+                    input=[{"type": "text", "text": chunk.text}],
                     content_format=ContentFormat.TEXT,
-                    text=chunk.text,
                 ),
                 metadata=knowledge_metadata.model_dump(exclude_none=True),
             )

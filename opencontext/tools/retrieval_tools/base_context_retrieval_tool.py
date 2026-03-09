@@ -11,11 +11,11 @@ Provides common functionality for searching and filtering processed contexts
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import ProcessedContext, Vectorize
-from opencontext.models.enums import ContextSimpleDescriptions, ContextType
+from opencontext.models.enums import ContentFormat, ContextSimpleDescriptions, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.tools.base import BaseTool
-from opencontext.tools.profile_tools.profile_entity_tool import ProfileEntityTool
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -54,8 +54,6 @@ class BaseContextRetrievalTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        # Initialize user entity unification tool
-        self.profile_entity_tool = ProfileEntityTool()
 
         if self.CONTEXT_TYPE is None:
             raise ValueError("Subclass must define CONTEXT_TYPE")
@@ -78,27 +76,19 @@ class BaseContextRetrievalTool(BaseTool):
             if filters.time_range.end:
                 build_filter[time_type]["$lte"] = filters.time_range.end
 
-        # Entity filter with normalization via match_entity()
+        # Entity filter
         if filters.entities is not None and filters.entities:
-            unified_entities = []
-            for entity_name in filters.entities:
-                try:
-                    matched_name, _ = await self.profile_entity_tool.match_entity(
-                        entity_name,
-                        user_id=filters.user_id,
-                        device_id=filters.device_id,
-                        agent_id=filters.agent_id,
-                    )
-                    unified_entities.append(matched_name if matched_name else entity_name)
-                except Exception as e:
-                    logger.debug(f"Entity matching failed for '{entity_name}', using original: {e}")
-                    unified_entities.append(entity_name)
-            build_filter["entities"] = unified_entities
+            build_filter["entities"] = filters.entities
 
         return build_filter
 
     async def _execute_search(
-        self, query: Optional[str], filters: ContextRetrievalFilter, top_k: int = 20
+        self,
+        query: Optional[str],
+        filters: ContextRetrievalFilter,
+        top_k: int = 20,
+        image_url: Optional[str] = None,
+        video_url: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         """
         Execute search operation
@@ -108,6 +98,8 @@ class BaseContextRetrievalTool(BaseTool):
                   If None, performs filter-only retrieval.
             filters: Filter conditions (includes user_id, device_id, agent_id for multi-user filtering)
             top_k: Number of results to return
+            image_url: Optional image URL for multimodal search
+            video_url: Optional video URL for multimodal search
 
         Returns:
             List of (context, score) tuples
@@ -115,9 +107,22 @@ class BaseContextRetrievalTool(BaseTool):
         context_type_str = self.CONTEXT_TYPE.value
         built_filters = await self._build_filters(filters)
 
-        if query:
+        has_multimodal = bool(image_url or video_url)
+
+        if query or has_multimodal:
             # Semantic search with query (with multi-user filtering)
-            vectorize = Vectorize(text=query)
+            ark_input = [{"type": "text", "text": query}]
+            if image_url:
+                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})
+            if video_url:
+                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})
+            vectorize = Vectorize(
+                input=ark_input,
+                content_format=(
+                    ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
+                ),
+            )
+            await do_vectorize(vectorize, role="query")
             return await self.storage.search(
                 query=vectorize,
                 context_types=[context_type_str],
@@ -208,6 +213,14 @@ class BaseContextRetrievalTool(BaseTool):
                     "type": "string",
                     "description": "Optional natural language query for semantic search. If not provided, will perform filter-only retrieval.",
                 },
+                "image_url": {
+                    "type": "string",
+                    "description": "Optional image URL for multimodal search. Can be an HTTP URL or data:image/...;base64,... string.",
+                },
+                "video_url": {
+                    "type": "string",
+                    "description": "Optional video URL for multimodal search. Can be an HTTP URL or data:video/...;base64,... string.",
+                },
                 "entities": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -263,6 +276,8 @@ class BaseContextRetrievalTool(BaseTool):
 
         Args:
             query: Optional search query
+            image_url: Optional image URL for multimodal search
+            video_url: Optional video URL for multimodal search
             entities: Optional entity list for filtering
             time_range: Optional time range filter
             top_k: Number of results to return (default 5)
@@ -274,6 +289,8 @@ class BaseContextRetrievalTool(BaseTool):
             List of formatted context results
         """
         query = kwargs.get("query")
+        image_url = kwargs.get("image_url")
+        video_url = kwargs.get("video_url")
         entities = kwargs.get("entities", [])
         time_range = kwargs.get("time_range")
         top_k = kwargs.get("top_k", 5)
@@ -293,7 +310,13 @@ class BaseContextRetrievalTool(BaseTool):
 
         try:
             # Execute search
-            search_results = await self._execute_search(query=query, filters=filters, top_k=top_k)
+            search_results = await self._execute_search(
+                query=query,
+                filters=filters,
+                top_k=top_k,
+                image_url=image_url,
+                video_url=video_url,
+            )
 
             # Format and return results
             return self._format_results(search_results)

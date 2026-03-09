@@ -1,12 +1,12 @@
-# opencontext/models/ -- Core data models and enums for the 5-type context system.
+# opencontext/models/ -- Core data models and enums for the 4-type context system.
 
 ## File Overview
 
 | File | Responsibility |
 |------|---------------|
 | `enums.py` | All enums (`ContextType`, `ContextSource`, `UpdateStrategy`, etc.), type-to-strategy/storage mappings, context description dicts, and helper functions for prompt formatting |
-| `context.py` | Pydantic models: pipeline intermediates (`ProcessedContext`, `ContextProperties`, `ExtractedData`), API response models (`ProcessedContextModel`, `RawContextModel`), relational DB models (`ProfileData`, `EntityData`), and utilities (`Chunk`, `Vectorize`, `KnowledgeContextMetadata`) |
-| `__init__.py` | Re-exports: `ContextProperties`, `EntityData`, `ExtractedData`, `ProcessedContext`, `ProfileData`, `RawContextProperties`, `ContextSource`, `ContentFormat` |
+| `context.py` | Pydantic models: pipeline intermediates (`ProcessedContext`, `ContextProperties`, `ExtractedData`), API response models (`ProcessedContextModel`, `RawContextModel`), relational DB models (`ProfileData`), and utilities (`Chunk`, `Vectorize`, `KnowledgeContextMetadata`) |
+| `__init__.py` | Re-exports: `ContextProperties`, `ExtractedData`, `ProcessedContext`, `ProfileData`, `RawContextProperties`, `ContextSource`, `ContentFormat` |
 
 ## Key Enums (enums.py)
 
@@ -24,12 +24,15 @@ Text: `MD`, `TXT`
 
 ### ContentFormat(str, Enum)
 ```
-TEXT = "text"  |  IMAGE = "image"  |  FILE = "file"
+TEXT = "text"  |  IMAGE = "image"  |  VIDEO = "video"  |  MULTIMODAL = "multimodal"  |  FILE = "file"
 ```
+
+- `VIDEO`: Single video content (used when only video is present)
+- `MULTIMODAL`: Mixed-modality content (text + image and/or video combined)
 
 ### ContextType(str, Enum)
 ```
-PROFILE = "profile"  |  ENTITY = "entity"  |  DOCUMENT = "document"
+PROFILE = "profile"  |  DOCUMENT = "document"
 EVENT = "event"      |  KNOWLEDGE = "knowledge"
 ```
 
@@ -53,12 +56,12 @@ REFERENCE_SUGGESTION = "reference_suggestion"    |  CONTEXT_AWARE = "context_awa
 
 ```python
 CONTEXT_UPDATE_STRATEGIES = {
-    PROFILE: OVERWRITE, ENTITY: OVERWRITE, DOCUMENT: OVERWRITE,
+    PROFILE: OVERWRITE, DOCUMENT: OVERWRITE,
     EVENT: APPEND, KNOWLEDGE: APPEND_MERGE,
 }
 
 CONTEXT_STORAGE_BACKENDS = {
-    PROFILE: "document_db", ENTITY: "document_db",
+    PROFILE: "document_db",
     DOCUMENT: "vector_db", EVENT: "vector_db", KNOWLEDGE: "vector_db",
 }
 
@@ -139,9 +142,36 @@ Tracking and hierarchy metadata. Fields:
 | `children_ids` | `List[str]` | `[]` | Child context IDs; set during hierarchy summary generation, enables downward traversal and drill-down |
 | `time_bucket` | `Optional[str]` | `None` | e.g. `"2026-02-21"`, `"2026-W08"` |
 
+### VideoInput
+Video input model for multimodal embedding. Fields:
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `url` | `str` | required | HTTP URL, TOS path, or `data:video/...;base64,...` |
+| `fps` | `float` | `1.0` | Frame extraction rate (0.2-5.0). Lower = fewer tokens, higher = more detail |
+
+Note: `VideoInput` is kept for reference but is no longer used by `Vectorize` directly. Video inputs are now represented as content parts dicts: `{"type": "video_url", "video_url": {"url": "...", "fps": 1.0}}`.
+
 ### Vectorize
-Embedding configuration. Fields: `content_format` (ContentFormat, default `ContentFormat.TEXT`), `image_path` (Optional[str]), `text` (Optional[str]), `vector` (Optional[List[float]]).
-Method: `get_vectorize_content() -> str`
+Unified embedding configuration using Ark API content parts format. Fields:
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `input` | `List[Dict[str, Any]]` | `[]` | Ark API content parts list (see format below) |
+| `vector` | `Optional[List[float]]` | `None` | Pre-computed embedding vector |
+| `content_format` | `ContentFormat` | `ContentFormat.TEXT` | |
+
+**`input` format** (OpenAI content parts, same format used by Ark multimodal embedding API):
+```python
+[
+    {"type": "text", "text": "..."},
+    {"type": "image_url", "image_url": {"url": "https://... or data:image/...;base64,..."}},
+    {"type": "video_url", "video_url": {"url": "https://...", "fps": 1.0}},
+]
+```
+
+Methods:
+- `get_text() -> Optional[str]` -- extracts and joins all text parts from `input`; returns `None` if no text parts. Used for display/logging and storage text fields
+- `get_modality_string() -> str` -- scans `input` list `type` fields, returns e.g. `"text"`, `"text and image"`, `"text and image and video"`. Used to generate the `{modality}` placeholder in embedding instructions
+- `build_ark_input() -> List[Dict]` -- returns `input` with local file paths converted to base64 data URIs (images and videos). HTTPS URLs and data URIs pass through unchanged
 
 ### ProcessedContext
 The universal intermediate format all processors produce. Fields:
@@ -173,8 +203,8 @@ Relational DB model. Composite PK: `(user_id, device_id, agent_id)`.
 | `user_id` | `str` | required |
 | `device_id` | `str` | `"default"` |
 | `agent_id` | `str` | `"default"` |
-| `content` | `str` | required |
-| `summary` | `Optional[str]` | `None` | **Deprecated** — DB column exists for backward compatibility but profile processor always stores `None`. Not exposed in API responses. |
+| `factual_profile` | `str` | required |
+| `behavioral_profile` | `Optional[str]` | `None` | Behavioral profile text (Phase 2) |
 | `keywords` | `List[str]` | `[]` |
 | `entities` | `List[str]` | `[]` |
 | `importance` | `int` | `0` |
@@ -183,28 +213,6 @@ Relational DB model. Composite PK: `(user_id, device_id, agent_id)`.
 | `updated_at` | `datetime` | `now(utc)` |
 
 Methods: `to_dict() -> Dict`, `from_dict(cls, data) -> ProfileData`
-
-### EntityData
-Relational DB model. Unique key: `(user_id, device_id, agent_id, entity_name)`.
-| Field | Type | Default |
-|-------|------|---------|
-| `id` | `str` | `uuid4()` |
-| `user_id` | `str` | required |
-| `device_id` | `str` | `"default"` |
-| `agent_id` | `str` | `"default"` |
-| `entity_name` | `str` | required |
-| `entity_type` | `Optional[str]` | `None` |
-| `content` | `str` | required |
-| `summary` | `Optional[str]` | `None` |
-| `keywords` | `List[str]` | `[]` |
-| `aliases` | `List[str]` | `[]` |
-| `relationships` | `Dict[str, List[str]]` | `{}` |
-| `metadata` | `Optional[Dict[str, Any]]` | `{}` |
-| `created_at`, `updated_at` | `datetime` | `now(utc)` |
-
-Methods: `to_dict() -> Dict`, `from_dict(cls, data) -> EntityData`
-
-Note: `relationships` is stored inside the `metadata` JSON column in the DB, not as a separate column.
 
 ### Chunk
 Document chunk. Fields: `text` (Optional[str]), `image` (Optional[bytes]), `chunk_index` (int), `keywords` (List[str]), `entities` (List[str]).
@@ -220,7 +228,7 @@ Fields: `knowledge_source`, `knowledge_file_path`, `knowledge_title`, `knowledge
 
 **Depended on by (nearly everything):**
 - `opencontext/context_processing/` -- processors produce `ProcessedContext`
-- `opencontext/storage/` -- stores/retrieves `ProcessedContext`, `ProfileData`, `EntityData`
+- `opencontext/storage/` -- stores/retrieves `ProcessedContext`, `ProfileData`
 - `opencontext/server/` -- uses API response models, routes by `ContextType`/`CONTEXT_STORAGE_BACKENDS`
 - `opencontext/tools/` -- uses `ContextType`, description helpers
 - `opencontext/config/prompt_manager.py` -- calls enum description helpers
@@ -229,8 +237,8 @@ Fields: `knowledge_source`, `knowledge_file_path`, `knowledge_title`, `knowledge
 ## Conventions and Constraints
 
 1. **ProcessedContextModel must mirror ContextProperties**: If you add a field to `ContextProperties`, also add it to `ProcessedContextModel` and update `from_processed_context()`, or it will be silently dropped from API responses.
-2. **All 5 types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files.
-3. **3-key identifier required**: `ProfileData` and `EntityData` always require `(user_id, device_id, agent_id)`. Defaults are `"default"` for `device_id` and `agent_id`.
+2. **All 4 types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files.
+3. **3-key identifier required**: `ProfileData` always requires `(user_id, device_id, agent_id)`. Defaults are `"default"` for `device_id` and `agent_id`.
 4. **Timezone-aware datetimes**: Use `datetime.now(tz=datetime.timezone.utc)`, never `datetime.utcnow()`.
 5. **`get_context_type_for_analysis()` falls back to KNOWLEDGE**: Unrecognized type strings from LLM output default to `KNOWLEDGE`, not `EVENT`.
 6. **Enum values are lowercase strings**: All `str, Enum` classes use lowercase values matching their `.value` attribute.

@@ -20,6 +20,7 @@ from .routes import (
     conversation,
     documents,
     health,
+    media,
     memory_cache,
     messages,
     monitoring,
@@ -50,4 +51,5 @@ router.include_router(messages.router)
 router.include_router(documents.router)
 router.include_router(push.router)
 router.include_router(search.router)
+router.include_router(media.router)
 router.include_router(memory_cache.router)

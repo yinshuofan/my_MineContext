@@ -46,13 +46,12 @@ class UserMemoryCacheManager:
         raw = get_config("memory_cache") or {}
         return {
             "snapshot_ttl": raw.get("snapshot_ttl", 300),
-            "recent_days": raw.get("recent_days", 7),
-            "max_recently_accessed": raw.get("max_recently_accessed", 50),
-            "max_today_events": raw.get("max_today_events", 30),
+            "recent_days": raw.get("recent_days", 3),
+            "max_recently_accessed": raw.get("max_recently_accessed", 25),
+            "max_today_events": raw.get("max_today_events", 5),
             "max_recent_documents": raw.get("max_recent_documents", 10),
             "max_recent_knowledge": raw.get("max_recent_knowledge", 10),
             "accessed_ttl": raw.get("accessed_ttl", 604800),  # 7 days
-            "max_entities": raw.get("max_entities", 20),
         }
 
     def reload_config(self):
@@ -161,7 +160,7 @@ class UserMemoryCacheManager:
         agent_id: str = "default",
         recent_days: Optional[int] = None,
         max_recent_events_today: Optional[int] = None,
-        max_accessed: int = 20,
+        max_accessed: int = 5,
         force_refresh: bool = False,
     ) -> UserMemoryCacheResponse:
         """Get the user's memory cache with stampede prevention."""
@@ -279,7 +278,7 @@ class UserMemoryCacheManager:
         recent_days: Optional[int],
         max_today_events: Optional[int],
     ) -> Dict[str, Any]:
-        """Build the snapshot from storage backends (profile + entities + recent memories)."""
+        """Build the snapshot from storage backends (profile + recent memories)."""
         t0 = time.perf_counter()
         storage = get_storage()
         days = recent_days if recent_days is not None else self._config["recent_days"]
@@ -297,14 +296,6 @@ class UserMemoryCacheManager:
         # Parallel queries
         tasks = {
             "profile": storage.get_profile(user_id, device_id, agent_id),
-            "entities": storage.list_entities(
-                user_id,
-                device_id,
-                agent_id,
-                None,
-                self._config["max_entities"],
-                0,
-            ),
             "today_events": storage.get_all_processed_contexts(
                 context_types=[ContextType.EVENT.value],
                 limit=max_events_today,
@@ -378,27 +369,10 @@ class UserMemoryCacheManager:
                 "user_id": profile_data.get("user_id", user_id),
                 "device_id": profile_data.get("device_id", device_id),
                 "agent_id": profile_data.get("agent_id", agent_id),
-                "content": profile_data.get("content", ""),
-                "summary": profile_data.get("summary"),
-                "keywords": profile_data.get("keywords", []),
+                "factual_profile": profile_data.get("factual_profile", ""),
+                "behavioral_profile": profile_data.get("behavioral_profile"),
                 "metadata": profile_data.get("metadata", {}),
             }
-
-        # Entities
-        entity_data = results_map.get("entities")
-        if entity_data and not isinstance(entity_data, Exception):
-            snapshot["entities"] = [
-                {
-                    "id": e.get("id", ""),
-                    "entity_name": e.get("entity_name", ""),
-                    "entity_type": e.get("entity_type"),
-                    "content": e.get("content", ""),
-                    "summary": e.get("summary"),
-                    "aliases": e.get("aliases", []),
-                    "score": 1.0,
-                }
-                for e in entity_data
-            ]
 
         # Recent memories — hierarchical
         recent_memories: Dict[str, Any] = {}
@@ -424,6 +398,7 @@ class UserMemoryCacheManager:
                     {
                         "id": ctx.id,
                         "time_bucket": ctx.properties.time_bucket or "",
+                        "title": ctx.extracted_data.title if ctx.extracted_data else None,
                         "summary": ctx.extracted_data.summary if ctx.extracted_data else None,
                         "children_count": (
                             len(ctx.properties.children_ids) if ctx.properties.children_ids else 0
@@ -486,7 +461,7 @@ class UserMemoryCacheManager:
             else:
                 event_time = str(props.event_time)
 
-        return {
+        result = {
             "id": ctx.id,
             "title": ed.title if ed else None,
             "summary": ed.summary if ed else None,
@@ -498,6 +473,12 @@ class UserMemoryCacheManager:
             "event_time": event_time,
         }
 
+        # Include media_refs from metadata if present (multimodal content)
+        if ctx.metadata and ctx.metadata.get("media_refs"):
+            result["media_refs"] = ctx.metadata["media_refs"]
+
+        return result
+
     # ─── Response Assembly ───
 
     def _merge_response(
@@ -508,26 +489,38 @@ class UserMemoryCacheManager:
         ttl_remaining: int = 0,
     ) -> UserMemoryCacheResponse:
         """Merge snapshot data with real-time accessed items into final response."""
-        # Profile (simplified: content + keywords + metadata only)
+        # Profile (simplified: factual_profile + behavioral_profile + metadata only)
         profile = None
         profile_data = snapshot_data.get("profile")
         if profile_data:
             profile = SimpleProfile(
-                content=profile_data.get("content", ""),
-                keywords=profile_data.get("keywords", []),
+                factual_profile=profile_data.get("factual_profile", ""),
+                behavioral_profile=profile_data.get("behavioral_profile"),
                 metadata=profile_data.get("metadata", {}),
             )
 
-        # Filter out profile/entity from recently accessed (safety filter)
+        # Dedup: collect IDs already shown in today_events / daily_summaries
+        rm_data = snapshot_data.get("recent_memories", {})
+        snapshot_ids: set = set()
+        for item in rm_data.get("today_events", []):
+            if item.get("id"):
+                snapshot_ids.add(item["id"])
+        for item in rm_data.get("daily_summaries", []):
+            if item.get("id"):
+                snapshot_ids.add(item["id"])
+
+        # Filter out profile/entity and items already covered by other sections
         filtered_accessed = [
-            item for item in accessed if item.context_type not in ("profile", "entity")
+            item
+            for item in accessed
+            if item.context_type != "profile" and item.id not in snapshot_ids
         ]
 
         # Daily summaries (simplified: time_bucket + summary only)
-        rm_data = snapshot_data.get("recent_memories", {})
         daily_summaries = [
             SimpleDailySummary(
                 time_bucket=item.get("time_bucket", ""),
+                title=item.get("title"),
                 summary=item.get("summary"),
             )
             for item in rm_data.get("daily_summaries", [])

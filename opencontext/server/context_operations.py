@@ -116,6 +116,7 @@ class ContextOperations:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """
         Perform vector search without LLM processing.
@@ -138,7 +139,7 @@ class ContextOperations:
         try:
             logger.debug(f"Searching with filters: {filters}")
             # Create query vector
-            query_vectorize = Vectorize(text=query)
+            query_vectorize = Vectorize(input=[{"type": "text", "text": query}])
 
             # Execute vector search with multi-user filtering
             search_results = await self.storage.search(
@@ -149,6 +150,7 @@ class ContextOperations:
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
+                score_threshold=score_threshold,
             )
 
             # Format results

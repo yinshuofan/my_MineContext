@@ -49,17 +49,6 @@ class Query:
 
 
 @dataclass
-class Entity:
-    """Entity information"""
-
-    text: str
-    type: str
-    confidence: float = 1.0
-    normalized: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
 class Intent:
     """Intent analysis result"""
 

@@ -94,15 +94,18 @@ class APIAuth {
         }
 
         // Prepare headers with API key
+        // Do NOT set Content-Type for FormData — browser must set it with boundary
         const headers = {
-            'Content-Type': 'application/json',
             ...(options.headers || {})
         };
+        if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
 
         if (apiKey) {
             headers['X-API-Key'] = apiKey;
         }
-        
+
         const requestOptions = {
             ...options,
             headers

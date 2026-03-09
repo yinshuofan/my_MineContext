@@ -53,7 +53,6 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             # Create table structure
             await self._create_tables()
-            await self._migrate_schema_v2()
 
             self._initialized = True
             logger.info(f"SQLite backend initialized successfully, database path: {self.db_path}")
@@ -142,37 +141,14 @@ class SQLiteBackend(IDocumentStorageBackend):
                 user_id TEXT NOT NULL,
                 device_id TEXT NOT NULL DEFAULT 'default',
                 agent_id TEXT NOT NULL DEFAULT 'default',
-                content TEXT NOT NULL,
-                summary TEXT,
-                keywords JSON,
+                factual_profile TEXT NOT NULL,
+                behavioral_profile TEXT,
                 entities JSON,
                 importance INTEGER DEFAULT 0,
                 metadata JSON,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, device_id, agent_id)
-            )
-        """
-        )
-
-        # Entities table - entity profiles (unique key: user_id + device_id + agent_id + entity_name)
-        await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS entities (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                device_id TEXT NOT NULL DEFAULT 'default',
-                agent_id TEXT NOT NULL DEFAULT 'default',
-                entity_name TEXT NOT NULL,
-                entity_type TEXT,
-                content TEXT NOT NULL,
-                summary TEXT,
-                keywords JSON,
-                aliases JSON,
-                metadata JSON,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (user_id, device_id, agent_id, entity_name)
             )
         """
         )
@@ -316,10 +292,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             "CREATE INDEX IF NOT EXISTS idx_conversations_user_page ON conversations(user_id, page_name)"
         )
 
-        # Entity indexes
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_entity_user ON entities (user_id)")
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_entity_type ON entities (entity_type)")
-
         # Message thinking table (stores thinking process for messages)
         await conn.execute(
             """
@@ -352,96 +324,6 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         # Add default Quick Start document (only on first initialization)
         await self._insert_default_vault_document()
-
-    async def _migrate_schema_v2(self):
-        """Add device_id to profiles and device_id+agent_id to entities tables (idempotent)."""
-        conn = self._connection
-
-        # Check if device_id exists in profiles
-        cursor = await conn.execute("PRAGMA table_info(profiles)")
-        rows = await cursor.fetchall()
-        profile_columns = [col[1] for col in rows]
-
-        if "device_id" not in profile_columns:
-            try:
-                await conn.execute("ALTER TABLE profiles RENAME TO profiles_old")
-                await conn.execute(
-                    """
-                    CREATE TABLE profiles (
-                        user_id TEXT NOT NULL,
-                        device_id TEXT NOT NULL DEFAULT 'default',
-                        agent_id TEXT NOT NULL DEFAULT 'default',
-                        content TEXT NOT NULL,
-                        summary TEXT,
-                        keywords TEXT,
-                        entities TEXT,
-                        importance INTEGER DEFAULT 0,
-                        metadata TEXT,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY (user_id, device_id, agent_id)
-                    )
-                """
-                )
-                await conn.execute(
-                    """
-                    INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords,
-                                          entities, importance, metadata, created_at, updated_at)
-                    SELECT user_id, 'default', agent_id, content, summary, keywords,
-                           entities, importance, metadata, created_at, updated_at
-                    FROM profiles_old
-                """
-                )
-                await conn.execute("DROP TABLE profiles_old")
-                await conn.commit()
-                logger.info("Migration: rebuilt profiles table with device_id")
-            except Exception as e:
-                await conn.rollback()
-                logger.error(f"Migration failed for profiles: {e}")
-
-        # Check if device_id exists in entities
-        cursor = await conn.execute("PRAGMA table_info(entities)")
-        rows = await cursor.fetchall()
-        entity_columns = [col[1] for col in rows]
-
-        if "device_id" not in entity_columns or "agent_id" not in entity_columns:
-            try:
-                await conn.execute("ALTER TABLE entities RENAME TO entities_old")
-                await conn.execute(
-                    """
-                    CREATE TABLE entities (
-                        id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL,
-                        device_id TEXT NOT NULL DEFAULT 'default',
-                        agent_id TEXT NOT NULL DEFAULT 'default',
-                        entity_name TEXT NOT NULL,
-                        entity_type TEXT,
-                        content TEXT NOT NULL,
-                        summary TEXT,
-                        keywords TEXT,
-                        aliases TEXT,
-                        metadata TEXT,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE (user_id, device_id, agent_id, entity_name)
-                    )
-                """
-                )
-                await conn.execute(
-                    """
-                    INSERT INTO entities (id, user_id, device_id, agent_id, entity_name, entity_type,
-                                          content, summary, keywords, aliases, metadata, created_at, updated_at)
-                    SELECT id, user_id, 'default', 'default', entity_name, entity_type,
-                           content, summary, keywords, aliases, metadata, created_at, updated_at
-                    FROM entities_old
-                """
-                )
-                await conn.execute("DROP TABLE entities_old")
-                await conn.commit()
-                logger.info("Migration: rebuilt entities table with device_id and agent_id")
-            except Exception as e:
-                await conn.rollback()
-                logger.error(f"Migration failed for entities: {e}")
 
     async def _insert_default_vault_document(self):
         """Insert default Quick Start document"""
@@ -899,9 +781,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        content: str = "",
-        summary: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
+        factual_profile: str = "",
+        behavioral_profile: Optional[str] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
@@ -913,19 +794,17 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
         try:
             now = datetime.now()
-            keywords_json = json.dumps(keywords or [], ensure_ascii=False)
             entities_json = json.dumps(entities or [], ensure_ascii=False)
             metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
 
             await conn.execute(
                 """
-                INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords,
+                INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, behavioral_profile,
                                       entities, importance, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, device_id, agent_id) DO UPDATE SET
-                    content = excluded.content,
-                    summary = excluded.summary,
-                    keywords = excluded.keywords,
+                    factual_profile = excluded.factual_profile,
+                    behavioral_profile = excluded.behavioral_profile,
                     entities = excluded.entities,
                     importance = excluded.importance,
                     metadata = excluded.metadata,
@@ -935,9 +814,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                     user_id,
                     device_id,
                     agent_id,
-                    content,
-                    summary,
-                    keywords_json,
+                    factual_profile,
+                    behavioral_profile,
                     entities_json,
                     importance,
                     metadata_json,
@@ -966,8 +844,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor = await conn.execute(
                 """
-                SELECT user_id, device_id, agent_id, content, summary, keywords, entities,
-                       importance, metadata, created_at, updated_at
+                SELECT user_id, device_id, agent_id, factual_profile, behavioral_profile,
+                       entities, importance, metadata, created_at, updated_at
                 FROM profiles
                 WHERE user_id = ? AND device_id = ? AND agent_id = ?
                 """,
@@ -976,8 +854,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             row = await cursor.fetchone()
             if row:
                 result = dict(row)
-                if isinstance(result.get("keywords"), str):
-                    result["keywords"] = json.loads(result["keywords"])
                 if isinstance(result.get("entities"), str):
                     result["entities"] = json.loads(result["entities"])
                 if isinstance(result.get("metadata"), str):
@@ -1009,237 +885,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
     # ── Entity CRUD ──
-
-    async def upsert_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-        content: str = "",
-        entity_type: Optional[str] = None,
-        summary: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
-        aliases: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Insert or update entity (unique key: user_id + device_id + agent_id + entity_name)"""
-        if not self._initialized:
-            raise RuntimeError("SQLite backend not initialized")
-
-        import uuid
-
-        conn = self._connection
-        try:
-            now = datetime.now()
-            entity_id = str(uuid.uuid4())
-            keywords_json = json.dumps(keywords or [], ensure_ascii=False)
-            aliases_json = json.dumps(aliases or [], ensure_ascii=False)
-            metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
-
-            # Check if entity already exists to preserve its ID
-            cursor = await conn.execute(
-                "SELECT id FROM entities WHERE user_id = ? AND device_id = ? AND agent_id = ? AND entity_name = ?",
-                (user_id, device_id, agent_id, entity_name),
-            )
-            existing = await cursor.fetchone()
-            if existing:
-                entity_id = existing["id"] if isinstance(existing, dict) else existing[0]
-
-            await conn.execute(
-                """
-                INSERT INTO entities (id, user_id, device_id, agent_id, entity_name, entity_type,
-                                      content, summary, keywords, aliases, metadata,
-                                      created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, device_id, agent_id, entity_name) DO UPDATE SET
-                    entity_type = excluded.entity_type,
-                    content = excluded.content,
-                    summary = excluded.summary,
-                    keywords = excluded.keywords,
-                    aliases = excluded.aliases,
-                    metadata = excluded.metadata,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    entity_id,
-                    user_id,
-                    device_id,
-                    agent_id,
-                    entity_name,
-                    entity_type,
-                    content,
-                    summary,
-                    keywords_json,
-                    aliases_json,
-                    metadata_json,
-                    now,
-                    now,
-                ),
-            )
-            await conn.commit()
-            logger.info(f"Entity upserted: {entity_name} for user_id={user_id}")
-            return entity_id
-        except Exception as e:
-            await conn.rollback()
-            logger.exception(f"Failed to upsert entity: {e}")
-            raise
-
-    async def get_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-    ) -> Optional[Dict]:
-        """Get entity by user_id + device_id + agent_id + entity_name"""
-        if not self._initialized:
-            return None
-
-        conn = self._connection
-        try:
-            cursor = await conn.execute(
-                """
-                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
-                       summary, keywords, aliases, metadata, created_at, updated_at
-                FROM entities
-                WHERE user_id = ? AND device_id = ? AND agent_id = ? AND entity_name = ?
-                """,
-                (user_id, device_id, agent_id, entity_name),
-            )
-            row = await cursor.fetchone()
-            if row:
-                result = dict(row)
-                if isinstance(result.get("keywords"), str):
-                    result["keywords"] = json.loads(result["keywords"])
-                if isinstance(result.get("aliases"), str):
-                    result["aliases"] = json.loads(result["aliases"])
-                if isinstance(result.get("metadata"), str):
-                    result["metadata"] = json.loads(result["metadata"])
-                return result
-            return None
-        except Exception as e:
-            logger.exception(f"Failed to get entity: {e}")
-            return None
-
-    async def list_entities(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_type: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[Dict]:
-        """List entities for a user"""
-        if not self._initialized:
-            return []
-
-        conn = self._connection
-        try:
-            where_clauses = ["user_id = ?", "device_id = ?", "agent_id = ?"]
-            params: list = [user_id, device_id, agent_id]
-
-            if entity_type:
-                where_clauses.append("entity_type = ?")
-                params.append(entity_type)
-
-            params.extend([limit, offset])
-            where_sql = " AND ".join(where_clauses)
-
-            cursor = await conn.execute(
-                f"""
-                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
-                       summary, keywords, aliases, metadata, created_at, updated_at
-                FROM entities
-                WHERE {where_sql}
-                ORDER BY updated_at DESC
-                LIMIT ? OFFSET ?
-                """,
-                params,
-            )
-            rows = await cursor.fetchall()
-            results = []
-            for row in rows:
-                result = dict(row)
-                if isinstance(result.get("keywords"), str):
-                    result["keywords"] = json.loads(result["keywords"])
-                if isinstance(result.get("aliases"), str):
-                    result["aliases"] = json.loads(result["aliases"])
-                if isinstance(result.get("metadata"), str):
-                    result["metadata"] = json.loads(result["metadata"])
-                results.append(result)
-            return results
-        except Exception as e:
-            logger.exception(f"Failed to list entities: {e}")
-            return []
-
-    async def search_entities(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        query_text: str = "",
-        limit: int = 20,
-    ) -> List[Dict]:
-        """Search entities by text (name, content, aliases)"""
-        if not self._initialized:
-            return []
-
-        conn = self._connection
-        try:
-            like_pattern = f"%{query_text}%"
-            cursor = await conn.execute(
-                """
-                SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content,
-                       summary, keywords, aliases, metadata, created_at, updated_at
-                FROM entities
-                WHERE user_id = ? AND device_id = ? AND agent_id = ?
-                  AND (entity_name LIKE ? OR content LIKE ? OR aliases LIKE ?)
-                ORDER BY updated_at DESC
-                LIMIT ?
-                """,
-                (user_id, device_id, agent_id, like_pattern, like_pattern, like_pattern, limit),
-            )
-            rows = await cursor.fetchall()
-            results = []
-            for row in rows:
-                result = dict(row)
-                if isinstance(result.get("keywords"), str):
-                    result["keywords"] = json.loads(result["keywords"])
-                if isinstance(result.get("aliases"), str):
-                    result["aliases"] = json.loads(result["aliases"])
-                if isinstance(result.get("metadata"), str):
-                    result["metadata"] = json.loads(result["metadata"])
-                results.append(result)
-            return results
-        except Exception as e:
-            logger.exception(f"Failed to search entities: {e}")
-            return []
-
-    async def delete_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-    ) -> bool:
-        """Delete entity"""
-        if not self._initialized:
-            return False
-
-        conn = self._connection
-        try:
-            cursor = await conn.execute(
-                "DELETE FROM entities WHERE user_id = ? AND device_id = ? AND agent_id = ? AND entity_name = ?",
-                (user_id, device_id, agent_id, entity_name),
-            )
-            await conn.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            await conn.rollback()
-            logger.exception(f"Failed to delete entity: {e}")
-            return False
 
     def get_name(self) -> str:
         return "sqlite"

@@ -10,7 +10,6 @@
 | `processor/processor_factory.py` | Factory for creating processor instances; global singleton `processor_factory` |
 | `processor/text_chat_processor.py` | Extracts structured memories from chat logs via LLM analysis |
 | `processor/document_processor.py` | Processes documents (PDF, DOCX, images, CSV, XLSX, JSONL, MD, TXT) |
-| `processor/entity_processor.py` | Standalone functions for validating and persisting entities to relational DB |
 | `processor/profile_processor.py` | Standalone functions for LLM-driven profile merge-before-write to relational DB |
 | `processor/document_converter.py` | Converts documents to images and analyzes page structure (PDF, DOCX, PPTX, MD) |
 | **chunker/** | |
@@ -98,22 +97,27 @@ State fields: `config: dict`, `_is_initialized: bool`, `_callback: Optional[Call
 
 ### TextChatProcessor (`processor/text_chat_processor.py`)
 
-Processes `ContextSource.CHAT_LOG` + `ContentFormat.TEXT` inputs.
+Processes `ContextSource.CHAT_LOG` + `ContentFormat.TEXT` or `ContentFormat.MULTIMODAL` inputs.
 
 ```python
 def can_process(self, context: RawContextProperties) -> bool
 async def process(self, context: RawContextProperties) -> List[ProcessedContext]
 async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]
+
+# Multimodal support helpers
+@staticmethod _build_media_index(chat_history_str: str) -> List[Dict[str, str]]
+@staticmethod _build_multimodal_llm_messages(prompt_group, chat_history_str) -> List[Dict[str, Any]]
 ```
 
 Pipeline:
 1. Calls LLM with prompt `processing.extraction.chat_analyze`
-2. Parses JSON response -> `memories` array
-3. Builds `ProcessedContext` per memory via `_build_processed_context()`
-4. Persists extracted entities across all memories via `_persist_entities()` (calls `entity_processor.refresh_entities`)
-5. Returns `List[ProcessedContext]` — callback invocation is handled by `ContextProcessorManager`
+2. For multimodal messages (`ContentFormat.MULTIMODAL`): passes original multimodal content directly to the LLM so it can see images/videos. Builds a media index mapping media positions to URLs.
+3. For text-only messages: uses the standard text prompt format (backward compatible).
+4. Parses JSON response -> `memories` array
+5. Builds `ProcessedContext` per memory via `_build_processed_context(media_index=...)`
+6. Returns `List[ProcessedContext]` — callback invocation is handled by `ContextProcessorManager`
 
-The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, generates a `time_bucket` field with per-second granularity (`%Y-%m-%dT%H:%M:%S`) to support fine-grained time-based sorting in search results.
+The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, generates a `time_bucket` field with per-second granularity (`%Y-%m-%dT%H:%M:%S`) to support fine-grained time-based sorting in search results. When the LLM returns `related_media` (indices into the media index), resolves them to actual URLs and sets `vectorize.images`/`vectorize.videos` with `ContentFormat.MULTIMODAL`, and stores `media_refs` and `content_modalities` in `ProcessedContext.metadata`.
 
 ### DocumentProcessor (`processor/document_processor.py`)
 
@@ -151,33 +155,13 @@ Internal components:
 Config keys (from `processing.document_processor`): `batch_size`, `batch_timeout`
 Config keys (from `document_processing`): `enabled`, `dpi`, `vlm_batch_size`, `text_threshold_per_page`
 
-### entity_processor (`processor/entity_processor.py`)
-
-Standalone module (no class). Two public functions:
-
-```python
-def validate_and_clean_entities(raw_entities: list) -> Dict[str, EntityData]
-async def refresh_entities(
-    entities_info: Dict[str, EntityData],
-    context_text: str,
-    user_id: str = "default",
-    device_id: str = "default",
-    agent_id: str = "default",
-) -> List[str]
-```
-
-`validate_and_clean_entities`: Converts list of dicts (with `name`, `type`, `description`, `aliases`, `metadata`) into `Dict[str, EntityData]`.
-
-`refresh_entities`: For each entity, checks if it exists in relational DB via `storage.get_entity()`. If exists, merges content/aliases/keywords. Upserts via `storage.upsert_entity()`. Always requires all three identifiers (`user_id`, `device_id`, `agent_id`).
-
 ### profile_processor (`processor/profile_processor.py`)
 
 Standalone module (no class). Two public functions:
 
 ```python
 def refresh_profile(
-    new_content: str,
-    new_summary: Optional[str],
+    new_factual_profile: str,
     new_keywords: Optional[List[str]],
     new_entities: Optional[List[str]],
     new_importance: int,
@@ -188,9 +172,9 @@ def refresh_profile(
 ) -> bool
 ```
 
-`refresh_profile`: Checks if a profile exists via `storage.get_profile()`. If exists, calls `_merge_profile_with_llm()` to intelligently merge old and new data using the `merging.overwrite_merge` prompt, then upserts the merged result. If no existing profile, writes directly. Falls back to direct overwrite if LLM merge fails. **Note**: `summary` is always stored as `None` — profile no longer uses the summary field.
+`refresh_profile`: Checks if a profile exists via `storage.get_profile()`. If exists, calls `_merge_profile_with_llm()` to intelligently merge old and new data using the `merging.overwrite_merge` prompt, then upserts the merged result. If no existing profile, writes directly. Falls back to direct overwrite if LLM merge fails.
 
-`_merge_profile_with_llm`: Internal function. Loads `merging.overwrite_merge` prompt group, serializes old/new profile data as JSON (excluding `summary`), calls `generate_with_messages()` (sync), parses response JSON expecting `content`, `keywords`, `entities`, `importance` fields.
+`_merge_profile_with_llm`: Internal function. Loads `merging.overwrite_merge` prompt group, serializes old/new profile data as JSON, calls `generate_with_messages()` (sync), parses response JSON expecting `factual_profile`, `keywords`, `entities`, `importance` fields.
 
 Called from: `OpenContext._store_profile()` in `opencontext/server/opencontext.py`.
 
@@ -317,7 +301,6 @@ RawContextProperties (CHAT_LOG + TEXT)
       -> _process_async()
         -> LLM call (chat_analyze prompt) -> JSON with memories[]
         -> _build_processed_context() per memory -> List[ProcessedContext]
-        -> _persist_entities() -> entity_processor.refresh_entities() -> relational DB
       -> return List[ProcessedContext]
     -> Manager invokes callback -> OpenContext._handle_processed_context()
 ```
@@ -361,12 +344,12 @@ ProcessedContext (KNOWLEDGE, enable_merge=True)
 ### Imports FROM other modules
 | Dependency | Used by | Purpose |
 |------------|---------|---------|
-| `opencontext.models.context` | All files | `ProcessedContext`, `RawContextProperties`, `ContextProperties`, `ExtractedData`, `Vectorize`, `Chunk`, `EntityData` |
+| `opencontext.models.context` | All files | `ProcessedContext`, `RawContextProperties`, `ContextProperties`, `ExtractedData`, `Vectorize`, `Chunk` |
 | `opencontext.models.enums` | All files | `ContextType`, `ContextSource`, `ContentFormat`, `FileType`, `STRUCTURED_FILE_TYPES` |
 | `opencontext.config.global_config` | Processors, chunker | `get_config()`, `get_prompt_group()`, `get_prompt_manager()` |
 | `opencontext.llm.global_vlm_client` | TextChat, Document, Merger, Profile | `generate_with_messages_async()`, `generate_with_messages()` |
 | `opencontext.llm.global_embedding_client` | Merger | `do_vectorize()`, `do_vectorize_async()` |
-| `opencontext.storage.global_storage` | Entity, Profile, Merger | `get_storage()` -> `UnifiedStorage` |
+| `opencontext.storage.global_storage` | Profile, Merger | `get_storage()` -> `UnifiedStorage` |
 | `opencontext.interfaces.processor_interface` | BaseProcessor | `IContextProcessor` interface |
 | `opencontext.utils.json_parser` | TextChat, Document, Profile, Merger | `parse_json_from_response()` |
 | `opencontext.monitoring.monitor` | Document | `record_processing_error()`, `record_processing_metrics()` |
@@ -377,7 +360,6 @@ ProcessedContext (KNOWLEDGE, enable_merge=True)
 | `opencontext.server.opencontext` (OpenContext) | `processor_factory.create_processor()`, `ContextMerger` |
 | `opencontext.server.routes/push.py` | `DocumentProcessor.process_async()`, `TextChatProcessor` via factory |
 | `opencontext.periodic_task.memory_compression` | `ContextMerger.periodic_memory_compression_for_user()` |
-| `opencontext.server.routes` | Entity functions called indirectly via TextChatProcessor |
 | `opencontext.context_capture.folder_monitor` | `DocumentProcessor.get_supported_formats()` for file type filtering |
 
 ## Extension Points
@@ -403,13 +385,11 @@ The merger currently only supports KNOWLEDGE type. To add a new type:
 
 ## Conventions and Constraints
 
-- **Merger only handles KNOWLEDGE**: `ContextMerger.can_process()` returns `False` for all non-KNOWLEDGE types. Document uses delete+insert, event is immutable append. Do not route other types through the merger. Profile and entity have their own dedicated merge logic in `profile_processor.py` and `entity_processor.py` respectively.
+- **Merger only handles KNOWLEDGE**: `ContextMerger.can_process()` returns `False` for all non-KNOWLEDGE types. Document uses delete+insert, event is immutable append. Do not route other types through the merger. Profile has its own dedicated merge logic in `profile_processor.py`.
 
 - **Profile persistence uses LLM merge**: `profile_processor.refresh_profile()` calls LLM with the `merging.overwrite_merge` prompt to intelligently merge new profile data with existing records before writing. This requires all 3 identifiers (`user_id`, `device_id`, `agent_id`). If LLM fails, falls back to direct overwrite.
 
 - **DocumentTextChunker uses `chunk_text()`, not `chunk()`**: Unlike other chunkers, `DocumentTextChunker.chunk()` raises `NotImplementedError`. Always call `chunk_text(texts: List[str])` instead.
-
-- **Entity persistence requires all 3 identifiers**: `refresh_entities()` and all `storage.upsert_entity()` / `storage.get_entity()` calls require `user_id`, `device_id`, `agent_id`. Omitting any causes argument mismatches.
 
 - **`shutdown()` signature varies across subclasses**: `BaseContextProcessor.shutdown(self) -> bool` takes no args and returns bool. `DocumentProcessor.shutdown(self, _graceful: bool = False)` adds an extra parameter and returns None implicitly. This deviates from the base class contract.
 

@@ -43,14 +43,17 @@ vlm_model:
   provider: "doubao"
   max_concurrent: ${VLM_MAX_CONCURRENT:30}
 
-# Embedding 配置（向量嵌入模型，用于语义检索）
+# Embedding 配置（多模态向量嵌入模型，用于语义检索）
+# 使用 Ark multimodal embedding API（aiohttp 直调，非 SDK）
 embedding_model:
-  base_url: "${EMBEDDING_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
+  base_url: "${EMBEDDING_BASE_URL:https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal}"
   api_key: "${EMBEDDING_API_KEY}"
-  model: "${EMBEDDING_MODEL:doubao-embedding-large-text-240915}"
-  provider: "openai"
-  max_concurrent: ${EMBEDDING_MAX_CONCURRENT:60}
-  output_dim: 2048 # 嵌入维度，须与向量库 dimension 一致
+  model: "${EMBEDDING_MODEL:doubao-embedding-vision-251215}"
+  dimensions: 2048                                          # 向量维度，须与向量库 dimension 一致
+  max_concurrency: ${EMBEDDING_MAX_CONCURRENCY:15}          # 并发 embedding 请求数（Ark API 每请求返回 1 条）
+  max_concurrent: ${EMBEDDING_MAX_CONCURRENT:60}            # LLMClient 内部信号量上限
+  search_instruction: "根据这个查询，找到最相关的记忆内容"      # Query 侧 Instruction 中的 task 描述
+  target_modality: "text/image/video"                       # 语料库模态组成，用于 Query 侧 Target_modality
 
 # ============================================================
 # 上下文采集模块
@@ -85,7 +88,7 @@ capture:
 # ============================================================
 processing:
   enabled: "${PROCESSING_ENABLED:true}" # 处理总开关
-  # 文本聊天处理器（从对话中提取 profile/entity/event/knowledge）
+  # 文本聊天处理器（从对话中提取 profile/event/knowledge）
   text_chat_processor:
     enabled: "${TEXT_CHAT_PROCESSOR_ENABLED:true}"
   # 文档处理器（处理上传文件和网页链接）
@@ -128,17 +131,16 @@ redis:
 # ============================================================
 memory_cache:
   snapshot_ttl: 3600          # 快照缓存 TTL（秒），默认 1 小时
-  recent_days: 7              # "近期"记忆的时间窗口（天）
-  max_recently_accessed: 50   # 最近访问记录的最大追踪条数
-  max_today_events: 30        # 缓存中今日事件的最大条数
+  recent_days: 3              # "近期"记忆的时间窗口（天）
+  max_recently_accessed: 25   # 最近访问记录的最大追踪条数
+  max_today_events: 5         # 缓存中今日事件的最大条数
   max_recent_documents: 10    # 缓存中近期文档的最大条数
   max_recent_knowledge: 10    # 缓存中近期知识的最大条数
   accessed_ttl: 604800        # 访问记录的 TTL（秒），默认 7 天
-  max_entities: 20            # 缓存中实体的最大条数
 
 # ============================================================
 # 存储模块
-# 双后端架构：向量库（语义检索）+ 关系型库（profile/entity）
+# 双后端架构：向量库（语义检索）+ 关系型库（profile）
 # ============================================================
 storage:
   enabled: true
@@ -157,7 +159,7 @@ storage:
         access_key_id: "${VIKINGDB_ACCESS_KEY_ID}"
         secret_access_key: "${VIKINGDB_SECRET_ACCESS_KEY}"
         region: "${VIKINGDB_REGION:cn-beijing}"
-        dimension: 2048               # 须与 embedding_model.output_dim 一致
+        dimension: 2048               # 须与 embedding_model.dimensions 一致
         max_connections: 100           # HTTP 连接池最大连接数
         max_connections_per_host: 20   # 每主机最大连接数
         collection_name: "opencontext"
@@ -179,7 +181,7 @@ storage:
     #   backend: "qdrant"
     #   default: true
     #   config:
-    #     vector_size: 2048  # 须与 embedding_model.output_dim 一致
+    #     vector_size: 2048  # 须与 embedding_model.dimensions 一致
     #     # 本地模式:
     #     path: "${CONTEXT_PATH:.}/persist/qdrant"
     #     # 远程模式（注释掉上面的 path，取消下面的注释）:
@@ -189,7 +191,7 @@ storage:
     #     # api_key: "${QDRANT_API_KEY}"
 
     # ----------------------------------------------------------
-    # 关系型数据库 — 存储 profile/entity 及上下文元数据
+    # 关系型数据库 — 存储 profile 及上下文元数据
     # 二选一：MySQL / SQLite
     # ----------------------------------------------------------
 
@@ -213,6 +215,23 @@ storage:
     #   default: true
     #   config:
     #     path: "${CONTEXT_PATH:.}/persist/sqlite/app.db"
+
+# ============================================================
+# 对象存储配置
+# 多模态媒体文件（图片/视频）的持久化存储
+# S3 兼容协议，支持 TOS/OSS/COS/S3/MinIO
+# ============================================================
+object_storage:
+  backend: "${OBJECT_STORAGE_BACKEND:local}"   # "s3" or "local"
+  s3:
+    endpoint: "${S3_ENDPOINT:tos-s3-cn-beijing.volces.com}"
+    access_key_id: "${S3_ACCESS_KEY_ID:}"
+    secret_access_key: "${S3_SECRET_ACCESS_KEY:}"
+    bucket: "${S3_BUCKET:opencontext-media}"
+    region: "${S3_REGION:cn-beijing}"
+    use_https: true
+  local:
+    base_dir: "./uploads/media"
 
 # ============================================================
 # 消费模块

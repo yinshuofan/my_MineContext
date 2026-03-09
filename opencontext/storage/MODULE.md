@@ -16,6 +16,7 @@
 | `backends/dashvector_backend.py` | `DashVectorBackend` -- Aliyun DashVector (HTTP API, per-type collections) |
 | `backends/sqlite_backend.py` | `SQLiteBackend` -- SQLite relational storage (profiles, entities, vaults, todos, monitoring) |
 | `backends/mysql_backend.py` | `MySQLBackend` -- MySQL relational storage (same schema as SQLite, connection pooled) |
+| `object_storage/` | Object storage sub-module for multimodal media files (see `object_storage/MODULE.md`) |
 
 ## Class Hierarchy
 
@@ -55,11 +56,12 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `delete_contexts` | `(ids: List[str], context_type: str) -> bool` | Success flag |
 | `upsert_processed_context` | `(context: ProcessedContext) -> str` | Stored ID |
 | `batch_upsert_processed_context` | `(contexts: List[ProcessedContext]) -> List[str]` | List of stored IDs |
-| `get_all_processed_contexts` | `(context_types, limit, offset, filter, need_vector, user_id, device_id, agent_id) -> Dict[str, List[ProcessedContext]]` | Type-keyed dict |
+| `get_all_processed_contexts` | `(context_types, limit, offset, filter, need_vector, user_id, device_id, agent_id, skip_slice) -> Dict[str, List[ProcessedContext]]` | Type-keyed dict. `skip_slice=True` skips per-type offset/limit slicing for correct cross-type pagination |
 | `get_processed_context` | `(id: str, context_type: str) -> ProcessedContext` | Single context |
 | `delete_processed_context` | `(id: str, context_type: str) -> bool` | Success flag |
-| `search` | `(query: Vectorize, top_k, context_types, filters, user_id, device_id, agent_id) -> List[Tuple[ProcessedContext, float]]` | Scored results |
-| `get_processed_context_count` | `(context_type: str) -> int` | Count |
+| `search` | `(query: Vectorize, top_k, context_types, filters, user_id, device_id, agent_id, score_threshold) -> List[Tuple[ProcessedContext, float]]` | Scored results. `score_threshold` (0-1) filters out low-similarity results at the database level when supported |
+| `get_processed_context_count` | `(context_type, filter, user_id, device_id, agent_id) -> int` | Count (all params except context_type are optional) |
+| `get_filtered_context_count` | `(context_types, filter, user_id, device_id, agent_id) -> int` | Total count across multiple types with filters (UnifiedStorage only) |
 | `get_all_processed_context_counts` | `() -> Dict[str, int]` | Type-keyed counts |
 | `search_by_hierarchy` | `(context_type, hierarchy_level, time_bucket_start, time_bucket_end, user_id, device_id, agent_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results |
 | `get_by_ids` | `(ids: List[str], context_type: Optional[str], need_vector: bool) -> List[ProcessedContext]` | Contexts by ID |
@@ -91,15 +93,9 @@ Extends `IStorageBackend`. All abstract methods that new document backends must 
 | `update_todo_status` | `(todo_id: int, status: int, end_time)` | `bool` |
 | `insert_tip` | `(content: str)` | `int` |
 | `get_tips` | `(limit, offset)` | `List[Dict]` |
-| `upsert_profile` | `(user_id, device_id, agent_id, content, summary, keywords, entities, importance, metadata)` | `bool` |
+| `upsert_profile` | `(user_id, device_id, agent_id, factual_profile, behavioral_profile, keywords, entities, importance, metadata)` | `bool` |
 | `get_profile` | `(user_id, device_id, agent_id)` | `Optional[Dict]` |
 | `delete_profile` | `(user_id, device_id, agent_id)` | `bool` |
-| `upsert_entity` | `(user_id, device_id, agent_id, entity_name, content, entity_type, summary, keywords, aliases, metadata)` | `str` (entity ID) |
-| `get_entity` | `(user_id, device_id, agent_id, entity_name)` | `Optional[Dict]` |
-| `list_entities` | `(user_id, device_id, agent_id, entity_type, limit, offset)` | `List[Dict]` |
-| `search_entities` | `(user_id, device_id, agent_id, query_text, limit)` | `List[Dict]` |
-| `delete_entity` | `(user_id, device_id, agent_id, entity_name)` | `bool` |
-
 Note: Document backends also implement non-abstract methods for conversations, messages, message thinking, and monitoring (not listed in the interface but present in both SQLite and MySQL implementations).
 
 ### StorageBackendFactory -- `unified_storage.py`
@@ -202,6 +198,25 @@ Module-level functions:
 - `close_redis_cache()` -- async, closes global instance
 - `get_cache(config=None) -> Union[RedisCache, InMemoryCache]` -- async, returns Redis if connected, else InMemoryCache
 
+### VikingDB V2 API and Multimodal Fields
+
+**API version**: VikingDB backend uses V2 API format. Key differences from V1:
+
+- **Control plane** (collection/index management): PascalCase parameters (e.g., `CollectionName`, `Fields`, `IndexName`, `ProjectName`)
+- **Data plane** (upsert/search/delete/fetch): snake_case parameters, but with V2 naming:
+  - `fields` → `data` (in upsert and update requests)
+  - `primary_keys` → `ids` (in delete and fetch requests)
+  - Response format: `id` is separated from `fields` (not duplicated inside `fields`)
+
+**Multimodal collection fields** (stored as scalar fields in VikingDB):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content_modalities` | `string` | Comma-separated modality list, e.g. `"text"`, `"text,image"`, `"text,image,video"` |
+| `media_refs` | `string` | JSON-serialized array of media references: `[{"type": "image", "url": "...", "local_path": "..."}, ...]` |
+
+These fields are populated from `ProcessedContext.metadata["content_modalities"]` and `ProcessedContext.metadata["media_refs"]` during upsert, and parsed back during retrieval in `_doc_to_processed_context()`.
+
 ### Vector Backend Differences
 
 | Feature | ChromaDB | Qdrant | VikingDB | DashVector |
@@ -220,7 +235,7 @@ Module-level functions:
 | Connection model | `threading.local()` per-thread connections | SQLAlchemy `QueuePool` (pool_size=20, max_overflow=10) |
 | `_get_connection()` | Returns `sqlite3.Connection` (creates lazily per thread) | `@contextmanager` yielding pooled connection, auto-rollback on error |
 | Journal mode | WAL | InnoDB (default) |
-| Schema migration | `_create_tables()` + `_migrate_schema_v2()` | Same |
+| Schema migration | `_create_tables()` | Same |
 | Health check | `SELECT 1` on connection | `ping(reconnect=True)` on pool checkout |
 
 ## Internal Data Flow
@@ -231,11 +246,11 @@ Caller code
     v
 get_storage()                          # global_storage.py -> UnifiedStorage
     |
-    +-- Profile/Entity operations ------> _document_backend.upsert_profile() / upsert_entity()
+    +-- Profile operations ------> _document_backend.upsert_profile()
     |                                         |
     |                                         v
     |                                     SQLiteBackend or MySQLBackend
-    |                                     (profiles / entities tables)
+    |                                     (profiles table)
     |
     +-- Vector operations (contexts) ---> _vector_backend.batch_upsert_processed_context()
     |                                         |
@@ -288,19 +303,19 @@ get_storage()                          # global_storage.py -> UnifiedStorage
 ### Adding a new document backend
 
 1. Create `backends/new_backend.py` implementing `IDocumentStorageBackend`
-2. Implement all abstract methods (profile/entity CRUD, vaults, todos, tips)
+2. Implement all abstract methods (profile CRUD, vaults, todos, tips)
 3. Also implement non-abstract methods used by `UnifiedStorage`: conversations, messages, message thinking, monitoring
 4. Register in `StorageBackendFactory.__init__()` under `StorageType.DOCUMENT_DB`
 5. Follow same pattern as vector backend for imports and config
 
 ## Conventions and Constraints
 
-- **Always use `get_storage()`** from `global_storage.py` to access storage. Never use `GlobalStorage.get_instance()` or `get_global_storage()` directly -- they return the wrapper which lacks profile/entity/hierarchy methods.
-- **All profile/entity calls require the 3-key tuple** `(user_id, device_id, agent_id)`. Omitting `device_id` or `agent_id` causes positional argument mismatches.
+- **Always use `get_storage()`** from `global_storage.py` to access storage. Never use `GlobalStorage.get_instance()` or `get_global_storage()` directly -- they return the wrapper which lacks profile/hierarchy methods.
+- **All profile calls require the 3-key tuple** `(user_id, device_id, agent_id)`. Omitting `device_id` or `agent_id` causes positional argument mismatches.
 - **SQLite `_get_connection()` must be used for all method-level DB access.** Only `initialize()` and `close()` may use `self.connection` directly. This prevents thread-safety issues under `asyncio.to_thread()`.
 - **MySQL `_get_connection()` is a context manager** -- always use `with self._get_connection() as conn:`. It auto-returns to pool and auto-rolls-back on exceptions.
 - **Qdrant `search_by_hierarchy`** uses in-code string comparison for `time_bucket` filtering because `models.Range` does not support string fields. Over-fetch with `top_k * 3`, then filter.
 - **VikingDB `hierarchy_level`** is stored as int64. Use `must` filter directly (e.g., `{"op": "must", "field": "hierarchy_level", "conds": [0]}`). Supports list filtering: `"conds": [0, 1, 2]`.
-- **MySQL `lastrowid` is 0 for VARCHAR PKs** (entities table). Always SELECT back the persisted ID.
+- **MySQL `lastrowid` is 0 for VARCHAR PKs**. Always SELECT back the persisted ID.
 - **Vector backends auto-vectorize** via `do_vectorize()` when `context.vectorize.vector` is None. This is a synchronous call to the embedding service.
 - **Todo collection creation** is gated by `consumption.enabled` config flag. If disabled, todo-related methods on vector backends are no-ops.

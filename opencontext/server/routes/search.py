@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import ProcessedContext, Vectorize
-from opencontext.models.enums import ContextType
+from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.search.models import (
     EventNode,
@@ -53,7 +53,21 @@ async def search_events(
     summaries are parent nodes containing search hits as nested children.
     """
     start_time = time.monotonic()
-    query_preview = (request.query or "")[:50]
+    query_preview = str(request.query)[:50] if request.query else ""
+
+    query_text_for_meta = None
+    if request.query:
+        text_parts = [item["text"] for item in request.query if item.get("type") == "text"]
+        non_text = [item.get("type") for item in request.query if item.get("type") != "text"]
+        preview = " ".join(text_parts) if text_parts else ""
+        if non_text:
+            modalities = []
+            if "image_url" in non_text:
+                modalities.append("[图片]")
+            if "video_url" in non_text:
+                modalities.append("[视频]")
+            preview = (preview + " " + " ".join(modalities)).strip()
+        query_text_for_meta = preview or None
 
     logger.info(
         f"Event search: query='{query_preview}', "
@@ -91,7 +105,7 @@ async def search_events(
             success=True,
             events=tree_roots,
             metadata=SearchMetadata(
-                query=request.query,
+                query=query_text_for_meta,
                 total_results=len(search_hits),
                 search_time_ms=round(elapsed_ms, 2),
             ),
@@ -104,7 +118,7 @@ async def search_events(
             success=False,
             events=[],
             metadata=SearchMetadata(
-                query=request.query,
+                query=query_text_for_meta,
                 total_results=0,
                 search_time_ms=round(elapsed_ms, 2),
             ),
@@ -117,7 +131,7 @@ async def search_events(
             success=False,
             events=[],
             metadata=SearchMetadata(
-                query=request.query,
+                query=query_text_for_meta,
                 total_results=0,
                 search_time_ms=round(elapsed_ms, 2),
             ),
@@ -139,11 +153,18 @@ async def _execute_search(
         raw_results = [(ctx, 1.0) for ctx in contexts]
 
     elif request.query:
-        # Path B: Semantic search with optional filters
-        vectorize = Vectorize(text=request.query)
-        await do_vectorize(vectorize)
+        # Path B: Semantic search with optional filters (supports multimodal query)
+        query_types = {item.get("type") for item in request.query}
+        has_multimodal = bool(query_types & {"image_url", "video_url"})
+        vectorize = Vectorize(
+            input=request.query,
+            content_format=(
+                ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
+            ),
+        )
+        await do_vectorize(vectorize, role="query")
 
-        filters = _build_filters(request.time_range, request.hierarchy_levels)
+        filters = _build_filters(request.time_range, None)
         raw_results = await storage.search(
             query=vectorize,
             top_k=request.top_k,
@@ -152,6 +173,7 @@ async def _execute_search(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
+            score_threshold=request.score_threshold,
         )
 
     else:
@@ -313,12 +335,12 @@ async def _collect_ancestors(
             if parent is None:
                 continue
 
-            seen[pid] = parent
-
             # Check if this parent exceeds max_level
             parent_level = parent.properties.hierarchy_level if parent.properties else 0
             if parent_level > max_level:
                 continue
+
+            seen[pid] = parent
 
             # Queue next level parent
             if parent.properties and parent.properties.parent_id:
@@ -397,6 +419,10 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
     props = ctx.properties
     extracted = ctx.extracted_data
 
+    media_refs = []
+    if ctx.metadata and ctx.metadata.get("media_refs"):
+        media_refs = ctx.metadata["media_refs"]
+
     return EventNode(
         id=ctx.id,
         hierarchy_level=props.hierarchy_level if props else 0,
@@ -407,6 +433,7 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=False,
+        media_refs=media_refs,
     )
 
 
@@ -414,6 +441,10 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
     """Convert a ProcessedContext to a search-hit EventNode with full data."""
     props = ctx.properties
     extracted = ctx.extracted_data
+
+    media_refs = []
+    if ctx.metadata and ctx.metadata.get("media_refs"):
+        media_refs = ctx.metadata["media_refs"]
 
     return EventNode(
         id=ctx.id,
@@ -428,6 +459,7 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=True,
+        media_refs=media_refs,
     )
 
 
@@ -451,6 +483,7 @@ async def _track_accessed_safe(
                     "score": er.score,
                     "event_time": er.event_time,
                     "create_time": er.create_time,
+                    "media_refs": er.media_refs,
                 }
             )
         if items:

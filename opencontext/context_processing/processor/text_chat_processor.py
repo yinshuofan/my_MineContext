@@ -1,4 +1,5 @@
 import datetime
+import json
 from typing import Any, Dict, List, Optional
 
 from opencontext.config.global_config import get_prompt_group
@@ -37,7 +38,7 @@ class TextChatProcessor(BaseContextProcessor):
         return (
             isinstance(context, RawContextProperties)
             and context.source == ContextSource.CHAT_LOG
-            and context.content_format == ContentFormat.TEXT
+            and context.content_format in (ContentFormat.TEXT, ContentFormat.MULTIMODAL)
         )
 
     async def process(self, context: RawContextProperties) -> List[ProcessedContext]:
@@ -59,17 +60,29 @@ class TextChatProcessor(BaseContextProcessor):
 
         # 2. 准备 LLM 输入
         chat_history_str = raw_context.content_text
+        is_multimodal = raw_context.content_format == ContentFormat.MULTIMODAL
 
-        messages = [
-            {"role": "system", "content": prompt_group.get("system", "")},
-            {
-                "role": "user",
-                "content": prompt_group.get("user", "").format(
-                    chat_history=chat_history_str, current_time=datetime.datetime.now().isoformat()
-                ),
-            },
-        ]
-        logger.debug(f"LLM messages: {messages}")
+        # Build media index for mapping LLM-returned related_media indices back to URLs
+        media_index = []  # Ordered list of {"type": "image"|"video", "url": "..."}
+        if is_multimodal:
+            media_index = self._build_media_index(chat_history_str)
+
+        if is_multimodal:
+            # For multimodal messages, pass the original messages directly to the LLM
+            # so it can see images and videos, producing more accurate memory extraction
+            messages = self._build_multimodal_llm_messages(prompt_group, chat_history_str)
+        else:
+            messages = [
+                {"role": "system", "content": prompt_group.get("system", "")},
+                {
+                    "role": "user",
+                    "content": prompt_group.get("user", "").format(
+                        chat_history=chat_history_str,
+                        current_time=datetime.datetime.now().isoformat(),
+                    ),
+                },
+            ]
+        logger.debug(f"LLM messages prepared (multimodal={is_multimodal})")
 
         # 3. 调用 LLM
         response = await generate_with_messages(messages)
@@ -88,32 +101,105 @@ class TextChatProcessor(BaseContextProcessor):
 
         # 6. 为每条 memory 构建 ProcessedContext
         processed_list = []
-        all_structured_entities = []
 
         for memory in memories:
             try:
-                pc = self._build_processed_context(memory, raw_context)
+                pc = self._build_processed_context(memory, raw_context, media_index=media_index)
                 if pc:
                     processed_list.append(pc)
-                    raw_entities = memory.get("entities", [])
-                    if isinstance(raw_entities, list):
-                        all_structured_entities.extend(
-                            e for e in raw_entities if isinstance(e, dict) and "name" in e
-                        )
             except Exception as e:
                 logger.warning(f"Failed to build ProcessedContext for memory: {e}")
-
-        # 7. 跨记忆实体持久化：确保非 entity 类型记忆中的实体也能进入关系型 DB
-        if all_structured_entities and raw_context.user_id:
-            await self._persist_entities(all_structured_entities, raw_context)
 
         logger.debug(f"Extracted {len(processed_list)} memories from chat")
         return processed_list
 
+    @staticmethod
+    def _build_media_index(chat_history_str: str) -> List[Dict[str, str]]:
+        """
+        Build an ordered index of all media items across all messages.
+
+        Scans through all messages' content parts, collecting image_url and video_url
+        items in order. Returns a list of {"type": "image"|"video", "url": "..."} dicts.
+        The index positions correspond to what the LLM returns in related_media.
+        """
+        media_index = []
+        try:
+            chat_messages = json.loads(chat_history_str)
+            for msg in chat_messages:
+                content = msg.get("content")
+                if not isinstance(content, list):
+                    continue
+                for part in content:
+                    part_type = part.get("type", "")
+                    if part_type == "image_url":
+                        url = part.get("image_url", {}).get("url", "")
+                        if url:
+                            media_index.append({"type": "image", "url": url})
+                    elif part_type == "video_url":
+                        url = part.get("video_url", {}).get("url", "")
+                        if url:
+                            media_index.append({"type": "video", "url": url})
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(f"Failed to parse chat_history for media index: {e}")
+        return media_index
+
+    @staticmethod
+    def _build_multimodal_llm_messages(
+        prompt_group: Dict[str, str], chat_history_str: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Build LLM messages for multimodal chat analysis.
+
+        The system prompt is sent as the first message. Then, the original multimodal
+        chat messages are included directly so the LLM can see images/videos.
+        Finally, a user message with the analysis instruction is appended.
+
+        Local file paths in media URLs are converted to base64 data URIs so the
+        remote LLM API can access the content.
+        """
+        from opencontext.models.context import _file_to_data_uri, _is_local_path
+
+        llm_messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": prompt_group.get("system", "")},
+        ]
+
+        # Include the original multimodal chat messages directly
+        try:
+            chat_messages = json.loads(chat_history_str)
+            for msg in chat_messages:
+                content = msg.get("content", "")
+                # Convert local file paths in content parts to base64 data URIs
+                if isinstance(content, list):
+                    content = _convert_local_paths_in_content(content)
+                llm_messages.append({"role": msg.get("role", "user"), "content": content})
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(f"Failed to parse multimodal messages, falling back to text: {e}")
+            llm_messages.append({"role": "user", "content": chat_history_str})
+
+        # Append the analysis instruction
+        user_prompt = prompt_group.get("user", "").format(
+            chat_history="[Messages included above]",
+            current_time=datetime.datetime.now().isoformat(),
+        )
+        llm_messages.append({"role": "user", "content": user_prompt})
+
+        return llm_messages
+
     def _build_processed_context(
-        self, memory: Dict, raw_context: RawContextProperties
+        self,
+        memory: Dict,
+        raw_context: RawContextProperties,
+        media_index: Optional[List[Dict[str, str]]] = None,
     ) -> Optional[ProcessedContext]:
-        """Build ProcessedContext for a single memory with input validation."""
+        """Build ProcessedContext for a single memory with input validation.
+
+        Args:
+            memory: Extracted memory dict from LLM.
+            raw_context: The original raw context.
+            media_index: Ordered list of media items from multimodal messages.
+                         Each item is {"type": "image"|"video", "url": "..."}.
+                         Used to resolve related_media indices from LLM output.
+        """
         # Validate memory is a dict
         if not isinstance(memory, dict):
             logger.warning(f"Invalid memory format: expected dict, got {type(memory).__name__}")
@@ -206,6 +292,71 @@ class TextChatProcessor(BaseContextProcessor):
         # L0 time_bucket: ISO datetime for per-event granularity
         time_bucket = event_time.strftime("%Y-%m-%dT%H:%M:%S")
 
+        # Resolve related media references from LLM output
+        vectorize_images = None
+        vectorize_videos = None
+        vectorize_format = ContentFormat.TEXT
+        media_refs = []
+
+        related_media = memory.get("related_media")
+        if related_media and isinstance(related_media, dict) and media_index:
+            image_indices = related_media.get("images", [])
+            video_indices = related_media.get("videos", [])
+
+            # Resolve image indices to URLs
+            if isinstance(image_indices, list):
+                resolved_images = []
+                for idx in image_indices:
+                    if isinstance(idx, int) and 0 <= idx < len(media_index):
+                        item = media_index[idx]
+                        if item["type"] == "image":
+                            resolved_images.append(item["url"])
+                            media_refs.append({"type": "image", "url": item["url"]})
+                if resolved_images:
+                    vectorize_images = resolved_images
+
+            # Resolve video indices to URLs
+            if isinstance(video_indices, list):
+                resolved_videos = []
+                for idx in video_indices:
+                    if isinstance(idx, int) and 0 <= idx < len(media_index):
+                        item = media_index[idx]
+                        if item["type"] == "video":
+                            resolved_videos.append(item["url"])
+                            media_refs.append({"type": "video", "url": item["url"]})
+                if resolved_videos:
+                    vectorize_videos = resolved_videos
+
+            if vectorize_images or vectorize_videos:
+                vectorize_format = ContentFormat.MULTIMODAL
+
+        # Build metadata
+        metadata = {}
+        if media_refs:
+            metadata["media_refs"] = media_refs
+            modalities = ["text"]
+            if vectorize_images:
+                modalities.append("image")
+            if vectorize_videos:
+                modalities.append("video")
+            metadata["content_modalities"] = ",".join(modalities)
+
+        # Build content parts list for Vectorize
+        ark_input = [
+            {
+                "type": "text",
+                "text": f"{extracted_data.title}\n{extracted_data.summary}\n{' '.join(extracted_data.keywords)}",
+            }
+        ]
+        if vectorize_images:
+            for img_url in vectorize_images:
+                ark_input.append({"type": "image_url", "image_url": {"url": img_url}})
+        if vectorize_videos:
+            for vid_url in vectorize_videos:
+                ark_input.append(
+                    {"type": "video_url", "video_url": {"url": vid_url, "fps": 1.0}}
+                )
+
         return ProcessedContext(
             properties=ContextProperties(
                 raw_properties=[raw_context],
@@ -221,34 +372,30 @@ class TextChatProcessor(BaseContextProcessor):
             ),
             extracted_data=extracted_data,
             vectorize=Vectorize(
-                content_format=ContentFormat.TEXT,
-                text=f"{extracted_data.title}\n{extracted_data.summary}\n{' '.join(extracted_data.keywords)}",
-                metadata={"structured_entities": raw_entities},
+                input=ark_input,
+                content_format=vectorize_format,
             ),
+            metadata=metadata if metadata else {},
         )
 
-    async def _persist_entities(
-        self, structured_entities: List[Dict], raw_context: RawContextProperties
-    ) -> None:
-        """
-        将所有记忆中提取的实体持久化到关系型 DB。
-        确保非 entity 类型记忆中提到的实体也能进入实体表。
-        """
-        try:
-            from opencontext.context_processing.processor.entity_processor import (
-                refresh_entities,
-                validate_and_clean_entities,
-            )
 
-            entities_info = validate_and_clean_entities(structured_entities)
-            if entities_info:
-                await refresh_entities(
-                    entities_info=entities_info,
-                    context_text=raw_context.content_text or "",
-                    user_id=raw_context.user_id or "default",
-                    device_id=raw_context.device_id or "default",
-                    agent_id=raw_context.agent_id or "default",
-                )
-                logger.debug(f"Persisted {len(entities_info)} entities from chat analysis")
-        except Exception as e:
-            logger.warning(f"Entity persistence failed (non-fatal): {e}")
+def _convert_local_paths_in_content(content_parts: List[Dict]) -> List[Dict]:
+    """Convert local file paths in multimodal content parts to base64 data URIs."""
+    from opencontext.models.context import _file_to_data_uri, _is_local_path
+
+    result = []
+    for part in content_parts:
+        part_type = part.get("type", "")
+        if part_type == "image_url":
+            url = part.get("image_url", {}).get("url", "")
+            if _is_local_path(url):
+                part = {"type": "image_url", "image_url": {"url": _file_to_data_uri(url)}}
+        elif part_type == "video_url":
+            url = part.get("video_url", {}).get("url", "")
+            if _is_local_path(url):
+                new_video = {"url": _file_to_data_uri(url)}
+                if "fps" in part.get("video_url", {}):
+                    new_video["fps"] = part["video_url"]["fps"]
+                part = {"type": "video_url", "video_url": new_video}
+        result.append(part)
+    return result

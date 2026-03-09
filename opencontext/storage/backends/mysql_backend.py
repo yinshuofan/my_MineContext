@@ -89,7 +89,6 @@ class MySQLBackend(IDocumentStorageBackend):
 
             # Create table structure
             await self._create_tables()
-            await self._migrate_schema_v2()
 
             self._initialized = True
             logger.info(
@@ -182,39 +181,14 @@ class MySQLBackend(IDocumentStorageBackend):
                         user_id VARCHAR(255) NOT NULL,
                         device_id VARCHAR(100) NOT NULL DEFAULT 'default',
                         agent_id VARCHAR(100) NOT NULL DEFAULT 'default',
-                        content LONGTEXT NOT NULL,
-                        summary TEXT,
-                        keywords JSON,
+                        factual_profile LONGTEXT NOT NULL,
+                        behavioral_profile LONGTEXT,
                         entities JSON,
                         importance INT DEFAULT 0,
                         metadata JSON,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                         PRIMARY KEY (user_id, device_id, agent_id)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
-
-                # Entities table
-                await cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS entities (
-                        id VARCHAR(255) PRIMARY KEY,
-                        user_id VARCHAR(255) NOT NULL,
-                        device_id VARCHAR(100) NOT NULL DEFAULT 'default',
-                        agent_id VARCHAR(100) NOT NULL DEFAULT 'default',
-                        entity_name VARCHAR(255) NOT NULL,
-                        entity_type VARCHAR(50),
-                        content LONGTEXT NOT NULL,
-                        summary TEXT,
-                        keywords JSON,
-                        aliases JSON,
-                        metadata JSON,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        UNIQUE KEY uk_user_entity (user_id, device_id, agent_id, entity_name),
-                        INDEX idx_entity_user (user_id),
-                        INDEX idx_entity_type (entity_type)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """
                 )
@@ -337,67 +311,6 @@ class MySQLBackend(IDocumentStorageBackend):
                 )
 
                 await conn.commit()
-
-    async def _migrate_schema_v2(self):
-        """Add device_id to profiles and device_id+agent_id to entities tables (idempotent)."""
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "ALTER TABLE profiles ADD COLUMN device_id VARCHAR(100) NOT NULL DEFAULT 'default' AFTER user_id"
-                    )
-                    await conn.commit()
-                    logger.info("Migration: added device_id column to profiles table")
-                except Exception:
-                    await conn.rollback()
-
-                try:
-                    await cursor.execute(
-                        "ALTER TABLE profiles DROP PRIMARY KEY, ADD PRIMARY KEY (user_id, device_id, agent_id)"
-                    )
-                    await conn.commit()
-                    logger.info(
-                        "Migration: updated profiles primary key to (user_id, device_id, agent_id)"
-                    )
-                except Exception:
-                    await conn.rollback()
-
-                try:
-                    await cursor.execute(
-                        "ALTER TABLE entities ADD COLUMN device_id VARCHAR(100) NOT NULL DEFAULT 'default' AFTER user_id"
-                    )
-                    await conn.commit()
-                    logger.info("Migration: added device_id column to entities table")
-                except Exception:
-                    await conn.rollback()
-
-                try:
-                    await cursor.execute(
-                        "ALTER TABLE entities ADD COLUMN agent_id VARCHAR(100) NOT NULL DEFAULT 'default' AFTER device_id"
-                    )
-                    await conn.commit()
-                    logger.info("Migration: added agent_id column to entities table")
-                except Exception:
-                    await conn.rollback()
-
-                try:
-                    await cursor.execute(
-                        "ALTER TABLE entities MODIFY COLUMN entity_name VARCHAR(255) NOT NULL"
-                    )
-                    await conn.commit()
-                    logger.info("Migration: reduced entity_name to VARCHAR(255)")
-                except Exception:
-                    await conn.rollback()
-
-                try:
-                    await cursor.execute(
-                        "ALTER TABLE entities DROP INDEX uk_user_entity, "
-                        "ADD UNIQUE KEY uk_user_entity (user_id, device_id, agent_id, entity_name)"
-                    )
-                    await conn.commit()
-                    logger.info("Migration: updated entities unique key")
-                except Exception:
-                    await conn.rollback()
 
     # Report table operations
     async def insert_vaults(
@@ -699,9 +612,8 @@ class MySQLBackend(IDocumentStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        content: str = "",
-        summary: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
+        factual_profile: str = "",
+        behavioral_profile: Optional[str] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
@@ -713,25 +625,23 @@ class MySQLBackend(IDocumentStorageBackend):
             async with conn.cursor() as cursor:
                 try:
                     now = datetime.now()
-                    keywords_json = json.dumps(keywords or [], ensure_ascii=False)
                     entities_json = json.dumps(entities or [], ensure_ascii=False)
                     metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
 
                     await cursor.execute(
                         """
-                        INSERT INTO profiles (user_id, device_id, agent_id, content, summary, keywords, entities,
-                                              importance, metadata, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, behavioral_profile,
+                                              entities, importance, metadata, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
-                            content = VALUES(content),
-                            summary = VALUES(summary),
-                            keywords = VALUES(keywords),
+                            factual_profile = VALUES(factual_profile),
+                            behavioral_profile = VALUES(behavioral_profile),
                             entities = VALUES(entities),
                             importance = VALUES(importance),
                             metadata = VALUES(metadata),
                             updated_at = VALUES(updated_at)
                         """,
-                        (user_id, device_id, agent_id, content, summary, keywords_json,
+                        (user_id, device_id, agent_id, factual_profile, behavioral_profile,
                          entities_json, importance, metadata_json, now, now),
                     )
                     await conn.commit()
@@ -752,8 +662,8 @@ class MySQLBackend(IDocumentStorageBackend):
                 try:
                     await cursor.execute(
                         """
-                        SELECT user_id, device_id, agent_id, content, summary, keywords, entities,
-                               importance, metadata, created_at, updated_at
+                        SELECT user_id, device_id, agent_id, factual_profile, behavioral_profile,
+                               entities, importance, metadata, created_at, updated_at
                         FROM profiles
                         WHERE user_id = %s AND device_id = %s AND agent_id = %s
                         """,
@@ -762,8 +672,6 @@ class MySQLBackend(IDocumentStorageBackend):
                     row = await cursor.fetchone()
                     if row:
                         result = dict(row)
-                        if isinstance(result.get("keywords"), str):
-                            result["keywords"] = json.loads(result["keywords"])
                         if isinstance(result.get("entities"), str):
                             result["entities"] = json.loads(result["entities"])
                         if isinstance(result.get("metadata"), str):
@@ -794,217 +702,6 @@ class MySQLBackend(IDocumentStorageBackend):
                     return False
 
     # ── Entity CRUD ──
-
-    async def upsert_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-        content: str = "",
-        entity_type: Optional[str] = None,
-        summary: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
-        aliases: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        if not self._initialized:
-            raise RuntimeError("MySQL backend not initialized")
-
-        import uuid
-
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    now = datetime.now()
-                    entity_id = str(uuid.uuid4())
-                    keywords_json = json.dumps(keywords or [], ensure_ascii=False)
-                    aliases_json = json.dumps(aliases or [], ensure_ascii=False)
-                    metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
-
-                    await cursor.execute(
-                        """
-                        INSERT INTO entities (id, user_id, device_id, agent_id, entity_name, entity_type, content, summary,
-                                              keywords, aliases, metadata, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON DUPLICATE KEY UPDATE
-                            entity_type = VALUES(entity_type),
-                            content = VALUES(content),
-                            summary = VALUES(summary),
-                            keywords = VALUES(keywords),
-                            aliases = VALUES(aliases),
-                            metadata = VALUES(metadata),
-                            updated_at = VALUES(updated_at)
-                        """,
-                        (entity_id, user_id, device_id, agent_id, entity_name, entity_type,
-                         content, summary, keywords_json, aliases_json, metadata_json, now, now),
-                    )
-                    await conn.commit()
-
-                    # Retrieve the actual persisted ID (may differ from generated one on update)
-                    await cursor.execute(
-                        "SELECT id FROM entities WHERE user_id = %s AND device_id = %s AND agent_id = %s AND entity_name = %s",
-                        (user_id, device_id, agent_id, entity_name),
-                    )
-                    row = await cursor.fetchone()
-                    if row:
-                        entity_id = row["id"]
-
-                    logger.info(f"Entity upserted: {entity_name} for user_id={user_id}")
-                    return entity_id
-                except Exception as e:
-                    logger.exception(f"Failed to upsert entity: {e}")
-                    raise
-
-    async def get_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-    ) -> Optional[Dict]:
-        if not self._initialized:
-            return None
-
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute(
-                        """
-                        SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content, summary,
-                               keywords, aliases, metadata, created_at, updated_at
-                        FROM entities
-                        WHERE user_id = %s AND device_id = %s AND agent_id = %s AND entity_name = %s
-                        """,
-                        (user_id, device_id, agent_id, entity_name),
-                    )
-                    row = await cursor.fetchone()
-                    if row:
-                        result = dict(row)
-                        if isinstance(result.get("keywords"), str):
-                            result["keywords"] = json.loads(result["keywords"])
-                        if isinstance(result.get("aliases"), str):
-                            result["aliases"] = json.loads(result["aliases"])
-                        if isinstance(result.get("metadata"), str):
-                            result["metadata"] = json.loads(result["metadata"])
-                        return result
-                    return None
-                except Exception as e:
-                    logger.exception(f"Failed to get entity: {e}")
-                    return None
-
-    async def list_entities(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_type: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[Dict]:
-        if not self._initialized:
-            return []
-
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    where_clauses = ["user_id = %s", "device_id = %s", "agent_id = %s"]
-                    params: list = [user_id, device_id, agent_id]
-                    if entity_type:
-                        where_clauses.append("entity_type = %s")
-                        params.append(entity_type)
-                    params.extend([limit, offset])
-                    where_sql = " AND ".join(where_clauses)
-
-                    await cursor.execute(
-                        f"""
-                        SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content, summary,
-                               keywords, aliases, metadata, created_at, updated_at
-                        FROM entities WHERE {where_sql}
-                        ORDER BY updated_at DESC LIMIT %s OFFSET %s
-                        """,
-                        params,
-                    )
-                    rows = await cursor.fetchall()
-                    results = []
-                    for row in rows:
-                        result = dict(row)
-                        if isinstance(result.get("keywords"), str):
-                            result["keywords"] = json.loads(result["keywords"])
-                        if isinstance(result.get("aliases"), str):
-                            result["aliases"] = json.loads(result["aliases"])
-                        if isinstance(result.get("metadata"), str):
-                            result["metadata"] = json.loads(result["metadata"])
-                        results.append(result)
-                    return results
-                except Exception as e:
-                    logger.exception(f"Failed to list entities: {e}")
-                    return []
-
-    async def search_entities(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        query_text: str = "",
-        limit: int = 20,
-    ) -> List[Dict]:
-        if not self._initialized:
-            return []
-
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    like_pattern = f"%{query_text}%"
-                    await cursor.execute(
-                        """
-                        SELECT id, user_id, device_id, agent_id, entity_name, entity_type, content, summary,
-                               keywords, aliases, metadata, created_at, updated_at
-                        FROM entities
-                        WHERE user_id = %s AND device_id = %s AND agent_id = %s
-                          AND (entity_name LIKE %s OR content LIKE %s OR aliases LIKE %s)
-                        ORDER BY updated_at DESC LIMIT %s
-                        """,
-                        (user_id, device_id, agent_id, like_pattern, like_pattern, like_pattern, limit),
-                    )
-                    rows = await cursor.fetchall()
-                    results = []
-                    for row in rows:
-                        result = dict(row)
-                        if isinstance(result.get("keywords"), str):
-                            result["keywords"] = json.loads(result["keywords"])
-                        if isinstance(result.get("aliases"), str):
-                            result["aliases"] = json.loads(result["aliases"])
-                        if isinstance(result.get("metadata"), str):
-                            result["metadata"] = json.loads(result["metadata"])
-                        results.append(result)
-                    return results
-                except Exception as e:
-                    logger.exception(f"Failed to search entities: {e}")
-                    return []
-
-    async def delete_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-    ) -> bool:
-        if not self._initialized:
-            return False
-
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "DELETE FROM entities WHERE user_id = %s AND device_id = %s AND agent_id = %s AND entity_name = %s",
-                        (user_id, device_id, agent_id, entity_name),
-                    )
-                    await conn.commit()
-                    return cursor.rowcount > 0
-                except Exception as e:
-                    logger.exception(f"Failed to delete entity: {e}")
-                    return False
 
     def get_name(self) -> str:
         return "mysql"

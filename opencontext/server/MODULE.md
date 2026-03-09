@@ -29,10 +29,10 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/web.py` | HTML pages -- contexts list, vector search, chat, monitoring, settings, file serving |
 | `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | **search/** | |
-| `search/models.py` | Pydantic models: `EventSearchRequest`, `EventSearchResponse`, `EventNode`, `SearchMetadata`, `TimeRange` |
+| `search/models.py` | Pydantic models: `EventSearchRequest` (multimodal content parts query), `EventSearchResponse`, `EventNode` (with `media_refs`), `SearchMetadata`, `TimeRange` |
 | **cache/** | |
 | `cache/memory_cache_manager.py` | `UserMemoryCacheManager` singleton -- builds/caches per-user memory snapshots in Redis |
-| `cache/models.py` | Response models: `UserMemoryCacheResponse`, `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`, `RecentlyAccessedItem`; internal models: `RecentMemoryItem`, `DailySummaryItem` |
+| `cache/models.py` | Response models: `UserMemoryCacheResponse`, `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`, `RecentlyAccessedItem` (with `media_refs`); internal models: `RecentMemoryItem`, `DailySummaryItem` |
 | **middleware/** | |
 | `middleware/auth.py` | API key authentication via `X-API-Key` header or `api_key` query param |
 | `middleware/request_id.py` | `RequestIDMiddleware` -- assigns 8-char UUID per request, stored in `ContextVar` |
@@ -53,13 +53,12 @@ class OpenContext:
     def _handle_captured_context(self, contexts: List[RawContextProperties]) -> bool
     def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool  # Routes by CONTEXT_STORAGE_BACKENDS
     def _store_profile(self, ctx: ProcessedContext) -> None     # -> storage.upsert_profile()
-    def _store_entities(self, ctx: ProcessedContext) -> None    # -> storage.upsert_entity() per entity
     def _invalidate_user_cache(self, user_id, device_id, agent_id) -> None  # Fire-and-forget
 
     # Delegated operations
     def add_context(self, context_data: RawContextProperties) -> bool
     def add_document(self, file_path: str) -> Optional[str]     # Returns error msg or None
-    def search(self, query, top_k, context_types, filters, user_id, device_id, agent_id) -> List[Dict]
+    def search(self, query, top_k, context_types, filters, user_id, device_id, agent_id, score_threshold) -> List[Dict]
     def get_all_contexts(self, limit, offset, filter_criteria) -> Dict[str, List[ProcessedContext]]
     def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]
     def update_context(self, doc_id: str, context: ProcessedContext) -> bool
@@ -105,7 +104,7 @@ class ContextOperations:
     def update_context(self, doc_id: str, context: ProcessedContext) -> bool
     def delete_context(self, doc_id: str, context_type: str) -> bool
     def add_document(self, file_path: str, context_processor_callback) -> Optional[str]
-    def search(self, query, top_k, context_types, filters, user_id, device_id, agent_id) -> List[Dict]
+    def search(self, query, top_k, context_types, filters, user_id, device_id, agent_id, score_threshold) -> List[Dict]
     def get_context_types(self) -> List[str]
 ```
 
@@ -131,9 +130,9 @@ async def _track_accessed_safe(user_id, results, device_id, agent_id) -> None
 Algorithm:
 1. **Search path selection** (priority: event_ids > query > filters-only):
    - `event_ids` → `storage.get_contexts_by_ids()`, score=1.0
-   - `query` → `Vectorize` + `storage.search()` with time/level filters
+   - `query` → `Vectorize` + `storage.search()` with time filter only (hierarchy_levels not applied — semantic search is heuristic across all levels)
    - filters-only → `storage.search_hierarchy()` per level, or `get_all_processed_contexts()` with time filter
-2. **Collect ancestors** (if `drill_up=True`): Batch-fetch parent chains iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent. Returns `Dict[str, ProcessedContext]` of all ancestor contexts.
+2. **Collect ancestors** (if `drill_up=True`): Batch-fetch parent chains iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent. Strictly stops at `max_level` (= max of `hierarchy_levels`, default 3) — ancestors with `hierarchy_level > max_level` are excluded.
 3. **Build node map**: Search hits become `EventNode` with is_search_hit=True (score/content/keywords populated), ancestors become lightweight `EventNode` with is_search_hit=False. Search hits are never overwritten by ancestors.
 4. **Link tree**: Each node with a valid `parent_id` (exists in node map) is appended to parent's `children`. Nodes without a valid parent become roots.
 5. **Sort**: Roots and all children lists sorted by `time_bucket` ASC recursively.
@@ -158,10 +157,10 @@ class UserMemoryCacheManager:
 ```
 
 Caching architecture:
-- **Snapshot** (profile + today events + daily summaries): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot stores full internal data; response assembly in `_merge_response()` simplifies to `SimpleProfile` (content + keywords + metadata), `SimpleDailySummary` (time_bucket + summary), `SimpleTodayEvent` (title + summary + event_time).
-- **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile/entity excluded), always read real-time.
+- **Snapshot** (profile + today events + daily summaries): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot stores full internal data; response assembly in `_merge_response()` simplifies to `SimpleProfile` (factual_profile + behavioral_profile + keywords + metadata), `SimpleDailySummary` (time_bucket + summary), `SimpleTodayEvent` (title + summary + event_time).
+- **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile excluded), always read real-time.
 - **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. If lock acquisition times out, tries cache once more then builds directly without caching.
-- **Snapshot build**: 6 parallel `asyncio.to_thread()` queries (profile, entities, today events, daily summaries, recent docs, recent knowledge). Response only exposes profile, today_events, daily_summaries, recently_accessed.
+- **Snapshot build**: 5 parallel `asyncio.to_thread()` queries (profile, today events, daily summaries, recent docs, recent knowledge). Response only exposes profile, today_events, daily_summaries, recently_accessed.
 
 ### Auth Middleware (middleware/auth.py)
 
@@ -347,7 +346,7 @@ Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
 | GET | `/` | `root` | Redirect to `/contexts` |
-| GET | `/contexts` | `read_contexts` | Contexts list page |
+| GET | `/contexts` | `read_contexts` | Contexts list page (card layout). Query params: `page`, `limit`, `type`, `user_id`, `device_id`, `agent_id`, `hierarchy_level` (0-3), `start_date` (datetime-local or date), `end_date` (datetime-local or date). Type filter excludes profile (relational DB only) |
 | GET | `/vector_search` | `vector_search_page` | Event search page |
 | GET | `/memory_cache` | `memory_cache_page` | Memory cache page |
 | GET | `/chat` | `chat_page` | Redirect to `/advanced_chat` |
@@ -402,10 +401,15 @@ HTTP Request
 
 ### Push Flow (`POST /api/push/chat`)
 
+Both text-only and multimodal messages (OpenAI format) are supported. Before processing, `_process_multimodal_messages()` (async) handles base64 media:
+- Text-only messages (`content` is a string): pass through unchanged
+- Multimodal messages (`content` is a list): base64 images/videos are uploaded to object storage (if configured, via `get_object_storage()`) and replaced with HTTPS URLs; without object storage, files are saved locally to `./uploads/media/{uuid}.{ext}`; HTTP URLs pass through unchanged; format and size constraints are validated (images < 10 MB, videos < 50 MB)
+
 Buffer mode (`process_mode="buffer"`):
 ```
 push_chat()
-  -> for msg in messages: text_chat.push_message()  # atomic Lua (rpush+expire+llen, 1 Redis call per msg)
+  -> await _process_multimodal_messages()  # upload media to object storage, validate
+  -> for msg in messages: text_chat.push_message()  # content can be str or List[Dict]
   -> if flush_immediately: text_chat.flush_user_buffer()
   -> BackgroundTasks: _schedule_user_task("memory_compression")
   -> BackgroundTasks: _schedule_user_task("hierarchy_summary")
@@ -414,6 +418,7 @@ push_chat()
 Direct mode (`process_mode="direct"`):
 ```
 push_chat()
+  -> await _process_multimodal_messages()  # upload media to object storage, validate
   -> BackgroundTasks: text_chat.process_messages_directly()
   -> BackgroundTasks: _schedule_user_task("memory_compression")
   -> BackgroundTasks: _schedule_user_task("hierarchy_summary")
@@ -430,7 +435,7 @@ TextChatCapture.process_messages_directly()
     -> Manager invokes callback with results:
       -> OpenContext._handle_processed_context()
          -> Routes by CONTEXT_STORAGE_BACKENDS:
-            profile/entity -> _store_profile()/_store_entities() -> storage.upsert_profile()/upsert_entity()
+            profile -> _store_profile() -> storage.upsert_profile()
             document/event/knowledge -> storage.batch_upsert_processed_context() -> vector DB
          -> _invalidate_user_cache() for affected users
 ```
@@ -439,16 +444,21 @@ Processors return `List[ProcessedContext]` to the manager, which centrally invok
 
 ### Search Flow (`POST /api/search`)
 
+Query format uses OpenAI content parts (multimodal):
+```json
+{"query": [{"type": "text", "text": "找会议截图"}, {"type": "image_url", "image_url": {"url": "https://..."}}]}
+```
+
 ```
 search_events()
   -> Validate request (query/event_ids/time_range/hierarchy_levels at least one)
   -> _execute_search() with 30s timeout
      Path A (event_ids): storage.get_contexts_by_ids()
-     Path B (query):     do_vectorize() -> storage.search([EVENT], filters)
+     Path B (query):     Vectorize(input=request.query) -> do_vectorize() -> storage.search([EVENT], time_filter_only)
      Path C (filters):   storage.search_hierarchy() per level, or get_all_processed_contexts()
   -> _collect_ancestors() if drill_up=True     # Batch iterative parent fetch (max 3 rounds)
   -> Build tree: node map → parent-child linking → recursive sort by time_bucket ASC
-  -> Fire-and-forget _track_accessed_safe()
+  -> Fire-and-forget _track_accessed_safe()     # Includes media_refs in tracked items
   -> Return EventSearchResponse (tree roots + search hit count)
 ```
 
@@ -481,6 +491,7 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
           "event_time": "2026-03-04T09:17:26.626423+00:00",
           "create_time": "2026-03-04T09:17:26.626077",
           "is_search_hit": true,
+          "media_refs": [{"type": "image", "url": "https://..."}],
           "children": [],
           "content": "id: ...\ntitle: ...\nsummary: ...\n...",
           "keywords": ["keyword1", "keyword2"],
@@ -507,7 +518,8 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 
 **Field notes:**
 - `events`: List of root nodes (tree roots). When `drill_up=true`, ancestors become parent nodes with search hits nested as children. When `drill_up=false`, all search hits are flat root nodes.
-- `is_search_hit`: `true` for search results (content/keywords/entities/score/metadata populated), `false` for ancestor context nodes (only id/level/time_bucket/title/summary)
+- `is_search_hit`: `true` for search results (content/keywords/entities/score/metadata/media_refs populated), `false` for ancestor context nodes (only id/level/time_bucket/title/summary)
+- `media_refs`: List of media references for L0 events, e.g. `[{"type": "image", "url": "https://..."}, {"type": "video", "url": "https://..."}]`. Empty list for L1/L2/L3 summaries. Extracted from `ProcessedContext.metadata["media_refs"]`.
 - `children`: Nested child nodes, sorted by `time_bucket` ASC. Root nodes are also sorted by `time_bucket` ASC.
 - `hierarchy_level`: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
 - `time_bucket`: `"YYYY-MM-DDTHH:MM:SS"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
@@ -524,13 +536,13 @@ get_user_memory_cache()
      HIT  -> _merge_response(snapshot, accessed)
      MISS -> acquire_lock()
           -> Double-check snapshot
-          -> _build_snapshot()          # 6 parallel asyncio.to_thread() queries
-             profile, entities, today_events, daily_summaries, recent_docs, recent_knowledge
+          -> _build_snapshot()          # 5 parallel asyncio.to_thread() queries
+             profile, today_events, daily_summaries, recent_docs, recent_knowledge
           -> cache.set_json(snapshot, ttl=300s)
           -> release_lock()
           -> _merge_response(snapshot, accessed)
-             # Simplifies snapshot to: SimpleProfile, SimpleTodayEvent (title+summary+event_time), SimpleDailySummary
-             # Filters recently_accessed to exclude profile/entity types
+             # Simplifies snapshot to: SimpleProfile (factual_profile+behavioral_profile+keywords+metadata), SimpleTodayEvent (title+summary+event_time), SimpleDailySummary
+             # Filters recently_accessed to exclude profile type
 ```
 
 ### Cache Invalidation Flow
@@ -551,7 +563,7 @@ OpenContext._handle_processed_context()
 
 3. **All push/search endpoints use 60s/30s timeout** via `asyncio.wait_for()`. Memory cache uses 15s. Do not remove these timeouts.
 
-4. **3-key identifier required**: All profile/entity operations and cache keys use `(user_id, device_id, agent_id)`. Default to `"default"` for device_id and agent_id. Omitting them causes argument mismatches.
+4. **3-key identifier required**: All profile operations and cache keys use `(user_id, device_id, agent_id)`. Default to `"default"` for device_id and agent_id. Omitting them causes argument mismatches.
 
 5. **Search logic lives directly in `routes/search.py`**. No strategy abstraction layer — the route handler calls storage directly.
 

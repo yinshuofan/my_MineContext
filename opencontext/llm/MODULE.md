@@ -6,8 +6,8 @@ Provides OpenAI-compatible client wrappers for chat completion, embedding, and v
 
 | File | Responsibility |
 |------|---------------|
-| `llm_client.py` | Core `LLMClient` class wrapping OpenAI async API (`AsyncOpenAI`) for chat and embedding |
-| `global_embedding_client.py` | Thread-safe singleton for embedding operations |
+| `llm_client.py` | Core `LLMClient` class wrapping OpenAI async API (`AsyncOpenAI`) for chat and embedding; also provides `generate_multimodal_embedding()` via aiohttp for Ark multimodal embedding |
+| `global_embedding_client.py` | Thread-safe singleton for multimodal embedding operations; uses role-based instructions (corpus/query) |
 | `global_vlm_client.py` | Thread-safe singleton for vision/chat LLM with automatic tool-call execution loop |
 | `__init__.py` | Module docstring only (no public re-exports) |
 
@@ -42,6 +42,15 @@ kwargs forwarded: `tools` (adds `tool_choice: "auto"`), `thinking` (Doubao: `rea
 
 All embedding methods apply optional `output_dim` truncation with L2 re-normalization. Batch methods sort responses by `response.data[i].index` (OpenAI API does not guarantee response ordering). Config key: `max_batch_size` (default 64).
 
+**Multimodal embedding method** (uses aiohttp, not SDK):
+
+| Method | Signature | Returns |
+|--------|-----------|---------|
+| `generate_multimodal_embedding` | `async (input_data: List[Dict], instruction: str, dimensions: int = 2048) -> List[float]` | Single multimodal embedding vector via Ark HTTP API |
+| `close_http_session` | `async () -> None` | Closes the reusable aiohttp session |
+
+`generate_multimodal_embedding` uses a lazy-initialized reusable `aiohttp.ClientSession` (double-checked locking via `_http_session_lock`). Includes retry logic with exponential backoff (up to `max_retries` attempts). The `input_data` parameter accepts Ark API format items (text, image_url, video_url). The `instruction` parameter controls corpus vs query embedding behavior per the doubao-embedding-vision model spec.
+
 **Validation:**
 ```python
 async def validate(self) -> tuple[bool, str]
@@ -55,19 +64,31 @@ Makes a test API call; returns `(success, message)`. Contains `_extract_error_su
 
 ### `GlobalEmbeddingClient` (`global_embedding_client.py`)
 
-Thread-safe singleton (double-checked locking). Wraps a single `LLMClient(LLMType.EMBEDDING)`.
+Thread-safe singleton (double-checked locking). Wraps a single `LLMClient(LLMType.EMBEDDING)`. Uses Ark multimodal embedding API with role-based instructions.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `get_instance` | `() -> GlobalEmbeddingClient` | Class method; auto-initializes from `get_config("embedding_model")` on first call |
 | `is_initialized` | `() -> bool` | Whether inner client is set |
 | `reinitialize` | `(new_config: Optional[Dict] = None) -> bool` | Thread-safe hot-reload from config |
-| `do_vectorize` | `async (vectorize: Vectorize, **kwargs) -> None` | Async vectorize (single item) |
-| `do_vectorize_batch` | `async (vectorizes: Sequence[Vectorize], **kwargs) -> None` | Batch vectorize; filters already-vectorized items, calls batch API, maps results back |
+| `do_vectorize` | `async (vectorize: Vectorize, role: str = "corpus", **kwargs) -> None` | Single-item multimodal vectorize via Ark API |
+| `do_vectorize_batch` | `async (vectorizes: Sequence[Vectorize], role: str = "corpus", **kwargs) -> None` | Concurrent batch vectorize with Semaphore control |
 
-**Module-level convenience functions:** `is_initialized()`, `do_vectorize()`, `do_vectorize_batch()` -- all delegate to `GlobalEmbeddingClient.get_instance()`. All except `is_initialized` are async.
+**Role-based instruction logic:**
+- **Corpus** (`role="corpus"`): `"Instruction:Compress the {modality} into one word.\nQuery:"` where `{modality}` is auto-detected from `Vectorize.get_modality_string()`.
+- **Query** (`role="query"`): `"Target_modality: {target}.\nInstruction:{task}\nQuery:"` where `{target}` and `{task}` come from config (`target_modality` and `search_instruction`).
 
-**Usage guidance:** Use `do_vectorize_batch()` for write paths (batch_upsert in storage backends) where multiple contexts need vectorization. Use `do_vectorize()` for single-item paths (search query vectorization).
+**Config keys** (read from `embedding_model` section):
+- `dimensions` (default 2048): Vector output dimension.
+- `max_concurrency` (default 15): Concurrent Ark API requests for batch operations.
+- `search_instruction` (default "根据这个查询，找到最相关的记忆内容"): Query-side task description.
+- `target_modality` (default "text/image/video"): Corpus modality composition for query-side instruction.
+
+**Batch processing**: Since the Ark multimodal API returns 1 embedding per request, `do_vectorize_batch()` uses `asyncio.Semaphore(max_concurrency)` to control concurrent requests via `asyncio.gather`.
+
+**Module-level convenience functions:** `is_initialized()`, `do_vectorize()`, `do_vectorize_batch()` -- all delegate to `GlobalEmbeddingClient.get_instance()`. All except `is_initialized` are async. The `role` parameter can be passed via `**kwargs`.
+
+**Usage guidance:** Use `do_vectorize_batch()` for write paths (batch_upsert in storage backends) where multiple contexts need vectorization. Use `do_vectorize()` for single-item paths (search query vectorization). For retrieval/search paths, pass `role="query"` to get query-side instruction.
 
 ### `GlobalVLMClient` (`global_vlm_client.py`)
 
@@ -99,6 +120,7 @@ Thread-safe singleton. Wraps a `LLMClient(LLMType.CHAT)` configured from `get_co
 - `opencontext.storage.unified_storage` -- `UnifiedStorage` (imported in `global_vlm_client.py`)
 - `opencontext.utils.json_parser` -- `parse_json_from_response`
 - `openai` -- `AsyncOpenAI`, `APIError`
+- `aiohttp` -- used by `LLMClient.generate_multimodal_embedding()` for Ark HTTP API calls
 
 **Depended on by:**
 - `opencontext/context_processing/` -- uses `GlobalEmbeddingClient` for vectorization, `GlobalVLMClient` for document analysis

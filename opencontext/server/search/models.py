@@ -4,7 +4,7 @@
 Event Search API - Request/Response Models
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -25,10 +25,13 @@ class TimeRange(BaseModel):
 class EventSearchRequest(BaseModel):
     """Event search API request"""
 
-    query: Optional[str] = Field(
+    query: Optional[List[Dict[str, Any]]] = Field(
         default=None,
-        max_length=2000,
-        description="Semantic search query text. At least one of query/event_ids/time_range/hierarchy_levels must be provided.",
+        description=(
+            "Multimodal search query in OpenAI content parts format. "
+            'Example: [{"type": "text", "text": "..."}, '
+            '{"type": "image_url", "image_url": {"url": "..."}}]'
+        ),
     )
     event_ids: Optional[List[str]] = Field(
         default=None,
@@ -47,10 +50,16 @@ class EventSearchRequest(BaseModel):
         description="Whether to recursively fetch ancestor summaries for each result",
     )
     top_k: int = Field(
-        default=20,
+        default=10,
         ge=1,
         le=100,
         description="Maximum number of results",
+    )
+    score_threshold: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity score (0-1). Results below this score are filtered out. Default: no threshold.",
     )
     user_id: Optional[str] = Field(
         default=None, description="User identifier for multi-user filtering"
@@ -64,13 +73,13 @@ class EventSearchRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_search_criteria(self) -> "EventSearchRequest":
-        has_query = self.query is not None and len(self.query.strip()) > 0
-        has_ids = self.event_ids is not None and len(self.event_ids) > 0
+        has_query = bool(self.query)
+        has_ids = bool(self.event_ids)
         has_time = self.time_range is not None
-        has_levels = self.hierarchy_levels is not None and len(self.hierarchy_levels) > 0
-        if not (has_query or has_ids or has_time or has_levels):
+        has_levels = bool(self.hierarchy_levels)
+        if not any([has_query, has_ids, has_time, has_levels]):
             raise ValueError(
-                "At least one of query, event_ids, time_range, or hierarchy_levels must be provided"
+                "At least one search criterion required: query, event_ids, time_range, or hierarchy_levels"
             )
         return self
 
@@ -98,6 +107,9 @@ class EventNode(BaseModel):
     create_time: Optional[str] = None
     is_search_hit: bool = False
     children: List["EventNode"] = Field(default_factory=list)
+
+    # Multimodal media references (L0 events carry media, summaries have empty list)
+    media_refs: List[Dict[str, Any]] = Field(default_factory=list)
 
     # Search-hit fields (populated only when is_search_hit=True)
     keywords: List[str] = Field(default_factory=list)

@@ -6,100 +6,500 @@
     <h1 class="h2">上下文列表</h1>
 </div>
 
-<div class="row mb-3">
-    <div class="col-md-6">
-        <form method="get" class="d-flex">
-            <select name="type" class="form-select me-2">
-                <option value="">所有类型</option>
-                {% for context_type in context_types %}
-                    <option value="{{ context_type }}" {% if type == context_type %}selected{% endif %}>{{ context_type }}</option>
-                {% endfor %}
-            </select>
-            <input type="hidden" name="page" value="1">
-            <input type="hidden" name="limit" value="{{ limit }}">
-            <button type="submit" class="btn btn-primary">筛选</button>
+<!-- Filter Bar -->
+<div class="card mb-4 filter-panel">
+    <div class="card-body py-3 px-3">
+        <form method="get" id="filter-form">
+            <div class="row g-2 align-items-end">
+                <div class="col-6 col-md">
+                    <label class="filter-label">类型</label>
+                    <select name="type" class="form-select form-select-sm filter-input">
+                        <option value="">全部</option>
+                        {% for ct in context_types %}
+                        <option value="{{ ct }}" {% if type == ct %}selected{% endif %}>{{ ct }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md">
+                    <label class="filter-label">User ID</label>
+                    <input type="text" name="user_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ user_id or '' }}">
+                </div>
+                <div class="col-6 col-md">
+                    <label class="filter-label">Device ID</label>
+                    <input type="text" name="device_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ device_id or '' }}">
+                </div>
+                <div class="col-6 col-md">
+                    <label class="filter-label">Agent ID</label>
+                    <input type="text" name="agent_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ agent_id or '' }}">
+                </div>
+                <div class="col-6 col-md">
+                    <label class="filter-label">层级</label>
+                    <select name="hierarchy_level" class="form-select form-select-sm filter-input">
+                        <option value="">全部</option>
+                        <option value="0" {% if hierarchy_level == 0 %}selected{% endif %}>L0 原始</option>
+                        <option value="1" {% if hierarchy_level == 1 %}selected{% endif %}>L1 日</option>
+                        <option value="2" {% if hierarchy_level == 2 %}selected{% endif %}>L2 周</option>
+                        <option value="3" {% if hierarchy_level == 3 %}selected{% endif %}>L3 月</option>
+                    </select>
+                </div>
+            </div>
+            <hr class="filter-divider">
+            <div class="row g-2 align-items-end">
+                <div class="col-6 col-md-3">
+                    <label class="filter-label">
+                        <span data-feather="calendar" style="width:11px;height:11px;vertical-align:-1px;" class="me-1"></span>开始时间
+                    </label>
+                    <div class="datetime-group">
+                        <input type="date" id="start_date_date" class="form-control form-control-sm filter-input">
+                        <input type="time" id="start_date_time" class="form-control form-control-sm filter-input datetime-time">
+                    </div>
+                    <input type="hidden" name="start_date" id="start_date_hidden">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="filter-label">
+                        <span data-feather="calendar" style="width:11px;height:11px;vertical-align:-1px;" class="me-1"></span>结束时间
+                    </label>
+                    <div class="datetime-group">
+                        <input type="date" id="end_date_date" class="form-control form-control-sm filter-input">
+                        <input type="time" id="end_date_time" class="form-control form-control-sm filter-input datetime-time">
+                    </div>
+                    <input type="hidden" name="end_date" id="end_date_hidden">
+                </div>
+                <div class="col-12 col-md-2 ms-auto">
+                    <input type="hidden" name="page" value="1">
+                    <input type="hidden" name="limit" value="{{ limit }}">
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-sm flex-grow-1 filter-btn-primary">
+                            <span data-feather="search" style="width:13px;height:13px;vertical-align:-1px;" class="me-1"></span>筛选
+                        </button>
+                        <a href="/contexts" class="btn btn-sm filter-btn-reset">重置</a>
+                    </div>
+                </div>
+            </div>
         </form>
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header">
-        <h5 class="card-title mb-0">上下文</h5>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-striped table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th class="px-3">ID</th>
-                        <th>标题</th>
-                        <th>总结</th>
-                        <th>类型</th>
-                        <th>创建时间</th>
-                        <th class="text-end px-3">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for context in contexts %}
-                    <tr>
-                        <td class="px-3"><a href="#" onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" title="{{ context.id }}">{{ context.id[:8] }}...</a></td>
-                        <td>{{ context.title or 'N/A' }}</td>
-                        <td>{{ (context.summary or '')[:50] }}{% if context.summary and context.summary|length > 50 %}...{% endif %}</td>
-                        <td>
-                            <span class="badge bg-secondary">{{ context.context_type }}</span>
-                            {% if context.context_type == 'event' and context.hierarchy_level > 0 %}
-                            {% set level_colors = {1: 'success', 2: 'warning', 3: 'danger'} %}
-                            <span class="badge bg-{{ level_colors.get(context.hierarchy_level, 'info') }}">L{{ context.hierarchy_level }}</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ context.create_time }}</td>
-                        <td class="text-end px-3">
-                            <button onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" class="btn btn-sm btn-outline-primary">查看</button>
-                            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="{{ context.id }}" data-type="{{ context.context_type }}">删除</button>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="6" class="text-center py-5">没有找到上下文</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+<!-- Context Cards -->
+{% if contexts %}
+{% set type_colors = {'profile': 'primary', 'document': 'success', 'event': 'warning', 'knowledge': 'purple'} %}
+<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 mb-4">
+    {% for context in contexts %}
+    <div class="col">
+        <div class="card h-100 context-card">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="badge bg-{{ type_colors.get(context.context_type, 'secondary') }}">{{ context.context_type }}</span>
+                    {% if context.context_type == 'event' and context.hierarchy_level is not none and context.hierarchy_level > 0 %}
+                    {% set level_colors = {1: 'success', 2: 'warning', 3: 'danger'} %}
+                    <span class="badge bg-{{ level_colors.get(context.hierarchy_level, 'info') }}">L{{ context.hierarchy_level }}</span>
+                    {% endif %}
+                    {% if context.metadata and context.metadata.get('media_refs') %}
+                    {% set media_types = context.metadata['media_refs'] | map(attribute='type') | list %}
+                    {% if 'image' in media_types %}
+                    <span data-feather="image" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;" class="ms-1" title="含图片"></span>
+                    {% endif %}
+                    {% if 'video' in media_types %}
+                    <span data-feather="video" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;" class="ms-1" title="含视频"></span>
+                    {% endif %}
+                    {% endif %}
+                </div>
+                <small class="text-muted" title="点击复制: {{ context.id }}" style="cursor:pointer" onclick="copyId(this, '{{ context.id }}')">{{ context.id[:8] }}</small>
+            </div>
+            <div class="card-body" onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" style="cursor: pointer;">
+                <h6 class="card-title mb-2">{{ context.title or 'N/A' }}</h6>
+                {% if context.summary %}
+                <p class="card-text text-muted small mb-2">{{ context.summary[:120] }}{% if context.summary|length > 120 %}...{% endif %}</p>
+                {% endif %}
+                {% if context.user_id and context.user_id != 'default' %}
+                <small class="text-muted me-2" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, '{{ context.user_id }}')"><span data-feather="user" style="width:12px;height:12px;"></span> {{ context.user_id }}</small>
+                {% endif %}
+                {% if context.device_id and context.device_id != 'default' %}
+                <small class="text-muted me-2" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, '{{ context.device_id }}')"><span data-feather="smartphone" style="width:12px;height:12px;"></span> {{ context.device_id }}</small>
+                {% endif %}
+                {% if context.agent_id and context.agent_id != 'default' %}
+                <small class="text-muted" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, '{{ context.agent_id }}')"><span data-feather="cpu" style="width:12px;height:12px;"></span> {{ context.agent_id }}</small>
+                {% endif %}
+            </div>
+            <div class="card-footer py-2 d-flex justify-content-between align-items-center">
+                <small class="text-muted">{{ context.create_time[:16] if context.create_time else '' }}</small>
+                <div>
+                    <button onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" class="btn btn-sm btn-outline-primary py-0 px-2">查看</button>
+                    <button class="btn btn-sm btn-outline-danger py-0 px-2 delete-btn" data-id="{{ context.id }}" data-type="{{ context.context_type }}">删除</button>
+                </div>
+            </div>
         </div>
     </div>
-    <div class="card-footer d-flex justify-content-between align-items-center">
-        <div class="text-muted">
-            第 {{ page }} 页
-        </div>
-        <nav aria-label="Page navigation">
-            <ul class="pagination mb-0">
-                <li class="page-item {% if not has_prev %}disabled{% endif %}">
-                    <a class="page-link" href="?page={{ page - 1 }}&limit={{ limit }}{% if type %}&type={{ type }}{% endif %}">上一页</a>
-                </li>
-                <li class="page-item {% if not has_next %}disabled{% endif %}">
-                    <a class="page-link" href="?page={{ page + 1 }}&limit={{ limit }}{% if type %}&type={{ type }}{% endif %}">下一页</a>
-                </li>
-            </ul>
-        </nav>
-    </div>
+    {% endfor %}
 </div>
+{% else %}
+<div class="text-center py-5 text-muted">
+    <span data-feather="inbox" style="width:48px;height:48px;" class="mb-3 d-block mx-auto"></span>
+    <p>没有找到上下文</p>
+</div>
+{% endif %}
+
+<!-- Pagination -->
+{% if contexts %}
+<div class="pager-bar">
+    {# Left: per-page selector + total info #}
+    <div class="pager-left">
+        <select class="pager-select" id="limit-select" onchange="changeLimit(this.value)">
+            <option value="15" {% if limit == 15 %}selected{% endif %}>15</option>
+            <option value="30" {% if limit == 30 %}selected{% endif %}>30</option>
+            <option value="50" {% if limit == 50 %}selected{% endif %}>50</option>
+        </select>
+        <span class="pager-info">条/页</span>
+        <span class="pager-divider"></span>
+        <span class="pager-info">共 <strong>{{ total_count }}</strong> 条</span>
+    </div>
+
+    {# Center: page buttons #}
+    {% if total_pages > 1 %}
+    <nav class="pager-nav" aria-label="Page navigation">
+        {% set filter_qs = '' %}
+        {% if type %}{% set filter_qs = filter_qs ~ '&type=' ~ (type | urlencode) %}{% endif %}
+        {% if user_id %}{% set filter_qs = filter_qs ~ '&user_id=' ~ (user_id | urlencode) %}{% endif %}
+        {% if device_id %}{% set filter_qs = filter_qs ~ '&device_id=' ~ (device_id | urlencode) %}{% endif %}
+        {% if agent_id %}{% set filter_qs = filter_qs ~ '&agent_id=' ~ (agent_id | urlencode) %}{% endif %}
+        {% if hierarchy_level is not none %}{% set filter_qs = filter_qs ~ '&hierarchy_level=' ~ hierarchy_level %}{% endif %}
+        {% if start_date %}{% set filter_qs = filter_qs ~ '&start_date=' ~ (start_date | urlencode) %}{% endif %}
+        {% if end_date %}{% set filter_qs = filter_qs ~ '&end_date=' ~ (end_date | urlencode) %}{% endif %}
+
+        <a class="pager-btn {% if page == 1 %}disabled{% endif %}" href="?page={{ page - 1 }}&limit={{ limit }}{{ filter_qs }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </a>
+
+        {% if page > 3 %}
+        <a class="pager-btn" href="?page=1&limit={{ limit }}{{ filter_qs }}">1</a>
+        {% endif %}
+        {% if page > 4 %}
+        <span class="pager-ellipsis">&hellip;</span>
+        {% endif %}
+
+        {% for p in range([1, page - 2]|max, [total_pages, page + 2]|min + 1) %}
+        {% if p == page %}
+        <span class="pager-btn active">{{ p }}</span>
+        {% else %}
+        <a class="pager-btn" href="?page={{ p }}&limit={{ limit }}{{ filter_qs }}">{{ p }}</a>
+        {% endif %}
+        {% endfor %}
+
+        {% if page < total_pages - 3 %}
+        <span class="pager-ellipsis">&hellip;</span>
+        {% endif %}
+        {% if page < total_pages - 2 %}
+        <a class="pager-btn" href="?page={{ total_pages }}&limit={{ limit }}{{ filter_qs }}">{{ total_pages }}</a>
+        {% endif %}
+
+        <a class="pager-btn {% if page == total_pages %}disabled{% endif %}" href="?page={{ page + 1 }}&limit={{ limit }}{{ filter_qs }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </a>
+    </nav>
+    {% endif %}
+
+    {# Right: jump-to-page #}
+    {% if total_pages > 1 %}
+    <div class="pager-right">
+        <span class="pager-info">第</span>
+        <input type="number" class="pager-jump-input" id="page-jump-input" min="1" max="{{ total_pages }}" value="{{ page }}" onkeydown="if(event.key==='Enter')goToPage('page-jump-input')">
+        <span class="pager-info">/ {{ total_pages }} 页</span>
+        <button class="pager-jump-btn" onclick="goToPage('page-jump-input')">Go</button>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<style>
+    /* Filter Panel */
+    .filter-panel {
+        border-top: 3px solid #2c3e50;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+    .filter-panel:hover {
+        transform: none;
+    }
+    .filter-label {
+        display: block;
+        font-size: 0.68rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #8892a0;
+        margin-bottom: 4px;
+    }
+    .filter-input {
+        border-color: #dfe3e8;
+        font-size: 0.8rem;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .filter-input:focus {
+        border-color: #5a6872;
+        box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.08);
+    }
+    .filter-input::placeholder {
+        color: #b8c2cc;
+        font-style: italic;
+    }
+    .filter-divider {
+        margin: 10px 0;
+        border-top: 1px dashed #e2e6ea;
+    }
+    .datetime-group {
+        display: flex;
+        gap: 0;
+    }
+    .datetime-group .filter-input:first-child {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+        border-right: none;
+    }
+    .datetime-time {
+        max-width: 45%;
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        border-left: 1px solid #e9ecef;
+    }
+    .filter-btn-primary {
+        background: #2c3e50;
+        color: #fff;
+        border: 1px solid #2c3e50;
+        font-size: 0.78rem;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+        transition: background 0.15s ease, box-shadow 0.15s ease;
+    }
+    .filter-btn-primary:hover {
+        background: #1a252f;
+        color: #fff;
+        box-shadow: 0 2px 6px rgba(44, 62, 80, 0.25);
+    }
+    .filter-btn-reset {
+        color: #8892a0;
+        border: 1px solid #dfe3e8;
+        font-size: 0.78rem;
+        font-weight: 500;
+        transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .filter-btn-reset:hover {
+        color: #e74c3c;
+        border-color: #e74c3c;
+    }
+
+    /* Context Cards */
+    .context-card {
+        transition: box-shadow 0.2s ease;
+    }
+    .context-card:hover {
+        box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.12);
+    }
+    .bg-purple {
+        background-color: #6f42c1 !important;
+    }
+
+    /* Pager Bar */
+    .pager-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        margin-bottom: 1.5rem;
+        background: #fff;
+        border-top: 3px solid #2c3e50;
+        border-radius: 0 0 6px 6px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    }
+    .pager-left, .pager-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+    .pager-select {
+        appearance: none;
+        -webkit-appearance: none;
+        padding: 4px 24px 4px 10px;
+        font-size: 0.78rem;
+        border: 1px solid #dfe3e8;
+        border-radius: 4px;
+        background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238892a0'/%3E%3C/svg%3E") no-repeat right 8px center;
+        color: #2c3e50;
+        cursor: pointer;
+        transition: border-color 0.15s;
+    }
+    .pager-select:focus {
+        outline: none;
+        border-color: #5a6872;
+        box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.08);
+    }
+    .pager-info {
+        font-size: 0.78rem;
+        color: #8892a0;
+        white-space: nowrap;
+    }
+    .pager-info strong {
+        color: #2c3e50;
+        font-weight: 600;
+    }
+    .pager-divider {
+        width: 1px;
+        height: 16px;
+        background: #e2e6ea;
+    }
+    .pager-nav {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .pager-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 32px;
+        height: 32px;
+        padding: 0 8px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #2c3e50;
+        background: #f8f9fa;
+        border: 1px solid #e2e6ea;
+        border-radius: 6px;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        user-select: none;
+    }
+    .pager-btn:hover:not(.active):not(.disabled) {
+        color: #2c3e50;
+        background: #eef1f4;
+        border-color: #c8cfd6;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 6px rgba(44, 62, 80, 0.12);
+        text-decoration: none;
+    }
+    .pager-btn.active {
+        color: #fff;
+        background: #2c3e50;
+        border-color: #2c3e50;
+        box-shadow: 0 2px 8px rgba(44, 62, 80, 0.25);
+        cursor: default;
+    }
+    .pager-btn.disabled {
+        color: #c8cfd6;
+        background: #f8f9fa;
+        border-color: #eef1f4;
+        cursor: default;
+        pointer-events: none;
+    }
+    .pager-ellipsis {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 32px;
+        font-size: 0.85rem;
+        color: #b0b8c1;
+        letter-spacing: 2px;
+        user-select: none;
+    }
+    .pager-jump-input {
+        width: 50px;
+        height: 30px;
+        padding: 0 6px;
+        font-size: 0.78rem;
+        text-align: center;
+        color: #2c3e50;
+        border: 1px solid #dfe3e8;
+        border-radius: 4px;
+        transition: border-color 0.15s;
+        -moz-appearance: textfield;
+    }
+    .pager-jump-input::-webkit-outer-spin-button,
+    .pager-jump-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    .pager-jump-input:focus {
+        outline: none;
+        border-color: #5a6872;
+        box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.08);
+    }
+    .pager-jump-btn {
+        height: 30px;
+        padding: 0 12px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #fff;
+        background: #2c3e50;
+        border: 1px solid #2c3e50;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.15s, box-shadow 0.15s;
+    }
+    .pager-jump-btn:hover {
+        background: #1a252f;
+        box-shadow: 0 2px 6px rgba(44, 62, 80, 0.25);
+    }
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    function buildFilterParams(overrides) {
+        // Populate hidden datetime fields before reading form
+        combineDatetime('start_date_date', 'start_date_time', 'start_date_hidden');
+        combineDatetime('end_date_date', 'end_date_time', 'end_date_hidden');
+        const params = new URLSearchParams();
+        const form = document.getElementById('filter-form');
+        const formData = new FormData(form);
+        // Preserve filter values
+        for (const [key, value] of formData.entries()) {
+            if (value && key !== 'page' && key !== 'limit') {
+                params.set(key, value);
+            }
+        }
+        // Apply overrides
+        if (overrides) {
+            for (const [key, value] of Object.entries(overrides)) {
+                params.set(key, value);
+            }
+        }
+        // Always include page and limit
+        if (!params.has('page')) params.set('page', '{{ page }}');
+        if (!params.has('limit')) params.set('limit', '{{ limit }}');
+        return params.toString();
+    }
+
+    function changeLimit(newLimit) {
+        const params = buildFilterParams({ limit: newLimit, page: '1' });
+        window.location.href = '/contexts?' + params;
+    }
+
+    function goToPage(inputId) {
+        const val = parseInt(document.getElementById(inputId).value);
+        if (val >= 1 && val <= {{ total_pages }}) {
+            const params = buildFilterParams({ page: val.toString() });
+            window.location.href = '/contexts?' + params;
+        }
+    }
+
+    function copyId(el, fullId) {
+        navigator.clipboard.writeText(fullId).then(() => {
+            const original = el.textContent;
+            el.textContent = '已复制';
+            setTimeout(() => { el.textContent = original; }, 1000);
+        }).catch(() => {});
+    }
+
     async function viewContext(contextId, contextType) {
         try {
             const response = await fetch('/contexts/detail', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    id: contextId,
-                    context_type: contextType
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: contextId, context_type: contextType })
             });
-            
             if (response.ok) {
                 const html = await response.text();
                 document.open();
@@ -114,32 +514,62 @@
         }
     }
 
+    function combineDatetime(dateId, timeId, hiddenId) {
+        var d = document.getElementById(dateId).value;
+        var t = document.getElementById(timeId).value;
+        document.getElementById(hiddenId).value = d ? (t ? d + 'T' + t : d) : '';
+    }
+
+    function splitDatetime(value, dateId, timeId) {
+        if (!value) return;
+        if (value.includes('T')) {
+            var parts = value.split('T');
+            document.getElementById(dateId).value = parts[0];
+            document.getElementById(timeId).value = parts[1];
+        } else if (value.includes(' ')) {
+            var parts = value.split(' ');
+            document.getElementById(dateId).value = parts[0];
+            document.getElementById(timeId).value = parts[1];
+        } else {
+            document.getElementById(dateId).value = value;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        // Backfill date/time inputs from server values
+        splitDatetime('{{ start_date or "" }}', 'start_date_date', 'start_date_time');
+        splitDatetime('{{ end_date or "" }}', 'end_date_date', 'end_date_time');
+
+        // Combine date+time into hidden fields before submit, then disable empties
+        document.getElementById('filter-form').addEventListener('submit', function() {
+            combineDatetime('start_date_date', 'start_date_time', 'start_date_hidden');
+            combineDatetime('end_date_date', 'end_date_time', 'end_date_hidden');
+            this.querySelectorAll('input, select').forEach(function(el) {
+                if (!el.value) el.disabled = true;
+            });
+        });
+
         document.querySelectorAll('.delete-btn').forEach(button => {
-            button.addEventListener('click', async function() {
+            button.addEventListener('click', async function(e) {
+                e.stopPropagation();
                 const contextId = this.getAttribute('data-id');
                 const contextType = this.getAttribute('data-type');
                 if (confirm('确定要删除这个上下文吗？此操作不可撤销。')) {
                     try {
                         const response = await fetch('/contexts/delete', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                id: contextId,
-                                context_type: contextType
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: contextId, context_type: contextType })
                         });
                         if (response.ok) {
-                            this.closest('tr').remove();
+                            this.closest('.col').remove();
                         } else {
                             const error = await response.json();
                             alert(`删除失败: ${error.detail || '未知错误'}`);
                         }
                     } catch (error) {
                         console.error('删除操作失败:', error);
-                        alert('删除操作失败，请查看控制台获取详细信息。');
+                        alert('删除操作失败');
                     }
                 }
             });
@@ -147,4 +577,3 @@
     });
 </script>
 {% endblock %}
-        

@@ -17,6 +17,7 @@
                     z-index: 100;
                     padding: 48px 0 0;
                     box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+                    width: 160px;
                 }
                 .sidebar-sticky {
                     position: relative;
@@ -33,14 +34,16 @@
                     background-color: rgba(0, 0, 0, .25);
                     box-shadow: inset -1px 0 0 rgba(0, 0, 0, .25);
                 }
-                .navbar .navbar-toggler {
-                    top: .25rem;
-                    right: 1rem;
-                }
                 .content {
                     padding-top: 60px;
                 }
                 
+                /* 中屏以上内容区避开固定侧边栏 */
+                @media (min-width: 768px) {
+                    main.content {
+                        margin-left: 160px;
+                    }
+                }
                 /* 优化侧边栏在大屏幕上的显示 */
                 @media (min-width: 992px) {
                     .sidebar .nav-link {
@@ -62,15 +65,13 @@
         <body>
             <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
                 <a class="navbar-brand col-md-2 col-lg-1 me-0 px-3" href="/">MineContext</a>
-                <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-nav">
-                    <div class="nav-item text-nowrap">
-                        <button class="btn btn-outline-light btn-sm me-2" onclick="window.apiAuth.showAPIKeyManager()" title="API Key 设置">
-                            <i data-feather="key"></i>
-                        </button>
-                    </div>
+                <div class="d-flex align-items-center me-2 ms-auto">
+                    <button class="btn btn-outline-light btn-sm" onclick="window.apiAuth.showAPIKeyManager()" title="API Key 设置">
+                        <i data-feather="key"></i>
+                    </button>
+                    <button class="btn btn-outline-light btn-sm ms-2 d-md-none" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false" aria-label="Toggle navigation">
+                        <span data-feather="menu"></span>
+                    </button>
                 </div>
             </header>
 
@@ -82,51 +83,51 @@
                                 <li class="nav-item">
                                     <a class="nav-link" href="/" title="主页">
                                         <span data-feather="home"></span>
-                                        <span class="d-lg-none">主页</span>
+                                        <span>主页</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link" href="/contexts" title="上下文列表">
                                         <span data-feather="list"></span>
-                                        <span class="d-lg-none">上下文列表</span>
+                                        <span>上下文列表</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/vector_search" title="事件搜索">
+                                        <span data-feather="search"></span>
+                                        <span>事件搜索</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/memory_cache" title="记忆缓存">
+                                        <span data-feather="cpu"></span>
+                                        <span>记忆缓存</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link" href="/monitoring" title="系统监控">
                                         <span data-feather="activity"></span>
-                                        <span class="d-lg-none">系统监控</span>
+                                        <span>系统监控</span>
                                     </a>
                                 </li>
                                 <!-- 暂时隐藏 vaults 界面
                                 <li class="nav-item">
                                     <a class="nav-link" href="/vaults" title="AI文档协作">
                                         <span data-feather="book-open"></span>
-                                        <span class="d-lg-none">AI文档协作</span>
+                                        <span>AI文档协作</span>
                                     </a>
                                 </li>
                                 -->
                                 <li class="nav-item">
                                     <a class="nav-link" href="/assistant" title="智能助手">
                                         <span data-feather="message-circle"></span>
-                                        <span class="d-lg-none">智能助手</span>
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="/vector_search" title="事件搜索">
-                                        <span data-feather="search"></span>
-                                        <span class="d-lg-none">事件搜索</span>
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" href="/memory_cache" title="记忆缓存">
-                                        <span data-feather="cpu"></span>
-                                        <span class="d-lg-none">记忆缓存</span>
+                                        <span>智能助手</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link" href="/settings" title="系统设置">
                                         <span data-feather="settings"></span>
-                                        <span class="d-lg-none">系统设置</span>
+                                        <span>系统设置</span>
                                     </a>
                                 </li>
                             </ul>

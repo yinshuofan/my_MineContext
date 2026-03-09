@@ -110,6 +110,7 @@ class IVectorStorageBackend(IStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        skip_slice: bool = False,
     ) -> Dict[str, List[ProcessedContext]]:
         """Get processed contexts
 
@@ -122,6 +123,7 @@ class IVectorStorageBackend(IStorageBackend):
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
+            skip_slice: If True, skip per-type offset/limit slicing (caller handles global slice)
         """
 
     async def scroll_processed_contexts(
@@ -195,6 +197,7 @@ class IVectorStorageBackend(IStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         """Vector similarity search
 
@@ -206,10 +209,20 @@ class IVectorStorageBackend(IStorageBackend):
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
+            score_threshold: Minimum similarity score (0-1). Results below this are excluded.
+                Backends SHOULD implement at database query level; post-query filtering
+                acceptable when native support is unavailable.
         """
 
     @abstractmethod
-    async def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(
+        self,
+        context_type: str,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
         """Get record count for specified context_type"""
 
     @abstractmethod
@@ -375,9 +388,8 @@ class IDocumentStorageBackend(IStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        content: str = "",
-        summary: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
+        factual_profile: str = "",
+        behavioral_profile: Optional[str] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
@@ -388,9 +400,8 @@ class IDocumentStorageBackend(IStorageBackend):
             user_id: User identifier
             device_id: Device identifier
             agent_id: Agent identifier (same user can have different profiles per agent)
-            content: Full profile text (LLM-merged result)
-            summary: Profile summary
-            keywords: Keywords list
+            factual_profile: Factual profile text (LLM-merged result)
+            behavioral_profile: Behavioral profile text
             entities: Entities list
             importance: Importance score
             metadata: Additional metadata
@@ -429,122 +440,3 @@ class IDocumentStorageBackend(IStorageBackend):
             True if successful, False otherwise
         """
 
-    # ── Entity CRUD ──
-
-    @abstractmethod
-    async def upsert_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-        content: str = "",
-        entity_type: Optional[str] = None,
-        summary: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
-        aliases: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Insert or update entity (unique key: user_id + device_id + agent_id + entity_name)
-
-        Args:
-            user_id: Owner user identifier
-            device_id: Device identifier
-            agent_id: Agent identifier
-            entity_name: Entity name (unique per user+device+agent)
-            content: Entity description (LLM-merged result)
-            entity_type: Entity type (person/project/team/org/other)
-            summary: Entity summary
-            keywords: Keywords list
-            aliases: Alias names list
-            metadata: Additional metadata
-
-        Returns:
-            Entity ID string
-        """
-
-    @abstractmethod
-    async def get_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-    ) -> Optional[Dict]:
-        """Get entity by user_id + device_id + agent_id + entity_name
-
-        Args:
-            user_id: Owner user identifier
-            device_id: Device identifier
-            agent_id: Agent identifier
-            entity_name: Entity name
-
-        Returns:
-            Entity dict or None if not found
-        """
-
-    @abstractmethod
-    async def list_entities(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_type: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[Dict]:
-        """List entities for a user
-
-        Args:
-            user_id: Owner user identifier
-            device_id: Device identifier
-            agent_id: Agent identifier
-            entity_type: Optional filter by entity type
-            limit: Maximum number of results
-            offset: Offset for pagination
-
-        Returns:
-            List of entity dicts
-        """
-
-    @abstractmethod
-    async def search_entities(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        query_text: str = "",
-        limit: int = 20,
-    ) -> List[Dict]:
-        """Search entities by text (name, content, aliases)
-
-        Args:
-            user_id: Owner user identifier
-            device_id: Device identifier
-            agent_id: Agent identifier
-            query_text: Search text
-            limit: Maximum number of results
-
-        Returns:
-            List of matching entity dicts
-        """
-
-    @abstractmethod
-    async def delete_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-    ) -> bool:
-        """Delete entity
-
-        Args:
-            user_id: Owner user identifier
-            device_id: Device identifier
-            agent_id: Agent identifier
-            entity_name: Entity name
-
-        Returns:
-            True if successful, False otherwise
-        """

@@ -6,8 +6,11 @@
 """
 Define core data models used in OpenContext
 """
+import base64
 import datetime
 import json
+import mimetypes
+import os
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -130,26 +133,69 @@ class ContextProperties(BaseModel):
     time_bucket: Optional[str] = None  # Time bucket: "2026-02-21" / "2026-W08" / "2026-02"
 
 
+class VideoInput(BaseModel):
+    """视频输入"""
+
+    url: str  # HTTP URL, TOS path, or data:video/...;base64,...
+    fps: float = 1.0  # 0.2-5.0, frame extraction rate
+
+
 class Vectorize(BaseModel):
     """
-    Vectorization configuration
+    Vectorization configuration — supports text, image, video, and multimodal content.
+    Uses Ark API content parts format as unified internal representation.
     """
 
-    content_format: ContentFormat = ContentFormat.TEXT
-    image_path: Optional[str] = None
-    text: Optional[str] = None
+    input: List[Dict[str, Any]] = Field(default_factory=list)
     vector: Optional[List[float]] = None
-    # Future extension for multimodal embedding:
-    # images: Optional[List[Any]] = None  # PIL Images or image data for multimodal models
+    content_format: ContentFormat = ContentFormat.TEXT
 
-    def get_vectorize_content(self) -> Optional[str]:
-        """Get vectorization content"""
-        if self.content_format == ContentFormat.TEXT:
-            return self.text
-        elif self.content_format == ContentFormat.IMAGE:
-            return self.image_path
-        else:
-            return ""
+    def get_modality_string(self) -> str:
+        """Return a human-readable modality descriptor based on input content types.
+
+        Examples: "text", "text and image", "text and image and video", "image", etc.
+        Falls back to "text" when no content is present.
+        """
+        types = {item.get("type") for item in self.input}
+        parts: List[str] = []
+        if "text" in types:
+            parts.append("text")
+        if "image_url" in types:
+            parts.append("image")
+        if "video_url" in types:
+            parts.append("video")
+        return " and ".join(parts) if parts else "text"
+
+    def build_ark_input(self) -> List[Dict[str, Any]]:
+        """Build the input list for the Ark multimodal embedding API.
+
+        Local file paths in image_url/video_url items are converted to
+        base64 data URIs since remote APIs cannot access local files.
+        """
+        result: List[Dict[str, Any]] = []
+        for item in self.input:
+            item_type = item.get("type")
+            if item_type == "image_url":
+                url = item["image_url"]["url"]
+                if _is_local_path(url):
+                    url = _file_to_data_uri(url)
+                result.append({"type": "image_url", "image_url": {"url": url}})
+            elif item_type == "video_url":
+                vid_info = item["video_url"]
+                url = vid_info["url"]
+                if _is_local_path(url):
+                    url = _file_to_data_uri(url)
+                new_vid = {k: v for k, v in vid_info.items()}
+                new_vid["url"] = url
+                result.append({"type": "video_url", "video_url": new_vid})
+            else:
+                result.append(item)
+        return result
+
+    def get_text(self) -> Optional[str]:
+        """Extract text content from input items. Returns concatenated text or None."""
+        texts = [item["text"] for item in self.input if item.get("type") == "text"]
+        return "\n".join(texts) if texts else None
 
 
 class ProcessedContext(BaseModel):
@@ -362,9 +408,8 @@ class ProfileData(BaseModel):
     agent_id: str = (
         "default"  # Composite primary key part 3 (different agents can have different profiles)
     )
-    content: str  # Full profile text (LLM-merged result)
-    summary: Optional[str] = None
-    keywords: List[str] = Field(default_factory=list)
+    factual_profile: str  # Factual profile text (LLM-merged result)
+    behavioral_profile: Optional[str] = None  # Behavioral profile text
     entities: List[str] = Field(default_factory=list)
     importance: int = 0
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -385,38 +430,6 @@ class ProfileData(BaseModel):
         return cls.model_validate(data)
 
 
-class EntityData(BaseModel):
-    """Entity profile — stored in relational DB (unique key: user_id + device_id + agent_id + entity_name)"""
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str  # Owner user
-    device_id: str = "default"  # Device identifier
-    agent_id: str = "default"  # Agent identifier
-    entity_name: str  # Unique key = user_id + device_id + agent_id + entity_name
-    entity_type: Optional[str] = None  # person / project / team / organization / other
-    content: str  # Entity description (LLM-merged result)
-    summary: Optional[str] = None
-    keywords: List[str] = Field(default_factory=list)
-    aliases: List[str] = Field(default_factory=list)
-    relationships: Dict[str, List[str]] = Field(default_factory=dict)
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
-    )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return self.model_dump(exclude_none=True)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "EntityData":
-        """Create model from dictionary"""
-        return cls.model_validate(data)
-
-
 class KnowledgeContextMetadata(BaseModel):
     """Knowledge context additional information"""
 
@@ -424,3 +437,47 @@ class KnowledgeContextMetadata(BaseModel):
     knowledge_file_path: str = ""
     knowledge_title: str = ""
     knowledge_raw_id: str = ""
+
+
+# ============================================================================
+# Local file path → base64 data URI conversion helpers
+# Used when LocalBackend stores files locally but remote APIs need base64.
+# ============================================================================
+
+
+def _is_local_path(url: str) -> bool:
+    """Check if a URL is a local file path (not HTTP/HTTPS/data URI)."""
+    if not url:
+        return False
+    if url.startswith(("http://", "https://", "data:")):
+        return False
+    return True
+
+
+def _file_to_data_uri(file_path: str) -> str:
+    """Read a local file and convert to a base64 data URI.
+
+    Returns the original path if the file cannot be read.
+    """
+    try:
+        abs_path = os.path.abspath(file_path)
+        mime_type, _ = mimetypes.guess_type(abs_path)
+        if not mime_type:
+            ext = os.path.splitext(abs_path)[1].lower()
+            mime_type = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+                ".mp4": "video/mp4",
+                ".avi": "video/avi",
+                ".mov": "video/quicktime",
+            }.get(ext, "application/octet-stream")
+        with open(abs_path, "rb") as f:
+            data = f.read()
+        b64 = base64.b64encode(data).decode("ascii")
+        return f"data:{mime_type};base64,{b64}"
+    except Exception as e:
+        logger.warning(f"Failed to convert file to data URI: {file_path}: {e}")
+        return file_path

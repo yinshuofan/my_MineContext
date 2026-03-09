@@ -29,15 +29,15 @@
                     </div>
                     <div class="mb-3">
                         <label for="recentDays" class="form-label">近期天数</label>
-                        <input type="number" class="form-control" id="recentDays" value="7" min="1" max="90">
+                        <input type="number" class="form-control" id="recentDays" value="3" min="1" max="90">
                     </div>
                     <div class="mb-3">
                         <label for="maxTodayEvents" class="form-label">今日事件上限</label>
-                        <input type="number" class="form-control" id="maxTodayEvents" value="30" min="1" max="100">
+                        <input type="number" class="form-control" id="maxTodayEvents" value="5" min="1" max="100">
                     </div>
                     <div class="mb-3">
                         <label for="maxAccessed" class="form-label">最近访问数量</label>
-                        <input type="number" class="form-control" id="maxAccessed" value="20" min="1" max="100">
+                        <input type="number" class="form-control" id="maxAccessed" value="5" min="1" max="100">
                     </div>
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" id="forceRefresh">
@@ -78,8 +78,8 @@ async function handleQuery(event) {
 
     const deviceId = document.getElementById('deviceId').value.trim() || 'default';
     const agentId = document.getElementById('agentId').value.trim() || 'default';
-    const recentDays = document.getElementById('recentDays').value || 7;
-    const maxTodayEvents = document.getElementById('maxTodayEvents').value || 30;
+    const recentDays = document.getElementById('recentDays').value || 3;
+    const maxTodayEvents = document.getElementById('maxTodayEvents').value || 5;
     const maxAccessed = document.getElementById('maxAccessed').value || 20;
     const forceRefresh = document.getElementById('forceRefresh').checked;
 
@@ -148,10 +148,8 @@ function renderProfile(profile) {
     if (!profile) {
         content = '<p class="text-muted">暂无用户画像</p>';
     } else {
-        const keywords = (profile.keywords || []).map(k => `<span class="badge bg-secondary me-1">${k}</span>`).join('');
         content = `
-            <div class="bg-light p-3 rounded mb-2" style="white-space: pre-wrap;">${profile.content || '无内容'}</div>
-            ${keywords ? `<div><strong>关键词:</strong> ${keywords}</div>` : ''}
+            <div class="bg-light p-3 rounded mb-2" style="white-space: pre-wrap;">${profile.factual_profile || '无内容'}</div>
         `;
     }
     return wrapCard('用户画像', 'user', content, 'profile-section');
@@ -174,6 +172,11 @@ function renderRecentlyAccessed(items) {
                             <span class="fw-semibold">${item.title || '未命名'}</span>
                         </div>
                         ${item.summary ? `<small class="text-muted">${item.summary.substring(0, 100)}${item.summary.length > 100 ? '...' : ''}</small>` : ''}
+                        ${(item.media_refs && item.media_refs.length > 0) ? `<div class="mt-1">${item.media_refs.map(ref => {
+                            if (ref.type === 'image') return `<a href="${ref.url}" target="_blank" rel="noopener"><img src="${ref.url}" style="width:40px;height:40px;object-fit:cover;border-radius:3px;border:1px solid #dee2e6;margin-right:4px;" loading="lazy" onerror="this.style.display='none'"></a>`;
+                            if (ref.type === 'video') return `<a href="${ref.url}" target="_blank" rel="noopener" class="badge bg-dark me-1">▶ 视频</a>`;
+                            return '';
+                        }).join('')}</div>` : ''}
                     </div>
                     <div class="text-end ms-2" style="min-width: 100px;">
                         ${item.score != null ? `<span class="badge bg-primary">${item.score.toFixed(3)}</span>` : ''}
@@ -215,7 +218,10 @@ function renderDailySummaries(summaries) {
     } else {
         content = summaries.map(s => `
             <div class="border rounded p-2 mb-2">
-                <div class="mb-1"><span class="badge bg-success">${s.time_bucket}</span></div>
+                <div class="mb-1">
+                    <span class="badge bg-success">${s.time_bucket}</span>
+                    ${s.title ? ` <span class="fw-semibold">${s.title}</span>` : ''}
+                </div>
                 ${s.summary ? `<small>${s.summary}</small>` : '<small class="text-muted">暂无摘要</small>'}
             </div>
         `).join('');

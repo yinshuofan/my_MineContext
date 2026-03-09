@@ -801,9 +801,6 @@
     font-weight: 600;
 }
 
-.btn-close {
-    filter: brightness(0) invert(1);
-}
 
 /* 确认对话框样式 */
 .confirmation-content {

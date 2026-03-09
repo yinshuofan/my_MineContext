@@ -252,6 +252,7 @@ class UnifiedStorage:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        skip_slice: bool = False,
     ) -> Dict[str, List[ProcessedContext]]:
         """Get processed contexts, query only from vector database
 
@@ -264,6 +265,7 @@ class UnifiedStorage:
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
+            skip_slice: If True, skip per-type offset/limit slicing (caller handles global slice)
         """
         if not context_types:
             context_types = [ct.value for ct in ContextType]
@@ -277,6 +279,7 @@ class UnifiedStorage:
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
+                skip_slice=skip_slice,
             )
         except Exception as e:
             logger.exception(f"Failed to query ProcessedContext: {e}")
@@ -322,13 +325,48 @@ class UnifiedStorage:
             logger.exception(f"Failed to scroll ProcessedContexts: {e}")
 
     @_require_backend("_vector_backend", default=0)
-    async def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(
+        self,
+        context_type: str,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
         """Get record count for specified context_type"""
         try:
-            return await self._vector_backend.get_processed_context_count(context_type)
+            return await self._vector_backend.get_processed_context_count(
+                context_type,
+                filter=filter,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+            )
         except Exception as e:
             logger.exception(f"Failed to get {context_type} record count: {e}")
             return 0
+
+    @_require_backend("_vector_backend", default=0)
+    async def get_filtered_context_count(
+        self,
+        context_types: Optional[List[str]] = None,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
+        """Get total record count across multiple context types with filters"""
+        if not context_types:
+            context_types = [ct.value for ct in ContextType]
+        total = 0
+        for ct in context_types:
+            try:
+                total += await self._vector_backend.get_processed_context_count(
+                    ct, filter=filter, user_id=user_id, device_id=device_id, agent_id=agent_id
+                )
+            except Exception as e:
+                logger.exception(f"Failed to get {ct} record count: {e}")
+        return total
 
     @_require_backend("_vector_backend", default={})
     async def get_all_processed_context_counts(self) -> Dict[str, int]:
@@ -356,6 +394,7 @@ class UnifiedStorage:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         """Vector search, supports context_type filtering
 
@@ -367,6 +406,7 @@ class UnifiedStorage:
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-user filtering
             agent_id: Agent identifier for multi-user filtering
+            score_threshold: Minimum similarity score (0-1), results below are excluded
         """
         try:
             # Execute vector search
@@ -378,6 +418,7 @@ class UnifiedStorage:
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
+                score_threshold=score_threshold,
             )
 
             return search_results
@@ -812,9 +853,8 @@ class UnifiedStorage:
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        content: str = "",
-        summary: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
+        factual_profile: str = "",
+        behavioral_profile: Optional[str] = None,
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
@@ -824,9 +864,8 @@ class UnifiedStorage:
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
-            content=content,
-            summary=summary,
-            keywords=keywords,
+            factual_profile=factual_profile,
+            behavioral_profile=behavioral_profile,
             entities=entities,
             importance=importance,
             metadata=metadata,
@@ -846,86 +885,6 @@ class UnifiedStorage:
         """Delete user profile → relational DB"""
         return await self._document_backend.delete_profile(user_id, device_id, agent_id)
 
-    # ── Entity routing (→ relational DB) ──
-
-    @_require_backend("_document_backend", default="")
-    async def upsert_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-        content: str = "",
-        entity_type: Optional[str] = None,
-        summary: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
-        aliases: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Store/update entity → relational DB"""
-        return await self._document_backend.upsert_entity(
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-            entity_name=entity_name,
-            content=content,
-            entity_type=entity_type,
-            summary=summary,
-            keywords=keywords,
-            aliases=aliases,
-            metadata=metadata,
-        )
-
-    @_require_backend("_document_backend")
-    async def get_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-    ) -> Optional[Dict]:
-        """Get entity → relational DB"""
-        return await self._document_backend.get_entity(user_id, device_id, agent_id, entity_name)
-
-    @_require_backend("_document_backend", default=[])
-    async def list_entities(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_type: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[Dict]:
-        """List entities for a user → relational DB"""
-        return await self._document_backend.list_entities(
-            user_id, device_id, agent_id, entity_type, limit, offset
-        )
-
-    @_require_backend("_document_backend", default=[])
-    async def search_entities(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        query_text: str = "",
-        limit: int = 20,
-    ) -> List[Dict]:
-        """Search entities by text → relational DB"""
-        return await self._document_backend.search_entities(
-            user_id, device_id, agent_id, query_text, limit
-        )
-
-    @_require_backend("_document_backend", default=False)
-    async def delete_entity(
-        self,
-        user_id: str,
-        device_id: str = "default",
-        agent_id: str = "default",
-        entity_name: str = "",
-    ) -> bool:
-        """Delete entity → relational DB"""
-        return await self._document_backend.delete_entity(user_id, device_id, agent_id, entity_name)
 
     # ── Hierarchy routing (→ vector DB) ──
 

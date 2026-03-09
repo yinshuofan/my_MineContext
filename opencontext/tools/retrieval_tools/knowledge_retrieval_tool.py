@@ -13,8 +13,9 @@ providing comprehensive results that combine distilled knowledge with raw event 
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import ProcessedContext, Vectorize
-from opencontext.models.enums import ContextType
+from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.tools.retrieval_tools.base_context_retrieval_tool import (
     BaseContextRetrievalTool,
     ContextRetrievalFilter,
@@ -102,6 +103,8 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
         query: str,
         filters: ContextRetrievalFilter,
         top_k: int,
+        image_url: Optional[str] = None,
+        video_url: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         """
         Search L0 (raw individual) EVENT contexts via direct vector search.
@@ -110,6 +113,8 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             query: Natural language query for semantic search.
             filters: Filter conditions including multi-user fields.
             top_k: Number of results to return.
+            image_url: Optional image URL for multimodal search.
+            video_url: Optional video URL for multimodal search.
 
         Returns:
             List of (context, score) tuples for matching L0 events.
@@ -118,7 +123,19 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             built_filters = await self._build_filters(filters)
             built_filters["hierarchy_level"] = 0
 
-            vectorize = Vectorize(text=query)
+            has_multimodal = bool(image_url or video_url)
+            ark_input = [{"type": "text", "text": query}]
+            if image_url:
+                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})
+            if video_url:
+                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})
+            vectorize = Vectorize(
+                input=ark_input,
+                content_format=(
+                    ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
+                ),
+            )
+            await do_vectorize(vectorize, role="query")
             return await self.storage.search(
                 query=vectorize,
                 context_types=[ContextType.EVENT.value],
@@ -149,6 +166,8 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
 
         Args:
             query: Optional natural language search query.
+            image_url: Optional image URL for multimodal search.
+            video_url: Optional video URL for multimodal search.
             entities: Optional entity list for filtering.
             time_range: Optional time range filter dict.
             top_k: Number of results to return (default 5).
@@ -160,6 +179,8 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             List of formatted context result dicts.
         """
         query = kwargs.get("query")
+        image_url = kwargs.get("image_url")
+        video_url = kwargs.get("video_url")
         entities = kwargs.get("entities", [])
         time_range = kwargs.get("time_range")
         top_k = kwargs.get("top_k", 5)
@@ -180,13 +201,17 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
         try:
             # Step 1: Search KNOWLEDGE contexts (standard base-class search)
             knowledge_results: List[Tuple[ProcessedContext, float]] = await self._execute_search(
-                query=query, filters=filters, top_k=top_k
+                query=query, filters=filters, top_k=top_k,
+                image_url=image_url, video_url=video_url,
             )
 
             # Step 2: Search L0 EVENT contexts (only when a query is provided)
             event_results: List[Tuple[ProcessedContext, float]] = []
-            if query:
-                event_results = await self._search_l0_events(query=query, filters=filters, top_k=top_k)
+            if query or image_url or video_url:
+                event_results = await self._search_l0_events(
+                    query=query, filters=filters, top_k=top_k,
+                    image_url=image_url, video_url=video_url,
+                )
 
             # Step 3: Merge and deduplicate by context ID, keeping higher scores
             merged: Dict[str, Tuple[ProcessedContext, float]] = {}

@@ -40,7 +40,6 @@ class DataSource(str, Enum):
     CONTEXT_DB = "context_db"  # Context database
     CHAT_HISTORY = "chat_history"  # Chat history
     PROCESSED = "processed"  # Processed context
-    ENTITY = "entity"  # Entity-related
     UNKNOWN = "unknown"  # Unknown source
 
 

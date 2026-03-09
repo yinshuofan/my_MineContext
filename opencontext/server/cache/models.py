@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 
 
 class SimpleProfile(BaseModel):
-    """Simplified profile for cache response (no user_id/device_id/agent_id/summary)."""
+    """Simplified profile for cache response (no user_id/device_id/agent_id)."""
 
-    content: str
-    keywords: List[str] = Field(default_factory=list)
+    factual_profile: str
+    behavioral_profile: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -29,6 +29,7 @@ class RecentlyAccessedItem(BaseModel):
     score: Optional[float] = None  # Last search relevance score
     event_time: Optional[str] = None
     create_time: Optional[str] = None
+    media_refs: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class RecentMemoryItem(BaseModel):
@@ -58,6 +59,7 @@ class SimpleDailySummary(BaseModel):
     """Simplified daily summary for cache response."""
 
     time_bucket: str
+    title: Optional[str] = None
     summary: Optional[str] = None
 
 

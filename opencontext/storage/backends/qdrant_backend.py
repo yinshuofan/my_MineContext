@@ -13,7 +13,7 @@ from qdrant_client import AsyncQdrantClient, models
 
 from opencontext.llm.global_embedding_client import do_vectorize, do_vectorize_batch
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
-from opencontext.models.enums import ContentFormat, ContextType
+from opencontext.models.enums import ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
 from opencontext.utils.logging_utils import get_logger
 
@@ -122,8 +122,9 @@ class QdrantBackend(IVectorStorageBackend):
             payload.update(context.metadata)
 
         if context.vectorize:
-            if context.vectorize.content_format == ContentFormat.TEXT:
-                payload[FIELD_DOCUMENT] = context.vectorize.text
+            text = context.vectorize.get_text()
+            if text:
+                payload[FIELD_DOCUMENT] = text
 
         if context.properties:
             properties_dict = context.properties.model_dump(exclude_none=True)
@@ -261,6 +262,7 @@ class QdrantBackend(IVectorStorageBackend):
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        skip_slice: bool = False,
     ) -> Dict[str, List[ProcessedContext]]:
         if not self._initialized:
             return {}
@@ -295,13 +297,14 @@ class QdrantBackend(IVectorStorageBackend):
                     with_vectors=need_vector,
                 )
 
-                if offset > 0 and len(records) > offset:
-                    records = records[offset:]
-                elif offset > 0:
-                    records = []
+                if not skip_slice:
+                    if offset > 0 and len(records) > offset:
+                        records = records[offset:]
+                    elif offset > 0:
+                        records = []
 
-                if len(records) > limit:
-                    records = records[:limit]
+                    if len(records) > limit:
+                        records = records[:limit]
 
                 contexts = []
                 for point in records:
@@ -395,6 +398,7 @@ class QdrantBackend(IVectorStorageBackend):
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         need_vector: bool = False,
+        score_threshold: Optional[float] = None,
     ) -> List[Tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
@@ -415,7 +419,7 @@ class QdrantBackend(IVectorStorageBackend):
         if query.vector and len(query.vector) > 0:
             query_vector = query.vector
         else:
-            await do_vectorize(query)
+            await do_vectorize(query, role="query")
             query_vector = query.vector
 
         if not query_vector:
@@ -447,6 +451,7 @@ class QdrantBackend(IVectorStorageBackend):
                         query=query_vector,
                         query_filter=filter_condition,
                         limit=top_k,
+                        score_threshold=score_threshold,
                         with_payload=True,
                         with_vectors=need_vector,
                     )
@@ -488,7 +493,7 @@ class QdrantBackend(IVectorStorageBackend):
             vector = point.vector if need_vector else None
 
             if document:
-                vectorize_dict["text"] = document
+                vectorize_dict["input"] = [{"type": "text", "text": document}]
             if vector:
                 vectorize_dict["vector"] = vector
 
@@ -567,6 +572,13 @@ class QdrantBackend(IVectorStorageBackend):
                             range=models.Range(lte=value["$lte"]),
                         )
                     )
+                if "$lt" in value:
+                    must_conditions.append(
+                        models.FieldCondition(
+                            key=key,
+                            range=models.Range(lt=value["$lt"]),
+                        )
+                    )
             else:
                 if isinstance(value, list):
                     must_conditions.append(
@@ -608,7 +620,14 @@ class QdrantBackend(IVectorStorageBackend):
             logger.exception(f"Failed to delete Qdrant contexts: {e}")
             return False
 
-    async def get_processed_context_count(self, context_type: str) -> int:
+    async def get_processed_context_count(
+        self,
+        context_type: str,
+        filter: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> int:
         if not self._initialized:
             return 0
 
@@ -616,7 +635,17 @@ class QdrantBackend(IVectorStorageBackend):
             return 0
 
         collection_name = self._collections[context_type]
-        return (await self._client.count(collection_name)).count
+
+        merged_filter = dict(filter) if filter else {}
+        if user_id:
+            merged_filter["user_id"] = user_id
+        if device_id:
+            merged_filter["device_id"] = device_id
+        if agent_id:
+            merged_filter["agent_id"] = agent_id
+
+        count_filter = self._build_filter_condition(merged_filter) if merged_filter else None
+        return (await self._client.count(collection_name, count_filter=count_filter)).count
 
     async def get_all_processed_context_counts(self) -> Dict[str, int]:
         if not self._initialized:
