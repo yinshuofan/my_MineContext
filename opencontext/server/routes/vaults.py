@@ -85,7 +85,7 @@ async def get_documents_list(
     """
     try:
         storage = get_storage()
-        documents = storage.get_vaults(limit=limit, offset=offset, is_deleted=False)
+        documents = await storage.get_vaults(limit=limit, offset=offset, is_deleted=False)
 
         # Format return data
         result = []
@@ -125,7 +125,7 @@ async def create_document(
         storage = get_storage()
 
         # Create new document - use insert_vaults method
-        doc_id = storage.insert_vaults(
+        doc_id = await storage.insert_vaults(
             title=document.title,
             summary=document.summary,
             content=document.content,  # insert_vaults will automatically handle None
@@ -166,7 +166,7 @@ async def get_document(document_id: int, _auth: str = auth_dependency):
     try:
         storage = get_storage()
         # Get all documents to find the document with specified ID
-        documents = storage.get_vaults(limit=100, offset=0, is_deleted=False)
+        documents = await storage.get_vaults(limit=100, offset=0, is_deleted=False)
 
         # Find the document with specified ID
         document = None
@@ -218,7 +218,7 @@ async def save_document(
         background_tasks.add_task(cleanup_document_context, document_id)
 
         # Update existing document
-        success = storage.update_vault(
+        success = await storage.update_vault(
             vault_id=document_id,
             title=document.title,
             content=document.content,
@@ -269,7 +269,7 @@ async def delete_document(
         storage = get_storage()
 
         # Soft delete document
-        success = storage.update_vault(vault_id=document_id, is_deleted=True)
+        success = await storage.update_vault(vault_id=document_id, is_deleted=True)
 
         if success:
             # Asynchronously clean up related context data
