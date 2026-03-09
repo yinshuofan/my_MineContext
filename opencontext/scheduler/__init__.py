@@ -24,6 +24,7 @@ from opencontext.scheduler.redis_scheduler import (
     init_scheduler,
     read_scheduler_heartbeat,
     read_scheduler_queue_depths,
+    read_scheduler_queue_status,
     set_scheduler,
 )
 from opencontext.scheduler.user_key_builder import UserKeyBuilder
@@ -50,4 +51,5 @@ __all__ = [
     "init_scheduler",
     "read_scheduler_heartbeat",
     "read_scheduler_queue_depths",
+    "read_scheduler_queue_status",
 ]

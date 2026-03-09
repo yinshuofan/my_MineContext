@@ -833,6 +833,33 @@ class RedisTaskScheduler(ITaskScheduler):
             depths[task_type] = await self._redis.zcard(queue_key)
         return depths
 
+    async def get_queue_status(self) -> Dict[str, Dict[str, Any]]:
+        """Get queue depth and enabled status for all configured task types.
+
+        Unlike get_queue_depths() which only covers handler-registered types,
+        this method covers ALL task types defined in config — including disabled
+        ones that may still have pending queue entries.
+
+        Returns:
+            Dict mapping task_type to {"depth": int, "enabled": bool}
+        """
+        status = {}
+        all_task_names = set(self._config.get("tasks", {}).keys())
+        all_task_names.update(self._task_handlers.keys())
+
+        for task_type in all_task_names:
+            queue_key = f"{self.QUEUE_PREFIX}{task_type}"
+            type_key = f"{self.TASK_TYPE_PREFIX}{task_type}"
+
+            depth = await self._redis.zcard(queue_key)
+            enabled = await self._redis.hget(type_key, "enabled")
+
+            status[task_type] = {
+                "depth": depth,
+                "enabled": enabled == "true",
+            }
+        return status
+
     def is_running(self) -> bool:
         """Check if the scheduler is running"""
         return self._running
@@ -886,3 +913,25 @@ async def read_scheduler_queue_depths(
         queue_key = f"{RedisTaskScheduler.QUEUE_PREFIX}{task_type}"
         depths[task_type] = await redis_cache.zcard(queue_key)
     return depths
+
+
+async def read_scheduler_queue_status(
+    redis_cache: RedisCache, task_types: List[str]
+) -> Dict[str, Dict[str, Any]]:
+    """Read queue depths and enabled status from Redis for given task types.
+
+    Fallback version of get_queue_status() for processes without a local scheduler.
+    """
+    status = {}
+    for task_type in task_types:
+        queue_key = f"{RedisTaskScheduler.QUEUE_PREFIX}{task_type}"
+        type_key = f"{RedisTaskScheduler.TASK_TYPE_PREFIX}{task_type}"
+
+        depth = await redis_cache.zcard(queue_key)
+        enabled = await redis_cache.hget(type_key, "enabled")
+
+        status[task_type] = {
+            "depth": depth,
+            "enabled": enabled == "true",
+        }
+    return status
