@@ -6,7 +6,6 @@
 
 import datetime
 import json
-import uuid
 from enum import Enum
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
@@ -20,13 +19,7 @@ from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-TODO_COLLECTION = "todo"
-
 FIELD_DOCUMENT = "document"
-FIELD_ORIGINAL_ID = "original_id"
-FIELD_TODO_ID = "todo_id"
-FIELD_CONTENT = "content"
-FIELD_CREATED_AT = "created_at"
 
 
 class QdrantBackend(IVectorStorageBackend):
@@ -56,19 +49,6 @@ class QdrantBackend(IVectorStorageBackend):
                 collection_name = f"{context_type}"
                 await self._ensure_collection(collection_name, context_type)
                 self._collections[context_type] = collection_name
-
-            # Create todo collection only if consumption is enabled
-            from opencontext.config.global_config import GlobalConfig
-
-            consumption_enabled = (
-                GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
-            )
-            if consumption_enabled:
-                await self._ensure_collection(TODO_COLLECTION, TODO_COLLECTION)
-                self._collections[TODO_COLLECTION] = TODO_COLLECTION
-                logger.info("Todo collection initialized")
-            else:
-                logger.info("Todo collection skipped (consumption disabled)")
 
             self._initialized = True
             logger.info(
@@ -114,9 +94,6 @@ class QdrantBackend(IVectorStorageBackend):
 
     def get_storage_type(self) -> StorageType:
         return StorageType.VECTOR_DB
-
-    def _string_to_uuid(self, string_id: str) -> str:
-        return str(uuid.uuid5(uuid.NAMESPACE_DNS, string_id))
 
     async def _ensure_vectorized(self, context: ProcessedContext) -> List[float]:
         if not context.vectorize:
@@ -213,22 +190,20 @@ class QdrantBackend(IVectorStorageBackend):
                 await do_vectorize_batch(vectorizes)
 
             points = []
-            point_to_context_id = {}
+            stored_context_ids = []
 
             for context in type_contexts:
                 try:
                     vector = await self._ensure_vectorized(context)
                     payload = self._context_to_qdrant_format(context)
-                    payload[FIELD_ORIGINAL_ID] = context.id
 
-                    uuid_id = self._string_to_uuid(context.id)
                     point = models.PointStruct(
-                        id=uuid_id,
+                        id=context.id,
                         vector=vector,
                         payload=payload,
                     )
                     points.append(point)
-                    point_to_context_id[uuid_id] = context.id
+                    stored_context_ids.append(context.id)
 
                 except Exception as e:
                     logger.exception(f"Failed to process context {context.id}: {e}")
@@ -242,7 +217,7 @@ class QdrantBackend(IVectorStorageBackend):
                     collection_name=collection_name,
                     points=points,
                 )
-                stored_ids.extend(point_to_context_id.values())
+                stored_ids.extend(stored_context_ids)
 
             except Exception as e:
                 logger.error(f"Batch storing context to {context_type} collection failed: {e}")
@@ -263,7 +238,7 @@ class QdrantBackend(IVectorStorageBackend):
         try:
             result = await self._client.retrieve(
                 collection_name=collection_name,
-                ids=[self._string_to_uuid(id)],
+                ids=[id],
                 with_payload=True,
                 with_vectors=need_vector,
             )
@@ -292,7 +267,7 @@ class QdrantBackend(IVectorStorageBackend):
 
         result = {}
         if not context_types:
-            context_types = [k for k in self._collections.keys() if k != TODO_COLLECTION]
+            context_types = list(self._collections.keys())
 
         # Merge multi-user fields into filter dict
         merged_filter = dict(filter) if filter else {}
@@ -363,7 +338,7 @@ class QdrantBackend(IVectorStorageBackend):
             return
 
         if not context_types:
-            context_types = [k for k in self._collections.keys() if k != TODO_COLLECTION]
+            context_types = list(self._collections.keys())
 
         merged_filter = dict(filter) if filter else {}
         if user_id:
@@ -433,7 +408,7 @@ class QdrantBackend(IVectorStorageBackend):
                     logger.warning(f"Collection not found: {context_type}")
         else:
             target_collections = {
-                k: v for k, v in self._collections.items() if k != TODO_COLLECTION
+                k: v for k, v in self._collections.items()
             }
 
         query_vector = None
@@ -520,8 +495,6 @@ class QdrantBackend(IVectorStorageBackend):
             metadata_field_names = set()
             context_type_value = payload.get("context_type")
 
-            original_id = payload.pop(FIELD_ORIGINAL_ID, str(point.id))
-
             for key, value in payload.items():
                 if key.endswith("_ts"):
                     continue
@@ -544,7 +517,7 @@ class QdrantBackend(IVectorStorageBackend):
                 else:
                     metadata_dict[key] = val
 
-            context_dict["id"] = original_id
+            context_dict["id"] = str(point.id)
             context_dict["extracted_data"] = ExtractedData.model_validate(extracted_data_dict)
             context_dict["properties"] = ContextProperties.model_validate(properties_dict)
             context_dict["vectorize"] = Vectorize.model_validate(vectorize_dict)
@@ -626,10 +599,9 @@ class QdrantBackend(IVectorStorageBackend):
 
         collection_name = self._collections[context_type]
         try:
-            uuid_ids = [self._string_to_uuid(id) for id in ids]
             await self._client.delete(
                 collection_name=collection_name,
-                points_selector=models.PointIdsList(points=uuid_ids),
+                points_selector=models.PointIdsList(points=ids),
             )
             return True
         except Exception as e:
@@ -652,167 +624,9 @@ class QdrantBackend(IVectorStorageBackend):
 
         result = {}
         for context_type in self._collections.keys():
-            if context_type != TODO_COLLECTION:
-                result[context_type] = await self.get_processed_context_count(context_type)
+            result[context_type] = await self.get_processed_context_count(context_type)
 
         return result
-
-    async def upsert_todo_embedding(
-        self,
-        todo_id: int,
-        content: str,
-        embedding: List[float],
-        metadata: Optional[Dict] = None,
-    ) -> bool:
-        if not self._initialized:
-            logger.warning("Qdrant not initialized, cannot store todo embedding")
-            return False
-
-        try:
-            collection_name = self._collections.get(TODO_COLLECTION)
-            if not collection_name:
-                logger.error("Todo collection not found")
-                return False
-
-            payload = {
-                FIELD_TODO_ID: todo_id,
-                FIELD_CONTENT: content,
-                FIELD_CREATED_AT: datetime.datetime.now().isoformat(),
-            }
-            if metadata:
-                payload.update(metadata)
-
-            point = models.PointStruct(
-                id=todo_id,
-                vector=embedding,
-                payload=payload,
-            )
-
-            await self._client.upsert(
-                collection_name=collection_name,
-                points=[point],
-            )
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to store todo embedding (id={todo_id}): {e}")
-            return False
-
-    async def search_similar_todos(
-        self,
-        query_embedding: List[float],
-        top_k: int = 10,
-        similarity_threshold: float = 0.85,
-    ) -> List[Tuple[int, str, float]]:
-        if not self._initialized:
-            logger.warning("Qdrant not initialized, cannot search todos")
-            return []
-
-        try:
-            collection_name = self._collections.get(TODO_COLLECTION)
-            if not collection_name:
-                logger.error("Todo collection not found")
-                return []
-
-            if (await self._client.count(collection_name)).count == 0:
-                return []
-
-            results = (
-                await self._client.query_points(
-                    collection_name=collection_name,
-                    query=query_embedding,
-                    limit=top_k,
-                    with_payload=True,
-                )
-            ).points
-
-            similar_todos = []
-            for scored_point in results:
-                similarity = scored_point.score
-
-                if similarity >= similarity_threshold:
-                    payload = scored_point.payload
-                    similar_todos.append(
-                        (
-                            payload[FIELD_TODO_ID],
-                            payload[FIELD_CONTENT],
-                            similarity,
-                        )
-                    )
-
-            return similar_todos
-
-        except Exception as e:
-            logger.error(f"Failed to search similar todos: {e}")
-            return []
-
-    async def delete_todo_embedding(self, todo_id: int) -> bool:
-        if not self._initialized:
-            logger.warning("Qdrant not initialized, cannot delete todo embedding")
-            return False
-
-        try:
-            collection_name = self._collections.get(TODO_COLLECTION)
-            if not collection_name:
-                logger.error("Todo collection not found")
-                return False
-
-            await self._client.delete(
-                collection_name=collection_name,
-                points_selector=[todo_id],
-            )
-            logger.debug(f"Deleted todo embedding: id={todo_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to delete todo embedding (id={todo_id}): {e}")
-            return False
-
-    async def delete_by_source_file(
-        self, source_file_key: str, user_id: Optional[str] = None
-    ) -> bool:
-        if not self._initialized:
-            return False
-
-        must_conditions = [
-            models.FieldCondition(
-                key="source_file_key",
-                match=models.MatchValue(value=source_file_key),
-            )
-        ]
-
-        if user_id:
-            must_conditions.append(
-                models.FieldCondition(
-                    key="user_id",
-                    match=models.MatchValue(value=user_id),
-                )
-            )
-
-        filter_condition = models.Filter(must=must_conditions)
-
-        success = True
-        for context_type, collection_name in self._collections.items():
-            if context_type == TODO_COLLECTION:
-                continue
-            try:
-                await self._client.delete(
-                    collection_name=collection_name,
-                    points_selector=models.FilterSelector(filter=filter_condition),
-                )
-                logger.debug(
-                    f"Deleted points with source_file_key='{source_file_key}' "
-                    f"from collection '{collection_name}'"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to delete by source_file_key='{source_file_key}' "
-                    f"from collection '{collection_name}': {e}"
-                )
-                success = False
-
-        return success
 
     async def search_by_hierarchy(
         self,
@@ -916,14 +730,12 @@ class QdrantBackend(IVectorStorageBackend):
         if not ids:
             return []
 
-        uuid_ids = [self._string_to_uuid(id) for id in ids]
-
         target_collections = {}
         if context_type and context_type in self._collections:
             target_collections[context_type] = self._collections[context_type]
         else:
             target_collections = {
-                k: v for k, v in self._collections.items() if k != TODO_COLLECTION
+                k: v for k, v in self._collections.items()
             }
 
         results = []
@@ -932,7 +744,7 @@ class QdrantBackend(IVectorStorageBackend):
             try:
                 points = await self._client.retrieve(
                     collection_name=collection_name,
-                    ids=uuid_ids,
+                    ids=ids,
                     with_payload=True,
                     with_vectors=need_vector,
                 )
@@ -959,12 +771,11 @@ class QdrantBackend(IVectorStorageBackend):
         collection_name = self._collections.get(context_type)
         if not collection_name:
             return 0
-        uuid_ids = [self._string_to_uuid(cid) for cid in children_ids]
         try:
             await self._client.set_payload(
                 collection_name=collection_name,
                 payload={"parent_id": parent_id},
-                points=uuid_ids,
+                points=children_ids,
             )
             return len(children_ids)
         except Exception as e:

@@ -36,9 +36,6 @@ DEFAULT_INDEX_NAME = "opencontext_index"
 
 # Field constants
 FIELD_DOCUMENT = "document"
-FIELD_ORIGINAL_ID = "original_id"
-FIELD_TODO_ID = "todo_id"
-FIELD_CONTENT = "content"
 
 # Time fields
 FIELD_CREATED_AT = "created_at"
@@ -71,7 +68,6 @@ FIELD_SOURCE = "source"
 FIELD_IS_PROCESSED = "is_processed"
 FIELD_HAS_COMPRESSION = "has_compression"
 FIELD_ENABLE_MERGE = "enable_merge"
-FIELD_IS_HAPPENED = "is_happened"
 FIELD_CALL_COUNT = "call_count"
 FIELD_MERGE_COUNT = "merge_count"
 FIELD_DURATION_COUNT = "duration_count"
@@ -85,13 +81,11 @@ FIELD_RAW_ID = "raw_id"
 FIELD_HIERARCHY_LEVEL = "hierarchy_level"
 FIELD_PARENT_ID = "parent_id"
 FIELD_TIME_BUCKET = "time_bucket"
-FIELD_SOURCE_FILE_KEY = "source_file_key"
 FIELD_CHILDREN_IDS = "children_ids"
 
-# Data type field (to distinguish between context and todo)
+# Data type field
 FIELD_DATA_TYPE = "data_type"
 DATA_TYPE_CONTEXT = "context"
-DATA_TYPE_TODO = "todo"
 
 # HTTP API constants
 DEFAULT_TIMEOUT = 30.0
@@ -628,7 +622,6 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_UPDATE_TIME_TS, "FieldType": "float32"},
             {"FieldName": FIELD_LAST_CALL_TIME, "FieldType": "string"},
             {"FieldName": FIELD_LAST_CALL_TIME_TS, "FieldType": "float32"},
-            {"FieldName": FIELD_ORIGINAL_ID, "FieldType": "string"},
             {"FieldName": FIELD_TITLE, "FieldType": "string"},
             {"FieldName": FIELD_SUMMARY, "FieldType": "string"},
             {"FieldName": FIELD_KEYWORDS, "FieldType": "string"},
@@ -640,7 +633,6 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_IS_PROCESSED, "FieldType": "bool"},
             {"FieldName": FIELD_HAS_COMPRESSION, "FieldType": "bool"},
             {"FieldName": FIELD_ENABLE_MERGE, "FieldType": "bool"},
-            {"FieldName": FIELD_IS_HAPPENED, "FieldType": "bool"},
             {"FieldName": FIELD_CALL_COUNT, "FieldType": "float32"},
             {"FieldName": FIELD_MERGE_COUNT, "FieldType": "float32"},
             {"FieldName": FIELD_DURATION_COUNT, "FieldType": "float32"},
@@ -650,17 +642,14 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_HIERARCHY_LEVEL, "FieldType": "int64"},
             {"FieldName": FIELD_PARENT_ID, "FieldType": "string"},
             {"FieldName": FIELD_TIME_BUCKET, "FieldType": "string"},
-            {"FieldName": FIELD_SOURCE_FILE_KEY, "FieldType": "string"},
             {"FieldName": FIELD_CHILDREN_IDS, "FieldType": "string"},
             {"FieldName": FIELD_DOCUMENT, "FieldType": "string"},
-            {"FieldName": FIELD_TODO_ID, "FieldType": "string"},
-            {"FieldName": FIELD_CONTENT, "FieldType": "string"},
         ]
 
         data = {
             "CollectionName": self._collection_name,
             "Fields": fields,
-            "Description": "OpenContext unified collection for all context types and todos",
+            "Description": "OpenContext unified collection for all context types",
         }
 
         logger.info(f"Creating VikingDB collection: {self._collection_name}")
@@ -704,15 +693,11 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_SOURCE,
                 FIELD_RAW_TYPE,
                 FIELD_RAW_ID,
-                FIELD_ORIGINAL_ID,
-                FIELD_TODO_ID,
-                FIELD_SOURCE_FILE_KEY,
                 FIELD_TIME_BUCKET,
                 FIELD_PARENT_ID,
                 FIELD_IS_PROCESSED,
                 FIELD_HAS_COMPRESSION,
                 FIELD_ENABLE_MERGE,
-                FIELD_IS_HAPPENED,
                 FIELD_CREATED_AT_TS,
                 FIELD_CREATE_TIME_TS,
                 FIELD_EVENT_TIME_TS,
@@ -802,9 +787,7 @@ class VikingDBBackend(IVectorStorageBackend):
         fields = {}
         for key, value in list(doc.items()):
             if key in ["id", "embedding", "document"]:
-                if key == "id":
-                    fields[FIELD_ORIGINAL_ID] = value
-                elif key == "document":
+                if key == "document":
                     fields[FIELD_DOCUMENT] = value
                 continue
 
@@ -832,7 +815,6 @@ class VikingDBBackend(IVectorStorageBackend):
             else:
                 fields[key] = str(value)
 
-        fields[FIELD_ORIGINAL_ID] = context.id
         fields[FIELD_DATA_TYPE] = DATA_TYPE_CONTEXT
 
         now = datetime.datetime.now()
@@ -1142,12 +1124,11 @@ class VikingDBBackend(IVectorStorageBackend):
             if need_vector and doc.get("vector"):
                 vectorize_dict["vector"] = doc["vector"]
 
-            original_id = fields.pop(FIELD_ORIGINAL_ID, None) or fields.pop("id", None)
-            if not original_id:
+            context_id = fields.pop("id", None)
+            if not context_id:
                 return None
 
             fields.pop("vector", None)
-            fields.pop("id", None)
             fields.pop("score", None)
             fields.pop(FIELD_DATA_TYPE, None)
 
@@ -1191,7 +1172,7 @@ class VikingDBBackend(IVectorStorageBackend):
                     metadata_dict[key] = val
 
             context_dict = {
-                "id": original_id,
+                "id": context_id,
                 "extracted_data": ExtractedData.model_validate(extracted_data_dict),
                 "properties": ContextProperties.model_validate(properties_dict),
                 "vectorize": Vectorize.model_validate(vectorize_dict) if vectorize_dict else None,
@@ -1428,99 +1409,6 @@ class VikingDBBackend(IVectorStorageBackend):
             counts[ct.value] = await self.get_processed_context_count(ct.value)
         return counts
 
-    async def delete_by_source_file(
-        self, source_file_key: str, user_id: Optional[str] = None
-    ) -> bool:
-        if not self._initialized:
-            return False
-
-        try:
-            conditions = [
-                {
-                    "op": "must",
-                    "field": FIELD_SOURCE_FILE_KEY,
-                    "conds": [source_file_key],
-                },
-                {
-                    "op": "must",
-                    "field": FIELD_DATA_TYPE,
-                    "conds": [DATA_TYPE_CONTEXT],
-                },
-            ]
-
-            if user_id:
-                conditions.append(
-                    {
-                        "op": "must",
-                        "field": FIELD_USER_ID,
-                        "conds": [user_id],
-                    }
-                )
-
-            if len(conditions) == 1:
-                filter_dict = conditions[0]
-            else:
-                filter_dict = {
-                    "op": "and",
-                    "conds": conditions,
-                }
-
-            data = {
-                "collection_name": self._collection_name,
-                "index_name": self._index_name,
-                "limit": 10000,
-                "field": FIELD_CREATED_AT_TS,
-                "order": "desc",
-                "filter": filter_dict,
-            }
-
-            result = await self._client.async_data_request(
-                path="/api/vikingdb/data/search/scalar",
-                data=data,
-            )
-
-            if result.get("code") != "Success":
-                logger.error(
-                    f"Failed to search for source_file_key '{source_file_key}': "
-                    f"{result.get('message')}"
-                )
-                return False
-
-            output = result.get("result", {}).get("data", [])
-            if not output:
-                logger.debug(f"No records found for source_file_key '{source_file_key}'")
-                return True
-
-            ids_to_delete = [item.get("id") for item in output if item.get("id")]
-
-            if not ids_to_delete:
-                return True
-
-            delete_result = await self._client.async_data_request(
-                path="/api/vikingdb/data/delete",
-                data={
-                    "collection_name": self._collection_name,
-                    "ids": ids_to_delete,
-                },
-            )
-
-            if delete_result.get("code") == "Success":
-                logger.info(
-                    f"Deleted {len(ids_to_delete)} records for "
-                    f"source_file_key '{source_file_key}'"
-                )
-                return True
-            else:
-                logger.error(
-                    f"Failed to delete records for source_file_key "
-                    f"'{source_file_key}': {delete_result.get('message')}"
-                )
-                return False
-
-        except Exception as e:
-            logger.exception(f"Failed to delete by source_file_key '{source_file_key}': {e}")
-            return False
-
     async def search_by_hierarchy(
         self,
         context_type: str,
@@ -1715,115 +1603,6 @@ class VikingDBBackend(IVectorStorageBackend):
             except Exception as e:
                 logger.warning(f"batch_set_parent_id failed for batch: {e}")
         return updated
-
-    # Todo-related methods
-    async def upsert_todo_embedding(
-        self,
-        todo_id: str,
-        content: str,
-        embedding: List[float],
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> bool:
-        if not self._initialized:
-            return False
-
-        try:
-            data_item = {
-                "id": f"todo_{todo_id}",
-                "vector": list(embedding),
-                FIELD_DATA_TYPE: DATA_TYPE_TODO,
-                FIELD_TODO_ID: str(todo_id),
-                FIELD_CONTENT: content,
-                FIELD_CREATED_AT: datetime.datetime.now().isoformat(),
-                FIELD_CREATED_AT_TS: datetime.datetime.now().timestamp(),
-                FIELD_USER_ID: user_id or "",
-                FIELD_DEVICE_ID: device_id or "",
-                FIELD_AGENT_ID: agent_id or "",
-            }
-
-            result = await self._client.async_data_request(
-                path="/api/vikingdb/data/upsert",
-                data={
-                    "collection_name": self._collection_name,
-                    "data": [data_item],
-                },
-            )
-
-            return result.get("code") == 0
-
-        except Exception as e:
-            logger.exception(f"Failed to upsert todo embedding: {e}")
-            return False
-
-    async def search_similar_todos(
-        self,
-        embedding: List[float],
-        top_k: int = 5,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> List[Tuple[str, str, float]]:
-        if not self._initialized:
-            return []
-
-        try:
-            filter_dict = self._build_filter_dict(
-                user_id=user_id,
-                device_id=device_id,
-                agent_id=agent_id,
-                data_type=DATA_TYPE_TODO,
-            )
-
-            data = {
-                "collection_name": self._collection_name,
-                "index_name": self._index_name,
-                "dense_vector": list(embedding),
-                "limit": top_k,
-            }
-            if filter_dict:
-                data["filter"] = filter_dict
-
-            result = await self._client.async_data_request(
-                path="/api/vikingdb/data/search/vector", data=data
-            )
-
-            if result.get("code") == "Success":
-                output = result.get("result", {}).get("data", [])
-                results = []
-                for item in output:
-                    fields = item.get("fields", {})
-                    todo_id_val = fields.get(FIELD_TODO_ID) or item.get("id", "").replace(
-                        "todo_", ""
-                    )
-                    content = fields.get(FIELD_CONTENT, "")
-                    score = item.get("score", 0.0)
-                    results.append((todo_id_val, content, score))
-                return results
-
-        except Exception as e:
-            logger.exception(f"Failed to search similar todos: {e}")
-
-        return []
-
-    async def delete_todo_embedding(self, todo_id: str) -> bool:
-        if not self._initialized:
-            return False
-
-        try:
-            result = await self._client.async_data_request(
-                path="/api/vikingdb/data/delete",
-                data={
-                    "collection_name": self._collection_name,
-                    "ids": [f"todo_{todo_id}"],
-                },
-            )
-            return result.get("code") == "Success"
-
-        except Exception as e:
-            logger.exception(f"Failed to delete todo embedding: {e}")
-            return False
 
     async def close(self):
         """Close the backend and release resources."""

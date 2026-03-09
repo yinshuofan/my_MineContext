@@ -71,7 +71,7 @@ All data flows through a unified `ProcessedContext` model, but each type has its
 |------|----------------|---------|-------------|
 | `profile` | OVERWRITE | Relational DB | User's own preferences, habits, communication style. Key: `(user_id, device_id, agent_id)` |
 | `entity` | OVERWRITE | Relational DB | Other people, projects, teams, organizations. Key: `(user_id, device_id, agent_id, entity_name)` |
-| `document` | OVERWRITE | Vector DB | Uploaded files and web links. Overwrite = delete old chunks + insert new. Tracked by `source_file_key` |
+| `document` | OVERWRITE | Vector DB | Uploaded files and web links. Overwrite = delete old chunks + insert new. Tracked by `raw_type` + `raw_id` |
 | `event` | APPEND | Vector DB | Immutable activity records, meetings, status changes. Never modified after creation |
 | `knowledge` | APPEND_MERGE | Vector DB | Reusable concepts, procedures, patterns. Similar entries merged to avoid duplication |
 

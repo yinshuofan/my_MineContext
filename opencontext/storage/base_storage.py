@@ -209,75 +209,12 @@ class IVectorStorageBackend(IStorageBackend):
         """
 
     @abstractmethod
-    async def upsert_todo_embedding(
-        self,
-        todo_id: int,
-        content: str,
-        embedding: List[float],
-        metadata: Optional[Dict] = None,
-    ) -> bool:
-        """Store todo embedding to vector database for deduplication
-
-        Args:
-            todo_id: Todo ID
-            content: Todo content text
-            embedding: Text embedding vector
-            metadata: Optional metadata (urgency, priority, etc.)
-
-        Returns:
-            True if successful, False otherwise
-        """
-
-    @abstractmethod
-    async def search_similar_todos(
-        self,
-        query_embedding: List[float],
-        top_k: int = 10,
-        similarity_threshold: float = 0.85,
-    ) -> List[Tuple[int, str, float]]:
-        """Search for similar todos using vector similarity
-
-        Args:
-            query_embedding: Query embedding vector
-            top_k: Maximum number of results to return
-            similarity_threshold: Minimum similarity threshold (0-1)
-
-        Returns:
-            List of (todo_id, content, similarity_score) tuples
-        """
-
-    @abstractmethod
-    async def delete_todo_embedding(self, todo_id: int) -> bool:
-        """Delete todo embedding from vector database
-
-        Args:
-            todo_id: Todo ID to delete
-
-        Returns:
-            True if successful, False otherwise
-        """
-
-    @abstractmethod
     async def get_processed_context_count(self, context_type: str) -> int:
         """Get record count for specified context_type"""
 
     @abstractmethod
     async def get_all_processed_context_counts(self) -> Dict[str, int]:
         """Get record counts for all context_types"""
-
-    @abstractmethod
-    async def delete_by_source_file(
-        self, source_file_key: str, user_id: Optional[str] = None
-    ) -> bool:
-        """Delete all chunks belonging to a source file (for document overwrite)
-
-        Args:
-            source_file_key: Source file key (format: "user_id:file_path")
-            user_id: Optional user identifier for additional filtering
-
-        Returns:
-            True if successful, False otherwise
-        """
 
     @abstractmethod
     async def search_by_hierarchy(

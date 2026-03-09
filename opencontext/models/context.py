@@ -108,7 +108,6 @@ class ContextProperties(BaseModel):
     merge_count: int = 0  # merge count
     duration_count: int = 1  # context duration count
     enable_merge: bool = False
-    is_happened: bool = False  # whether occurred
     last_call_time: Optional[
         datetime.datetime
     ] = None  # last call time, updated during online service calls
@@ -129,9 +128,6 @@ class ContextProperties(BaseModel):
     parent_id: Optional[str] = None  # Parent summary ID
     children_ids: List[str] = Field(default_factory=list)  # Child record IDs
     time_bucket: Optional[str] = None  # Time bucket: "2026-02-21" / "2026-W08" / "2026-02"
-
-    # Document overwrite identifier (document type only)
-    source_file_key: Optional[str] = None  # Format: "user_id:file_path", identifies same document
 
 
 class Vectorize(BaseModel):
@@ -204,10 +200,6 @@ class ProcessedContext(BaseModel):
             parts.append(f"hierarchy level: {self.properties.hierarchy_level}")
         if self.properties.time_bucket:
             parts.append(f"time bucket: {self.properties.time_bucket}")
-
-        # Document source info
-        if self.properties.source_file_key:
-            parts.append(f"source file key: {self.properties.source_file_key}")
 
         return "\n".join(parts)
 
@@ -293,7 +285,6 @@ class ProcessedContextModel(BaseModel):
     embedding: Optional[List[float]] = None
     raw_contexts: List["RawContextModel"] = Field(default_factory=list)
     duration_count: int  # context duration count
-    is_happened: bool  # whether occurred
     metadata: Optional[Dict[str, Any]] = None  # metadata information
     # Multi-user support fields
     user_id: Optional[str] = None  # User identifier
@@ -304,8 +295,6 @@ class ProcessedContextModel(BaseModel):
     parent_id: Optional[str] = None
     children_ids: List[str] = Field(default_factory=list)
     time_bucket: Optional[str] = None
-    # Document source tracking
-    source_file_key: Optional[str] = None
 
     @classmethod
     def from_processed_context(
@@ -347,7 +336,6 @@ class ProcessedContextModel(BaseModel):
             event_time=pc.properties.event_time.strftime("%Y-%m-%d %H:%M:%S"),
             embedding=pc.vectorize.vector,
             raw_contexts=raw_contexts,
-            is_happened=pc.properties.is_happened,
             metadata=pc.metadata,  # add metadata
             # Multi-user support fields
             user_id=pc.properties.user_id,
@@ -358,8 +346,6 @@ class ProcessedContextModel(BaseModel):
             parent_id=pc.properties.parent_id,
             children_ids=pc.properties.children_ids,
             time_bucket=pc.properties.time_bucket,
-            # Document source tracking
-            source_file_key=pc.properties.source_file_key,
         )
 
     @classmethod

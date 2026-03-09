@@ -61,12 +61,8 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `search` | `(query: Vectorize, top_k, context_types, filters, user_id, device_id, agent_id) -> List[Tuple[ProcessedContext, float]]` | Scored results |
 | `get_processed_context_count` | `(context_type: str) -> int` | Count |
 | `get_all_processed_context_counts` | `() -> Dict[str, int]` | Type-keyed counts |
-| `delete_by_source_file` | `(source_file_key: str, user_id: Optional[str]) -> bool` | Success flag |
 | `search_by_hierarchy` | `(context_type, hierarchy_level, time_bucket_start, time_bucket_end, user_id, device_id, agent_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results |
 | `get_by_ids` | `(ids: List[str], context_type: Optional[str], need_vector: bool) -> List[ProcessedContext]` | Contexts by ID |
-| `upsert_todo_embedding` | `(todo_id: int, content: str, embedding: List[float], metadata) -> bool` | Success flag |
-| `search_similar_todos` | `(query_embedding: List[float], top_k, similarity_threshold) -> List[Tuple[int, str, float]]` | (todo_id, content, score) |
-| `delete_todo_embedding` | `(todo_id: int) -> bool` | Success flag |
 
 Non-abstract methods with default implementation (backends may override):
 
@@ -135,8 +131,8 @@ Facade that holds one `IVectorStorageBackend` and one `IDocumentStorageBackend`.
 
 `initialize()` reads config from `get_config("storage")`, iterates `backends` list, creates each via factory, and assigns to `_vector_backend` / `_document_backend` (preferring configs with `default: true`).
 
-**Routing logic**: Most delegating methods use the `@_require_backend(backend_attr, default)` decorator (module-level) to check `_initialized` and backend availability, returning `default` on failure. Exceptions that keep manual guards: `scroll_processed_contexts` (async generator), `delete_conversation` (parameter-dependent default), `delete_document` (positive check pattern), `get_vector_collection_names` (no `_initialized` check), and the three `todo_embedding` methods (additional `_is_consumption_enabled()` check).
-- Vector operations (contexts, search, hierarchy, todo embeddings) -> `_vector_backend`
+**Routing logic**: Most delegating methods use the `@_require_backend(backend_attr, default)` decorator (module-level) to check `_initialized` and backend availability, returning `default` on failure. Exceptions that keep manual guards: `scroll_processed_contexts` (async generator), `delete_conversation` (parameter-dependent default), `delete_document` (positive check pattern), `get_vector_collection_names` (no `_initialized` check).
+- Vector operations (contexts, search, hierarchy) -> `_vector_backend`
 - Document operations (vaults, todos, tips, profiles, entities, conversations, messages, monitoring) -> `_document_backend`
 
 ### GlobalStorage -- `global_storage.py`

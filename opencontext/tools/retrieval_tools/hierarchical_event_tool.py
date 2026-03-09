@@ -335,7 +335,6 @@ class HierarchicalEventTool(BaseTool):
             "time_bucket": props.time_bucket,
             "parent_id": props.parent_id,
             "children_ids": props.children_ids or [],
-            "source_file_key": props.source_file_key,
             "metadata": context.metadata or {},
         }
 

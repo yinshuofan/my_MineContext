@@ -386,66 +386,6 @@ class UnifiedStorage:
             logger.exception(f"Vector search failed: {e}")
             return []
 
-    def _is_consumption_enabled(self) -> bool:
-        """Check if consumption module is enabled in configuration."""
-        try:
-            from opencontext.config.global_config import GlobalConfig
-
-            return (
-                GlobalConfig.get_instance().get_config().get("consumption", {}).get("enabled", True)
-            )
-        except Exception as e:
-            logger.debug(f"Config check for consumption failed, defaulting to enabled: {e}")
-            return True  # Default to enabled if config not available
-
-    async def upsert_todo_embedding(
-        self,
-        todo_id: int,
-        content: str,
-        embedding: List[float],
-        metadata: Optional[Dict] = None,
-    ) -> bool:
-        """Store todo embedding to vector database for deduplication"""
-        if not self._is_consumption_enabled():
-            logger.debug("Consumption disabled, skipping todo embedding upsert")
-            return False
-        if not self._initialized or not self._vector_backend:
-            logger.warning("Storage not initialized, cannot store todo embedding")
-            return False
-
-        return await self._vector_backend.upsert_todo_embedding(
-            todo_id, content, embedding, metadata
-        )
-
-    async def search_similar_todos(
-        self,
-        query_embedding: List[float],
-        top_k: int = 10,
-        similarity_threshold: float = 0.85,
-    ) -> List[Tuple[int, str, float]]:
-        """Search for similar todos using vector similarity"""
-        if not self._is_consumption_enabled():
-            logger.debug("Consumption disabled, skipping todo search")
-            return []
-        if not self._initialized or not self._vector_backend:
-            logger.warning("Storage not initialized, cannot search todos")
-            return []
-
-        return await self._vector_backend.search_similar_todos(
-            query_embedding, top_k, similarity_threshold
-        )
-
-    async def delete_todo_embedding(self, todo_id: int) -> bool:
-        """Delete todo embedding from vector database"""
-        if not self._is_consumption_enabled():
-            logger.debug("Consumption disabled, skipping todo embedding delete")
-            return False
-        if not self._initialized or not self._vector_backend:
-            logger.warning("Storage not initialized, cannot delete todo embedding")
-            return False
-
-        return await self._vector_backend.delete_todo_embedding(todo_id)
-
     @_require_backend("_document_backend")
     async def get_document(self, doc_id: str) -> Optional[DocumentData]:
         """Get document"""
@@ -986,15 +926,6 @@ class UnifiedStorage:
     ) -> bool:
         """Delete entity → relational DB"""
         return await self._document_backend.delete_entity(user_id, device_id, agent_id, entity_name)
-
-    # ── Document overwrite routing (→ vector DB) ──
-
-    @_require_backend("_vector_backend", default=False)
-    async def delete_document_chunks(
-        self, source_file_key: str, user_id: Optional[str] = None
-    ) -> bool:
-        """Delete all chunks for a document (for overwrite) → vector DB"""
-        return await self._vector_backend.delete_by_source_file(source_file_key, user_id)
 
     # ── Hierarchy routing (→ vector DB) ──
 

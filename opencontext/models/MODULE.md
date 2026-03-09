@@ -129,7 +129,6 @@ Tracking and hierarchy metadata. Fields:
 | `merge_count` | `int` | `0` | |
 | `duration_count` | `int` | `1` | |
 | `enable_merge` | `bool` | `False` | |
-| `is_happened` | `bool` | `False` | |
 | `last_call_time` | `Optional[datetime]` | `None` | |
 | `file_path` | `Optional[str]` | `None` | Document tracking |
 | `raw_type` | `Optional[str]` | `None` | e.g. `"vaults"` |
@@ -139,7 +138,6 @@ Tracking and hierarchy metadata. Fields:
 | `parent_id` | `Optional[str]` | `None` | Parent summary context ID; backfilled by `batch_set_parent_id()` after hierarchy summary generation, enables upward traversal (L0 → L1/L2/L3) |
 | `children_ids` | `List[str]` | `[]` | Child context IDs; set during hierarchy summary generation, enables downward traversal and drill-down |
 | `time_bucket` | `Optional[str]` | `None` | e.g. `"2026-02-21"`, `"2026-W08"` |
-| `source_file_key` | `Optional[str]` | `None` | `"user_id:file_path"` format |
 
 ### Vectorize
 Embedding configuration. Fields: `content_format` (ContentFormat, default `ContentFormat.TEXT`), `image_path` (Optional[str]), `text` (Optional[str]), `vector` (Optional[List[float]]).
@@ -161,7 +159,7 @@ Key methods:
 - `to_dict() -> Dict`, `dump_json() -> str`, `from_dict(cls, data)`, `from_json(cls, json_str)`
 
 ### ProcessedContextModel
-API response model. Mirrors `ProcessedContext` fields as serialized types (datetimes as `str`, enums as `str`, embedding as `Optional[List[float]]`). Includes hierarchy fields and `source_file_key`.
+API response model. Mirrors `ProcessedContext` fields as serialized types (datetimes as `str`, enums as `str`, embedding as `Optional[List[float]]`). Includes hierarchy fields.
 Key methods: `from_processed_context(cls, pc: ProcessedContext, project_root: Path) -> ProcessedContextModel`, `from_dict(cls, data: Dict[str, Any]) -> ProcessedContextModel`
 
 ### RawContextModel
