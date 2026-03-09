@@ -116,7 +116,7 @@ class CompletionService:
             cache_key = self._generate_cache_key(context, document_id)
 
             # Check cache
-            cached_result = self.cache.get(cache_key)
+            cached_result = await self.cache.get(cache_key)
             if cached_result:
                 logger.debug("Returning completion suggestions from cache")
                 return cached_result
@@ -143,7 +143,7 @@ class CompletionService:
             if suggestions:
                 confidence_score = sum(s.confidence for s in suggestions) / len(suggestions)
                 context_hash = hashlib.md5(str(context).encode()).hexdigest()
-                self.cache.put(cache_key, suggestions, context_hash, confidence_score)
+                await self.cache.put(cache_key, suggestions, context_hash, confidence_score)
 
             logger.info(f"Generated {len(suggestions)} completion suggestions")
             return suggestions
@@ -407,22 +407,22 @@ class CompletionService:
         key_str = str(key_data)
         return hashlib.md5(key_str.encode()).hexdigest()
 
-    def clear_cache(self):
+    async def clear_cache(self):
         """Clear the cache"""
-        self.cache.invalidate()
+        await self.cache.invalidate()
         logger.info("Completion cache cleared")
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
-        return self.cache.get_stats()
+        return await self.cache.get_stats()
 
-    def precompute_document_context(self, document_id: int, content: str):
+    async def precompute_document_context(self, document_id: int, content: str):
         """Precompute document context"""
-        self.cache.precompute_context(document_id, content)
+        await self.cache.precompute_context(document_id, content)
 
-    def optimize_cache(self):
+    async def optimize_cache(self):
         """Optimize cache performance"""
-        self.cache.optimize()
+        await self.cache.optimize()
 
 
 # Global singleton instance
