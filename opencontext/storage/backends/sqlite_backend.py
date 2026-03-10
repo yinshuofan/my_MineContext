@@ -1958,7 +1958,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor = await conn.execute(
                 "SELECT setting_key, setting_value FROM system_settings"
-                " WHERE setting_key NOT LIKE '\\_%'"
+                " WHERE SUBSTR(setting_key, 1, 1) != '_'"
             )
             rows = await cursor.fetchall()
             result: Dict[str, Any] = {}
@@ -1991,11 +1991,17 @@ class SQLiteBackend(IDocumentStorageBackend):
             row = await cursor.fetchone()
 
             if row:
-                existing = json.loads(row["setting_value"]) if isinstance(row["setting_value"], str) else row["setting_value"]
-                merged = deep_merge(existing, value)
+                raw = row["setting_value"]
+                existing = json.loads(raw) if isinstance(raw, str) else raw
+                if isinstance(existing, dict):
+                    merged = deep_merge(existing, value)
+                else:
+                    merged = value  # Replace non-dict values entirely
                 json_value = json.dumps(merged, ensure_ascii=False)
                 await conn.execute(
-                    "UPDATE system_settings SET setting_value = ?, updated_at = CURRENT_TIMESTAMP WHERE setting_key = ?",
+                    "UPDATE system_settings SET setting_value = ?,"
+                    " updated_at = CURRENT_TIMESTAMP"
+                    " WHERE setting_key = ?",
                     (json_value, key),
                 )
             else:
@@ -2007,6 +2013,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             await conn.commit()
             return True
         except Exception as e:
+            await conn.rollback()
             logger.exception(f"Failed to save setting '{key}': {e}")
             return False
 
@@ -2024,6 +2031,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             await conn.commit()
             return True
         except Exception as e:
+            await conn.rollback()
             logger.exception(f"Failed to replace setting '{key}': {e}")
             return False
 
@@ -2034,12 +2042,13 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
         try:
             await conn.execute(
-                "DELETE FROM system_settings WHERE setting_key NOT LIKE '\\_%'"
+                "DELETE FROM system_settings WHERE SUBSTR(setting_key, 1, 1) != '_'"
             )
             await conn.commit()
             logger.info("All settings deleted from DB")
             return True
         except Exception as e:
+            await conn.rollback()
             logger.exception(f"Failed to delete settings: {e}")
             return False
 
@@ -2050,7 +2059,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
         try:
             cursor = await conn.execute(
-                "SELECT COUNT(*) FROM system_settings WHERE setting_key NOT LIKE '\\_%'"
+                "SELECT COUNT(*) FROM system_settings WHERE SUBSTR(setting_key, 1, 1) != '_'"
             )
             row = await cursor.fetchone()
             return row[0]
