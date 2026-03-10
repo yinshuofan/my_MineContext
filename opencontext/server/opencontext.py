@@ -233,10 +233,13 @@ class OpenContext:
         """Reload config and gracefully restart Capture, Scheduler, and MemoryCache components."""
         logger.info("Reloading components with updated configuration...")
 
-        # 1. Reload GlobalConfig from YAML
+        # 1. Reload GlobalConfig (from DB if available, otherwise YAML)
         config_mgr = GlobalConfig.get_instance().get_config_manager()
         if config_mgr:
-            config_mgr.load_config(config_mgr.get_config_path())
+            if config_mgr.use_db_settings:
+                await config_mgr.reload_config_async()
+            else:
+                config_mgr.load_config(config_mgr.get_config_path())
 
         # 2. Refresh ComponentInitializer's cached config reference
         self.component_initializer.reload_config()

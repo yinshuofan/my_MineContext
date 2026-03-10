@@ -67,8 +67,25 @@ async def lifespan(app: FastAPI):
     else:
         logger.error("Storage initialization failed after all retries")
 
-    # Start task scheduler after event loop is running
     context_lab = app.state.context_lab_instance
+
+    # Initialize DB-backed settings (if MySQL storage is available)
+    try:
+        from opencontext.config.global_config import GlobalConfig
+
+        config_mgr = GlobalConfig.get_instance().get_config_manager()
+        if config_mgr:
+            settings_changed = await config_mgr.init_db_settings()
+            if settings_changed:
+                logger.info("DB-backed settings loaded, reinitializing components")
+                context_lab.component_initializer.reload_config()
+                context_lab.component_initializer.initialize_task_scheduler(
+                    context_lab.processor_manager
+                )
+    except Exception as e:
+        logger.warning(f"DB settings init failed, using file-based settings: {e}")
+
+    # Start task scheduler after event loop is running
     try:
         if context_lab and hasattr(context_lab, "component_initializer"):
             await context_lab.component_initializer.start_task_scheduler()
@@ -272,6 +289,21 @@ def _run_headless_mode(lab_instance: OpenContext) -> None:
                 await asyncio.sleep(delay)
         else:
             logger.error("Storage initialization failed after all retries")
+
+        # Init DB-backed settings
+        try:
+            from opencontext.config.global_config import GlobalConfig
+
+            config_mgr = GlobalConfig.get_instance().get_config_manager()
+            if config_mgr:
+                settings_changed = await config_mgr.init_db_settings()
+                if settings_changed:
+                    lab_instance.component_initializer.reload_config()
+                    lab_instance.component_initializer.initialize_task_scheduler(
+                        lab_instance.processor_manager
+                    )
+        except Exception as e:
+            logger.warning(f"DB settings init failed: {e}")
 
         try:
             if hasattr(lab_instance, "component_initializer"):

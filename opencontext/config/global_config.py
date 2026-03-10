@@ -233,6 +233,39 @@ class GlobalConfig:
             logger.error(f"Failed to set language: {e}")
             return False
 
+    async def set_language_async(self, language: str) -> bool:
+        """Async version of set_language — uses DB-backed save when available."""
+        if language not in ["zh", "en"]:
+            logger.error(f"Invalid language: {language}")
+            return False
+
+        try:
+            self._language = language
+
+            if self._config_manager:
+                settings = {"prompts": {"language": language}}
+                if not await self._config_manager.save_user_settings_async(settings):
+                    logger.error("Failed to save language setting")
+                    return False
+
+            # Reload prompt manager with new language
+            prompts_path = f"prompts_{language}.yaml"
+            base_dir = os.path.dirname(self._config_path)
+            absolute_prompts_path = os.path.join(base_dir, prompts_path)
+
+            if not os.path.exists(absolute_prompts_path):
+                logger.error(f"Prompt file not found: {absolute_prompts_path}")
+                return False
+
+            self._prompt_manager = PromptManager(absolute_prompts_path)
+            self._prompt_path = absolute_prompts_path
+            logger.info(f"Prompts reloaded from: {self._prompt_path} (language: {language})")
+            self._prompt_manager.load_user_prompts()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to set language: {e}")
+            return False
+
     def get_config(self, path: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Get configuration

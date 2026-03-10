@@ -7,7 +7,7 @@
 """Settings API routes — model settings, general settings, prompts"""
 
 import io
-import threading
+import asyncio
 
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import StreamingResponse
@@ -23,7 +23,7 @@ from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["model-settings"])
-_config_lock = threading.Lock()
+_config_lock = asyncio.Lock()
 
 
 # ==================== Data Models ====================
@@ -169,7 +169,7 @@ async def update_model_settings(
     request: AllModelSettingsUpdateRequest, _auth: str = auth_dependency
 ):
     """Update model configuration and reinitialize LLM clients"""
-    with _config_lock:
+    async with _config_lock:
         try:
             config_mgr = GlobalConfig.get_instance().get_config_manager()
             if not config_mgr:
@@ -239,10 +239,8 @@ async def update_model_settings(
             if not new_settings:
                 return convert_resp(code=400, status=400, message="No model settings provided")
 
-            if not config_mgr.save_user_settings(new_settings):
+            if not await config_mgr.save_user_settings_async(new_settings):
                 return convert_resp(code=500, status=500, message="Failed to save settings")
-
-            config_mgr.load_config(config_mgr.get_config_path())
 
             # Reinitialize clients that were updated
             if "vlm_model" in new_settings:
@@ -374,7 +372,7 @@ async def get_general_settings(_auth: str = auth_dependency):
 @router.post("/api/settings/general")
 async def update_general_settings(request: GeneralSettingsRequest, _auth: str = auth_dependency):
     """Update general system settings"""
-    with _config_lock:
+    async with _config_lock:
         try:
             config_mgr = GlobalConfig.get_instance().get_config_manager()
             if not config_mgr:
@@ -390,10 +388,8 @@ async def update_general_settings(request: GeneralSettingsRequest, _auth: str = 
                 return convert_resp(code=400, status=400, message="No settings provided")
 
             logger.info(f"Saving general settings: keys={list(settings.keys())}")
-            if not config_mgr.save_user_settings(settings):
+            if not await config_mgr.save_user_settings_async(settings):
                 return convert_resp(code=500, status=500, message="Failed to save settings")
-
-            config_mgr.load_config(config_mgr.get_config_path())
 
             logger.info("General settings updated successfully")
             return convert_resp(code=0, status=200, message="Settings updated successfully")
@@ -517,7 +513,7 @@ class LanguageChangeRequest(BaseModel):
 async def change_prompt_language(request: LanguageChangeRequest, _auth: str = auth_dependency):
     """Change prompt language"""
     try:
-        success = GlobalConfig.get_instance().set_language(request.language)
+        success = await GlobalConfig.get_instance().set_language_async(request.language)
 
         if not success:
             return convert_resp(code=500, status=500, message="Failed to change language")
@@ -539,7 +535,7 @@ async def change_prompt_language(request: LanguageChangeRequest, _auth: str = au
 @router.post("/api/settings/reset")
 async def reset_settings(_auth: str = auth_dependency):
     """Reset all user settings to defaults"""
-    with _config_lock:
+    async with _config_lock:
         try:
             config_mgr = GlobalConfig.get_instance().get_config_manager()
             prompt_mgr = GlobalConfig.get_instance().get_prompt_manager()
@@ -547,7 +543,7 @@ async def reset_settings(_auth: str = auth_dependency):
             success = True
 
             if config_mgr:
-                if not config_mgr.reset_user_settings():
+                if not await config_mgr.reset_user_settings_async():
                     success = False
                     logger.error("Failed to reset user settings")
 
