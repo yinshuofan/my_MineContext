@@ -28,7 +28,7 @@ Loads YAML config with environment variable substitution.
 | `get_config` | `() -> Optional[Dict[str, Any]]` | Return full config dict |
 | `get_config_path` | `() -> Optional[str]` | Return config file path |
 | `load_user_settings` | `() -> bool` | Load `user_setting_path` from config, merge into `_config` |
-| `save_user_settings` | `(settings: Dict[str, Any]) -> bool` | Save whitelisted keys (defined in module-level `SAVEABLE_KEYS`: llm, vlm_model, embedding_model, capture, processing, logging, prompts, document_processing, scheduler, memory_cache, tools) to user settings file and merge. Uses whole-key replacement at file level — callers must send complete section objects. |
+| `save_user_settings` | `(settings: Dict[str, Any]) -> bool` | Save whitelisted keys (defined in module-level `SAVEABLE_KEYS`: llm, vlm_model, embedding_model, capture, processing, logging, prompts, document_processing, scheduler, memory_cache, tools) to user settings file and merge. Uses `deep_merge` at file level — preserves existing keys not present in the incoming settings (e.g. keys not exposed in the UI form). Strips `None` values via `_strip_none_values` before merging so empty form fields are excluded rather than overwriting existing values. |
 | `reset_user_settings` | `() -> bool` | Delete user settings file, reload config |
 
 **Environment variable substitution** (`_replace_env_vars`):
