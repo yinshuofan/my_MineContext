@@ -171,6 +171,13 @@ class ConfigManager:
             logger.error(f"Failed to load user settings: {e}")
             return False
 
+    @staticmethod
+    def _strip_none_values(d):
+        """Recursively remove None values from nested dicts."""
+        if not isinstance(d, dict):
+            return d
+        return {k: ConfigManager._strip_none_values(v) for k, v in d.items() if v is not None}
+
     def save_user_settings(self, settings: Dict[str, Any]) -> bool:
         """
         Save user settings to a separate file
@@ -198,12 +205,17 @@ class ConfigManager:
                         user_settings = existing_settings
 
             # Update with new settings (only whitelisted keys).
-            # Note: This does whole-key replacement at the user_setting.yaml level,
-            # not deep_merge. Callers must send complete section objects.
-            # The deep_merge only happens when applying user_settings to _config.
+            # Deep merge: preserves keys in user_setting.yaml that are not present
+            # in the incoming settings (e.g. keys not exposed in the UI form).
+            # None values are stripped first so empty form fields don't overwrite
+            # existing values with null.
             for key in settings:
                 if key in SAVEABLE_KEYS:
-                    user_settings[key] = settings[key]
+                    value = self._strip_none_values(settings[key])
+                    if isinstance(user_settings.get(key), dict) and isinstance(value, dict):
+                        user_settings[key] = deep_merge(user_settings[key], value)
+                    else:
+                        user_settings[key] = value
 
             # Save to file
             with open(user_setting_path, "w", encoding="utf-8") as f:
