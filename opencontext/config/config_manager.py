@@ -118,13 +118,16 @@ class ConfigManager:
     async def _migrate_file_to_db(self, storage, file_path: str) -> bool:
         """One-time migration: copy settings from YAML file into DB.
 
-        Uses a sentinel row ('_migrated') to prevent duplicate migration
-        when multiple workers start concurrently. INSERT IGNORE ensures
-        only the first worker proceeds.
+        Migration is idempotent — if multiple workers race on startup,
+        they all write the same data via replace_setting, and the end
+        state is correct. A sentinel row ('_migrated') marks migration
+        as complete so subsequent startups skip it.
         """
         try:
-            # Sentinel guard: only the first worker to insert wins
-            ok = await storage.save_setting("_migrated", {"ts": str(datetime.now())})
+            # Sentinel: marks migration as started/done
+            ok = await storage.save_setting(
+                "_migrated", {"ts": str(datetime.now(tz=datetime.timezone.utc))}
+            )
             if not ok:
                 return False
 

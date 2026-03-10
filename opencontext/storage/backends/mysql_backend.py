@@ -1396,7 +1396,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 value = row["setting_value"]
                 if isinstance(value, str):
                     value = json.loads(value)
-                result[key] = value
+                result[row["setting_key"]] = value
             return result
         except Exception as e:
             logger.exception(f"Failed to load settings: {e}")
