@@ -19,7 +19,7 @@ Loads YAML config with environment variable substitution.
 - `_config: Optional[Dict[str, Any]]` -- parsed config dict
 - `_config_path: Optional[str]` -- path to loaded config file
 - `_env_vars: Dict[str, str]` -- captured environment variables
-- `_use_db_settings: bool` -- whether DB-backed settings are active
+- `_use_db_settings: bool` -- True after init_db_settings() enables DB-backed settings (MySQL or SQLite)
 
 **Methods:**
 
@@ -28,15 +28,12 @@ Loads YAML config with environment variable substitution.
 | `load_config` | `(config_path: Optional[str] = None) -> bool` | Load YAML, substitute env vars, merge user settings. Default path: `config/config.yaml`. Raises `FileNotFoundError` if path missing. |
 | `get_config` | `() -> Optional[Dict[str, Any]]` | Return full config dict |
 | `get_config_path` | `() -> Optional[str]` | Return config file path |
-| `load_user_settings` | `() -> bool` | Load `user_setting_path` from config, merge into `_config`. No-op when `_use_db_settings` is True (DB settings are overlaid during `reload_config_async` instead). |
-| `save_user_settings` | `(settings: Dict[str, Any]) -> bool` | File-based save path, used when `_use_db_settings` is False. Save whitelisted keys (defined in module-level `SAVEABLE_KEYS`: llm, vlm_model, embedding_model, capture, processing, logging, prompts, document_processing, scheduler, memory_cache, tools) to user settings file and merge. Uses `deep_merge` at file level — preserves existing keys not present in the incoming settings (e.g. keys not exposed in the UI form). Strips `None` values via `_strip_none_values` before merging so empty form fields are excluded rather than overwriting existing values. |
-| `reset_user_settings` | `() -> bool` | Delete user settings file, reload config |
 | `use_db_settings` | `@property -> bool` | Whether DB-backed settings mode is active |
-| `_has_mysql_backend` | `(config: dict) -> bool` | Static. Check if MySQL document backend is configured |
+| `_has_document_backend` | `(config: dict) -> bool` | Static. Check if any document backend (MySQL or SQLite) is configured |
 | `_load_base_config` | `(config_path: str) -> dict` | Load base config dict without mutating `self._config` (for torn-read prevention) |
-| `init_db_settings` | `() -> bool` | Async. Enable DB mode if MySQL available. Auto-migrates from file. Called from lifespan after storage init |
-| `save_user_settings_async` | `(settings: Dict) -> bool` | Async. Save via `get_storage().save_setting()` with `JSON_MERGE_PATCH`. Falls back to sync file method when not in DB mode |
-| `reset_user_settings_async` | `() -> bool` | Async. Clear settings via `get_storage().delete_all_settings()`. Falls back to sync file method when not in DB mode |
+| `init_db_settings` | `() -> bool` | Async. Enable DB mode if document backend available. Called from lifespan after storage init |
+| `save_user_settings_async` | `(settings: Dict) -> bool` | Async. Save via `get_storage().save_setting()`. Returns False with error log when DB mode is not active |
+| `reset_user_settings_async` | `() -> bool` | Async. Clear settings via `get_storage().delete_all_settings()`. Returns False with error log when DB mode is not active |
 | `reload_config_async` | `() -> bool` | Async. Reload base YAML + overlay DB settings with atomic pointer swap. Falls back to `load_config()` when not in DB mode |
 
 **Environment variable substitution** (`_replace_env_vars`):
@@ -80,7 +77,7 @@ Thread-safe singleton wrapping both managers. Uses double-checked locking (`thre
 - `_prompt_path: Optional[str]`
 - `_auto_initialized: bool`
 
-Note: `_language` is NOT set in `__init__`. It is set later in `_init_prompt_manager()` and `set_language()`. `get_language()` falls back to `"zh"` via `hasattr` check if the attribute doesn't exist yet.
+Note: `_language` is NOT set in `__init__`. It is set later in `_init_prompt_manager()` and `set_language_async()`. `get_language()` falls back to `"zh"` via `hasattr` check if the attribute doesn't exist yet.
 
 **Key methods:**
 
@@ -93,8 +90,7 @@ Note: `_language` is NOT set in `__init__`. It is set later in `_init_prompt_man
 | `get_prompt` | `(name: str, default: Optional[str] = None) -> Optional[str]` | Delegates to `PromptManager.get_prompt()` |
 | `get_prompt_group` | `(name: str) -> Dict[str, str]` | Delegates to `PromptManager.get_prompt_group()` |
 | `get_language` | `() -> str` | Current language (`"zh"` or `"en"`) |
-| `set_language` | `(language: str) -> bool` | Change language, save to user settings, reload prompts |
-| `set_language_async` | `(language: str) -> bool` | Async version of set_language — uses `save_user_settings_async` for DB-backed save |
+| `set_language_async` | `(language: str) -> bool` | Set language and persist to DB-backed settings |
 | `is_enabled` | `(module: str) -> bool` | Check `config[module]["enabled"]` |
 | `is_initialized` | `() -> bool` | Whether config has been initialized |
 | `set_config_manager` | `(config_manager: ConfigManager) -> None` | Manual setter (backward compat) |
@@ -141,10 +137,10 @@ is_initialized() -> bool
 3. **Prompt dot-path syntax** works the same: `get_prompt("extraction.system_prompt")` navigates the prompt YAML tree.
 4. **Env var substitution happens at load time**: `${VAR:default}` is resolved once during `load_config()`. Changing env vars after load has no effect.
 5. **Boolean coercion**: After env var substitution, strings `"true"` and `"false"` (case-insensitive) are converted to Python `bool`. This means `${SOME_FLAG:false}` yields `False`, not the string `"false"`.
-6. **User settings are overlay files**: `user_setting.yaml` (config) and `user_prompts_{lang}.yaml` (prompts) are deep-merged on top of base files. Only specific keys are saved by `save_user_settings`.
-7. **Language must be `"zh"` or `"en"`**: `set_language()` rejects other values. Changing language reloads the prompt manager with the corresponding `prompts_{lang}.yaml` file.
+6. **User settings are DB-backed**: User overrides are stored in the document backend's `system_settings` table (MySQL or SQLite) and merged on top of `config.yaml` at startup via `init_db_settings()`. Only keys in `SAVEABLE_KEYS` are persisted. Prompt overrides (`user_prompts_{lang}.yaml`) remain file-based.
+7. **Language must be `"zh"` or `"en"`**: `set_language_async()` rejects other values. Changing language reloads the prompt manager with the corresponding `prompts_{lang}.yaml` file.
 8. **Prompt files must have matching keys**: `prompts_en.yaml` and `prompts_zh.yaml` must define the same prompt keys. Missing keys in one file cause `get_prompt()` to return `default`.
-9. **DB-backed settings in multi-instance deployments**: In multi-instance deployments with MySQL, user settings are stored in the `system_settings` table. DB mode is enabled automatically when a MySQL document backend is configured and storage is initialized.
+9. **DB-backed settings**: User settings are stored in the `system_settings` table. DB mode is enabled automatically when any document backend (MySQL or SQLite) is configured and storage is initialized.
 10. **Lazy storage import for settings**: Settings access uses lazy import (`from opencontext.storage.global_storage import get_storage` inside method bodies) to avoid circular dependency between config and storage modules.
-11. **Auto-migration from file to DB**: After deploying this change, existing `user_setting.yaml` data is auto-migrated to MySQL on first startup. The file can be removed after migration is confirmed.
+11. **Auto-migration from file to DB (transitional)**: After deploying this change, existing `user_setting.yaml` data is auto-migrated to the document backend on first startup. The file can be removed after migration is confirmed. This migration path is transitional and may be removed in a future release.
 12. **Cross-worker consistency**: After saving settings, changes are visible only to the current worker until `/api/settings/apply` is called (broadcasts via Redis Pub/Sub). This is the existing two-step Save + Apply flow.

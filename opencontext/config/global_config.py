@@ -185,7 +185,7 @@ class GlobalConfig:
         return self._language
 
     async def set_language_async(self, language: str) -> bool:
-        """Async version of set_language — uses DB-backed save when available."""
+        """Set language and persist to DB-backed settings."""
         if language not in ["zh", "en"]:
             logger.error(f"Invalid language: {language}")
             return False

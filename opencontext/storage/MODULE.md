@@ -131,7 +131,7 @@ Facade that holds one `IVectorStorageBackend` and one `IDocumentStorageBackend`.
 - Vector operations (contexts, search, hierarchy) -> `_vector_backend`
 - Document operations (vaults, todos, tips, profiles, entities, conversations, messages, monitoring) -> `_document_backend`
 
-**Settings delegation**: Settings methods (`load_all_settings`, `save_setting`, `replace_setting`, `delete_all_settings`, `settings_count`) follow the monitoring methods pattern — implemented only on `MySQLBackend` and `UnifiedStorage`, not on `IDocumentStorageBackend`.
+**Settings delegation**: Settings methods (`load_all_settings`, `save_setting`, `replace_setting`, `delete_all_settings`, `settings_count`) follow the monitoring methods pattern — implemented on `MySQLBackend`, `SQLiteBackend`, and `UnifiedStorage`, not on `IDocumentStorageBackend`.
 
 ### GlobalStorage -- `global_storage.py`
 
@@ -240,9 +240,9 @@ These fields are populated from `ProcessedContext.metadata["content_modalities"]
 | Schema migration | `_create_tables()` | Same |
 | Health check | `SELECT 1` on connection | `ping(reconnect=True)` on pool checkout |
 
-### MySQLBackend -- Settings Storage
+### Settings Storage (MySQL and SQLite)
 
-MySQLBackend provides additional tables and methods for multi-instance settings management (not part of the `IDocumentStorageBackend` interface):
+Both `MySQLBackend` and `SQLiteBackend` provide settings CRUD methods for DB-backed user settings management (not part of the `IDocumentStorageBackend` interface). Settings are stored in the `system_settings` table.
 
 **Additional table:**
 
@@ -250,12 +250,12 @@ MySQLBackend provides additional tables and methods for multi-instance settings 
 |-------|---------|-----|
 | `system_settings` | Multi-instance user settings (key-value with JSON values) | `setting_key VARCHAR(128) PK` |
 
-**Settings methods:**
+**Settings methods (both backends):**
 
 | Method | Description |
 |--------|-------------|
 | `load_all_settings()` | Load all settings rows as `{key: value}` dict (skips `_`-prefixed sentinel rows) |
-| `save_setting(key, value)` | Atomic upsert with `JSON_MERGE_PATCH` |
+| `save_setting(key, value)` | Atomic upsert. MySQL uses `JSON_MERGE_PATCH`; SQLite uses Python-side `deep_merge` |
 | `replace_setting(key, value)` | Full overwrite (for migration) |
 | `delete_all_settings()` | Clear all settings (preserves sentinel rows) |
 | `settings_count()` | Row count (excludes sentinel rows) |

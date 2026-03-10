@@ -151,6 +151,7 @@ LLM prompts for extraction, classification, merging, and hierarchy summarization
 - Environment variables: copy `.env.example` to `.env`
 - Key env vars: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `MYSQL_HOST`, `MYSQL_PASSWORD`, `REDIS_HOST`, `HIERARCHY_SUMMARY_ENABLED`
 - `OPENCONTEXT_CONFIG_PATH`: Set by `cli.py` when `--config` is provided; used by `GlobalConfig._auto_initialize()` in multi-worker subprocess auto-init
+- User settings: stored in `system_settings` table (MySQL or SQLite document backend), not in `user_setting.yaml`
 
 ## Code Style
 
