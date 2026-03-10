@@ -162,6 +162,13 @@ scheduler:
       interval: 86400
       timeout: 3600
       retention_days: 30
+    hierarchy_summary:
+      enabled: "${HIERARCHY_SUMMARY_ENABLED:true}"
+      trigger_mode: "user_activity"
+      interval: 86400
+      timeout: 600
+      task_ttl: 172800
+      backfill_days: 7
 
 completion:
   enabled: true
