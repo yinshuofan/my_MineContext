@@ -131,6 +131,8 @@ Facade that holds one `IVectorStorageBackend` and one `IDocumentStorageBackend`.
 - Vector operations (contexts, search, hierarchy) -> `_vector_backend`
 - Document operations (vaults, todos, tips, profiles, entities, conversations, messages, monitoring) -> `_document_backend`
 
+**Settings delegation**: Settings methods (`load_all_settings`, `save_setting`, `replace_setting`, `delete_all_settings`, `settings_count`) follow the monitoring methods pattern — implemented only on `MySQLBackend` and `UnifiedStorage`, not on `IDocumentStorageBackend`.
+
 ### GlobalStorage -- `global_storage.py`
 
 Thread-safe singleton (double-checked locking) wrapping `UnifiedStorage`.
@@ -237,6 +239,26 @@ These fields are populated from `ProcessedContext.metadata["content_modalities"]
 | Journal mode | WAL | InnoDB (default) |
 | Schema migration | `_create_tables()` | Same |
 | Health check | `SELECT 1` on connection | `ping(reconnect=True)` on pool checkout |
+
+### MySQLBackend -- Settings Storage
+
+MySQLBackend provides additional tables and methods for multi-instance settings management (not part of the `IDocumentStorageBackend` interface):
+
+**Additional table:**
+
+| Table | Purpose | Key |
+|-------|---------|-----|
+| `system_settings` | Multi-instance user settings (key-value with JSON values) | `setting_key VARCHAR(128) PK` |
+
+**Settings methods:**
+
+| Method | Description |
+|--------|-------------|
+| `load_all_settings()` | Load all settings rows as `{key: value}` dict (skips `_`-prefixed sentinel rows) |
+| `save_setting(key, value)` | Atomic upsert with `JSON_MERGE_PATCH` |
+| `replace_setting(key, value)` | Full overwrite (for migration) |
+| `delete_all_settings()` | Clear all settings (preserves sentinel rows) |
+| `settings_count()` | Row count (excludes sentinel rows) |
 
 ## Internal Data Flow
 
