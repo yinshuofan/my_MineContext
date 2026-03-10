@@ -12,7 +12,7 @@ Configuration manager, responsible for loading and managing system configuration
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import yaml
@@ -126,7 +126,7 @@ class ConfigManager:
         try:
             # Sentinel: marks migration as started/done
             ok = await storage.save_setting(
-                "_migrated", {"ts": str(datetime.now(tz=datetime.timezone.utc))}
+                "_migrated", {"ts": str(datetime.now(tz=timezone.utc))}
             )
             if not ok:
                 return False
