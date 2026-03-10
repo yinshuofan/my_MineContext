@@ -58,13 +58,10 @@ class ConfigManager:
         return self._use_db_settings
 
     @staticmethod
-    def _has_mysql_backend(config: dict) -> bool:
-        """Check if a MySQL document backend is configured."""
+    def _has_document_backend(config: dict) -> bool:
+        """Check if a document backend (MySQL or SQLite) is configured."""
         for backend in config.get("storage", {}).get("backends", []):
-            if (
-                backend.get("storage_type") == "document_db"
-                and backend.get("backend") == "mysql"
-            ):
+            if backend.get("storage_type") == "document_db":
                 return True
         return False
 
@@ -89,7 +86,7 @@ class ConfigManager:
         Returns True if DB settings were loaded (config may have changed),
         False if DB mode was not enabled or no settings exist yet.
         """
-        if not self._config or not self._has_mysql_backend(self._config):
+        if not self._config or not self._has_document_backend(self._config):
             return False
 
         # Lazy import to avoid circular dependency (storage imports config)
@@ -172,11 +169,6 @@ class ConfigManager:
         self._config = config_data
         self._config_path = found_config_path
         logger.info(f"Configuration loaded successfully: {self._config_path}")
-        if not self.load_user_settings():
-            logger.warning(
-                f"User settings not loaded (path={self._config.get('user_setting_path', 'N/A')}), "
-                "using main config defaults"
-            )
 
         return True
 
@@ -243,100 +235,12 @@ class ConfigManager:
         """
         return self._config_path
 
-    def load_user_settings(self) -> bool:
-        """
-        Load user settings and merge them into the main configuration
-        """
-        if self._use_db_settings:
-            return True
-        if not self._config:
-            return False
-        user_setting_path = self._config.get("user_setting_path")
-        if not user_setting_path:
-            return False
-        abs_path = os.path.abspath(user_setting_path)
-        if not os.path.exists(user_setting_path):
-            logger.info(
-                f"User settings file does not exist, skipping: {user_setting_path} "
-                f"(abs={abs_path}, cwd={os.getcwd()})"
-            )
-            return False
-
-        try:
-            with open(user_setting_path, "r", encoding="utf-8") as f:
-                user_settings = yaml.safe_load(f)
-            if not user_settings:
-                return False
-            self._config = deep_merge(self._config, user_settings)
-            logger.info(f"User settings loaded and merged: {abs_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to load user settings: {e}")
-            return False
-
     @staticmethod
     def _strip_none_values(d):
         """Recursively remove None values from nested dicts."""
         if not isinstance(d, dict):
             return d
         return {k: ConfigManager._strip_none_values(v) for k, v in d.items() if v is not None}
-
-    def save_user_settings(self, settings: Dict[str, Any]) -> bool:
-        """
-        Save user settings to a separate file
-        """
-        if not self._config:
-            logger.error("Main configuration not loaded")
-            return False
-
-        # Get user settings path
-        user_setting_path = self._config.get("user_setting_path")
-        if not user_setting_path:
-            logger.error("user_setting_path not configured")
-            return False
-        try:
-            dir_name = os.path.dirname(user_setting_path)
-            if dir_name:
-                os.makedirs(dir_name, exist_ok=True)
-
-            # Load existing user settings
-            user_settings = {}
-            if os.path.exists(user_setting_path):
-                with open(user_setting_path, "r", encoding="utf-8") as f:
-                    existing_settings = yaml.safe_load(f)
-                    if existing_settings:
-                        user_settings = existing_settings
-
-            # Update with new settings (only whitelisted keys).
-            # Deep merge: preserves keys in user_setting.yaml that are not present
-            # in the incoming settings (e.g. keys not exposed in the UI form).
-            # None values are stripped first so empty form fields don't overwrite
-            # existing values with null.
-            for key in settings:
-                if key in SAVEABLE_KEYS:
-                    value = self._strip_none_values(settings[key])
-                    if isinstance(user_settings.get(key), dict) and isinstance(value, dict):
-                        user_settings[key] = deep_merge(user_settings[key], value)
-                    else:
-                        user_settings[key] = value
-
-            # Save to file
-            with open(user_setting_path, "w", encoding="utf-8") as f:
-                yaml.dump(
-                    user_settings, f, default_flow_style=False, sort_keys=False, allow_unicode=True
-                )
-
-            logger.info(
-                f"User settings saved successfully: {os.path.abspath(user_setting_path)} "
-                f"(keys={list(user_settings.keys())})"
-            )
-
-            # Merge into current config
-            self._config = deep_merge(self._config, user_settings)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to save user settings: {e}")
-            return False
 
     async def save_user_settings_async(self, settings: Dict[str, Any]) -> bool:
         """Save user settings to MySQL.
@@ -346,7 +250,8 @@ class ConfigManager:
         are safe and non-form keys within a section are preserved.
         """
         if not self._use_db_settings:
-            return self.save_user_settings(settings)
+            logger.error("Cannot save settings: DB-backed settings not enabled")
+            return False
 
         if not self._config:
             logger.error("Main configuration not loaded")
@@ -376,39 +281,11 @@ class ConfigManager:
             logger.error(f"Failed to save user settings to DB: {e}")
             return False
 
-    def reset_user_settings(self) -> bool:
-        """
-        Reset user settings by deleting the user_setting.yaml file
-        """
-        if not self._config:
-            logger.error("Main configuration not loaded")
-            return False
-
-        user_setting_path = self._config.get("user_setting_path")
-        if not user_setting_path:
-            logger.error("user_setting_path not configured")
-            return False
-
-        try:
-            if os.path.exists(user_setting_path):
-                os.remove(user_setting_path)
-                logger.info(f"User settings file deleted: {user_setting_path}")
-            else:
-                logger.info(f"User settings file does not exist: {user_setting_path}")
-
-            # Reload config to apply defaults
-            if self._config_path:
-                self.load_config(self._config_path)
-
-            return True
-        except Exception as e:
-            logger.error(f"Failed to reset user settings: {e}")
-            return False
-
     async def reset_user_settings_async(self) -> bool:
         """Reset user settings by clearing the DB."""
         if not self._use_db_settings:
-            return self.reset_user_settings()
+            logger.error("Cannot reset settings: DB-backed settings not enabled")
+            return False
 
         if not self._config:
             logger.error("Main configuration not loaded")
@@ -442,6 +319,7 @@ class ConfigManager:
             return False
 
         if not self._use_db_settings:
+            # Non-DB mode: reload base config only (no user overrides)
             return self.load_config(self._config_path)
 
         try:
