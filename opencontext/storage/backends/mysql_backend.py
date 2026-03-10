@@ -310,6 +310,18 @@ class MySQLBackend(IDocumentStorageBackend):
                 """
                 )
 
+                # System settings table (key-value, for multi-instance config consistency)
+                await cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS system_settings (
+                        setting_key VARCHAR(128) NOT NULL,
+                        setting_value JSON NOT NULL,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        PRIMARY KEY (setting_key)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """
+                )
+
                 await conn.commit()
 
     # Report table operations
@@ -1364,6 +1376,114 @@ class MySQLBackend(IDocumentStorageBackend):
                 except Exception as e:
                     logger.exception(f"Failed to clear thinking for message {message_id}: {e}")
                     return False
+
+    # ── System Settings ──
+
+    async def load_all_settings(self) -> Dict[str, Any]:
+        """Load all settings rows and return as a dict keyed by setting_key."""
+        if not self._initialized:
+            return {}
+        try:
+            async with self._get_connection() as conn:
+                async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
+                    await cursor.execute(
+                        "SELECT setting_key, setting_value FROM system_settings"
+                        " WHERE setting_key NOT LIKE '\\_%'"
+                    )
+                    rows = await cursor.fetchall()
+            result: Dict[str, Any] = {}
+            for row in rows:
+                value = row["setting_value"]
+                if isinstance(value, str):
+                    value = json.loads(value)
+                result[key] = value
+            return result
+        except Exception as e:
+            logger.exception(f"Failed to load settings: {e}")
+            return {}
+
+    async def save_setting(self, key: str, value: dict) -> bool:
+        """Atomically deep-merge *value* into the existing row for *key*.
+
+        Uses JSON_MERGE_PATCH so that keys absent from *value* are
+        preserved in the stored JSON — matching Python deep_merge behaviour.
+        First-time inserts store *value* directly (no merge needed).
+
+        Note: JSON_MERGE_PATCH treats null values as "delete key" (RFC 7396).
+        Callers should strip None values before calling if preservation
+        semantics are desired (see _strip_none_values in ConfigManager).
+        """
+        if not self._initialized:
+            return False
+        try:
+            json_value = json.dumps(value, ensure_ascii=False)
+            async with self._get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        """
+                        INSERT INTO system_settings (setting_key, setting_value)
+                        VALUES (%s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            setting_value = JSON_MERGE_PATCH(setting_value, VALUES(setting_value))
+                        """,
+                        (key, json_value),
+                    )
+                await conn.commit()
+            return True
+        except Exception as e:
+            logger.exception(f"Failed to save setting '{key}': {e}")
+            return False
+
+    async def replace_setting(self, key: str, value: dict) -> bool:
+        """Overwrite (not merge) the row for *key*. Used for migration."""
+        if not self._initialized:
+            return False
+        try:
+            json_value = json.dumps(value, ensure_ascii=False)
+            async with self._get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "REPLACE INTO system_settings (setting_key, setting_value) VALUES (%s, %s)",
+                        (key, json_value),
+                    )
+                await conn.commit()
+            return True
+        except Exception as e:
+            logger.exception(f"Failed to replace setting '{key}': {e}")
+            return False
+
+    async def delete_all_settings(self) -> bool:
+        """Delete every row from system_settings (excluding internal sentinel rows)."""
+        if not self._initialized:
+            return False
+        try:
+            async with self._get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "DELETE FROM system_settings WHERE setting_key NOT LIKE '\\_%'"
+                    )
+                await conn.commit()
+            logger.info("All settings deleted from DB")
+            return True
+        except Exception as e:
+            logger.exception(f"Failed to delete settings: {e}")
+            return False
+
+    async def settings_count(self) -> int:
+        """Return number of stored settings rows (excluding sentinel rows)."""
+        if not self._initialized:
+            return 0
+        try:
+            async with self._get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT COUNT(*) FROM system_settings WHERE setting_key NOT LIKE '\\_%'"
+                    )
+                    row = await cursor.fetchone()
+            return row[0]
+        except Exception as e:
+            logger.exception(f"Failed to count settings: {e}")
+            return 0
 
     async def query(self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None) -> QueryResult:
         if not self._initialized:
