@@ -244,9 +244,8 @@ class ConfigManager:
     async def save_user_settings_async(self, settings: Dict[str, Any]) -> bool:
         """Save user settings to DB.
 
-        Each whitelisted key is saved as a separate row with atomic
-        JSON_MERGE_PATCH, so concurrent saves from different instances
-        are safe and non-form keys within a section are preserved.
+        Each whitelisted key is saved as a separate row with
+        deep-merge semantics via the document backend.
         """
         if not self._use_db_settings:
             logger.error("Cannot save settings: DB-backed settings not enabled")

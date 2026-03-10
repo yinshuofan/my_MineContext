@@ -934,7 +934,7 @@ class UnifiedStorage:
             children_ids, parent_id, context_type
         )
 
-    # ── System Settings (→ document DB, MySQL only) ──
+    # ── System Settings (→ document DB) ──
 
     @_require_backend("_document_backend", default={})
     async def load_all_settings(self) -> Dict[str, Any]:

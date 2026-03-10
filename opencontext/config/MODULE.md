@@ -77,7 +77,7 @@ Thread-safe singleton wrapping both managers. Uses double-checked locking (`thre
 - `_prompt_path: Optional[str]`
 - `_auto_initialized: bool`
 
-Note: `_language` is NOT set in `__init__`. It is set later in `_init_prompt_manager()` and `set_language_async()`. `get_language()` falls back to `"zh"` via `hasattr` check if the attribute doesn't exist yet.
+Note: `_language` defaults to `"zh"` in `__init__` and is updated by `_init_prompt_manager()` and `set_language_async()`.
 
 **Key methods:**
 
