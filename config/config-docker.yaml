@@ -9,7 +9,7 @@ service_mode:
   require_external_storage: true
 
 logging:
-  level: INFO
+  level: DEBUG
   log_path: "${CONTEXT_PATH:.}/logs/opencontext.log"
 
 user_setting_path: "${CONTEXT_PATH:.}/persist/user_setting.yaml"
