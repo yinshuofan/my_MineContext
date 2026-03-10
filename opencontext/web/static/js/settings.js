@@ -32,11 +32,13 @@ function getVal(id) {
 }
 
 function getInt(id) {
-    return parseInt(getVal(id)) || 0;
+    const v = parseInt(getVal(id));
+    return isNaN(v) ? null : v;
 }
 
 function getFloat(id) {
-    return parseFloat(getVal(id)) || 0;
+    const v = parseFloat(getVal(id));
+    return isNaN(v) ? null : v;
 }
 
 function getChecked(id) {
