@@ -515,12 +515,14 @@ class RedisTaskScheduler(ITaskScheduler):
                     f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled"
                 )
                 if enabled == "false":
+                    logger.debug(f"Task type {task_type} is disabled, skipping drain cycle")
                     if self._running:
                         try:
                             await asyncio.sleep(self._check_interval)
                         except asyncio.CancelledError:
                             break
                     continue
+                logger.debug(f"Task type {task_type} enabled={enabled}, proceeding to drain")
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -675,6 +677,7 @@ class RedisTaskScheduler(ITaskScheduler):
                     f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled"
                 )
                 if enabled == "false":
+                    logger.debug(f"Periodic task {task_type} is disabled, skipping")
                     continue
             except Exception:
                 pass  # Fail-open: on Redis error, allow execution
