@@ -9,7 +9,6 @@
 Configuration manager, responsible for loading and managing system configurations
 """
 
-import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -78,7 +77,7 @@ class ConfigManager:
         return self._replace_env_vars(config_data)
 
     async def init_db_settings(self) -> bool:
-        """Enable DB-backed settings if MySQL storage is available.
+        """Enable DB-backed settings if a document backend is available.
 
         Called from lifespan after GlobalStorage.ensure_initialized().
         Auto-migrates from user_setting.yaml on first startup (if DB is empty).
@@ -107,7 +106,7 @@ class ConfigManager:
         db_settings = await storage.load_all_settings()
         if db_settings:
             self._config = deep_merge(self._config, db_settings)
-            logger.info(f"User settings loaded from MySQL (keys={list(db_settings.keys())})")
+            logger.info(f"User settings loaded from DB (keys={list(db_settings.keys())})")
 
         self._use_db_settings = True
         return bool(db_settings)
@@ -142,7 +141,7 @@ class ConfigManager:
                         f"Skipping non-dict setting '{key}' during migration "
                         f"(type={type(value).__name__})"
                     )
-            logger.info(f"Migrated {count} setting(s) from {file_path} to MySQL")
+            logger.info(f"Migrated {count} setting(s) from {file_path} to DB")
             return count > 0
         except Exception as e:
             logger.exception(f"Failed to migrate settings from file: {e}")
@@ -243,7 +242,7 @@ class ConfigManager:
         return {k: ConfigManager._strip_none_values(v) for k, v in d.items() if v is not None}
 
     async def save_user_settings_async(self, settings: Dict[str, Any]) -> bool:
-        """Save user settings to MySQL.
+        """Save user settings to DB.
 
         Each whitelisted key is saved as a separate row with atomic
         JSON_MERGE_PATCH, so concurrent saves from different instances
@@ -275,7 +274,7 @@ class ConfigManager:
 
             # Reload to get consistent merged state from DB
             await self.reload_config_async()
-            logger.info(f"User settings saved to MySQL (keys={saved_keys})")
+            logger.info(f"User settings saved to DB (keys={saved_keys})")
             return True
         except Exception as e:
             logger.error(f"Failed to save user settings to DB: {e}")
@@ -300,7 +299,7 @@ class ConfigManager:
                 return False
 
             await storage.delete_all_settings()
-            logger.info("User settings cleared from MySQL")
+            logger.info("User settings cleared from DB")
 
             # Reload base config (no user settings to merge)
             await self.reload_config_async()
