@@ -235,7 +235,7 @@ These fields are populated from `ProcessedContext.metadata["content_modalities"]
 | Feature | SQLiteBackend | MySQLBackend |
 |---------|--------------|--------------|
 | Connection model | `threading.local()` per-thread connections | SQLAlchemy `QueuePool` (pool_size=20, max_overflow=10) |
-| `_get_connection()` | Returns `sqlite3.Connection` (creates lazily per thread) | `@contextmanager` yielding pooled connection, auto-rollback on error |
+| `_get_connection()` | Returns `sqlite3.Connection` (creates lazily per thread) | `@contextmanager` yielding pooled connection, auto-rollback on error, auto-commit on normal exit (prevents stale MVCC snapshots across pool reuses) |
 | Journal mode | WAL | InnoDB (default) |
 | Schema migration | `_create_tables()` | Same |
 | Health check | `SELECT 1` on connection | `ping(reconnect=True)` on pool checkout |
