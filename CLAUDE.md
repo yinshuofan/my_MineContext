@@ -242,5 +242,6 @@ Each core module has a `MODULE.md` file providing implementation-level documenta
 
 ## API Documentation
 
+- `docs/api_reference.md` — Core API reference (push/chat, push/document, search, memory-cache) with request/response schemas and examples.
 - `docs/curls.sh` — All API endpoints as cURL commands, organized by category. Used for Apifox import and as a quick API reference.
-- **Maintenance rule**: When adding, modifying, or removing API endpoints, update `docs/curls.sh` to keep it in sync.
+- **Maintenance rule**: When adding, modifying, or removing API endpoints, update `docs/curls.sh` and `docs/api_reference.md` to keep them in sync.
