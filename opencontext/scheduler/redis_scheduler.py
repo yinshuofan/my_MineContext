@@ -877,8 +877,8 @@ def get_scheduler() -> Optional[RedisTaskScheduler]:
     return _scheduler
 
 
-def set_scheduler(scheduler: RedisTaskScheduler) -> None:
-    """Set the global scheduler instance"""
+def set_scheduler(scheduler: Optional[RedisTaskScheduler]) -> None:
+    """Set the global scheduler instance (pass None to clear)."""
     global _scheduler
     _scheduler = scheduler
 

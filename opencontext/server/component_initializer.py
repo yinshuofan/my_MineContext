@@ -183,6 +183,9 @@ class ComponentInitializer:
         scheduler_config = self.config.get("scheduler", {})
         if not scheduler_config.get("enabled", False):
             logger.info("Task scheduler not enabled in configuration")
+            # Clear stale singleton so start_task_scheduler() won't restart it
+            from opencontext.scheduler import set_scheduler
+            set_scheduler(None)
             return
 
         try:
