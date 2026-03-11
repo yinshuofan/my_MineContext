@@ -9,6 +9,7 @@ DELETE /api/memory-cache — Invalidates the cache for a user.
 
 import asyncio
 import time
+from typing import Optional, Set
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -21,12 +22,30 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["memory-cache"])
 
+VALID_SECTIONS = {"profile", "events", "accessed"}
+DEFAULT_SECTIONS = {"profile", "events", "accessed"}
+
+
+def _parse_include(include: Optional[str]) -> Set[str]:
+    """Parse comma-separated include parameter into a set of valid section names."""
+    if include is None:
+        return DEFAULT_SECTIONS.copy()
+    sections = {s.strip().lower() for s in include.split(",") if s.strip()}
+    if "all" in sections:
+        return VALID_SECTIONS.copy()
+    valid = sections & VALID_SECTIONS
+    return valid if valid else DEFAULT_SECTIONS.copy()
+
 
 @router.get("/memory-cache")
 async def get_user_memory_cache(
     user_id: str = Query(..., description="User identifier (required)"),
     device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
+    include: Optional[str] = Query(
+        default=None,
+        description="Comma-separated response sections: profile,events,accessed,all. Default: profile,events,accessed",
+    ),
     recent_days: int = Query(default=None, description="Recent memory window in days"),
     max_recent_events_today: int = Query(default=None, description="Max today L0 events"),
     max_accessed: int = Query(default=5, ge=1, le=100, description="Max recently accessed items"),
@@ -44,6 +63,7 @@ async def get_user_memory_cache(
     """
     t0 = time.monotonic()
     manager = get_memory_cache_manager()
+    include_sections = _parse_include(include)
 
     try:
         response = await asyncio.wait_for(
@@ -55,6 +75,7 @@ async def get_user_memory_cache(
                 max_recent_events_today=max_recent_events_today,
                 max_accessed=max_accessed,
                 force_refresh=force_refresh,
+                include_sections=include_sections,
             ),
             timeout=15.0,
         )
