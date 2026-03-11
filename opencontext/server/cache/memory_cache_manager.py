@@ -15,7 +15,7 @@ import asyncio
 import json
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from opencontext.config.global_config import get_config
 from opencontext.models.context import ProcessedContext
@@ -162,26 +162,49 @@ class UserMemoryCacheManager:
         max_recent_events_today: Optional[int] = None,
         max_accessed: int = 5,
         force_refresh: bool = False,
+        include_sections: Optional[Set[str]] = None,
     ) -> UserMemoryCacheResponse:
-        """Get the user's memory cache with stampede prevention."""
+        """Get the user's memory cache with stampede prevention.
+
+        Args:
+            include_sections: Set of section names to include in response.
+                Valid values: "profile", "events", "accessed".
+                Default (None): {"profile", "events", "accessed"}.
+                Snapshot is always built fully for caching; filtering is response-level only.
+        """
+        sections = include_sections or {"profile", "events", "accessed"}
         cache = await get_cache()
+
+        # 1. Recently accessed — only if requested, always real-time from Redis
+        accessed = []
+        if "accessed" in sections:
+            accessed = await self._get_recently_accessed(
+                cache, user_id, max_accessed, device_id, agent_id
+            )
+
+        # 2. If only accessed is requested, skip snapshot entirely
+        need_snapshot = bool(sections - {"accessed"})
+        if not need_snapshot:
+            return self._merge_response(
+                {"user_id": user_id, "device_id": device_id, "agent_id": agent_id,
+                 "recent_memories": {}},
+                accessed, cache_hit=False, ttl_remaining=0, include_sections=sections,
+            )
+
         snapshot_key = self._snapshot_key(user_id, device_id, agent_id)
 
-        # 1. Recently accessed — always real-time from Redis
-        accessed = await self._get_recently_accessed(
-            cache, user_id, max_accessed, device_id, agent_id
-        )
-
-        # 2. Try cached snapshot
+        # 3. Try cached snapshot
         if not force_refresh:
             snapshot = await cache.get_json(snapshot_key)
             if snapshot:
                 remaining_ttl = await cache.ttl(snapshot_key)
                 return self._merge_response(
-                    snapshot, accessed, cache_hit=True, ttl_remaining=max(remaining_ttl, 0)
+                    snapshot, accessed, cache_hit=True,
+                    ttl_remaining=max(remaining_ttl, 0),
+                    include_sections=sections,
                 )
 
-        # 3. Cache miss — acquire distributed lock to prevent stampede
+        # 4. Cache miss — acquire distributed lock to prevent stampede
         lock_key = f"memory_cache:build:{user_id}:{device_id}:{agent_id}"
         lock_token = await cache.acquire_lock(
             lock_key, timeout=30, blocking=True, blocking_timeout=5
@@ -193,20 +216,20 @@ class UserMemoryCacheManager:
                 snapshot = await cache.get_json(snapshot_key)
                 if snapshot and not force_refresh:
                     return self._merge_response(
-                        snapshot,
-                        accessed,
-                        cache_hit=True,
+                        snapshot, accessed, cache_hit=True,
                         ttl_remaining=await cache.ttl(snapshot_key),
+                        include_sections=sections,
                     )
 
-                # Actually build snapshot
+                # Actually build snapshot (always full, for caching)
                 snapshot_data = await self._build_snapshot(
                     user_id, device_id, agent_id, recent_days, max_recent_events_today
                 )
                 ttl = self._config["snapshot_ttl"]
                 await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
                 return self._merge_response(
-                    snapshot_data, accessed, cache_hit=False, ttl_remaining=ttl
+                    snapshot_data, accessed, cache_hit=False, ttl_remaining=ttl,
+                    include_sections=sections,
                 )
             finally:
                 await cache.release_lock(lock_key, lock_token)
@@ -215,16 +238,18 @@ class UserMemoryCacheManager:
             snapshot = await cache.get_json(snapshot_key)
             if snapshot:
                 return self._merge_response(
-                    snapshot,
-                    accessed,
-                    cache_hit=True,
+                    snapshot, accessed, cache_hit=True,
                     ttl_remaining=await cache.ttl(snapshot_key),
+                    include_sections=sections,
                 )
             # Another instance likely holds the lock and is building; build uncached
             snapshot_data = await self._build_snapshot(
                 user_id, device_id, agent_id, recent_days, max_recent_events_today
             )
-            return self._merge_response(snapshot_data, accessed, cache_hit=False, ttl_remaining=0)
+            return self._merge_response(
+                snapshot_data, accessed, cache_hit=False, ttl_remaining=0,
+                include_sections=sections,
+            )
 
     # ─── Recently Accessed (real-time from Redis) ───
 
@@ -487,54 +512,67 @@ class UserMemoryCacheManager:
         accessed: List[RecentlyAccessedItem],
         cache_hit: bool,
         ttl_remaining: int = 0,
+        include_sections: Optional[Set[str]] = None,
     ) -> UserMemoryCacheResponse:
-        """Merge snapshot data with real-time accessed items into final response."""
-        # Profile (simplified: factual_profile + behavioral_profile + metadata only)
-        profile = None
-        profile_data = snapshot_data.get("profile")
-        if profile_data:
-            profile = SimpleProfile(
-                factual_profile=profile_data.get("factual_profile", ""),
-                behavioral_profile=profile_data.get("behavioral_profile"),
-                metadata=profile_data.get("metadata", {}),
-            )
+        """Merge snapshot data with real-time accessed items into final response.
 
-        # Dedup: collect IDs already shown in today_events / daily_summaries
+        Only populates sections listed in include_sections. Unrequested sections
+        remain None in the response (= not requested). Requested but empty sections
+        are set to [] (= no data).
+        """
+        sections = include_sections or {"profile", "events", "accessed"}
         rm_data = snapshot_data.get("recent_memories", {})
+
+        # Profile
+        profile = None
+        if "profile" in sections:
+            profile_data = snapshot_data.get("profile")
+            if profile_data:
+                profile = SimpleProfile(
+                    factual_profile=profile_data.get("factual_profile", ""),
+                    behavioral_profile=profile_data.get("behavioral_profile"),
+                    metadata=profile_data.get("metadata", {}),
+                )
+
+        # Collect IDs from shown sections (for dedup against accessed)
         snapshot_ids: set = set()
-        for item in rm_data.get("today_events", []):
-            if item.get("id"):
-                snapshot_ids.add(item["id"])
-        for item in rm_data.get("daily_summaries", []):
-            if item.get("id"):
-                snapshot_ids.add(item["id"])
 
-        # Filter out profile/entity and items already covered by other sections
-        filtered_accessed = [
-            item
-            for item in accessed
-            if item.context_type != "profile" and item.id not in snapshot_ids
-        ]
+        # Events (today_events + daily_summaries)
+        today_events = None
+        daily_summaries = None
+        if "events" in sections:
+            for item in rm_data.get("today_events", []):
+                if item.get("id"):
+                    snapshot_ids.add(item["id"])
+            for item in rm_data.get("daily_summaries", []):
+                if item.get("id"):
+                    snapshot_ids.add(item["id"])
 
-        # Daily summaries (simplified: time_bucket + summary only)
-        daily_summaries = [
-            SimpleDailySummary(
-                time_bucket=item.get("time_bucket", ""),
-                title=item.get("title"),
-                summary=item.get("summary"),
-            )
-            for item in rm_data.get("daily_summaries", [])
-        ]
+            daily_summaries = [
+                SimpleDailySummary(
+                    time_bucket=item.get("time_bucket", ""),
+                    title=item.get("title"),
+                    summary=item.get("summary"),
+                )
+                for item in rm_data.get("daily_summaries", [])
+            ]
+            today_events = [
+                SimpleTodayEvent(
+                    title=item.get("title"),
+                    summary=item.get("summary"),
+                    event_time=item.get("event_time"),
+                )
+                for item in rm_data.get("today_events", [])
+            ]
 
-        # Today events (simplified: title + summary only)
-        today_events = [
-            SimpleTodayEvent(
-                title=item.get("title"),
-                summary=item.get("summary"),
-                event_time=item.get("event_time"),
-            )
-            for item in rm_data.get("today_events", [])
-        ]
+        # Recently accessed
+        filtered_accessed = None
+        if "accessed" in sections:
+            filtered_accessed = [
+                item
+                for item in accessed
+                if item.context_type != "profile" and item.id not in snapshot_ids
+            ]
 
         return UserMemoryCacheResponse(
             success=True,
