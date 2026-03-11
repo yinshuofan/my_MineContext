@@ -131,7 +131,7 @@ Facade that holds one `IVectorStorageBackend` and one `IDocumentStorageBackend`.
 - Vector operations (contexts, search, hierarchy) -> `_vector_backend`
 - Document operations (vaults, todos, tips, profiles, entities, conversations, messages, monitoring) -> `_document_backend`
 
-**Settings delegation**: Settings methods (`load_all_settings`, `save_setting`, `replace_setting`, `delete_all_settings`, `settings_count`) follow the monitoring methods pattern — implemented on `MySQLBackend`, `SQLiteBackend`, and `UnifiedStorage`, not on `IDocumentStorageBackend`.
+**Settings delegation**: Settings methods (`load_all_settings`, `save_setting`, `delete_all_settings`) follow the monitoring methods pattern — implemented on `MySQLBackend`, `SQLiteBackend`, and `UnifiedStorage`, not on `IDocumentStorageBackend`.
 
 ### GlobalStorage -- `global_storage.py`
 
@@ -256,9 +256,7 @@ Both `MySQLBackend` and `SQLiteBackend` provide settings CRUD methods for DB-bac
 |--------|-------------|
 | `load_all_settings()` | Load all settings rows as `{key: value}` dict (skips `_`-prefixed sentinel rows) |
 | `save_setting(key, value)` | Atomic upsert. MySQL uses `JSON_MERGE_PATCH`; SQLite uses Python-side `deep_merge` |
-| `replace_setting(key, value)` | Full overwrite (for migration) |
 | `delete_all_settings()` | Clear all settings (preserves sentinel rows) |
-| `settings_count()` | Row count (excludes sentinel rows) |
 
 ## Internal Data Flow
 
