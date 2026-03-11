@@ -28,6 +28,21 @@
                         <input type="text" class="form-control" id="agentId" placeholder="default" value="default">
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">返回内容</label>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="includeProfile" checked>
+                            <label class="form-check-label" for="includeProfile">用户画像</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="includeEvents" checked>
+                            <label class="form-check-label" for="includeEvents">事件</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="includeAccessed" checked>
+                            <label class="form-check-label" for="includeAccessed">最近访问</label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
                         <label for="recentDays" class="form-label">近期天数</label>
                         <input type="number" class="form-control" id="recentDays" value="3" min="1" max="90">
                     </div>
@@ -83,6 +98,12 @@ async function handleQuery(event) {
     const maxAccessed = document.getElementById('maxAccessed').value || 20;
     const forceRefresh = document.getElementById('forceRefresh').checked;
 
+    // Build include parameter from checkboxes
+    const includeSections = [];
+    if (document.getElementById('includeProfile').checked) includeSections.push('profile');
+    if (document.getElementById('includeEvents').checked) includeSections.push('events');
+    if (document.getElementById('includeAccessed').checked) includeSections.push('accessed');
+
     setLoading(true);
 
     try {
@@ -95,6 +116,14 @@ async function handleQuery(event) {
             max_accessed: maxAccessed,
             force_refresh: forceRefresh
         });
+
+        // Only add include param if not all sections selected (backward compat)
+        if (includeSections.length > 0 && includeSections.length < 3) {
+            params.set('include', includeSections.join(','));
+        } else if (includeSections.length === 0) {
+            // Nothing selected — use default (all)
+            // Don't set include param, server will use default
+        }
 
         const response = await fetch(`/api/memory-cache?${params}`);
         const data = await response.json();
@@ -135,10 +164,11 @@ function setLoading(loading) {
 
 function renderResults(data) {
     let html = '';
-    html += renderProfile(data.profile);
-    html += renderRecentlyAccessed(data.recently_accessed || []);
-    html += renderTodayEvents(data.today_events || []);
-    html += renderDailySummaries(data.daily_summaries || []);
+    if (data.profile != null) html += renderProfile(data.profile);
+    if (data.recently_accessed != null) html += renderRecentlyAccessed(data.recently_accessed);
+    if (data.today_events != null) html += renderTodayEvents(data.today_events);
+    if (data.daily_summaries != null) html += renderDailySummaries(data.daily_summaries);
+    if (!html) html = '<div class="text-muted text-center py-5"><p>未选择任何返回内容</p></div>';
     document.getElementById('results-area').innerHTML = html;
     feather.replace();
 }
