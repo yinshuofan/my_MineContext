@@ -45,7 +45,7 @@ class UserMemoryCacheManager:
     def _load_config(self) -> Dict[str, Any]:
         raw = get_config("memory_cache") or {}
         return {
-            "snapshot_ttl": raw.get("snapshot_ttl", 300),
+            "snapshot_ttl": raw.get("snapshot_ttl", 3600),
             "recent_days": raw.get("recent_days", 3),
             "max_recently_accessed": raw.get("max_recently_accessed", 25),
             "max_today_events": raw.get("max_today_events", 5),
