@@ -146,21 +146,22 @@ class UserMemoryCacheManager:
     def __init__(self)
     async def track_accessed(self, user_id, items: List[Dict], device_id, agent_id) -> None
     async def invalidate_snapshot(self, user_id, device_id, agent_id) -> None
-    async def get_user_memory_cache(self, user_id, device_id, agent_id, recent_days, max_recent_events_today, max_accessed, force_refresh) -> UserMemoryCacheResponse
+    async def get_user_memory_cache(self, user_id, device_id, agent_id, recent_days, max_recent_events_today, max_accessed, force_refresh, include_sections: Optional[Set[str]] = None) -> UserMemoryCacheResponse
 
     # Internal
     async def _get_recently_accessed(self, cache, user_id, max_items, device_id, agent_id) -> List[RecentlyAccessedItem]
     async def _build_snapshot(self, user_id, device_id, agent_id, recent_days, max_today_events) -> Dict[str, Any]
-    def _merge_response(self, snapshot_data, accessed, cache_hit, ttl_remaining) -> UserMemoryCacheResponse
+    def _merge_response(self, snapshot_data, accessed, cache_hit, ttl_remaining, include_sections: Optional[Set[str]] = None) -> UserMemoryCacheResponse
     async def _trim_accessed(self, cache, key: str, max_size: int) -> None
     @staticmethod _ctx_to_recent_item(ctx: ProcessedContext) -> Dict[str, Any]
 ```
 
 Caching architecture:
-- **Snapshot** (profile + today events + daily summaries): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot stores full internal data; response assembly in `_merge_response()` simplifies to `SimpleProfile` (factual_profile + behavioral_profile + keywords + metadata), `SimpleDailySummary` (time_bucket + summary), `SimpleTodayEvent` (title + summary + event_time).
-- **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile excluded), always read real-time.
+- **Snapshot** (profile + today events + daily summaries + recent docs + recent knowledge): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot always stores full internal data; response assembly in `_merge_response()` filters by `include_sections` and simplifies to `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`.
+- **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile excluded), always read real-time. Skipped entirely if `"accessed"` not in `include_sections`.
 - **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. If lock acquisition times out, tries cache once more then builds directly without caching.
-- **Snapshot build**: 5 parallel `asyncio.to_thread()` queries (profile, today events, daily summaries, recent docs, recent knowledge). Response only exposes profile, today_events, daily_summaries, recently_accessed.
+- **Snapshot build**: 5 parallel queries (profile, today events, daily summaries, recent docs, recent knowledge). Snapshot is always built fully for caching efficiency; `include_sections` filtering is response-level only.
+- **Section filtering**: `include_sections` controls which response fields are populated. Default: `{"profile", "events", "accessed"}`. Sections: `profile` → `profile`, `events` → `today_events` + `daily_summaries`, `accessed` → `recently_accessed`. Unrequested sections are `null` in response; requested but empty sections are `[]`.
 
 ### Auth Middleware (middleware/auth.py)
 
@@ -530,19 +531,23 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 ### Memory Cache Flow (`GET /api/memory-cache`)
 
 ```
-get_user_memory_cache()
-  -> _get_recently_accessed()          # Always real-time from Redis Hash
+get_user_memory_cache(include_sections)
+  -> Parse include_sections (default: {profile, events, accessed})
+  -> If "accessed" in sections:
+       _get_recently_accessed()          # Real-time from Redis Hash
+  -> If only "accessed" requested:
+       return _merge_response(empty_snapshot, accessed, sections)
   -> Check cached snapshot (Redis JSON)
-     HIT  -> _merge_response(snapshot, accessed)
+     HIT  -> _merge_response(snapshot, accessed, sections)
      MISS -> acquire_lock()
           -> Double-check snapshot
-          -> _build_snapshot()          # 5 parallel asyncio.to_thread() queries
+          -> _build_snapshot()          # Always full: 5 parallel queries
              profile, today_events, daily_summaries, recent_docs, recent_knowledge
           -> cache.set_json(snapshot, ttl=300s)
           -> release_lock()
-          -> _merge_response(snapshot, accessed)
-             # Simplifies snapshot to: SimpleProfile (factual_profile+behavioral_profile+keywords+metadata), SimpleTodayEvent (title+summary+event_time), SimpleDailySummary
-             # Filters recently_accessed to exclude profile type
+          -> _merge_response(snapshot, accessed, sections)
+             # Filters by include_sections: only populates requested sections
+             # Deduplicates accessed against IDs in shown sections
 ```
 
 ### Cache Invalidation Flow

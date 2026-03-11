@@ -323,8 +323,16 @@ curl -X POST http://localhost:1733/api/vector_search \
 # 5. Memory Cache
 # ============================================================================
 
-# Get Memory Cache Snapshot
+# Get Memory Cache Snapshot (default sections: profile, events, accessed)
 curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&device_id=default&agent_id=default&recent_days=7&max_recent_events_today=30&max_accessed=20&force_refresh=false"
+# -H "X-API-Key: your-api-key"
+
+# Get only profile
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=profile"
+# -H "X-API-Key: your-api-key"
+
+# Get profile + events (no recently accessed)
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=profile,events"
 # -H "X-API-Key: your-api-key"
 
 # Invalidate Memory Cache
