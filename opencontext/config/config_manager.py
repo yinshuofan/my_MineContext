@@ -221,7 +221,13 @@ class ConfigManager:
             saved_keys = []
             for key in settings:
                 if key in SAVEABLE_KEYS:
-                    value = self._strip_none_values(settings[key])
+                    raw_value = settings[key]
+                    value = self._strip_none_values(raw_value)
+                    logger.debug(
+                        f"save_user_settings: key={key}, "
+                        f"raw_enabled={raw_value.get('enabled') if isinstance(raw_value, dict) else 'N/A'}, "
+                        f"stripped_enabled={value.get('enabled') if isinstance(value, dict) else 'N/A'}"
+                    )
                     if value is not None and (not isinstance(value, dict) or value):
                         await storage.save_setting(key, value)
                         saved_keys.append(key)
@@ -285,7 +291,14 @@ class ConfigManager:
             if storage:
                 db_settings = await storage.load_all_settings()
                 if db_settings:
+                    yaml_sched = new_config.get("scheduler", {}).get("enabled")
+                    db_sched = db_settings.get("scheduler", {}).get("enabled")
                     new_config = deep_merge(new_config, db_settings)
+                    merged_sched = new_config.get("scheduler", {}).get("enabled")
+                    logger.debug(
+                        f"reload_config: scheduler.enabled: "
+                        f"yaml={yaml_sched}, db={db_sched}, merged={merged_sched}"
+                    )
 
             # Atomic pointer swap — no torn-read window
             self._config = new_config

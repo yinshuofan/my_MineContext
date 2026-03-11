@@ -384,6 +384,13 @@ async def update_general_settings(request: GeneralSettingsRequest, _auth: str = 
                 if key in req_dict:
                     settings[key] = req_dict[key]
 
+            if "scheduler" in settings:
+                sched = settings["scheduler"]
+                logger.debug(
+                    f"update_general_settings: scheduler.enabled="
+                    f"{sched.get('enabled')}, type={type(sched.get('enabled')).__name__}"
+                )
+
             if not settings:
                 return convert_resp(code=400, status=400, message="No settings provided")
 

@@ -102,7 +102,15 @@ class MySQLBackend(IDocumentStorageBackend):
 
     @asynccontextmanager
     async def _get_connection(self):
-        """Get a connection from the pool. Auto-returns on exit."""
+        """Get a connection from the pool. Auto-returns on exit.
+
+        With autocommit=False and REPEATABLE READ, each statement is part
+        of a transaction whose MVCC snapshot is taken at the first read.
+        If a pooled connection still carries an uncommitted transaction from
+        a previous use, subsequent reads see a stale snapshot.  The else-
+        branch commits on normal exit so the connection returns to the pool
+        with no lingering transaction.
+        """
         async with self._pool.acquire() as conn:
             try:
                 yield conn
@@ -112,6 +120,11 @@ class MySQLBackend(IDocumentStorageBackend):
                 except Exception as e:
                     logger.debug(f"Nested rollback failed: {e}")
                 raise
+            else:
+                try:
+                    await conn.commit()
+                except Exception:
+                    pass
 
     async def _create_tables(self):
         """Create database table structure"""
