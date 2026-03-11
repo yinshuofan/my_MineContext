@@ -79,6 +79,6 @@ class UserMemoryCacheResponse(BaseModel):
     device_id: str = "default"
     agent_id: str
     profile: Optional[SimpleProfile] = None
-    recently_accessed: List[RecentlyAccessedItem] = Field(default_factory=list)
-    daily_summaries: List[SimpleDailySummary] = Field(default_factory=list)
-    today_events: List[SimpleTodayEvent] = Field(default_factory=list)
+    recently_accessed: Optional[List[RecentlyAccessedItem]] = None
+    daily_summaries: Optional[List[SimpleDailySummary]] = None
+    today_events: Optional[List[SimpleTodayEvent]] = None
