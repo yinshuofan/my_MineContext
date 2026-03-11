@@ -11,7 +11,6 @@ Configuration manager, responsible for loading and managing system configuration
 
 import os
 import re
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import yaml
@@ -80,7 +79,6 @@ class ConfigManager:
         """Enable DB-backed settings if a document backend is available.
 
         Called from lifespan after GlobalStorage.ensure_initialized().
-        Auto-migrates from user_setting.yaml on first startup (if DB is empty).
 
         Returns True if DB settings were loaded (config may have changed),
         False if DB mode was not enabled or no settings exist yet.
@@ -95,13 +93,6 @@ class ConfigManager:
         if not storage:
             return False
 
-        # Auto-migrate from file on first startup (sentinel-guarded)
-        count = await storage.settings_count()
-        if count == 0:
-            user_setting_path = self._config.get("user_setting_path", "")
-            if user_setting_path and os.path.exists(user_setting_path):
-                await self._migrate_file_to_db(storage, user_setting_path)
-
         # Load settings from DB and apply
         db_settings = await storage.load_all_settings()
         if db_settings:
@@ -110,42 +101,6 @@ class ConfigManager:
 
         self._use_db_settings = True
         return bool(db_settings)
-
-    async def _migrate_file_to_db(self, storage, file_path: str) -> bool:
-        """One-time migration: copy settings from YAML file into DB.
-
-        Migration is idempotent — if multiple workers race on startup,
-        they all write the same data via replace_setting, and the end
-        state is correct. A sentinel row ('_migrated') marks migration
-        as complete so subsequent startups skip it.
-        """
-        try:
-            # Sentinel: marks migration as started/done
-            ok = await storage.save_setting(
-                "_migrated", {"ts": str(datetime.now(tz=timezone.utc))}
-            )
-            if not ok:
-                return False
-
-            with open(file_path, "r", encoding="utf-8") as f:
-                settings = yaml.safe_load(f)
-            if not settings or not isinstance(settings, dict):
-                return False
-            count = 0
-            for key, value in settings.items():
-                if isinstance(value, dict):
-                    await storage.replace_setting(key, value)
-                    count += 1
-                else:
-                    logger.warning(
-                        f"Skipping non-dict setting '{key}' during migration "
-                        f"(type={type(value).__name__})"
-                    )
-            logger.info(f"Migrated {count} setting(s) from {file_path} to DB")
-            return count > 0
-        except Exception as e:
-            logger.exception(f"Failed to migrate settings from file: {e}")
-            return False
 
     def load_config(self, config_path: Optional[str] = None) -> bool:
         """
