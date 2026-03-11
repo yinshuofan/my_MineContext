@@ -947,16 +947,6 @@ class UnifiedStorage:
         return await self._document_backend.save_setting(key, value)
 
     @_require_backend("_document_backend", default=False)
-    async def replace_setting(self, key: str, value: dict) -> bool:
-        """Overwrite a system setting (for migration)."""
-        return await self._document_backend.replace_setting(key, value)
-
-    @_require_backend("_document_backend", default=False)
     async def delete_all_settings(self) -> bool:
         """Delete all system settings."""
         return await self._document_backend.delete_all_settings()
-
-    @_require_backend("_document_backend", default=0)
-    async def settings_count(self) -> int:
-        """Return number of stored settings rows."""
-        return await self._document_backend.settings_count()

@@ -2017,24 +2017,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to save setting '{key}': {e}")
             return False
 
-    async def replace_setting(self, key: str, value: dict) -> bool:
-        """Overwrite (not merge) the row for *key*. Used for migration."""
-        if not self._initialized:
-            return False
-        conn = self._connection
-        try:
-            json_value = json.dumps(value, ensure_ascii=False)
-            await conn.execute(
-                "INSERT OR REPLACE INTO system_settings (setting_key, setting_value) VALUES (?, ?)",
-                (key, json_value),
-            )
-            await conn.commit()
-            return True
-        except Exception as e:
-            await conn.rollback()
-            logger.exception(f"Failed to replace setting '{key}': {e}")
-            return False
-
     async def delete_all_settings(self) -> bool:
         """Delete every row from system_settings (excluding internal sentinel rows)."""
         if not self._initialized:
@@ -2051,21 +2033,6 @@ class SQLiteBackend(IDocumentStorageBackend):
             await conn.rollback()
             logger.exception(f"Failed to delete settings: {e}")
             return False
-
-    async def settings_count(self) -> int:
-        """Return number of stored settings rows (excluding sentinel rows)."""
-        if not self._initialized:
-            return 0
-        conn = self._connection
-        try:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM system_settings WHERE SUBSTR(setting_key, 1, 1) != '_'"
-            )
-            row = await cursor.fetchone()
-            return row[0]
-        except Exception as e:
-            logger.exception(f"Failed to count settings: {e}")
-            return 0
 
     async def query(
         self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None
