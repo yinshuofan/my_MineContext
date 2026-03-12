@@ -93,16 +93,20 @@ class GlobalStorage:
                     storage = UnifiedStorage()
                     if await storage.initialize():
                         self._storage = storage
+                        self._auto_initialized = True
                         logger.info("GlobalStorage auto-initialized successfully")
                     else:
+                        self._storage = None
+                        self._auto_initialized = False
                         logger.warning(
                             "GlobalStorage auto-initialization: storage initialization failed"
                         )
                 else:
+                    self._auto_initialized = True
                     logger.warning("GlobalStorage auto-initialization: no backend configs found")
             else:
+                self._auto_initialized = True
                 logger.warning("GlobalStorage auto-initialization: storage not enabled in config")
-            self._auto_initialized = True
         except Exception as e:
             logger.error(f"GlobalStorage auto-initialization failed: {e}")
             self._auto_initialized = False  # Allow retry on next call
@@ -111,6 +115,19 @@ class GlobalStorage:
         """Ensure storage is initialized (async). Call this before first use."""
         if not self._auto_initialized and self._storage is None:
             await self._auto_initialize()
+
+    async def close(self):
+        """Close the active storage instance and reset auto-init state."""
+        if self._storage is not None:
+            try:
+                await self._storage.close()
+            except Exception as e:
+                logger.warning(f"Failed to close global storage cleanly: {e}")
+            finally:
+                self._storage = None
+
+        self._auto_initialized = False
+        self._init_attempts = 0
 
     def get_storage(self) -> Optional[UnifiedStorage]:
         """

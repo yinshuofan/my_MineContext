@@ -50,9 +50,11 @@ class TextChatCapture(BaseCaptureComponent):
 
         # 初始化 Redis 缓存（使用全局单例，由 OpenContext.initialize() 统一配置）
         try:
-            from opencontext.storage.redis_cache import get_redis_cache
+            from opencontext.storage.redis_cache import peek_redis_cache
 
-            self._redis_cache = get_redis_cache()
+            self._redis_cache = peek_redis_cache()
+            if self._redis_cache is None:
+                raise RuntimeError("Redis cache not initialized")
 
             # 注意：is_connected() 现在是异步的，初始化时先创建实例
             # 连接将在第一次异步操作时自动建立

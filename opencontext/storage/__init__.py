@@ -15,6 +15,7 @@ from opencontext.storage.redis_cache import (
     get_cache,
     get_redis_cache,
     init_redis_cache,
+    peek_redis_cache,
 )
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "RedisCacheConfig",
     "InMemoryCache",
     "get_redis_cache",
+    "peek_redis_cache",
     "init_redis_cache",
     "close_redis_cache",
     "get_cache",

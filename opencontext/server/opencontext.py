@@ -80,7 +80,7 @@ class OpenContext:
                 )
                 init_redis_cache(redis_cfg)
                 logger.info(
-                    f"Redis singleton initialized: "
+                    f"Redis singleton configured: "
                     f"{redis_cfg.host}:{redis_cfg.port}/{redis_cfg.db}"
                 )
 
@@ -109,7 +109,7 @@ class OpenContext:
             from opencontext.monitoring import initialize_monitor
 
             initialize_monitor()
-            logger.info("Monitoring system initialized with storage backend")
+            logger.info("Monitoring module initialized")
         except ImportError:
             logger.warning("Monitoring module not available, skipping monitoring initialization")
         except Exception as e:
@@ -431,13 +431,17 @@ class OpenContext:
 
         # Check Redis connectivity
         try:
-            from opencontext.storage.redis_cache import get_redis_cache
-
-            cache = get_redis_cache()
-            if cache:
-                health["redis"] = await cache.is_connected()
+            redis_config = GlobalConfig.get_instance().get_config("redis") or {}
+            if not redis_config.get("enabled", True):
+                health["redis"] = True
             else:
-                health["redis"] = False
+                from opencontext.storage.redis_cache import peek_redis_cache
+
+                cache = peek_redis_cache()
+                if cache:
+                    health["redis"] = await cache.is_connected()
+                else:
+                    health["redis"] = False
         except Exception as e:
             logger.warning(f"Redis health check failed: {e}")
             health["redis"] = False
@@ -460,9 +464,9 @@ class OpenContext:
                     import json as _json
 
                     from opencontext.scheduler import read_scheduler_heartbeat
-                    from opencontext.storage.redis_cache import get_redis_cache
+                    from opencontext.storage.redis_cache import peek_redis_cache
 
-                    redis_cache = get_redis_cache()
+                    redis_cache = peek_redis_cache()
                     if redis_cache:
                         heartbeat = await read_scheduler_heartbeat(redis_cache)
                         if heartbeat:

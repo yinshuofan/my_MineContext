@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+#
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,11 @@ Command-line interface - provides the entry point for command-line tools
 """
 
 import argparse
+import asyncio
+import os
+import signal
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -28,102 +32,129 @@ logger = get_logger(__name__)
 _context_lab_instance = None
 
 
-def get_or_create_context_lab():
-    """Get or create the global OpenContext instance for the current process."""
+class StartupDependencyError(RuntimeError):
+    """Raised when a critical runtime dependency fails during startup."""
+
+    def __init__(self, stage: str, message: str):
+        super().__init__(f"{stage} startup failed: {message}")
+        self.stage = stage
+
+
+def _clear_context_lab_instance() -> None:
+    global _context_lab_instance
+    _context_lab_instance = None
+
+
+def _create_context_lab() -> OpenContext:
+    """Create or return the global OpenContext instance for the current process."""
     global _context_lab_instance
     if _context_lab_instance is None:
-        _context_lab_instance = _initialize_context_lab()
-        _context_lab_instance.start_capture()
+        try:
+            _context_lab_instance = OpenContext()
+            _context_lab_instance.initialize()
+        except Exception as e:
+            _context_lab_instance = None
+            logger.exception(f"Failed to initialize OpenContext runtime: {e}")
+            raise StartupDependencyError("opencontext", str(e)) from e
     return _context_lab_instance
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan context manager for FastAPI."""
-    # Increase default thread pool for asyncio.to_thread() calls
-    import asyncio
-    import os
-    from concurrent.futures import ThreadPoolExecutor
+def get_or_create_context_lab() -> OpenContext:
+    """Backward-compatible wrapper for the process-local OpenContext singleton."""
+    return _create_context_lab()
 
-    # In multi-worker mode, uvicorn imports `opencontext.cli:app` in worker
-    # subprocesses without running `main()`. Reconfigure logging here so
-    # worker-side startup failures (storage/redis/mysql/vikingdb) are emitted.
-    try:
-        _setup_logging(os.environ.get("OPENCONTEXT_CONFIG_PATH"))
-        logger.info(
-            "Worker lifespan startup with config path: "
-            f"{os.environ.get('OPENCONTEXT_CONFIG_PATH', 'config/config.yaml')}"
-        )
-    except Exception as e:
-        print(f"Failed to configure worker logging: {e}", file=sys.stderr)
 
-    loop = asyncio.get_running_loop()
-    executor = ThreadPoolExecutor(max_workers=10)
-    loop.set_default_executor(executor)
-
-    # Startup
-    if not hasattr(app.state, "context_lab_instance"):
-        app.state.context_lab_instance = get_or_create_context_lab()
-
-    # Initialize async storage (must happen inside event loop)
+async def _ensure_storage_ready(max_retries: int = 3, delays: tuple[int, ...] = (3, 6)) -> None:
+    """Initialize storage and fail fast if it stays unavailable."""
     from opencontext.storage.global_storage import GlobalStorage
 
-    max_retries = 3
+    storage_mgr = GlobalStorage.get_instance()
     for attempt in range(max_retries):
-        await GlobalStorage.get_instance().ensure_initialized()
-        if GlobalStorage.get_instance().get_storage() is not None:
-            break
+        logger.info(f"Initializing storage (attempt {attempt + 1}/{max_retries})")
+        await storage_mgr.ensure_initialized()
+        if storage_mgr.get_storage() is not None:
+            logger.info("Storage ready")
+            return
+
         if attempt < max_retries - 1:
-            delay = 3 * (2**attempt)  # 3, 6 seconds
-            logger.warning(f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})")
+            delay = delays[min(attempt, len(delays) - 1)]
+            logger.warning(
+                f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})"
+            )
             await asyncio.sleep(delay)
-    else:
-        logger.error("Storage initialization failed after all retries")
 
-    context_lab = app.state.context_lab_instance
+    raise StartupDependencyError("storage", "storage initialization failed after retries")
 
-    # Initialize DB-backed settings (if MySQL storage is available)
+
+async def _ensure_redis_ready() -> None:
+    """Validate that Redis has been explicitly configured and is reachable."""
+    from opencontext.config.global_config import GlobalConfig
+    from opencontext.storage.redis_cache import peek_redis_cache
+
+    redis_config = GlobalConfig.get_instance().get_config("redis") or {}
+    if not redis_config.get("enabled", True):
+        logger.info("Redis disabled in configuration, skipping Redis readiness check")
+        return
+
+    cache = peek_redis_cache()
+    if cache is None:
+        raise StartupDependencyError("redis", "redis cache not initialized")
+
+    try:
+        if not await cache.is_connected():
+            raise StartupDependencyError("redis", "redis connectivity check failed")
+    except StartupDependencyError:
+        raise
+    except Exception as e:
+        raise StartupDependencyError("redis", str(e)) from e
+
+    logger.info(f"Redis ready: {cache.config.host}:{cache.config.port}/{cache.config.db}")
+
+
+async def _apply_db_backed_settings(context_lab: OpenContext) -> None:
+    """Load DB-backed settings and refresh scheduler config when needed."""
     try:
         from opencontext.config.global_config import GlobalConfig
 
         config_mgr = GlobalConfig.get_instance().get_config_manager()
-        if config_mgr:
-            settings_changed = await config_mgr.init_db_settings()
-            if settings_changed:
-                logger.info("DB-backed settings loaded, reinitializing components")
-                context_lab.component_initializer.reload_config()
-                context_lab.component_initializer.initialize_task_scheduler(
-                    context_lab.processor_manager
-                )
+        if not config_mgr:
+            return
+
+        settings_changed = await config_mgr.init_db_settings()
+        if settings_changed:
+            logger.info("DB-backed settings loaded, reinitializing components")
+            context_lab.component_initializer.reload_config()
+            context_lab.component_initializer.initialize_task_scheduler(
+                context_lab.processor_manager
+            )
     except Exception as e:
         logger.warning(f"DB settings init failed, using file-based settings: {e}")
 
-    # Start task scheduler after event loop is running
+
+async def _close_object_storage() -> None:
+    """Close object storage if it was initialized."""
     try:
-        if context_lab and hasattr(context_lab, "component_initializer"):
-            await context_lab.component_initializer.start_task_scheduler()
+        from opencontext.storage.object_storage.global_object_storage import GlobalObjectStorage
+
+        obj_storage = GlobalObjectStorage._instance if GlobalObjectStorage._initialized else None
+        if obj_storage:
+            await obj_storage.close()
     except Exception as e:
-        logger.warning(f"Failed to start task scheduler: {e}")
+        logger.warning(f"Error closing object storage: {e}")
 
-    # Start config reload manager (listens for cross-worker reload signals)
+
+async def _shutdown_runtime(
+    context_lab: Optional[OpenContext],
+    executor: Optional[ThreadPoolExecutor] = None,
+    graceful: bool = True,
+) -> None:
+    """Shutdown runtime components in a safe order."""
     try:
-        from opencontext.server.config_reload_manager import get_config_reload_manager
-
-        await get_config_reload_manager().start(context_lab.reload_components)
-    except Exception as e:
-        logger.warning(f"Failed to start config reload manager: {e}")
-
-    yield
-
-    # Shutdown - stop scheduler first (while event loop is still running)
-    try:
-        context_lab = getattr(app.state, "context_lab_instance", None)
         if context_lab and hasattr(context_lab, "component_initializer"):
             await context_lab.component_initializer.stop_task_scheduler()
     except Exception as e:
         logger.warning(f"Error stopping task scheduler: {e}")
 
-    # Stop stream interrupt subscriber
     try:
         from opencontext.server.stream_interrupt import get_stream_interrupt_manager
 
@@ -131,7 +162,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Error stopping stream interrupt manager: {e}")
 
-    # Stop config reload manager
     try:
         from opencontext.server.config_reload_manager import get_config_reload_manager
 
@@ -139,18 +169,119 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Error stopping config reload manager: {e}")
 
-    # Close object storage (release HTTP sessions)
+    if context_lab is not None:
+        try:
+            await asyncio.to_thread(context_lab.shutdown, graceful)
+        except Exception as e:
+            logger.warning(f"Error shutting down OpenContext runtime: {e}")
+
+    await _close_object_storage()
+
     try:
-        from opencontext.storage.object_storage import get_object_storage
+        from opencontext.storage.redis_cache import close_redis_cache
 
-        obj_storage = get_object_storage()
-        if obj_storage:
-            await obj_storage.close()
+        await close_redis_cache()
     except Exception as e:
-        logger.warning(f"Error closing object storage: {e}")
+        logger.warning(f"Error closing Redis cache: {e}")
 
-    # Shutdown executor, waiting for in-flight thread pool tasks
-    executor.shutdown(wait=True, cancel_futures=True)
+    try:
+        from opencontext.storage.global_storage import GlobalStorage
+
+        await GlobalStorage.get_instance().close()
+    except Exception as e:
+        logger.warning(f"Error closing global storage: {e}")
+
+    _clear_context_lab_instance()
+
+    if executor is not None:
+        try:
+            await asyncio.to_thread(executor.shutdown, wait=True, cancel_futures=True)
+        except Exception as e:
+            logger.warning(f"Error shutting down executor: {e}")
+
+
+async def _cleanup_failed_startup(
+    context_lab: Optional[OpenContext],
+    executor: Optional[ThreadPoolExecutor] = None,
+) -> None:
+    """Cleanup partial startup state without masking the original failure."""
+    await _shutdown_runtime(context_lab, executor=executor, graceful=False)
+
+
+async def _bootstrap_runtime(
+    *,
+    enable_capture: bool,
+    enable_scheduler: bool,
+    enable_reload: bool,
+    executor: Optional[ThreadPoolExecutor] = None,
+) -> OpenContext:
+    """Bootstrap the runtime in a single, explicit order."""
+    context_lab: Optional[OpenContext] = None
+    try:
+        logger.info("Bootstrapping OpenContext runtime")
+        context_lab = _create_context_lab()
+
+        await _ensure_storage_ready()
+        await _ensure_redis_ready()
+        await _apply_db_backed_settings(context_lab)
+
+        if enable_capture:
+            logger.info("Starting capture components")
+            context_lab.start_capture()
+
+        if enable_scheduler and hasattr(context_lab, "component_initializer"):
+            logger.info("Starting task scheduler")
+            await context_lab.component_initializer.start_task_scheduler()
+
+        if enable_reload:
+            from opencontext.server.config_reload_manager import get_config_reload_manager
+
+            logger.info("Starting config reload manager")
+            await get_config_reload_manager().start(context_lab.reload_components)
+
+        logger.info("OpenContext runtime bootstrap completed")
+        return context_lab
+    except Exception:
+        await _cleanup_failed_startup(context_lab, executor=executor)
+        raise
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI."""
+    executor: Optional[ThreadPoolExecutor] = None
+    context_lab: Optional[OpenContext] = None
+
+    try:
+        # In multi-worker mode, uvicorn imports `opencontext.cli:app` in worker
+        # subprocesses without running `main()`. Reconfigure logging here so
+        # worker-side startup failures are emitted.
+        _setup_logging(os.environ.get("OPENCONTEXT_CONFIG_PATH"))
+        logger.info(
+            f"Worker lifespan startup pid={os.getpid()} "
+            f"config_path={os.environ.get('OPENCONTEXT_CONFIG_PATH', 'config/config.yaml')}"
+        )
+
+        loop = asyncio.get_running_loop()
+        executor = ThreadPoolExecutor(max_workers=10)
+        loop.set_default_executor(executor)
+
+        context_lab = await _bootstrap_runtime(
+            enable_capture=True,
+            enable_scheduler=True,
+            enable_reload=True,
+            executor=executor,
+        )
+        app.state.context_lab_instance = context_lab
+
+        yield
+    finally:
+        if context_lab is not None:
+            await _shutdown_runtime(context_lab, executor=executor)
+            if hasattr(app.state, "context_lab_instance"):
+                delattr(app.state, "context_lab_instance")
+        elif executor is not None:
+            await asyncio.to_thread(executor.shutdown, wait=True, cancel_futures=True)
 
 
 app = FastAPI(title="OpenContext", version="1.0.0", lifespan=lifespan)
@@ -205,43 +336,23 @@ _setup_static_files()
 app.include_router(api_router)
 
 
-def start_web_server(
-    context_lab_instance: Optional[OpenContext],
-    host: str,
-    port: int,
-    workers: int = 1,
-) -> None:
-    """Start the web server with the given opencontext instance.
-
-    Args:
-        context_lab_instance: The opencontext instance to attach to the app (None in multi-worker mode)
-        host: Host address to bind to
-        port: Port number to bind to
-        workers: Number of worker processes
-    """
+def start_web_server(host: str, port: int, workers: int = 1) -> None:
+    """Start the web server."""
     if workers > 1:
         logger.info(f"Starting with {workers} worker processes")
-        # For multi-process mode, use import string to avoid the warning
         uvicorn.run("opencontext.cli:app", host=host, port=port, log_level="info", workers=workers)
     else:
-        # For single process mode, use the existing instance
-        app.state.context_lab_instance = context_lab_instance
         uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command line arguments.
-
-    Returns:
-        Parsed command line arguments
-    """
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="OpenContext - Context capture, processing, storage and consumption system"
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # Start command
     start_parser = subparsers.add_parser("start", help="Start OpenContext server")
     start_parser.add_argument("--config", type=str, help="Configuration file path")
     start_parser.add_argument("--host", type=str, help="Host address (overrides config file)")
@@ -258,163 +369,62 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _initialize_context_lab() -> OpenContext:
-    """Initialize the OpenContext instance.
+def _run_headless_mode(*, enable_capture: bool, enable_scheduler: bool) -> int:
+    """Run in headless mode without a web server."""
 
-    Returns:
-        Initialized OpenContext instance
-
-    Raises:
-        RuntimeError: If initialization fails
-    """
-    try:
-        lab_instance = OpenContext()
-        lab_instance.initialize()
-        return lab_instance
-    except Exception as e:
-        logger.error(f"Failed to initialize OpenContext: {e}")
-        raise RuntimeError(f"OpenContext initialization failed: {e}") from e
-
-
-def _run_headless_mode(lab_instance: OpenContext) -> None:
-    """Run in headless mode without web server.
-
-    Args:
-        lab_instance: The opencontext instance
-    """
-    import asyncio
-    import signal
-
-    async def _run_async():
-        # Initialize async storage (same pattern as lifespan())
-        from opencontext.storage.global_storage import GlobalStorage
-
-        max_retries = 5
-        for attempt in range(max_retries):
-            await GlobalStorage.get_instance().ensure_initialized()
-            if GlobalStorage.get_instance().get_storage() is not None:
-                break
-            if attempt < max_retries - 1:
-                delay = min(10 * (2**attempt), 60)  # 10, 20, 40, 60
-                logger.warning(
-                    f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})"
-                )
-                await asyncio.sleep(delay)
-        else:
-            logger.error("Storage initialization failed after all retries")
-
-        # Init DB-backed settings
+    async def _run_async() -> None:
+        context_lab = await _bootstrap_runtime(
+            enable_capture=enable_capture,
+            enable_scheduler=enable_scheduler,
+            enable_reload=False,
+        )
         try:
-            from opencontext.config.global_config import GlobalConfig
-
-            config_mgr = GlobalConfig.get_instance().get_config_manager()
-            if config_mgr:
-                settings_changed = await config_mgr.init_db_settings()
-                if settings_changed:
-                    lab_instance.component_initializer.reload_config()
-                    lab_instance.component_initializer.initialize_task_scheduler(
-                        lab_instance.processor_manager
-                    )
-        except Exception as e:
-            logger.warning(f"DB settings init failed: {e}")
-
-        try:
-            if hasattr(lab_instance, "component_initializer"):
-                await lab_instance.component_initializer.start_task_scheduler()
-
             logger.info("Running in headless mode. Waiting for shutdown signal...")
-
-            # Handle SIGTERM for Docker graceful shutdown
             stop_event = asyncio.Event()
             loop = asyncio.get_running_loop()
             try:
                 loop.add_signal_handler(signal.SIGTERM, stop_event.set)
             except NotImplementedError:
-                pass  # Windows — rely on KeyboardInterrupt via asyncio.run()
+                pass  # Windows: rely on KeyboardInterrupt via asyncio.run()
 
             await stop_event.wait()
-        except asyncio.CancelledError:
-            pass  # SIGINT via asyncio.run() cancellation
         finally:
-            if hasattr(lab_instance, "component_initializer"):
-                await lab_instance.component_initializer.stop_task_scheduler()
+            await _shutdown_runtime(context_lab)
 
     try:
         asyncio.run(_run_async())
+        return 0
+    except StartupDependencyError as e:
+        logger.error(str(e))
+        return 1
     except KeyboardInterrupt:
         logger.info("Received interrupt signal, shutting down...")
-    finally:
-        lab_instance.shutdown()
+        return 0
 
 
 def handle_start(args: argparse.Namespace) -> int:
-    """Handle the start command.
-
-    Args:
-        args: Parsed command line arguments
-
-    Returns:
-        Exit code (0 for success, 1 for failure)
-    """
+    """Handle the start command."""
     from opencontext.config.global_config import get_config
 
     web_config = get_config("web")
     workers = getattr(args, "workers", 1)
 
     if getattr(args, "scheduler_only", False):
-        # Scheduler-only mode: run task scheduler without web server or capture
-        try:
-            lab_instance = _initialize_context_lab()
-        except RuntimeError:
-            return 1
-        _run_headless_mode(lab_instance)
-        return 0
+        return _run_headless_mode(enable_capture=False, enable_scheduler=True)
 
     if not web_config.get("enabled", True):
-        # Headless mode
-        try:
-            lab_instance = _initialize_context_lab()
-        except RuntimeError:
-            return 1
-        logger.info("Starting all modules")
-        lab_instance.start_capture()
-        _run_headless_mode(lab_instance)
-        return 0
+        return _run_headless_mode(enable_capture=True, enable_scheduler=True)
 
-    # Command line arguments override config file
     host = args.host if args.host else web_config.get("host", "localhost")
     port = args.port if args.port else web_config.get("port", 1733)
 
-    if workers > 1:
-        # Multi-worker: main process is just a supervisor, workers self-initialize in lifespan
-        logger.info(f"Starting web server on {host}:{port} with {workers} workers")
-        start_web_server(None, host, port, workers)
-    else:
-        # Single-worker: initialize here and pass to app directly
-        try:
-            lab_instance = _initialize_context_lab()
-        except RuntimeError:
-            return 1
-        logger.info("Starting all modules")
-        lab_instance.start_capture()
-        try:
-            logger.info(f"Starting web server on {host}:{port}")
-            start_web_server(lab_instance, host, port)
-        finally:
-            logger.info("Web server closed, shutting down capture modules...")
-            lab_instance.shutdown()
-
+    logger.info(f"Starting web server on {host}:{port} with {workers} worker(s)")
+    start_web_server(host, port, workers)
     return 0
 
 
 def _setup_logging(config_path: Optional[str]) -> None:
-    """Setup logging configuration.
-
-    Args:
-        config_path: Optional path to configuration file
-    """
-    import os
-
+    """Setup logging configuration."""
     # Propagate config path via env var for multi-worker subprocess inheritance
     if config_path:
         os.environ["OPENCONTEXT_CONFIG_PATH"] = config_path
@@ -427,14 +437,9 @@ def _setup_logging(config_path: Optional[str]) -> None:
 
 
 def main() -> int:
-    """Main entry point.
-
-    Returns:
-        Exit code (0 for success, non-zero for failure)
-    """
+    """Main entry point."""
     args = parse_args()
 
-    # Setup logging first
     _setup_logging(getattr(args, "config", None))
 
     logger.debug(f"Command line arguments: {args}")
@@ -447,9 +452,9 @@ def main() -> int:
 
     if args.command == "start":
         return handle_start(args)
-    else:
-        logger.error(f"Unknown command: {args.command}")
-        return 1
+
+    logger.error(f"Unknown command: {args.command}")
+    return 1
 
 
 if __name__ == "__main__":

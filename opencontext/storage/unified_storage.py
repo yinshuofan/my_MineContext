@@ -125,6 +125,21 @@ class UnifiedStorage:
         self._vector_backend: IVectorStorageBackend = None
         self._document_backend: IDocumentStorageBackend = None
 
+    async def close(self) -> None:
+        """Close initialized backends and release resources."""
+        backends = [self._vector_backend, self._document_backend]
+        for backend in backends:
+            if backend is None or not hasattr(backend, "close"):
+                continue
+            try:
+                await backend.close()
+            except Exception as e:
+                logger.warning(f"Failed to close storage backend cleanly: {e}")
+
+        self._vector_backend = None
+        self._document_backend = None
+        self._initialized = False
+
     async def get_vector_collection_names(self) -> Optional[List[str]]:
         """Get all collection names in vector database"""
         if not self._vector_backend:
@@ -189,12 +204,14 @@ class UnifiedStorage:
                     logger.error(
                         f"Storage backend {config['name']} init failed after {max_retries} attempts"
                     )
+                    await self.close()
                     return False
 
             self._initialized = True
             return True
 
         except Exception as e:
+            await self.close()
             logger.exception(f"Unified storage system initialization failed: {e}")
             return False
 

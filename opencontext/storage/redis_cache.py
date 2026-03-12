@@ -956,6 +956,12 @@ def get_redis_cache(config: Optional[RedisCacheConfig] = None) -> RedisCache:
         return _redis_client
 
 
+def peek_redis_cache() -> Optional[RedisCache]:
+    """Get the global Redis cache instance without implicitly creating one."""
+    with _redis_lock:
+        return _redis_client
+
+
 def init_redis_cache(config: RedisCacheConfig) -> RedisCache:
     """
     Initialize the global Redis cache with specific configuration.

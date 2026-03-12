@@ -196,13 +196,12 @@ class ComponentInitializer:
                 create_hierarchy_handler,
             )
             from opencontext.scheduler import get_scheduler, init_scheduler
-            from opencontext.storage.redis_cache import get_redis_cache
+            from opencontext.storage.redis_cache import peek_redis_cache
 
             # Get Redis cache (singleton already initialized by OpenContext.initialize())
-            redis_cache = get_redis_cache()
+            redis_cache = peek_redis_cache()
             if not redis_cache:
-                logger.warning("Redis cache not available, task scheduler requires Redis")
-                return
+                raise RuntimeError("Redis cache not initialized, task scheduler requires Redis")
 
             # Initialize scheduler
             scheduler = init_scheduler(redis_cache, scheduler_config)
@@ -263,6 +262,7 @@ class ComponentInitializer:
 
         except Exception as e:
             logger.exception(f"Failed to initialize task scheduler: {e}")
+            raise
 
     async def start_task_scheduler(self) -> None:
         """
@@ -278,6 +278,7 @@ class ComponentInitializer:
                 logger.info("Task scheduler started")
         except Exception as e:
             logger.exception(f"Failed to start task scheduler: {e}")
+            raise
 
     async def stop_task_scheduler(self) -> None:
         """
