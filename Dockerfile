@@ -15,6 +15,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Set working directory
 WORKDIR /app
 
+RUN command -v uv >/dev/null 2>&1 || pip install --no-cache-dir uv
+
 # Install system dependencies (uncomment if needed later)
 # RUN apt-get update && rm -rf /var/lib/apt/lists/*
 
@@ -33,7 +35,7 @@ COPY . .
 
 # Install the project itself (no dependencies needed as they are already installed)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --no-editable
 
 # Ensure subsequent commands use the virtual environment
 ENV PATH="/app/.venv/bin:$PATH"
