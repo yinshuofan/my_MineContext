@@ -42,7 +42,20 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI."""
     # Increase default thread pool for asyncio.to_thread() calls
     import asyncio
+    import os
     from concurrent.futures import ThreadPoolExecutor
+
+    # In multi-worker mode, uvicorn imports `opencontext.cli:app` in worker
+    # subprocesses without running `main()`. Reconfigure logging here so
+    # worker-side startup failures (storage/redis/mysql/vikingdb) are emitted.
+    try:
+        _setup_logging(os.environ.get("OPENCONTEXT_CONFIG_PATH"))
+        logger.info(
+            "Worker lifespan startup with config path: "
+            f"{os.environ.get('OPENCONTEXT_CONFIG_PATH', 'config/config.yaml')}"
+        )
+    except Exception as e:
+        print(f"Failed to configure worker logging: {e}", file=sys.stderr)
 
     loop = asyncio.get_running_loop()
     executor = ThreadPoolExecutor(max_workers=10)
