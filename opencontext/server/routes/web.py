@@ -21,8 +21,10 @@ from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.opencontext import OpenContext
 from opencontext.server.utils import get_context_lab
 from opencontext.storage.global_storage import get_storage
+from opencontext.utils.logging_utils import get_logger
 
 router = APIRouter(tags=["web"])
+logger = get_logger(__name__)
 
 project_root = Path(__file__).parent.parent.parent.parent.resolve()
 templates_path = Path(__file__).parent.parent.parent / "web" / "templates"
@@ -48,107 +50,140 @@ async def read_contexts(
     end_date: Optional[str] = None,
     opencontext: OpenContext = Depends(get_context_lab),
 ):
-    limit = min(max(limit, 1), 100)
-    page = max(page, 1)
-    types = []
-    if type:
-        types.append(type)
+    storage = get_storage()
+    if storage is None:
+        logger.error("Contexts page requested before storage initialization completed")
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "message": (
+                    "Context storage is unavailable. Check vector database initialization, "
+                    "credentials, and network connectivity."
+                ),
+            },
+            status_code=503,
+        )
 
-    # Build filter dict from query params
-    storage_filter: dict = {}
-    if hierarchy_level is not None:
-        storage_filter["hierarchy_level"] = hierarchy_level
-    if start_date:
-        for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+    try:
+        limit = min(max(limit, 1), 100)
+        page = max(page, 1)
+        types = []
+        if type:
+            types.append(type)
+
+        # Build filter dict from query params
+        storage_filter: dict = {}
+        if hierarchy_level is not None:
+            storage_filter["hierarchy_level"] = hierarchy_level
+        if start_date:
+            for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    start_dt = datetime.datetime.strptime(start_date, fmt).replace(
+                        tzinfo=datetime.timezone.utc
+                    )
+                    storage_filter.setdefault("create_time_ts", {})["$gte"] = start_dt.timestamp()
+                    break
+                except ValueError:
+                    continue
+        if end_date:
+            for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    end_dt = datetime.datetime.strptime(end_date, fmt).replace(
+                        tzinfo=datetime.timezone.utc
+                    )
+                    if fmt == "%Y-%m-%d":
+                        end_dt += datetime.timedelta(days=1)
+                    else:
+                        end_dt += datetime.timedelta(minutes=1)
+                    storage_filter.setdefault("create_time_ts", {})["$lt"] = end_dt.timestamp()
+                    break
+                except ValueError:
+                    continue
+
+        context_types = [ct for ct in storage.get_available_context_types() if ct != "profile"]
+        types_for_query = list(types) if types else context_types
+
+        # Get total count for pagination
+        total_count = await storage.get_filtered_context_count(
+            context_types=types_for_query,
+            filter=storage_filter if storage_filter else None,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+        )
+        total_pages = max(1, math.ceil(total_count / limit))
+        page = min(page, total_pages)
+        offset = (page - 1) * limit
+
+        # Fetch data with skip_slice=True for correct cross-type global pagination.
+        # Note: fetches (offset+limit) records per type, so cost is O(types * (offset+limit)).
+        contexts_dict = await storage.get_all_processed_contexts(
+            context_types=types_for_query,
+            limit=limit + offset,
+            offset=0,
+            need_vector=False,
+            filter=storage_filter if storage_filter else None,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            skip_slice=True,
+        )
+        contexts = []
+        for backend_contexts in contexts_dict.values():
+            contexts.extend(backend_contexts)
+
+        # Sort with timezone-aware datetime handling, then global slice
+        def get_sort_key(context):
+            dt = context.properties.create_time
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt
+
+        contexts.sort(key=get_sort_key, reverse=True)
+        contexts_to_display = contexts[offset : offset + limit]
+
+        model_contexts = []
+        for context in contexts_to_display:
             try:
-                start_dt = datetime.datetime.strptime(start_date, fmt).replace(
-                    tzinfo=datetime.timezone.utc
+                model_contexts.append(
+                    ProcessedContextModel.from_processed_context(context, project_root)
                 )
-                storage_filter.setdefault("create_time_ts", {})["$gte"] = start_dt.timestamp()
-                break
-            except ValueError:
-                continue
-    if end_date:
-        for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-            try:
-                end_dt = datetime.datetime.strptime(end_date, fmt).replace(
-                    tzinfo=datetime.timezone.utc
-                )
-                if fmt == "%Y-%m-%d":
-                    end_dt += datetime.timedelta(days=1)
-                else:
-                    end_dt += datetime.timedelta(minutes=1)
-                storage_filter.setdefault("create_time_ts", {})["$lt"] = end_dt.timestamp()
-                break
-            except ValueError:
-                continue
+            except Exception:
+                logger.exception("Failed to serialize context %s for /contexts page", context.id)
 
-    context_types = [
-        ct for ct in get_storage().get_available_context_types() if ct != "profile"
-    ]
-    types_for_query = list(types) if types else context_types
-
-    # Get total count for pagination
-    total_count = await get_storage().get_filtered_context_count(
-        context_types=types_for_query,
-        filter=storage_filter if storage_filter else None,
-        user_id=user_id,
-        device_id=device_id,
-        agent_id=agent_id,
-    )
-    total_pages = max(1, math.ceil(total_count / limit))
-    page = min(page, total_pages)
-    offset = (page - 1) * limit
-
-    # Fetch data with skip_slice=True for correct cross-type global pagination.
-    # Note: fetches (offset+limit) records per type, so cost is O(types * (offset+limit)).
-    contexts_dict = await get_storage().get_all_processed_contexts(
-        context_types=types_for_query,
-        limit=limit + offset,
-        offset=0,
-        need_vector=False,
-        filter=storage_filter if storage_filter else None,
-        user_id=user_id,
-        device_id=device_id,
-        agent_id=agent_id,
-        skip_slice=True,
-    )
-    contexts = []
-    for backend_contexts in contexts_dict.values():
-        contexts.extend(backend_contexts)
-
-    # Sort with timezone-aware datetime handling, then global slice
-    def get_sort_key(context):
-        dt = context.properties.create_time
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=datetime.timezone.utc)
-        return dt
-
-    contexts.sort(key=get_sort_key, reverse=True)
-    contexts_to_display = contexts[offset : offset + limit]
-
-    return templates.TemplateResponse(
-        "contexts.html",
-        {
-            "request": request,
-            "contexts": [
-                ProcessedContextModel.from_processed_context(c, project_root)
-                for c in contexts_to_display
-            ],
-            "page": page,
-            "limit": limit,
-            "total_pages": total_pages,
-            "total_count": total_count,
-            "type": type,
-            "user_id": user_id,
-            "device_id": device_id,
-            "agent_id": agent_id,
-            "hierarchy_level": hierarchy_level,
-            "start_date": start_date,
-            "end_date": end_date,
-            "context_types": context_types,
-        },
-    )
+        return templates.TemplateResponse(
+            "contexts.html",
+            {
+                "request": request,
+                "contexts": model_contexts,
+                "page": page,
+                "limit": limit,
+                "total_pages": total_pages,
+                "total_count": total_count,
+                "type": type,
+                "user_id": user_id,
+                "device_id": device_id,
+                "agent_id": agent_id,
+                "hierarchy_level": hierarchy_level,
+                "start_date": start_date,
+                "end_date": end_date,
+                "context_types": context_types,
+            },
+        )
+    except Exception as e:
+        logger.exception("Failed to render /contexts page: %s", e)
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "message": (
+                    "Failed to load contexts. Check vector database connectivity and server logs "
+                    "for the original exception."
+                ),
+            },
+            status_code=500,
+        )
 
 
 @router.get("/vector_search", response_class=HTMLResponse)
