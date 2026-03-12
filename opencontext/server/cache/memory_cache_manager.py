@@ -31,6 +31,7 @@ from opencontext.server.cache.models import (
 )
 from opencontext.storage.global_storage import get_storage
 from opencontext.storage.redis_cache import get_cache
+from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -102,6 +103,7 @@ class UserMemoryCacheManager:
                 "score": item.get("score"),
                 "event_time": item.get("event_time"),
                 "create_time": item.get("create_time"),
+                "media_refs": normalize_media_refs(item.get("media_refs")),
                 "accessed_ts": now,
             }
 
@@ -284,6 +286,7 @@ class UserMemoryCacheManager:
                         score=data.get("score"),
                         event_time=data.get("event_time"),
                         create_time=data.get("create_time"),
+                        media_refs=normalize_media_refs(data.get("media_refs")),
                     )
                 )
             except (json.JSONDecodeError, TypeError, KeyError):
@@ -499,8 +502,9 @@ class UserMemoryCacheManager:
         }
 
         # Include media_refs from metadata if present (multimodal content)
-        if ctx.metadata and ctx.metadata.get("media_refs"):
-            result["media_refs"] = ctx.metadata["media_refs"]
+        media_refs = normalize_media_refs(ctx.metadata.get("media_refs") if ctx.metadata else None)
+        if media_refs:
+            result["media_refs"] = media_refs
 
         return result
 

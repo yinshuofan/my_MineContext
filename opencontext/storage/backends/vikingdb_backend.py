@@ -26,6 +26,7 @@ from opencontext.llm.global_embedding_client import do_vectorize, do_vectorize_b
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
 from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
+from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -1159,15 +1160,9 @@ class VikingDBBackend(IVectorStorageBackend):
             if content_modalities:
                 metadata_dict[FIELD_CONTENT_MODALITIES] = content_modalities
 
-            media_refs_raw = fields.pop(FIELD_MEDIA_REFS, None)
-            if media_refs_raw:
-                if isinstance(media_refs_raw, str):
-                    try:
-                        metadata_dict[FIELD_MEDIA_REFS] = json.loads(media_refs_raw)
-                    except (json.JSONDecodeError, TypeError):
-                        metadata_dict[FIELD_MEDIA_REFS] = media_refs_raw
-                else:
-                    metadata_dict[FIELD_MEDIA_REFS] = media_refs_raw
+            media_refs = normalize_media_refs(fields.pop(FIELD_MEDIA_REFS, None))
+            if media_refs:
+                metadata_dict[FIELD_MEDIA_REFS] = media_refs
 
             # Pop legacy fields to prevent them leaking into metadata
             fields.pop("images", None)

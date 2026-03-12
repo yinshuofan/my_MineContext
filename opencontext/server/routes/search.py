@@ -27,6 +27,7 @@ from opencontext.server.search.models import (
     SearchMetadata,
 )
 from opencontext.storage.global_storage import get_storage
+from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -414,14 +415,17 @@ def _normalize_parent_id(props) -> Optional[str]:
     return None
 
 
+def _extract_media_refs(ctx: ProcessedContext) -> List[Dict[str, Any]]:
+    """Extract normalized media_refs from context metadata."""
+    if not ctx.metadata:
+        return []
+    return normalize_media_refs(ctx.metadata.get("media_refs"))
+
+
 def _to_context_node(ctx: ProcessedContext) -> EventNode:
     """Convert a ProcessedContext to a lightweight EventNode (for ancestors)."""
     props = ctx.properties
     extracted = ctx.extracted_data
-
-    media_refs = []
-    if ctx.metadata and ctx.metadata.get("media_refs"):
-        media_refs = ctx.metadata["media_refs"]
 
     return EventNode(
         id=ctx.id,
@@ -433,7 +437,7 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=False,
-        media_refs=media_refs,
+        media_refs=_extract_media_refs(ctx),
     )
 
 
@@ -441,10 +445,6 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
     """Convert a ProcessedContext to a search-hit EventNode with full data."""
     props = ctx.properties
     extracted = ctx.extracted_data
-
-    media_refs = []
-    if ctx.metadata and ctx.metadata.get("media_refs"):
-        media_refs = ctx.metadata["media_refs"]
 
     return EventNode(
         id=ctx.id,
@@ -459,7 +459,7 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=True,
-        media_refs=media_refs,
+        media_refs=_extract_media_refs(ctx),
     )
 
 
