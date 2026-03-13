@@ -153,6 +153,47 @@ class UserMemoryCacheManager:
             f"device={device_id}, agent={agent_id}"
         )
 
+    async def refresh_snapshot(
+        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+    ) -> bool:
+        """Invalidate and proactively rebuild the snapshot cache.
+
+        Called after new contexts are stored to ensure the cache reflects latest data.
+        Uses the same distributed lock as get_user_memory_cache() for stampede prevention.
+
+        Returns True if snapshot was rebuilt, False if skipped (lock held by another worker).
+        """
+        cache = await get_cache()
+        snapshot_key = self._snapshot_key(user_id, device_id, agent_id)
+        lock_key = f"memory_cache:build:{user_id}:{device_id}:{agent_id}"
+
+        lock_token = await cache.acquire_lock(
+            lock_key, timeout=30, blocking=True, blocking_timeout=5
+        )
+        if lock_token:
+            try:
+                await cache.delete(snapshot_key)
+                snapshot_data = await self._build_snapshot(
+                    user_id, device_id, agent_id, None, None
+                )
+                ttl = self._config["snapshot_ttl"]
+                await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
+                logger.info(
+                    f"Proactively refreshed memory cache for user={user_id}, "
+                    f"device={device_id}, agent={agent_id}"
+                )
+                return True
+            finally:
+                await cache.release_lock(lock_key, lock_token)
+        else:
+            # Another worker is building — just invalidate, next read will rebuild
+            await cache.delete(snapshot_key)
+            logger.debug(
+                f"Proactive refresh skipped (lock held) for user={user_id}, "
+                f"falling back to invalidation"
+            )
+            return False
+
     # ─── Main Entry Point ───
 
     async def get_user_memory_cache(

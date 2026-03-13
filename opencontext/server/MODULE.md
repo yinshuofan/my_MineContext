@@ -146,6 +146,7 @@ class UserMemoryCacheManager:
     def __init__(self)
     async def track_accessed(self, user_id, items: List[Dict], device_id, agent_id) -> None
     async def invalidate_snapshot(self, user_id, device_id, agent_id) -> None
+    async def refresh_snapshot(self, user_id, device_id, agent_id) -> bool
     async def get_user_memory_cache(self, user_id, device_id, agent_id, recent_days, max_recent_events_today, max_accessed, force_refresh, include_sections: Optional[Set[str]] = None) -> UserMemoryCacheResponse
 
     # Internal
@@ -550,14 +551,18 @@ get_user_memory_cache(include_sections)
              # Deduplicates accessed against IDs in shown sections
 ```
 
-### Cache Invalidation Flow
+### Cache Invalidation Flow (Proactive Refresh)
 
 ```
 OpenContext._handle_processed_context()
   -> After successful storage writes
   -> _invalidate_user_cache(user_id, device_id, agent_id)
-     -> get_memory_cache_manager().invalidate_snapshot()  # via run_coroutine_threadsafe
-     -> Fallback: sync Redis DELETE of snapshot key
+     -> get_memory_cache_manager().refresh_snapshot()
+        -> acquire distributed lock (same lock_key as get_user_memory_cache)
+        -> delete old snapshot
+        -> _build_snapshot() (5 parallel queries)
+        -> cache new snapshot with TTL
+     -> Fallback (lock held by another worker): delete snapshot key only
 ```
 
 ## Conventions and Constraints
