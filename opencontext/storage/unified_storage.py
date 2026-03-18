@@ -983,6 +983,35 @@ class UnifiedStorage:
         """Delete all system settings."""
         return await self._document_backend.delete_all_settings()
 
+    # ── Agent Registry (→ document DB) ──
+
+    @_require_backend("_document_backend", default=False)
+    async def create_agent(self, agent_id: str, name: str, description: str = "") -> bool:
+        """Register a new agent."""
+        return await self._document_backend.create_agent(agent_id, name, description)
+
+    @_require_backend("_document_backend")
+    async def get_agent(self, agent_id: str) -> Optional[Dict]:
+        """Get agent by ID (excludes soft-deleted)."""
+        return await self._document_backend.get_agent(agent_id)
+
+    @_require_backend("_document_backend", default=[])
+    async def list_agents(self) -> List[Dict]:
+        """List all active agents."""
+        return await self._document_backend.list_agents()
+
+    @_require_backend("_document_backend", default=False)
+    async def update_agent(
+        self, agent_id: str, name: Optional[str] = None, description: Optional[str] = None
+    ) -> bool:
+        """Update agent info."""
+        return await self._document_backend.update_agent(agent_id, name=name, description=description)
+
+    @_require_backend("_document_backend", default=False)
+    async def delete_agent(self, agent_id: str) -> bool:
+        """Soft delete agent."""
+        return await self._document_backend.delete_agent(agent_id)
+
     # ── Chat Batches (→ document DB) ──
 
     @_require_backend("_document_backend", default=False)

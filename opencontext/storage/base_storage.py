@@ -443,6 +443,30 @@ class IDocumentStorageBackend(IStorageBackend):
             True if successful, False otherwise
         """
 
+    # ── Agent Registry ──
+
+    async def create_agent(self, agent_id: str, name: str, description: str = "") -> bool:
+        """Register a new agent."""
+        raise NotImplementedError
+
+    async def get_agent(self, agent_id: str) -> Optional[Dict]:
+        """Get agent by ID (excludes soft-deleted)."""
+        raise NotImplementedError
+
+    async def list_agents(self) -> List[Dict]:
+        """List all active agents."""
+        raise NotImplementedError
+
+    async def update_agent(
+        self, agent_id: str, name: Optional[str] = None, description: Optional[str] = None
+    ) -> bool:
+        """Update agent info."""
+        raise NotImplementedError
+
+    async def delete_agent(self, agent_id: str) -> bool:
+        """Soft delete agent."""
+        raise NotImplementedError
+
     # ── Chat Batches ──
 
     async def create_chat_batch(

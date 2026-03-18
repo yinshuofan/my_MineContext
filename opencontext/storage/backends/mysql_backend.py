@@ -366,6 +366,20 @@ class MySQLBackend(IDocumentStorageBackend):
                 """
                 )
 
+                # Agent registry table - registered agents with soft delete
+                await cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS agent_registry (
+                        agent_id VARCHAR(100) PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        is_deleted BOOLEAN DEFAULT FALSE,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """
+                )
+
                 await conn.commit()
 
     # Report table operations
@@ -1559,6 +1573,112 @@ class MySQLBackend(IDocumentStorageBackend):
                 except Exception as e:
                     logger.error(f"cleanup_chat_batches failed: {e}")
                     return 0
+
+    # ── Agent Registry CRUD ──
+
+    async def create_agent(self, agent_id: str, name: str, description: str = "") -> bool:
+        """Register a new agent."""
+        if not self._initialized:
+            return False
+
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    await cursor.execute(
+                        "INSERT INTO agent_registry (agent_id, name, description) VALUES (%s, %s, %s)",
+                        (agent_id, name, description),
+                    )
+                    await conn.commit()
+                    return True
+                except Exception as e:
+                    logger.error(f"create_agent failed: {e}")
+                    return False
+
+    async def get_agent(self, agent_id: str) -> Optional[Dict]:
+        """Get agent by ID (excludes soft-deleted)."""
+        if not self._initialized:
+            return None
+
+        async with self._get_connection() as conn:
+            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
+                try:
+                    await cursor.execute(
+                        "SELECT agent_id, name, description, created_at, updated_at "
+                        "FROM agent_registry WHERE agent_id = %s AND is_deleted = FALSE",
+                        (agent_id,),
+                    )
+                    return await cursor.fetchone()
+                except Exception as e:
+                    logger.error(f"get_agent failed: {e}")
+                    return None
+
+    async def list_agents(self) -> List[Dict]:
+        """List all active agents."""
+        if not self._initialized:
+            return []
+
+        async with self._get_connection() as conn:
+            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
+                try:
+                    await cursor.execute(
+                        "SELECT agent_id, name, description, created_at, updated_at "
+                        "FROM agent_registry WHERE is_deleted = FALSE ORDER BY created_at DESC"
+                    )
+                    return await cursor.fetchall()
+                except Exception as e:
+                    logger.error(f"list_agents failed: {e}")
+                    return []
+
+    async def update_agent(
+        self, agent_id: str, name: Optional[str] = None, description: Optional[str] = None
+    ) -> bool:
+        """Update agent info."""
+        if not self._initialized:
+            return False
+
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    updates = []
+                    params = []
+                    if name is not None:
+                        updates.append("name = %s")
+                        params.append(name)
+                    if description is not None:
+                        updates.append("description = %s")
+                        params.append(description)
+                    if not updates:
+                        return True
+                    params.append(agent_id)
+                    await cursor.execute(
+                        f"UPDATE agent_registry SET {', '.join(updates)} "
+                        f"WHERE agent_id = %s AND is_deleted = FALSE",
+                        tuple(params),
+                    )
+                    await conn.commit()
+                    return cursor.rowcount > 0
+                except Exception as e:
+                    logger.error(f"update_agent failed: {e}")
+                    return False
+
+    async def delete_agent(self, agent_id: str) -> bool:
+        """Soft delete agent."""
+        if not self._initialized:
+            return False
+
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    await cursor.execute(
+                        "UPDATE agent_registry SET is_deleted = TRUE "
+                        "WHERE agent_id = %s AND is_deleted = FALSE",
+                        (agent_id,),
+                    )
+                    await conn.commit()
+                    return cursor.rowcount > 0
+                except Exception as e:
+                    logger.error(f"delete_agent failed: {e}")
+                    return False
 
     async def query(self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None) -> QueryResult:
         if not self._initialized:
