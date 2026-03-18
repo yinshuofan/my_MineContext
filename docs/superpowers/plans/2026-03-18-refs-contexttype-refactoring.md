@@ -97,7 +97,7 @@ MEMORY_OWNER_TYPES = {
 
 - [ ] **Step 5: Add ContextSimpleDescriptions for new types**
 
-At `opencontext/models/enums.py:120-141`, add entries for each new type. Example for `DAILY_SUMMARY`:
+At `opencontext/models/enums.py:120-141`, add entries for ALL new types (including summaries and agent types). Example for `DAILY_SUMMARY`:
 
 ```python
 ContextSimpleDescriptions[ContextType.DAILY_SUMMARY] = {
@@ -109,9 +109,11 @@ ContextSimpleDescriptions[ContextType.DAILY_SUMMARY] = {
 
 Add similar entries for `WEEKLY_SUMMARY`, `MONTHLY_SUMMARY`, `AGENT_EVENT`, `AGENT_DAILY_SUMMARY`, `AGENT_WEEKLY_SUMMARY`, `AGENT_MONTHLY_SUMMARY`.
 
-- [ ] **Step 6: Add ContextDescriptions for new types**
+- [ ] **Step 6: Add ContextDescriptions ONLY for AGENT_EVENT**
 
-At `opencontext/models/enums.py:143-211`, add entries. The summary types do NOT need `key_indicators` or `examples` (they are system-generated, not LLM-classified). `AGENT_EVENT` needs full descriptions for LLM classification. Example:
+**CRITICAL**: Do NOT add summary types (`DAILY_SUMMARY`, `WEEKLY_SUMMARY`, `MONTHLY_SUMMARY`, `AGENT_DAILY_SUMMARY`, etc.) to `ContextDescriptions`. The `get_context_type_descriptions_for_extraction()` function iterates all entries in `ContextDescriptions` to build LLM classification prompts. If summary types are added, the LLM will incorrectly classify user content as summary types. Summary types are system-generated, never LLM-classified.
+
+Only add `AGENT_EVENT` to `ContextDescriptions`:
 
 ```python
 ContextDescriptions[ContextType.AGENT_EVENT] = {
@@ -217,9 +219,22 @@ compatibility during migration."
 - Modify: `opencontext/storage/base_storage.py:386-441` (IDocumentStorageBackend interface)
 - Modify: `opencontext/storage/unified_storage.py:868-903` (profile delegation methods)
 
-- [ ] **Step 1: Add owner_type to MySQL profiles table DDL**
+- [ ] **Step 1: Add owner_type to MySQL profiles table DDL and migration**
 
-At `opencontext/storage/backends/mysql_backend.py:191-207`, add `owner_type` column:
+At `opencontext/storage/backends/mysql_backend.py:191-207`, add `owner_type` column to the CREATE TABLE DDL. Additionally, in the `initialize()` method (around line 91), add an ALTER TABLE migration for existing databases:
+
+```python
+# Migration: add owner_type to existing profiles table
+try:
+    await cursor.execute(
+        "ALTER TABLE profiles ADD COLUMN owner_type VARCHAR(50) NOT NULL DEFAULT 'user'"
+    )
+    await cursor.execute(
+        "CREATE INDEX idx_profiles_owner_type ON profiles(owner_type)"
+    )
+except Exception:
+    pass  # Column already exists
+```
 
 ```sql
 CREATE TABLE IF NOT EXISTS profiles (
@@ -561,7 +576,22 @@ Find all calls to `storage.search_hierarchy()` in the file (lines 735, 805, 906,
 - L2 queries: `context_type=ContextType.WEEKLY_SUMMARY.value` (was EVENT + hierarchy_level=2)
 - L0 queries: `context_type=ContextType.EVENT.value` (unchanged)
 
-**Important**: The `search_hierarchy` method signature still expects `hierarchy_level`. Keep passing it for now — the storage backend uses it for filtering. This will be cleaned up when `search_hierarchy` is updated.
+**Important — dedup check compatibility**: The hierarchy generation code calls `search_hierarchy()` to check if a summary already exists before generating. Currently it queries `context_type=EVENT, hierarchy_level=1`. After migration, new summaries use `context_type=DAILY_SUMMARY`. The dedup check must query BOTH the old format (existing data) and new format (new data) to avoid regenerating summaries that already exist in either format:
+
+```python
+# Dedup check: look for existing summary in both old and new format
+existing_old = await storage.search_hierarchy(
+    context_type=ContextType.EVENT.value, hierarchy_level=level, ...
+)
+existing_new = await storage.search_hierarchy(
+    context_type=summary_context_type.value, hierarchy_level=level, ...
+)
+if existing_old or existing_new:
+    logger.info("Summary already exists, skipping")
+    return
+```
+
+The `search_hierarchy` method signature still expects `hierarchy_level`. Keep passing it — the storage backend uses it for filtering. After all existing data is migrated (manual script), the old-format check can be removed.
 
 - [ ] **Step 6: Compile check**
 
@@ -643,41 +673,68 @@ At `opencontext/server/routes/search.py:296-350`, replace the `parent_id` traver
 
 ```python
 async def _collect_ancestors(storage, results, max_level, memory_owner="user"):
-    """Collect ancestors by following refs upward."""
-    ancestor_map = {}
+    """Collect ancestors by following refs upward (to summary types).
+
+    Refs key convention: a child points to its parent by storing the parent's
+    ContextType.value as the key. E.g., an L0 event has refs={"daily_summary": ["ds_001"]}.
+    Summary types (L1+) are the "upward" direction.
+    """
+    owner_types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
+    # Summary types = indices 1+ (L1, L2, L3) — these are "upward" refs
+    summary_type_values = {t.value for t in owner_types[1:]}
+
+    ancestor_map = {}  # child_id -> [parent_ids]
+    all_ancestors = {}  # ancestor_id -> ProcessedContext
     seen = set()
     current_batch = []
 
-    # Collect initial parent IDs from refs
+    # Seed: collect parent IDs from search hit refs
     for ctx, score in results:
-        if ctx.properties and ctx.properties.refs:
-            for ref_key, ref_ids in ctx.properties.refs.items():
-                # Only follow upward refs (summary types)
-                if ref_key in [t.value for t in MEMORY_OWNER_TYPES.get(memory_owner, [])[1:]]:
-                    for pid in ref_ids:
-                        if pid not in seen:
-                            seen.add(pid)
-                            current_batch.append(pid)
-                            ancestor_map.setdefault(ctx.id, []).append(pid)
+        if not ctx.properties or not ctx.properties.refs:
+            # Fallback to old parent_id field during migration
+            if ctx.properties and ctx.properties.parent_id:
+                pid = ctx.properties.parent_id
+                if pid not in seen:
+                    seen.add(pid)
+                    current_batch.append(pid)
+                    ancestor_map.setdefault(ctx.id, []).append(pid)
+            continue
+        for ref_key, ref_ids in ctx.properties.refs.items():
+            if ref_key in summary_type_values:
+                for pid in ref_ids:
+                    if pid not in seen:
+                        seen.add(pid)
+                        current_batch.append(pid)
+                        ancestor_map.setdefault(ctx.id, []).append(pid)
 
-    # BFS upward through refs
+    # BFS upward: fetch parents, then follow their upward refs
     rounds = 0
     while current_batch and rounds < 3:
         parents = await storage.get_contexts_by_ids(current_batch)
         next_batch = []
         for parent in parents:
-            if parent.properties and parent.properties.refs:
-                for ref_key, ref_ids in parent.properties.refs.items():
-                    if ref_key in [t.value for t in MEMORY_OWNER_TYPES.get(memory_owner, [])[1:]]:
-                        for pid in ref_ids:
-                            if pid not in seen:
-                                seen.add(pid)
-                                next_batch.append(pid)
+            all_ancestors[parent.id] = parent
+            if not parent.properties or not parent.properties.refs:
+                # Fallback to old parent_id
+                if parent.properties and parent.properties.parent_id:
+                    pid = parent.properties.parent_id
+                    if pid not in seen:
+                        seen.add(pid)
+                        next_batch.append(pid)
+                continue
+            for ref_key, ref_ids in parent.properties.refs.items():
+                if ref_key in summary_type_values:
+                    for pid in ref_ids:
+                        if pid not in seen:
+                            seen.add(pid)
+                            next_batch.append(pid)
         current_batch = next_batch
         rounds += 1
 
-    return ancestor_map, seen
+    return all_ancestors
 ```
+
+**Important**: This includes a fallback to `parent_id` for contexts that were created before the refs migration. This ensures drill-up works during the transition period.
 
 - [ ] **Step 5: Update EventNode construction to populate refs**
 
