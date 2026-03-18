@@ -15,7 +15,12 @@ from typing import Any, Callable, Dict, List, Optional
 from loguru import logger
 
 from opencontext.interfaces import IContextProcessor
-from opencontext.models import ContextSource, RawContextProperties
+from opencontext.models import ContextSource, ProcessedContext, RawContextProperties
+
+BATCH_PROCESSOR_MAP = {
+    "user_memory": "text_chat_processor",
+    # "agent_memory": "agent_memory_processor",  # Added in Plan 3
+}
 
 
 class ContextProcessorManager:
@@ -131,6 +136,54 @@ class ContextProcessorManager:
                 f"Processing component '{processor_name}' encountered exception while processing data: {e}"
             )
             return False
+
+    async def process_batch(
+        self, raw_context: RawContextProperties, processor_names: List[str]
+    ) -> List[ProcessedContext]:
+        """Run multiple processors in parallel on the same input, merge outputs."""
+        # Resolve processor names to instances
+        tasks = []
+        resolved_names = []
+        for name in processor_names:
+            internal_name = BATCH_PROCESSOR_MAP.get(name)
+            if not internal_name:
+                logger.warning(f"Unknown processor name: {name}, skipping")
+                continue
+            processor = self._processors.get(internal_name)
+            if not processor:
+                logger.warning(f"Processor not registered: {internal_name}, skipping")
+                continue
+            if not processor.can_process(raw_context):
+                logger.debug(f"Processor {internal_name} cannot process this input, skipping")
+                continue
+            tasks.append(processor.process(raw_context))
+            resolved_names.append(internal_name)
+
+        if not tasks:
+            logger.warning("No processors available for batch processing")
+            return []
+
+        # Run in parallel, tolerant of individual failures
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        all_contexts = []
+        for name, result in zip(resolved_names, results):
+            if isinstance(result, Exception):
+                logger.error(f"Processor {name} failed: {result}")
+                continue
+            if result:
+                all_contexts.extend(result)
+
+        logger.info(
+            f"process_batch: {len(processor_names)} processors → "
+            f"{len(all_contexts)} contexts"
+        )
+
+        # Invoke callback to route to storage
+        if all_contexts and self._callback:
+            await self._callback(all_contexts)
+
+        return all_contexts
 
     async def batch_process(
         self, initial_inputs: List[RawContextProperties]
