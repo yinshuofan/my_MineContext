@@ -208,11 +208,11 @@ def convert_resp(data=None, code=0, status=200, message="success") -> JSONRespon
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| POST | `/api/push/chat` | `push_chat` | Unified chat push (buffer or direct mode) |
+| POST | `/api/push/chat` | `push_chat` | Push chat messages for processing (persists to `chat_batches`, dispatches to processors) |
 | POST | `/api/push/document` | `push_document` | Push document (file_path or base64) |
 | POST | `/api/push/document/upload` | `upload_document_file` | Upload document via multipart form |
 
-Push endpoints that schedule hierarchy summary: `push_chat` (both modes).
+Push endpoints that schedule hierarchy summary: `push_chat`.
 
 ### Search Routes (`/api/*`)
 
@@ -408,43 +408,41 @@ HTTP Request
 
 ### Push Flow (`POST /api/push/chat`)
 
+**Breaking change**: `process_mode` and `flush_immediately` parameters have been removed. The buffer mode no longer exists. All messages are now persisted to `chat_batches` and dispatched to processors directly.
+
+New `processors` parameter (default: `["user_memory"]`) controls which processors run on the input. Processor names are resolved via `BATCH_PROCESSOR_MAP` in `opencontext/managers/processor_manager.py`:
+- `"user_memory"` -> `"text_chat_processor"`
+- (future: `"agent_memory"` -> `"agent_memory_processor"`)
+
 Both text-only and multimodal messages (OpenAI format) are supported. Before processing, `_process_multimodal_messages()` (async) handles base64 media:
 - Text-only messages (`content` is a string): pass through unchanged
 - Multimodal messages (`content` is a list): base64 images/videos are uploaded to object storage (if configured, via `get_object_storage()`) and replaced with HTTPS URLs; without object storage, files are saved locally to `./uploads/media/{uuid}.{ext}`; HTTP URLs pass through unchanged; format and size constraints are validated (images < 10 MB, videos < 50 MB)
 
-Buffer mode (`process_mode="buffer"`):
 ```
 push_chat()
   -> await _process_multimodal_messages()  # upload media to object storage, validate
-  -> for msg in messages: text_chat.push_message()  # content can be str or List[Dict]
-  -> if flush_immediately: text_chat.flush_user_buffer()
+  -> storage.create_chat_batch()           # persist messages to chat_batches table
+  -> Build RawContextProperties inline     # detects multimodal content, attaches batch_id
+  -> BackgroundTasks: processor_manager.process_batch(raw_context, processors)
   -> BackgroundTasks: _schedule_user_task("memory_compression")
   -> BackgroundTasks: _schedule_user_task("hierarchy_summary")
+  -> Return {batch_id, message_count}
 ```
 
-Direct mode (`process_mode="direct"`):
-```
-push_chat()
-  -> await _process_multimodal_messages()  # upload media to object storage, validate
-  -> BackgroundTasks: text_chat.process_messages_directly()
-  -> BackgroundTasks: _schedule_user_task("memory_compression")
-  -> BackgroundTasks: _schedule_user_task("hierarchy_summary")
-```
+Processing and scheduling run via `BackgroundTasks` — after the response is sent, not inline.
 
-Both modes use `BackgroundTasks` for scheduling — the scheduling runs after the response is sent, not inline.
-
-When buffer flushes or direct processing runs:
+When `process_batch` runs:
 ```
-TextChatCapture.process_messages_directly()
-  -> processor_manager.process()
-    -> TextChatProcessor.process()
-      -> return List[ProcessedContext]
-    -> Manager invokes callback with results:
-      -> OpenContext._handle_processed_context()
-         -> Routes by CONTEXT_STORAGE_BACKENDS:
-            profile -> _store_profile() -> storage.upsert_profile()
-            document/event/knowledge -> storage.batch_upsert_processed_context() -> vector DB
-         -> _invalidate_user_cache() for affected users
+ProcessorManager.process_batch(raw_context, ["user_memory"])
+  -> Resolve names via BATCH_PROCESSOR_MAP: "user_memory" -> "text_chat_processor"
+  -> Run resolved processors in parallel (asyncio.gather)
+  -> Each processor returns List[ProcessedContext]
+  -> Merge all results, invoke callback:
+     -> OpenContext._handle_processed_context()
+        -> Routes by CONTEXT_STORAGE_BACKENDS:
+           profile -> _store_profile() -> storage.upsert_profile()
+           document/event/knowledge -> storage.batch_upsert_processed_context() -> vector DB
+        -> _invalidate_user_cache() for affected users
 ```
 
 Processors return `List[ProcessedContext]` to the manager, which centrally invokes the callback. Processors do not call storage or callbacks directly.

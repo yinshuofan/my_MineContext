@@ -12,7 +12,9 @@ Base URL: `http://{host}:{port}` (默认 `http://localhost:1733`)
 
 `POST /api/push/chat`
 
-将对话消息推送到系统进行处理，提取 profile / event / knowledge 等记忆。
+将对话消息推送到系统进行处理，提取 profile / event / knowledge 等记忆。消息会持久化到 `chat_batches` 表，然后在后台分发给指定的处理器。
+
+> **Breaking Change**: `process_mode` 和 `flush_immediately` 参数已移除。Buffer 模式不再存在。所有消息均直接处理。新增 `processors` 参数控制运行哪些处理器。
 
 ### 请求体
 
@@ -24,8 +26,7 @@ Base URL: `http://{host}:{port}` (默认 `http://localhost:1733`)
 | `user_id` | `string` | 否 | `"default"` | 用户标识 |
 | `device_id` | `string` | 否 | `"default"` | 设备标识 |
 | `agent_id` | `string` | 否 | `"default"` | Agent 标识 |
-| `process_mode` | `string` | 否 | `"buffer"` | 处理模式：`"buffer"`（缓冲后批量处理）/ `"direct"`（立即处理） |
-| `flush_immediately` | `bool` | 否 | `false` | 仅 buffer 模式有效，是否立即刷新缓冲区 |
+| `processors` | `List[string]` | 否 | `["user_memory"]` | 要运行的处理器列表：`"user_memory"` 等 |
 
 多模态 content 格式（OpenAI content parts）：
 ```json
@@ -37,7 +38,7 @@ Base URL: `http://{host}:{port}` (默认 `http://localhost:1733`)
 
 ### 请求示例
 
-**Buffer 模式（默认）**
+**基本用法（默认处理器）**
 ```bash
 curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
@@ -45,12 +46,11 @@ curl -X POST http://localhost:1733/api/push/chat \
     "messages": [
       {"role": "user", "content": "Remind me to buy groceries tomorrow"}
     ],
-    "user_id": "test_user",
-    "process_mode": "buffer"
+    "user_id": "test_user"
   }'
 ```
 
-**Direct 模式**
+**多条消息**
 ```bash
 curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
@@ -59,12 +59,11 @@ curl -X POST http://localhost:1733/api/push/chat \
       {"role": "user", "content": "I had a meeting with the product team today. We discussed the Q2 roadmap."},
       {"role": "assistant", "content": "Got it! The Q2 roadmap discussion is noted."}
     ],
-    "user_id": "test_user",
-    "process_mode": "direct"
+    "user_id": "test_user"
   }'
 ```
 
-**Buffer + 立即刷新**
+**指定处理器**
 ```bash
 curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
@@ -73,32 +72,20 @@ curl -X POST http://localhost:1733/api/push/chat \
       {"role": "user", "content": "Tomorrow I need to prepare the quarterly report for the finance team."}
     ],
     "user_id": "test_user",
-    "process_mode": "buffer",
-    "flush_immediately": true
+    "processors": ["user_memory"]
   }'
 ```
 
 ### 响应示例
 
-**Buffer 模式成功**
-```json
-{
-  "code": 0,
-  "status": 200,
-  "message": "Chat messages pushed successfully",
-  "data": {
-    "count": 1
-  }
-}
-```
-
-**Direct 模式成功**
+**成功**
 ```json
 {
   "code": 0,
   "status": 200,
   "message": "Chat messages submitted for processing",
   "data": {
+    "batch_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "message_count": 2
   }
 }

@@ -9,7 +9,7 @@ Provides a base class and concrete implementations for capturing raw context dat
 | `base.py` | `BaseCaptureComponent` -- abstract base implementing `ICaptureComponent` with lifecycle, threading, stats, and callback plumbing |
 | `web_link_capture.py` | `WebLinkCapture` -- converts URLs to Markdown (crawl4ai) or PDF (Playwright) |
 | `folder_monitor.py` | `FolderMonitorCapture` -- watches local folders for file create/update/delete events |
-| `text_chat.py` | `TextChatCapture` -- buffers chat messages in Redis, flushes when threshold reached |
+| `text_chat.py` | `TextChatCapture` -- stateless chat capture; sends messages directly to the processing pipeline |
 | `vault_document_monitor.py` | `VaultDocumentMonitor` -- polls the vaults DB table for new/updated documents |
 | `__init__.py` | Re-exports `BaseCaptureComponent`, `VaultDocumentMonitor`, `FolderMonitorCapture`, `TextChatCapture` (note: `WebLinkCapture` is NOT exported) |
 
@@ -104,21 +104,17 @@ Config keys: `watch_folder_paths`, `recursive`, `max_file_size`, `monitor_interv
 
 ### `TextChatCapture` (`text_chat.py`)
 
-Stateless chat message buffer backed by Redis. Buffers messages per `(user_id, device_id, agent_id)` key, flushes to the processing pipeline when buffer reaches threshold.
+Stateless chat capture component. Receives messages and sends them directly to the processing pipeline via the async callback. No buffering, no Redis dependency.
 
 - `source_type`: `ContextSource.CHAT_LOG`
-- `_capture_impl()` returns `[]` (passive component; data flows through `push_message`)
-- Redis key pattern: `chat:buffer:{user_id}:{device_id}:{agent_id}` (None mapped to `"_"`)
+- `_capture_impl()` returns `[]` (passive component; data flows through `process_messages_directly`)
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `push_message` (async) | `(role, content, user_id, device_id, agent_id)` | Atomic RPUSH+EXPIRE+LLEN via Lua script (`rpush_expire_llen`); flushes if `>= buffer_size` |
-| `process_messages_directly` (async) | `(messages, user_id, device_id, agent_id)` | Bypasses buffer, sends immediately via async callback |
-| `flush_user_buffer` (async) | `(user_id, device_id, agent_id)` | Manual flush for a specific user |
-| `get_user_buffer_length` (async) | `(user_id, device_id, agent_id) -> int` | Current buffer count |
-| `get_buffer_stats` (async) | `() -> Dict[str, Any]` | Redis connectivity and buffer stats |
+| `process_messages_directly` (async) | `(messages, user_id, device_id, agent_id)` | Sends messages immediately via `_create_and_send_context()` and the async callback |
+| `_create_and_send_context` (async) | `(messages, user_id, device_id, agent_id)` | Builds `RawContextProperties` from messages (detects multimodal content) and invokes `self._callback` |
 
-Config keys: `buffer_size` (default 4), `buffer_ttl` (default 86400), `redis` (host, port, password, db, key_prefix).
+No config keys required (stateless component).
 
 ### `VaultDocumentMonitor` (`vault_document_monitor.py`)
 
@@ -156,11 +152,11 @@ Processing pipeline (registered via set_callback)
 
 For **TextChatCapture**, the flow is different (all async):
 ```
-push_message() --> rpush_expire_llen (atomic Lua: RPUSH+EXPIRE+LLEN, 1 round-trip)
-       --> threshold reached --> _flush_buffer()
-       --> await _create_and_send_context() --> await self._callback([raw_context])
+process_messages_directly()
+       --> await _create_and_send_context(messages, user_id, device_id, agent_id)
+       --> builds RawContextProperties (detects multimodal content)
+       --> await self._callback([raw_context])
 ```
-Note: `_ensure_redis()` only checks that `_redis_cache is not None` (no PING); actual connectivity issues surface on the first Redis operation.
 
 For **FolderMonitorCapture** and **VaultDocumentMonitor**, a separate monitor thread detects changes and queues events in `_document_events`. The base capture loop (or manual `capture()` call) dequeues and processes them.
 
@@ -196,12 +192,12 @@ To add a new capture component:
 - `opencontext.models.enums` -- `ContextSource`, `ContentFormat`, `ContextType`
 - `opencontext.storage.global_storage` -- `get_storage()` (used by `FolderMonitorCapture`, `VaultDocumentMonitor` via non-caching `@property _storage`)
 - `opencontext.context_processing.processor.document_processor` -- `DocumentProcessor.get_supported_formats()` (used by `FolderMonitorCapture`)
-- `opencontext.storage.redis_cache` -- `RedisCacheConfig`, `get_redis_cache`, `rpush_expire_llen` (used by `TextChatCapture`)
+- `opencontext.storage.redis_cache` -- `RedisCacheConfig`, `get_redis_cache` (used by other components; no longer needed by `TextChatCapture`)
 - `opencontext.utils.async_utils` -- `fire_and_forget()` (used by `base.py` and `text_chat.py` for sync→async bridging)
 - External: `crawl4ai` (web markdown), `playwright` (web PDF), `PIL` (image processing)
 
 **Depended on by:**
-- `opencontext/server/routes/push.py` -- creates and uses `TextChatCapture` for chat message buffering
+- `opencontext/server/routes/push.py` -- no longer uses `TextChatCapture` directly; push endpoint builds `RawContextProperties` inline and dispatches via `ProcessorManager.process_batch()`
 - `opencontext/server/opencontext.py` -- may instantiate capture components and wire callbacks
 
 ## Conventions and Constraints
@@ -209,7 +205,7 @@ To add a new capture component:
 - All subclasses must implement the four `_*_impl` abstract methods. Optional `_get_*_impl` methods default to no-op/empty dict.
 - `BaseCaptureComponent` manages the capture thread internally. Subclasses that need their own background thread (like `FolderMonitorCapture`, `VaultDocumentMonitor`) should create it in `_start_impl` and stop it in `_stop_impl`, using a separate `threading.Event`.
 - The `_callback` is the only bridge to the processing pipeline. Always check `if self._callback` before calling it.
-- `TextChatCapture` has async methods (`push_message`, `flush_user_buffer`, `process_messages_directly`, `_create_and_send_context`, etc.).
+- `TextChatCapture` has async methods (`process_messages_directly`, `_create_and_send_context`).
 - `WebLinkCapture` overrides the base `capture()` method to accept a `urls` parameter. This is the only subclass that changes the base method's signature.
 - `FolderMonitorCapture._cleanup_file_context()` is async and uses `await` on `UnifiedStorage` calls to delete vector entries for deleted files. It is bridged from sync thread context via `_cleanup_file_context_sync()` using `asyncio.run_coroutine_threadsafe`. This is the only capture component that writes to storage.
-- `BaseCaptureComponent.capture()` detects async callbacks via `inspect.isawaitable()` and dispatches them using `fire_and_forget()` from `opencontext.utils.async_utils` (schedules on running loop or falls back to `asyncio.run()`). `TextChatCapture._stop_impl()` uses the same utility for graceful buffer flush.
+- `BaseCaptureComponent.capture()` detects async callbacks via `inspect.isawaitable()` and dispatches them using `fire_and_forget()` from `opencontext.utils.async_utils` (schedules on running loop or falls back to `asyncio.run()`).

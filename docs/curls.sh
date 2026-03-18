@@ -32,10 +32,17 @@ curl -X GET http://localhost:1733/api/ready
 
 
 # ============================================================================
-# 2. Push - Chat (unified endpoint)
+# 2. Push - Chat
 # ============================================================================
+# Messages are persisted to chat_batches, then dispatched to processors in background.
+# Response includes batch_id for tracking.
+#
+# processors parameter (default: ["user_memory"]) controls which processors run.
+# NOTE: process_mode and flush_immediately have been removed (breaking change).
 
-# Push Chat Messages (buffer mode, default)
+# Push Chat Messages (default processors: ["user_memory"])
+# Response: {"code": 0, "status": 200, "message": "Chat messages submitted for processing",
+#            "data": {"batch_id": "...", "message_count": 1}}
 curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
   -d '{
@@ -51,7 +58,27 @@ curl -X POST http://localhost:1733/api/push/chat \
   }'
 # -H "X-API-Key: your-api-key"
 
-# Push Chat Messages (buffer + flush immediately)
+# Push Chat Messages (multiple messages)
+curl -X POST http://localhost:1733/api/push/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {
+        "role": "user",
+        "content": [{"type": "text", "text": "Meeting with John about Q3 budget review tomorrow at 3 PM"}]
+      },
+      {
+        "role": "assistant",
+        "content": [{"type": "text", "text": "Got it, I have noted the meeting with John for Q3 budget review."}]
+      }
+    ],
+    "user_id": "user_001",
+    "device_id": "default",
+    "agent_id": "default"
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Push Chat Messages (explicit processors)
 curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
   -d '{
@@ -68,28 +95,7 @@ curl -X POST http://localhost:1733/api/push/chat \
     "user_id": "user_001",
     "device_id": "default",
     "agent_id": "default",
-    "flush_immediately": true
-  }'
-# -H "X-API-Key: your-api-key"
-
-# Push Chat Messages (direct mode, bypass buffer)
-curl -X POST http://localhost:1733/api/push/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {
-        "role": "user",
-        "content": [{"type": "text", "text": "Meeting with John about Q3 budget review tomorrow at 3 PM"}]
-      },
-      {
-        "role": "assistant",
-        "content": [{"type": "text", "text": "Got it, I have noted the meeting with John for Q3 budget review."}]
-      }
-    ],
-    "user_id": "user_001",
-    "device_id": "default",
-    "agent_id": "default",
-    "process_mode": "direct"
+    "processors": ["user_memory"]
   }'
 # -H "X-API-Key: your-api-key"
 
@@ -113,8 +119,7 @@ curl -X POST http://localhost:1733/api/push/chat \
     ],
     "user_id": "user_001",
     "device_id": "default",
-    "agent_id": "default",
-    "process_mode": "direct"
+    "agent_id": "default"
   }'
 # -H "X-API-Key: your-api-key"
 
