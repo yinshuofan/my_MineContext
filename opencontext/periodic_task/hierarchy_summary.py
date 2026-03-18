@@ -27,7 +27,7 @@ from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
-from opencontext.models.enums import ContentFormat, ContextType
+from opencontext.models.enums import MEMORY_OWNER_TYPES, ContentFormat, ContextType
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
 from opencontext.scheduler.base import TriggerMode
 from opencontext.storage.global_storage import get_storage
@@ -135,6 +135,21 @@ _LEVEL_NAMES = {
     1: "daily",
     2: "weekly",
     3: "monthly",
+}
+
+# ── Level → ContextType mappings for new typed summaries ──
+# Summaries are now stored with their own ContextType instead of all being EVENT.
+
+LEVEL_TO_CONTEXT_TYPE = {
+    1: ContextType.DAILY_SUMMARY,
+    2: ContextType.WEEKLY_SUMMARY,
+    3: ContextType.MONTHLY_SUMMARY,
+}
+
+LEVEL_TO_CHILD_TYPE = {
+    1: ContextType.EVENT,  # L1 contains L0 events
+    2: ContextType.DAILY_SUMMARY,  # L2 contains L1 summaries
+    3: ContextType.WEEKLY_SUMMARY,  # L3 contains L2 summaries
 }
 
 
@@ -726,12 +741,14 @@ class HierarchySummaryTask(BasePeriodicTask):
         backfill_start = today - datetime.timedelta(days=backfill_days)
 
         # Batch query existing L1 summaries in the window (1 query vs N)
-        # 批量查询窗口内已有的 L1 摘要（1 次查询代替 N 次）
+        # Check both old format (EVENT with hierarchy_level=1) and new format (DAILY_SUMMARY)
+        # 批量查询窗口内已有的 L1 摘要（1 次查询代替 N 次），同时检查新旧格式
         existing_dates: set = set()
         storage = get_storage()
         if storage:
             try:
-                existing_l1 = await storage.search_hierarchy(
+                # Check old format (existing data stored as EVENT)
+                existing_l1_old = await storage.search_hierarchy(
                     context_type=ContextType.EVENT.value,
                     hierarchy_level=1,
                     time_bucket_start=backfill_start.isoformat(),
@@ -743,7 +760,23 @@ class HierarchySummaryTask(BasePeriodicTask):
                 )
                 existing_dates = {
                     ctx.properties.time_bucket
-                    for ctx, _ in existing_l1
+                    for ctx, _ in existing_l1_old
+                    if ctx.properties.time_bucket
+                }
+                # Check new format (DAILY_SUMMARY)
+                existing_l1_new = await storage.search_hierarchy(
+                    context_type=ContextType.DAILY_SUMMARY.value,
+                    hierarchy_level=1,
+                    time_bucket_start=backfill_start.isoformat(),
+                    time_bucket_end=backfill_end.isoformat(),
+                    user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
+                    top_k=backfill_days,
+                )
+                existing_dates |= {
+                    ctx.properties.time_bucket
+                    for ctx, _ in existing_l1_new
                     if ctx.properties.time_bucket
                 }
             except Exception as e:
@@ -799,9 +832,9 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.error("Storage not available, cannot generate daily summary")
             return None
 
-        # Check if daily summary already exists for this date
-        # 检查该日期的日摘要是否已存在
-        existing = await storage.search_hierarchy(
+        # Check if daily summary already exists for this date (old + new format)
+        # 检查该日期的日摘要是否已存在（同时检查新旧格式）
+        existing_old = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=1,
             time_bucket_start=date_str,
@@ -811,7 +844,17 @@ class HierarchySummaryTask(BasePeriodicTask):
             agent_id=agent_id,
             top_k=1,
         )
-        if existing:
+        existing_new = await storage.search_hierarchy(
+            context_type=ContextType.DAILY_SUMMARY.value,
+            hierarchy_level=1,
+            time_bucket_start=date_str,
+            time_bucket_end=date_str,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            top_k=1,
+        )
+        if existing_old or existing_new:
             logger.info(f"Daily summary already exists for user={user_id}, date={date_str}")
             return None
 
@@ -900,9 +943,9 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.error("Storage not available, cannot generate weekly summary")
             return None
 
-        # Check if weekly summary already exists
-        # 检查周摘要是否已存在
-        existing = await storage.search_hierarchy(
+        # Check if weekly summary already exists (old + new format)
+        # 检查周摘要是否已存在（同时检查新旧格式）
+        existing_old = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=2,
             time_bucket_start=week_str,
@@ -912,7 +955,17 @@ class HierarchySummaryTask(BasePeriodicTask):
             agent_id=agent_id,
             top_k=1,
         )
-        if existing:
+        existing_new = await storage.search_hierarchy(
+            context_type=ContextType.WEEKLY_SUMMARY.value,
+            hierarchy_level=2,
+            time_bucket_start=week_str,
+            time_bucket_end=week_str,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            top_k=1,
+        )
+        if existing_old or existing_new:
             logger.info(f"Weekly summary already exists for user={user_id}, week={week_str}")
             return None
 
@@ -924,9 +977,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         week_start = datetime.date.fromisocalendar(year, week_num, 1)
         week_end = week_start + datetime.timedelta(days=6)
 
-        # Query Level 1 daily summaries for the week
-        # 查询该周的 Level 1 日摘要
-        l1_results = await storage.search_hierarchy(
+        # Query Level 1 daily summaries for the week (old + new format)
+        # 查询该周的 Level 1 日摘要（同时查询新旧格式）
+        l1_results_old = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=1,
             time_bucket_start=week_start.isoformat(),
@@ -936,8 +989,28 @@ class HierarchySummaryTask(BasePeriodicTask):
             agent_id=agent_id,
             top_k=7,
         )
+        l1_results_new = await storage.search_hierarchy(
+            context_type=ContextType.DAILY_SUMMARY.value,
+            hierarchy_level=1,
+            time_bucket_start=week_start.isoformat(),
+            time_bucket_end=week_end.isoformat(),
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            top_k=7,
+        )
 
-        l1_contexts = [ctx for ctx, _score in l1_results] if l1_results else []
+        # Deduplicate by time_bucket (prefer new format if both exist for same day)
+        l1_by_bucket: Dict[str, ProcessedContext] = {}
+        for ctx, _score in (l1_results_old or []):
+            tb = ctx.properties.time_bucket
+            if tb:
+                l1_by_bucket[tb] = ctx
+        for ctx, _score in (l1_results_new or []):
+            tb = ctx.properties.time_bucket
+            if tb:
+                l1_by_bucket[tb] = ctx  # new format overwrites old
+        l1_contexts = list(l1_by_bucket.values())
 
         if not l1_contexts:
             logger.info(f"No L1 data found for user={user_id}, week={week_str}")
@@ -993,9 +1066,9 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.error("Storage not available, cannot generate monthly summary")
             return None
 
-        # Check if monthly summary already exists
-        # 检查月摘要是否已存在
-        existing = await storage.search_hierarchy(
+        # Check if monthly summary already exists (old + new format)
+        # 检查月摘要是否已存在（同时检查新旧格式）
+        existing_old = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=3,
             time_bucket_start=month_str,
@@ -1005,7 +1078,17 @@ class HierarchySummaryTask(BasePeriodicTask):
             agent_id=agent_id,
             top_k=1,
         )
-        if existing:
+        existing_new = await storage.search_hierarchy(
+            context_type=ContextType.MONTHLY_SUMMARY.value,
+            hierarchy_level=3,
+            time_bucket_start=month_str,
+            time_bucket_end=month_str,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            top_k=1,
+        )
+        if existing_old or existing_new:
             logger.info(f"Monthly summary already exists for user={user_id}, month={month_str}")
             return None
 
@@ -1035,8 +1118,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         l1_summaries_by_week: Dict[str, List[ProcessedContext]] = {}
 
         for wk in sorted(weeks_in_month):
-            # Fetch L2 weekly summary
-            wk_results = await storage.search_hierarchy(
+            # Fetch L2 weekly summary (old + new format, deduplicate by time_bucket)
+            wk_results_old = await storage.search_hierarchy(
                 context_type=ContextType.EVENT.value,
                 hierarchy_level=2,
                 time_bucket_start=wk,
@@ -1046,16 +1129,33 @@ class HierarchySummaryTask(BasePeriodicTask):
                 agent_id=agent_id,
                 top_k=1,
             )
-            for ctx, _score in wk_results:
-                all_weekly_contexts.append(ctx)
+            wk_results_new = await storage.search_hierarchy(
+                context_type=ContextType.WEEKLY_SUMMARY.value,
+                hierarchy_level=2,
+                time_bucket_start=wk,
+                time_bucket_end=wk,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+                top_k=1,
+            )
+            # Prefer new format if both exist for same week
+            wk_ctx = None
+            for ctx, _score in (wk_results_new or []):
+                wk_ctx = ctx
+            if wk_ctx is None:
+                for ctx, _score in (wk_results_old or []):
+                    wk_ctx = ctx
+            if wk_ctx:
+                all_weekly_contexts.append(wk_ctx)
 
             # Fetch L1 daily summaries for this week to enrich the monthly summary
-            # 获取本周的 L1 日摘要以丰富月摘要
+            # 获取本周的 L1 日摘要以丰富月摘要（同时查询新旧格式）
             wk_year, wk_num = wk.split("-W")
             wk_start = datetime.date.fromisocalendar(int(wk_year), int(wk_num), 1)
             wk_end = wk_start + datetime.timedelta(days=6)
 
-            l1_results = await storage.search_hierarchy(
+            l1_results_old = await storage.search_hierarchy(
                 context_type=ContextType.EVENT.value,
                 hierarchy_level=1,
                 time_bucket_start=wk_start.isoformat(),
@@ -1065,8 +1165,28 @@ class HierarchySummaryTask(BasePeriodicTask):
                 agent_id=agent_id,
                 top_k=7,
             )
-            if l1_results:
-                l1_summaries_by_week[wk] = [ctx for ctx, _score in l1_results]
+            l1_results_new = await storage.search_hierarchy(
+                context_type=ContextType.DAILY_SUMMARY.value,
+                hierarchy_level=1,
+                time_bucket_start=wk_start.isoformat(),
+                time_bucket_end=wk_end.isoformat(),
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+                top_k=7,
+            )
+            # Deduplicate L1 by time_bucket (prefer new format)
+            l1_by_bucket: Dict[str, ProcessedContext] = {}
+            for ctx, _score in (l1_results_old or []):
+                tb = ctx.properties.time_bucket
+                if tb:
+                    l1_by_bucket[tb] = ctx
+            for ctx, _score in (l1_results_new or []):
+                tb = ctx.properties.time_bucket
+                if tb:
+                    l1_by_bucket[tb] = ctx  # new format overwrites old
+            if l1_by_bucket:
+                l1_summaries_by_week[wk] = list(l1_by_bucket.values())
 
         if not all_weekly_contexts and not l1_summaries_by_week:
             logger.info(f"No L2/L1 data found for user={user_id}, month={month_str}")
@@ -1325,18 +1445,20 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Build extracted data
         # 构建提取数据
+        summary_context_type = LEVEL_TO_CONTEXT_TYPE.get(level, ContextType.EVENT)
         extracted_data = ExtractedData(
             title=title,
             summary=summary_body,
             keywords=keywords,
             entities=entities,
-            context_type=ContextType.EVENT,
+            context_type=summary_context_type,
             confidence=8,
             importance=importance,
         )
 
         # Build context properties with hierarchy fields
         # 构建包含层级字段的上下文属性
+        child_type = LEVEL_TO_CHILD_TYPE.get(level, ContextType.EVENT)
         properties = ContextProperties(
             create_time=now,
             event_time=event_time,
@@ -1350,7 +1472,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             hierarchy_level=level,
             time_bucket=time_bucket,
             parent_id=None,
-            children_ids=children_ids,
+            children_ids=children_ids,  # keep for backward compat
+            refs={child_type.value: children_ids} if children_ids else {},  # new refs format
         )
 
         # Build vectorize object for semantic search (use parsed summary, not raw JSON)
@@ -1392,7 +1515,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                     f"Stored {level_name} summary id={summary_id}, "
                     f"time_bucket={time_bucket}, children={len(children_ids)}"
                 )
-                # Backfill parent_id on child contexts
+                # Backfill parent_id on child contexts (legacy)
                 if children_ids:
                     try:
                         updated = await storage.batch_set_parent_id(
@@ -1407,6 +1530,24 @@ class HierarchySummaryTask(BasePeriodicTask):
                             f"Failed to backfill parent_id for {level_name} summary: {e}"
                         )
                         # Non-fatal: summary is already stored, parent_id is a bonus link
+
+                # Backfill refs on child contexts (pointing to this summary)
+                if children_ids:
+                    try:
+                        updated_refs = await storage.batch_update_refs(
+                            children_ids,
+                            ref_key=summary_context_type.value,
+                            ref_value=summary_id,
+                            context_type=child_type.value,
+                        )
+                        logger.info(
+                            f"Set refs on {updated_refs}/{len(children_ids)} children "
+                            f"→ {summary_context_type.value}:{summary_id}"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to backfill refs for {level_name} summary: {e}"
+                        )
                 return context
             else:
                 logger.error(f"Failed to upsert {level_name} summary to storage")
