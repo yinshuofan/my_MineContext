@@ -76,12 +76,19 @@ class ContentFormat(str, Enum):
 
 
 class ContextType(str, Enum):
-    """Context type enumeration — 4 types with clear update strategy and storage location"""
+    """Context type enumeration — core types with clear update strategy and storage location"""
 
     PROFILE = "profile"
     DOCUMENT = "document"
     EVENT = "event"
     KNOWLEDGE = "knowledge"
+    DAILY_SUMMARY = "daily_summary"
+    WEEKLY_SUMMARY = "weekly_summary"
+    MONTHLY_SUMMARY = "monthly_summary"
+    AGENT_EVENT = "agent_event"
+    AGENT_DAILY_SUMMARY = "agent_daily_summary"
+    AGENT_WEEKLY_SUMMARY = "agent_weekly_summary"
+    AGENT_MONTHLY_SUMMARY = "agent_monthly_summary"
 
 
 class UpdateStrategy(str, Enum):
@@ -98,6 +105,13 @@ CONTEXT_UPDATE_STRATEGIES = {
     ContextType.DOCUMENT: UpdateStrategy.OVERWRITE,
     ContextType.EVENT: UpdateStrategy.APPEND,
     ContextType.KNOWLEDGE: UpdateStrategy.APPEND_MERGE,
+    ContextType.DAILY_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.WEEKLY_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.MONTHLY_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.AGENT_EVENT: UpdateStrategy.APPEND,
+    ContextType.AGENT_DAILY_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.AGENT_WEEKLY_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.AGENT_MONTHLY_SUMMARY: UpdateStrategy.APPEND,
 }
 
 # Type → storage backend mapping (for routing decisions)
@@ -106,7 +120,30 @@ CONTEXT_STORAGE_BACKENDS = {
     ContextType.DOCUMENT: "vector_db",  # Vector DB
     ContextType.EVENT: "vector_db",  # Vector DB
     ContextType.KNOWLEDGE: "vector_db",  # Vector DB
+    ContextType.DAILY_SUMMARY: "vector_db",  # Vector DB
+    ContextType.WEEKLY_SUMMARY: "vector_db",  # Vector DB
+    ContextType.MONTHLY_SUMMARY: "vector_db",  # Vector DB
+    ContextType.AGENT_EVENT: "vector_db",  # Vector DB
+    ContextType.AGENT_DAILY_SUMMARY: "vector_db",  # Vector DB
+    ContextType.AGENT_WEEKLY_SUMMARY: "vector_db",  # Vector DB
+    ContextType.AGENT_MONTHLY_SUMMARY: "vector_db",  # Vector DB
 }
+
+MEMORY_OWNER_TYPES = {
+    "user": [
+        ContextType.EVENT,
+        ContextType.DAILY_SUMMARY,
+        ContextType.WEEKLY_SUMMARY,
+        ContextType.MONTHLY_SUMMARY,
+    ],
+    "agent": [
+        ContextType.AGENT_EVENT,
+        ContextType.AGENT_DAILY_SUMMARY,
+        ContextType.AGENT_WEEKLY_SUMMARY,
+        ContextType.AGENT_MONTHLY_SUMMARY,
+    ],
+}
+# index 0=L0, 1=L1, 2=L2, 3=L3
 
 
 class VaultType(str, Enum):
@@ -137,6 +174,41 @@ ContextSimpleDescriptions = {
         "name": ContextType.KNOWLEDGE.value,
         "description": "Knowledge concepts and operational procedures",
         "purpose": "Reusable knowledge including concepts, technical principles, operation workflows, and learning patterns. Similar entries are merged to avoid duplication.",
+    },
+    ContextType.DAILY_SUMMARY: {
+        "name": "Daily Summary",
+        "description": "Auto-generated daily summary of user events",
+        "purpose": "Provides a condensed view of daily activity",
+    },
+    ContextType.WEEKLY_SUMMARY: {
+        "name": "Weekly Summary",
+        "description": "Auto-generated weekly summary of user events",
+        "purpose": "Provides a condensed view of weekly activity",
+    },
+    ContextType.MONTHLY_SUMMARY: {
+        "name": "Monthly Summary",
+        "description": "Auto-generated monthly summary of user events",
+        "purpose": "Provides a condensed view of monthly activity",
+    },
+    ContextType.AGENT_EVENT: {
+        "name": "Agent Event",
+        "description": "Agent's subjective experience and reactions to user events",
+        "purpose": "Records the agent's feelings, reactions, and evaluations about user events from the agent's own perspective.",
+    },
+    ContextType.AGENT_DAILY_SUMMARY: {
+        "name": "Agent Daily Summary",
+        "description": "Auto-generated daily summary of agent events",
+        "purpose": "Provides a condensed view of the agent's daily experience",
+    },
+    ContextType.AGENT_WEEKLY_SUMMARY: {
+        "name": "Agent Weekly Summary",
+        "description": "Auto-generated weekly summary of agent events",
+        "purpose": "Provides a condensed view of the agent's weekly experience",
+    },
+    ContextType.AGENT_MONTHLY_SUMMARY: {
+        "name": "Agent Monthly Summary",
+        "description": "Auto-generated monthly summary of agent events",
+        "purpose": "Provides a condensed view of the agent's monthly experience",
     },
 }
 
@@ -208,6 +280,20 @@ ContextDescriptions = {
         ],
         "classification_priority": 7,
     },
+    ContextType.AGENT_EVENT: {
+        "name": "Agent Event",
+        "description": "Agent's subjective experience — Records the agent's feelings, reactions, and evaluations about user events from the agent's own perspective.",
+        "key_indicators": [
+            "Contains the agent's subjective perspective or emotional reaction",
+            "Describes what the agent observed, felt, or thought about an interaction",
+            "Records the agent's evaluation of user behavior or events",
+        ],
+        "examples": [
+            "He mentioned enjoying poetry today — I found his taste surprisingly refined",
+            "The user seemed distracted during our conversation, I wonder what's troubling him",
+        ],
+        "classification_priority": 5,
+    },
 }
 
 
@@ -232,25 +318,41 @@ def validate_context_type(context_type: str) -> bool:
     return context_type in get_context_type_options()
 
 
+SYSTEM_GENERATED_TYPES = {
+    ContextType.DAILY_SUMMARY,
+    ContextType.WEEKLY_SUMMARY,
+    ContextType.MONTHLY_SUMMARY,
+    ContextType.AGENT_DAILY_SUMMARY,
+    ContextType.AGENT_WEEKLY_SUMMARY,
+    ContextType.AGENT_MONTHLY_SUMMARY,
+}
+
+
 def get_context_type_for_analysis(context_type_str: str) -> "ContextType":
     """
     Get the context type for analysis, with fault tolerance.
     Falls back to KNOWLEDGE if the type string is not recognized.
+    System-generated summary types are never returned (fallback to KNOWLEDGE).
     """
     # Normalize input
     context_type_str = context_type_str.lower().strip()
 
     # Direct match
     if validate_context_type(context_type_str):
-        return ContextType(context_type_str)
+        result = ContextType(context_type_str)
+    else:
+        # Default fallback to knowledge (safer: supports merge/dedup, unlike immutable event)
+        from opencontext.utils.logging_utils import get_logger
 
-    # Default fallback to knowledge (safer: supports merge/dedup, unlike immutable event)
-    from opencontext.utils.logging_utils import get_logger
+        get_logger(__name__).warning(
+            f"Unrecognized context_type '{context_type_str}', falling back to KNOWLEDGE"
+        )
+        result = ContextType.KNOWLEDGE
 
-    get_logger(__name__).warning(
-        f"Unrecognized context_type '{context_type_str}', falling back to KNOWLEDGE"
-    )
-    return ContextType.KNOWLEDGE
+    # Summaries are system-generated, never LLM-classified
+    if result in SYSTEM_GENERATED_TYPES:
+        return ContextType.KNOWLEDGE
+    return result
 
 
 def get_context_type_choices_for_tools():
