@@ -12,27 +12,28 @@ replacing the automatic capture/pull mechanisms with a push-based architecture.
 
 import asyncio
 import base64
+import datetime
+import json
 import mimetypes
 import os
 import tempfile
 import uuid
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from opencontext.models.context import RawContextProperties
+from opencontext.models.enums import ContentFormat, ContextSource
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.opencontext import OpenContext
 from opencontext.server.utils import convert_resp, get_context_lab
+from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/push", tags=["push"])
-
-# Strong references to fire-and-forget tasks to prevent GC collection
-_background_tasks: set = set()
-
 
 # ============================================================================
 # Task Scheduler Integration
@@ -87,13 +88,9 @@ class PushChatRequest(BaseModel):
     agent_id: Optional[str] = Field(
         None, min_length=1, max_length=100, description="Agent identifier"
     )
-    process_mode: Literal["buffer", "direct"] = Field(
-        "buffer",
-        description="buffer=Redis buffered (default), direct=bypass buffer and process immediately",
-    )
-    flush_immediately: bool = Field(
-        False,
-        description="In buffer mode, whether to flush the buffer immediately after pushing",
+    processors: List[str] = Field(
+        default=["user_memory"],
+        description="Processors to run: 'user_memory', 'agent_memory', etc.",
     )
 
 
@@ -393,98 +390,102 @@ async def push_chat(
     _auth: str = auth_dependency,
 ):
     """
-    Unified chat push endpoint.
+    Push chat messages for processing.
 
-    - process_mode="buffer" (default): Push messages to Redis buffer. Optionally flush immediately.
-    - process_mode="direct": Bypass buffer and send messages directly to the processing pipeline.
-
-    Both modes schedule compression and hierarchy summary tasks.
+    Messages are persisted to chat_batches, then dispatched to the requested
+    processors (default: user_memory) in background.  Hierarchy summary and
+    compression tasks are scheduled after processing.
     """
     try:
-        text_chat = opencontext.capture_manager.get_component("text_chat")
-        if text_chat is None:
-            return convert_resp(
-                code=503, status=503, message="TextChatCapture component not available"
-            )
+        # Validate reserved user_id
+        if request.user_id == "__base__":
+            raise HTTPException(400, "user_id '__base__' is reserved for system use")
 
         # Process multimodal messages: upload to object storage or save locally
         messages = await _process_multimodal_messages(request.messages, request.user_id)
 
-        if request.process_mode == "buffer":
+        # Persist to chat_batches
+        batch_id = str(uuid.uuid4())
+        storage = get_storage()
+        await storage.create_chat_batch(
+            batch_id=batch_id,
+            messages=messages,
+            user_id=request.user_id,
+            device_id=request.device_id or "default",
+            agent_id=request.agent_id or "default",
+        )
 
-            async def _push_all_messages():
-                for msg in messages:
-                    await text_chat.push_message(
-                        role=msg.get("role", "user"),
-                        content=msg.get("content", ""),
-                        user_id=request.user_id,
-                        device_id=request.device_id,
-                        agent_id=request.agent_id,
-                    )
-                if request.flush_immediately:
-                    task = asyncio.create_task(
-                        text_chat.flush_user_buffer(
-                            user_id=request.user_id,
-                            device_id=request.device_id,
-                            agent_id=request.agent_id,
-                        )
-                    )
-                    _background_tasks.add(task)
-                    task.add_done_callback(_background_tasks.discard)
+        # Detect content format from messages
+        has_images = False
+        has_videos = False
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    part_type = part.get("type", "")
+                    if part_type == "image_url":
+                        has_images = True
+                    elif part_type == "video_url":
+                        has_videos = True
 
-            await asyncio.wait_for(_push_all_messages(), timeout=10.0)
+        is_multimodal = has_images or has_videos
+        content_format = ContentFormat.MULTIMODAL if is_multimodal else ContentFormat.TEXT
 
-            background_tasks.add_task(
-                _schedule_user_task,
-                task_type="memory_compression",
-                user_id=request.user_id,
-                device_id=request.device_id,
-                agent_id=request.agent_id,
-            )
-            background_tasks.add_task(
-                _schedule_user_task,
-                task_type="hierarchy_summary",
-                user_id=request.user_id,
-                device_id=request.device_id,
-                agent_id=request.agent_id,
-            )
+        # Build modalities list for additional_info
+        modalities = ["text"]
+        if has_images:
+            modalities.append("image")
+        if has_videos:
+            modalities.append("video")
 
-            return convert_resp(
-                message="Chat messages pushed successfully",
-                data={"count": len(request.messages)},
-            )
+        # Build RawContextProperties
+        raw_context = RawContextProperties(
+            source=ContextSource.CHAT_LOG,
+            content_format=content_format,
+            create_time=datetime.datetime.now(tz=datetime.timezone.utc),
+            content_text=json.dumps(messages, ensure_ascii=False),
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+            additional_info={
+                "batch_id": batch_id,
+                "message_count": len(messages),
+                "roles": list(set(m.get("role", "user") for m in messages)),
+                "modalities": modalities,
+            },
+        )
 
-        else:  # direct
-            background_tasks.add_task(
-                text_chat.process_messages_directly,
-                messages=messages,
-                user_id=request.user_id,
-                device_id=request.device_id,
-                agent_id=request.agent_id,
-            )
-            background_tasks.add_task(
-                _schedule_user_task,
-                task_type="memory_compression",
-                user_id=request.user_id,
-                device_id=request.device_id,
-                agent_id=request.agent_id,
-            )
-            background_tasks.add_task(
-                _schedule_user_task,
-                task_type="hierarchy_summary",
-                user_id=request.user_id,
-                device_id=request.device_id,
-                agent_id=request.agent_id,
+        # Dispatch to processors in background
+        async def _process():
+            await opencontext.processor_manager.process_batch(
+                raw_context, request.processors
             )
 
-            return convert_resp(
-                message="Chat messages submitted for processing",
-                data={"message_count": len(request.messages)},
-            )
+        background_tasks.add_task(_process)
 
-    except asyncio.TimeoutError:
-        logger.warning("Push chat timed out after 10s")
-        return convert_resp(code=504, status=504, message="Request timed out")
+        # Schedule hierarchy summary and compression tasks
+        background_tasks.add_task(
+            _schedule_user_task,
+            task_type="memory_compression",
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+        )
+        background_tasks.add_task(
+            _schedule_user_task,
+            task_type="hierarchy_summary",
+            user_id=request.user_id,
+            device_id=request.device_id,
+            agent_id=request.agent_id,
+        )
+
+        return convert_resp(
+            message="Chat messages submitted for processing",
+            data={"batch_id": batch_id, "message_count": len(messages)},
+        )
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Error pushing chat: {e}")
         return convert_resp(code=500, status=500, message=f"Internal server error: {e}")
