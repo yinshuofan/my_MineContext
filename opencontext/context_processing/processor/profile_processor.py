@@ -26,6 +26,7 @@ async def refresh_profile(
     user_id: str = "default",
     device_id: str = "default",
     agent_id: str = "default",
+    owner_type: str = "user",
 ) -> bool:
     """
     Profile processing main workflow — merges with existing profile via LLM, then upserts.
@@ -41,6 +42,7 @@ async def refresh_profile(
         user_id: User ID for storage
         device_id: Device ID for storage
         agent_id: Agent ID for storage
+        owner_type: Profile owner type ("user" or "agent")
 
     Returns:
         True if profile was stored successfully
@@ -54,7 +56,14 @@ async def refresh_profile(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
+            owner_type=owner_type,
         )
+
+        # Fallback: first interaction profile for an agent inherits from base profile
+        if existing is None and owner_type == "agent" and user_id != "__base__":
+            existing = await storage.get_profile(
+                "__base__", device_id, agent_id, owner_type="agent"
+            )
 
         if existing:
             merged = await _merge_profile_with_llm(existing, {
@@ -72,6 +81,7 @@ async def refresh_profile(
                     entities=merged.get("entities", new_entities),
                     importance=merged.get("importance", new_importance),
                     metadata=new_metadata,
+                    owner_type=owner_type,
                 )
             else:
                 logger.warning("LLM merge failed, falling back to direct overwrite")
@@ -85,6 +95,7 @@ async def refresh_profile(
             entities=new_entities,
             importance=new_importance,
             metadata=new_metadata,
+            owner_type=owner_type,
         )
 
     except Exception as e:
