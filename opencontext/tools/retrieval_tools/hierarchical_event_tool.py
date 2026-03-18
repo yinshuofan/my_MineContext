@@ -24,12 +24,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.llm.global_embedding_client import do_vectorize as do_vectorize_fn
 from opencontext.models.context import ProcessedContext, Vectorize
-from opencontext.models.enums import ContentFormat, ContextType
+from opencontext.models.enums import MEMORY_OWNER_TYPES, ContentFormat, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.tools.base import BaseTool
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
+
+# Derive all summary type values (upward refs — these should NOT be treated as children)
+_ALL_SUMMARY_TYPES = {t.value for types in MEMORY_OWNER_TYPES.values() for t in types[1:]}
 
 
 class HierarchicalEventTool(BaseTool):
@@ -256,7 +259,15 @@ class HierarchicalEventTool(BaseTool):
 
         while queue:
             parent_ctx, parent_score = queue.popleft()
-            children_ids = getattr(parent_ctx.properties, "children_ids", None) or []
+            # Get child IDs from refs (exclude upward/parent refs)
+            children_ids = []
+            if parent_ctx.properties and parent_ctx.properties.refs:
+                for key, ids in parent_ctx.properties.refs.items():
+                    if key not in _ALL_SUMMARY_TYPES:
+                        children_ids.extend(ids)
+            # Fallback to old field for data written before refs migration
+            if not children_ids:
+                children_ids = getattr(parent_ctx.properties, "children_ids", None) or []
             if not children_ids:
                 continue
 
@@ -362,8 +373,9 @@ class HierarchicalEventTool(BaseTool):
             "event_time": props.event_time.isoformat() if props.event_time else None,
             "hierarchy_level": hierarchy_level,
             "time_bucket": props.time_bucket,
-            "parent_id": props.parent_id,
-            "children_ids": props.children_ids or [],
+            "refs": props.refs if props else {},
+            "parent_id": props.parent_id if props else None,  # keep for compat
+            "children_ids": props.children_ids if props else [],  # keep for compat
             "metadata": context.metadata or {},
         }
 
