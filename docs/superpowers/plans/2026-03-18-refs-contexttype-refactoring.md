@@ -132,12 +132,32 @@ ContextDescriptions[ContextType.AGENT_EVENT] = {
 }
 ```
 
-- [ ] **Step 7: Compile check**
+- [ ] **Step 7: Add SYSTEM_GENERATED_TYPES guard to get_context_type_for_analysis**
+
+At `opencontext/models/enums.py:235-253`, add a guard to reject system-generated types that should never come from LLM classification:
+
+```python
+SYSTEM_GENERATED_TYPES = {
+    ContextType.DAILY_SUMMARY, ContextType.WEEKLY_SUMMARY, ContextType.MONTHLY_SUMMARY,
+    ContextType.AGENT_DAILY_SUMMARY, ContextType.AGENT_WEEKLY_SUMMARY, ContextType.AGENT_MONTHLY_SUMMARY,
+}
+
+def get_context_type_for_analysis(context_type_str: str) -> ContextType:
+    ...
+    result = ...  # existing lookup logic
+    if result in SYSTEM_GENERATED_TYPES:
+        return ContextType.KNOWLEDGE  # fallback — summaries are never LLM-classified
+    return result
+```
+
+- [ ] **Step 8: Compile check**
 
 Run: `python -m py_compile opencontext/models/enums.py`
 Expected: No errors
 
-- [ ] **Step 8: Commit**
+> **Deployment note (Qdrant)**: After this change, the Qdrant backend will create 7 new empty collections on first startup (one per new ContextType). This is expected behavior — `qdrant_backend.py` initialization iterates all `ContextType` values. Old summaries remain in the `event` collection (found by the old-format dedup check in Task 6). New summaries go to type-specific collections (`daily_summary`, etc.). VikingDB is unaffected (uses single collection with `context_type` field filtering).
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add opencontext/models/enums.py
@@ -734,7 +754,10 @@ async def _collect_ancestors(storage, results, max_level, memory_owner="user"):
     return all_ancestors
 ```
 
-**Important**: This includes a fallback to `parent_id` for contexts that were created before the refs migration. This ensures drill-up works during the transition period.
+**Important notes**:
+- Includes a fallback to `parent_id` for contexts created before the refs migration.
+- `get_contexts_by_ids(current_batch)` is called WITHOUT a `context_type` parameter because ancestors may span multiple collections (e.g., L0 in `event`, L1 in `daily_summary`). In Qdrant, this means scanning all collections per BFS round. This is a known performance trade-off that is acceptable: drill-up typically involves 1-3 rounds with a small batch of IDs, and the operation is already I/O-bound. If performance becomes an issue, the caller could pass candidate context types derived from `MEMORY_OWNER_TYPES` to narrow the search.
+- `__base__` profiles referenced in Task 4 are created by the Agent Memory feature (Plan 3 — agent CRUD routes). During this plan, the fallback is a forward-looking hook that safely returns `None` when no base profile exists.
 
 - [ ] **Step 5: Update EventNode construction to populate refs**
 
@@ -795,6 +818,8 @@ Update `get_user_memory_cache()` (or renamed equivalent) to accept `memory_owner
 def _snapshot_key(memory_owner, user_id, device_id, agent_id) -> str:
     return f"memory_cache:snapshot:{memory_owner}:{user_id}:{device_id}:{agent_id}"
 ```
+
+> **Deployment note**: Key format change orphans existing Redis cached snapshots. They will NOT be retrieved or invalidated, but will expire naturally via TTL (default 300s). No manual cleanup needed.
 
 - [ ] **Step 3: Parameterize snapshot building by memory_owner**
 
@@ -876,13 +901,18 @@ children_ids = getattr(parent_ctx.properties, "children_ids", None) or []
 With:
 
 ```python
-# Get child IDs from refs
+from opencontext.models.enums import MEMORY_OWNER_TYPES
+
+# Derive summary type values dynamically (all L1+ types across all owners)
+_ALL_SUMMARY_TYPES = {
+    t.value for types in MEMORY_OWNER_TYPES.values() for t in types[1:]
+}
+
+# Get child IDs from refs (exclude upward/parent refs)
 children_ids = []
 if parent_ctx.properties and parent_ctx.properties.refs:
     for key, ids in parent_ctx.properties.refs.items():
-        # Exclude parent refs (summary types that are above this level)
-        if key not in ["daily_summary", "weekly_summary", "monthly_summary",
-                       "agent_daily_summary", "agent_weekly_summary", "agent_monthly_summary"]:
+        if key not in _ALL_SUMMARY_TYPES:
             children_ids.extend(ids)
 # Fallback to old field
 if not children_ids:
