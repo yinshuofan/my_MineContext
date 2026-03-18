@@ -167,7 +167,18 @@ async def delete_agent(agent_id: str):
     return {"success": True}
 ```
 
-- [ ] **Step 2: Register router in api.py**
+- [ ] **Step 2: Add __base__ sentinel validation**
+
+Add a validation guard at the top of push_chat in `server/routes/push.py` to reject the reserved sentinel value:
+
+```python
+if request.user_id == "__base__":
+    raise HTTPException(400, "user_id '__base__' is reserved for system use")
+```
+
+Also add similar validation in `create_agent` to reject `agent_id="__base__"`.
+
+- [ ] **Step 3: Register router in api.py**
 
 At `opencontext/server/api.py`, add import and include:
 
@@ -176,18 +187,19 @@ from .routes import agents
 router.include_router(agents.router)
 ```
 
-- [ ] **Step 3: Compile check**
+- [ ] **Step 4: Compile check**
 
 ```bash
 python -m py_compile opencontext/server/routes/agents.py && \
-python -m py_compile opencontext/server/api.py
+python -m py_compile opencontext/server/api.py && \
+python -m py_compile opencontext/server/routes/push.py
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add opencontext/server/routes/agents.py opencontext/server/api.py
-git commit -m "feat(api): add agent CRUD routes (/api/agents)"
+git add opencontext/server/routes/agents.py opencontext/server/api.py opencontext/server/routes/push.py
+git commit -m "feat(api): add agent CRUD routes (/api/agents) with __base__ sentinel validation"
 ```
 
 ---
@@ -317,16 +329,19 @@ async def push_base_events(agent_id: str, request: BaseEventsRequest):
 @router.get("/{agent_id}/base/events", dependencies=[Depends(auth_dependency)])
 async def list_base_events(agent_id: str, limit: int = 50, offset: int = 0):
     storage = get_storage()
-    contexts = await storage.get_all_processed_contexts(
+    # get_all_processed_contexts returns Dict[str, List[ProcessedContext]]
+    result = await storage.get_all_processed_contexts(
         context_types=[ContextType.AGENT_EVENT.value],
         agent_id=agent_id,
-        top_k=limit,
+        top_k=limit + offset,  # over-fetch for offset
     )
-    # Filter to base events (no user_id or user_id is None)
+    contexts = result.get(ContextType.AGENT_EVENT.value, [])
+    # Filter to base events (no user_id — base events have user_id=None)
     base_events = [c for c in contexts if not c.properties.user_id]
+    page = base_events[offset:offset + limit]
     return {"success": True, "events": [
         ProcessedContextModel.from_processed_context(c, Path("."))
-        for c in base_events[offset:offset+limit]
+        for c in page
     ]}
 
 
@@ -462,6 +477,8 @@ class AgentMemoryProcessor(BaseContextProcessor):
         for memory in memories:
             ctx = self._build_agent_context(memory, raw_context, batch_id)
             if ctx:
+                # Generate embedding — without this, context is invisible to semantic search
+                await do_vectorize(ctx.vectorize)
                 results.append(ctx)
 
         return results
@@ -647,9 +664,10 @@ In `_handle_processed_context()`, where profile contexts are processed (the `_st
 async def _store_profile(self, ctx: ProcessedContext):
     # Determine owner_type: if agent_id is a registered agent, this is an agent profile
     owner_type = "user"
-    if ctx.properties.agent_id:
+    agent_id = ctx.properties.agent_id
+    if agent_id and agent_id != "default":  # short-circuit: skip DB query for default agent_id
         storage = get_storage()
-        agent = await storage.get_agent(ctx.properties.agent_id)
+        agent = await storage.get_agent(agent_id)
         if agent:
             owner_type = "agent"
 

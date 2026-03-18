@@ -849,11 +849,24 @@ daily_summaries = await storage.search_hierarchy(
 
 For `memory_owner="agent"`, skip docs/knowledge queries.
 
-- [ ] **Step 4: Update cache route to accept memory_owner**
+- [ ] **Step 4: Update invalidate_snapshot to accept memory_owner**
+
+Update `invalidate_snapshot()` to accept `memory_owner` parameter and use the new key format. Update `_invalidate_user_cache()` in `opencontext.py` to invalidate BOTH `"user"` and `"agent"` cache keys (since a push may affect both):
+
+```python
+async def _invalidate_user_cache(self, user_id, device_id, agent_id):
+    """Invalidate both user and agent cache for this identifier."""
+    manager = self.cache_manager
+    if manager:
+        await manager.invalidate_snapshot(user_id, device_id, agent_id, memory_owner="user")
+        await manager.invalidate_snapshot(user_id, device_id, agent_id, memory_owner="agent")
+```
+
+- [ ] **Step 5: Update cache route to accept memory_owner**
 
 At `opencontext/server/routes/memory_cache.py`, add `memory_owner: str = Query(default="user")` parameter. Pass through to cache manager.
 
-- [ ] **Step 5: Update children_ids reference in cache manager**
+- [ ] **Step 6: Update children_ids reference in cache manager**
 
 At line 472, replace `ctx.properties.children_ids` with reading from `ctx.properties.refs`:
 
@@ -865,17 +878,17 @@ if ctx.properties.refs:
             child_count += len(ids)
 ```
 
-- [ ] **Step 6: Compile check**
+- [ ] **Step 7: Compile check**
 
 ```bash
 python -m py_compile opencontext/server/cache/memory_cache_manager.py && \
 python -m py_compile opencontext/server/routes/memory_cache.py
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add opencontext/server/cache/ opencontext/server/routes/memory_cache.py
+git add opencontext/server/cache/ opencontext/server/routes/memory_cache.py opencontext/server/opencontext.py
 git commit -m "feat(cache): parameterize memory cache by memory_owner
 
 Rename UserMemoryCacheManager to MemoryCacheManager. Snapshot building
