@@ -348,6 +348,24 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         )
 
+        # Chat batches table - stores raw chat messages for processor reference
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_batches (
+                batch_id TEXT PRIMARY KEY,
+                messages TEXT NOT NULL,
+                user_id TEXT,
+                device_id TEXT DEFAULT 'default',
+                agent_id TEXT DEFAULT 'default',
+                message_count INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_batches_created_at ON chat_batches(created_at)"
+        )
+
         await conn.commit()
 
         # Add default Quick Start document (only on first initialization)
@@ -2061,6 +2079,60 @@ class SQLiteBackend(IDocumentStorageBackend):
             await conn.rollback()
             logger.exception(f"Failed to delete settings: {e}")
             return False
+
+    # ── Chat Batches ──
+
+    async def create_chat_batch(
+        self,
+        batch_id: str,
+        messages: List[Dict],
+        user_id: Optional[str],
+        device_id: str = "default",
+        agent_id: str = "default",
+    ) -> bool:
+        """Persist a chat batch. batch_id is app-generated UUID."""
+        if not self._initialized:
+            return False
+
+        conn = self._connection
+        try:
+            await conn.execute(
+                """INSERT INTO chat_batches
+                   (batch_id, messages, user_id, device_id, agent_id, message_count)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    batch_id,
+                    json.dumps(messages, ensure_ascii=False),
+                    user_id,
+                    device_id,
+                    agent_id,
+                    len(messages),
+                ),
+            )
+            await conn.commit()
+            return True
+        except Exception as e:
+            await conn.rollback()
+            logger.error(f"create_chat_batch failed: {e}")
+            return False
+
+    async def cleanup_chat_batches(self, retention_days: int = 90) -> int:
+        """Delete chat batches older than retention_days."""
+        if not self._initialized:
+            return 0
+
+        conn = self._connection
+        try:
+            cursor = await conn.execute(
+                "DELETE FROM chat_batches WHERE created_at < datetime('now', '-' || ? || ' days')",
+                (retention_days,),
+            )
+            await conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            await conn.rollback()
+            logger.error(f"cleanup_chat_batches failed: {e}")
+            return 0
 
     async def query(
         self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None

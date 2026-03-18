@@ -443,3 +443,20 @@ class IDocumentStorageBackend(IStorageBackend):
             True if successful, False otherwise
         """
 
+    # ── Chat Batches ──
+
+    async def create_chat_batch(
+        self,
+        batch_id: str,
+        messages: List[Dict],
+        user_id: Optional[str],
+        device_id: str = "default",
+        agent_id: str = "default",
+    ) -> bool:
+        """Persist a chat batch. batch_id is app-generated UUID."""
+        raise NotImplementedError
+
+    async def cleanup_chat_batches(self, retention_days: int = 90) -> int:
+        """Delete chat batches older than retention_days."""
+        raise NotImplementedError
+

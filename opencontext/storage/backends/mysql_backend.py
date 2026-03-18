@@ -350,6 +350,22 @@ class MySQLBackend(IDocumentStorageBackend):
                 """
                 )
 
+                # Chat batches table - stores raw chat messages for processor reference
+                await cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS chat_batches (
+                        batch_id VARCHAR(36) PRIMARY KEY,
+                        messages JSON NOT NULL,
+                        user_id VARCHAR(255),
+                        device_id VARCHAR(100) DEFAULT 'default',
+                        agent_id VARCHAR(100) DEFAULT 'default',
+                        message_count INT NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_chat_batches_created_at (created_at)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """
+                )
+
                 await conn.commit()
 
     # Report table operations
@@ -1489,6 +1505,60 @@ class MySQLBackend(IDocumentStorageBackend):
         except Exception as e:
             logger.exception(f"Failed to delete settings: {e}")
             return False
+
+    # ── Chat Batches ──
+
+    async def create_chat_batch(
+        self,
+        batch_id: str,
+        messages: List[Dict],
+        user_id: Optional[str],
+        device_id: str = "default",
+        agent_id: str = "default",
+    ) -> bool:
+        """Persist a chat batch. batch_id is app-generated UUID."""
+        if not self._initialized:
+            return False
+
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    await cursor.execute(
+                        """INSERT INTO chat_batches
+                           (batch_id, messages, user_id, device_id, agent_id, message_count)
+                           VALUES (%s, %s, %s, %s, %s, %s)""",
+                        (
+                            batch_id,
+                            json.dumps(messages, ensure_ascii=False),
+                            user_id,
+                            device_id,
+                            agent_id,
+                            len(messages),
+                        ),
+                    )
+                    await conn.commit()
+                    return True
+                except Exception as e:
+                    logger.error(f"create_chat_batch failed: {e}")
+                    return False
+
+    async def cleanup_chat_batches(self, retention_days: int = 90) -> int:
+        """Delete chat batches older than retention_days."""
+        if not self._initialized:
+            return 0
+
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    await cursor.execute(
+                        "DELETE FROM chat_batches WHERE created_at < DATE_SUB(NOW(), INTERVAL %s DAY)",
+                        (retention_days,),
+                    )
+                    await conn.commit()
+                    return cursor.rowcount
+                except Exception as e:
+                    logger.error(f"cleanup_chat_batches failed: {e}")
+                    return 0
 
     async def query(self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None) -> QueryResult:
         if not self._initialized:

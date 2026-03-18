@@ -982,3 +982,24 @@ class UnifiedStorage:
     async def delete_all_settings(self) -> bool:
         """Delete all system settings."""
         return await self._document_backend.delete_all_settings()
+
+    # ── Chat Batches (→ document DB) ──
+
+    @_require_backend("_document_backend", default=False)
+    async def create_chat_batch(
+        self,
+        batch_id: str,
+        messages: List[Dict],
+        user_id: Optional[str],
+        device_id: str = "default",
+        agent_id: str = "default",
+    ) -> bool:
+        """Persist a chat batch to document backend."""
+        return await self._document_backend.create_chat_batch(
+            batch_id, messages, user_id, device_id, agent_id
+        )
+
+    @_require_backend("_document_backend", default=0)
+    async def cleanup_chat_batches(self, retention_days: int = 90) -> int:
+        """Delete chat batches older than retention_days."""
+        return await self._document_backend.cleanup_chat_batches(retention_days)
