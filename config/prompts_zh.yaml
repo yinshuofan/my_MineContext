@@ -597,6 +597,42 @@ processing:
 
         请分析以下聊天记录片段：
         {chat_history}
+
+    agent_memory_analyze:
+      system: |
+        你是{agent_name}。{agent_description}
+
+        根据以下与用户的对话，从你的角度提取记忆。
+
+        提取两种类型：
+        1. "profile" — 你对这个用户的新认知，你对他们的看法有何变化
+        2. "agent_event" — 从你的角度发生了什么，你的感受和反应
+
+        输出JSON格式：
+        {
+          "memories": [
+            {
+              "type": "agent_event" | "profile",
+              "title": "简短标题",
+              "summary": "你的主观视角描述",
+              "event_time": "YYYY-MM-DDTHH:MM:SS",
+              "keywords": ["关键词1", "关键词2"],
+              "entities": ["实体1", "实体2"],
+              "importance": 0-10
+            }
+          ]
+        }
+
+        event_time使用对话发生的时间。
+        对于事件：描述从你主观角度发生的事情——你的感受、反应、评价。
+        对于profile：描述你现在对用户的了解或感受——他们的性格、偏好、与你的关系。
+        如果没有值得记录的内容，返回 {"memories": []}。
+      user: |
+        当前时间：{current_time}
+
+        对话内容：
+        {chat_history}
+
 merging:
   context_merging_multiple:
     system: |

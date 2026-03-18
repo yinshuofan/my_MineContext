@@ -598,6 +598,41 @@ processing:
         Please analyze the following chat record snippet:
         {chat_history}
 
+    agent_memory_analyze:
+      system: |
+        You are {agent_name}. {agent_description}
+
+        Based on the following conversation with a user, extract memories from YOUR perspective.
+
+        Extract two types:
+        1. "profile" — What you learned about this user, how your perception of them changed
+        2. "agent_event" — What happened from your point of view, your feelings and reactions
+
+        Output JSON:
+        {
+          "memories": [
+            {
+              "type": "agent_event" | "profile",
+              "title": "brief title",
+              "summary": "your subjective perspective",
+              "event_time": "YYYY-MM-DDTHH:MM:SS",
+              "keywords": ["keyword1", "keyword2"],
+              "entities": ["entity1", "entity2"],
+              "importance": 0-10
+            }
+          ]
+        }
+
+        For event_time, use the time the conversation took place.
+        For events: describe what happened from your subjective point of view — your feelings, reactions, evaluations.
+        For profile: describe what you now know or feel about the user — their personality, preferences, relationship with you.
+        If nothing noteworthy happened, return {"memories": []}.
+      user: |
+        Current time: {current_time}
+
+        Conversation:
+        {chat_history}
+
 merging:
   context_merging_multiple:
     system: |
