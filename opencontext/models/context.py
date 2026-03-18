@@ -131,6 +131,7 @@ class ContextProperties(BaseModel):
     parent_id: Optional[str] = None  # Parent summary ID
     children_ids: List[str] = Field(default_factory=list)  # Child record IDs
     time_bucket: Optional[str] = None  # Time bucket: "2026-02-21" / "2026-W08" / "2026-02"
+    refs: Dict[str, List[str]] = Field(default_factory=dict)
 
 
 class VideoInput(BaseModel):
@@ -341,6 +342,7 @@ class ProcessedContextModel(BaseModel):
     parent_id: Optional[str] = None
     children_ids: List[str] = Field(default_factory=list)
     time_bucket: Optional[str] = None
+    refs: Dict[str, List[str]] = Field(default_factory=dict)
 
     @classmethod
     def from_processed_context(
@@ -392,6 +394,7 @@ class ProcessedContextModel(BaseModel):
             parent_id=pc.properties.parent_id,
             children_ids=pc.properties.children_ids,
             time_bucket=pc.properties.time_bucket,
+            refs=pc.properties.refs,
         )
 
     @classmethod
