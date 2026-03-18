@@ -121,7 +121,7 @@ class ContextType(str, Enum):
 
 - **写入端**（`hierarchy_summary.py` `_store_summary()`）：生成 L1 摘要时设 `context_type=DAILY_SUMMARY`（不再是 `EVENT`），L2 设 `WEEKLY_SUMMARY`，L3 设 `MONTHLY_SUMMARY`。`hierarchy_level` 字段保留但降级为辅助信息。摘要的幂等性保证仍来自 `_generate_daily_summary` 等方法中的 dedup check（`search_hierarchy`），与 UpdateStrategy 无关。
 - **查询端**（`search_hierarchy()`）：改用 `context_type` 过滤而非 `hierarchy_level`。例如查 L1 摘要：`context_types=[DAILY_SUMMARY]`。
-- **`hierarchy_levels` 请求参数兼容**：`EventSearchRequest` 的 `hierarchy_levels: List[int]` 参数保留，内部通过 `MEMORY_OWNER_TYPE_MAP` 映射为对应的 ContextType 列表。例如 `hierarchy_levels=[0, 1]` + `memory_owner="user"` → `context_types=[EVENT, DAILY_SUMMARY]`。
+- **`hierarchy_levels` 请求参数兼容**：`EventSearchRequest` 的 `hierarchy_levels: List[int]` 参数保留，内部通过 `MEMORY_OWNER_TYPES` 映射为对应的 ContextType 列表。例如 `hierarchy_levels=[0, 1]` + `memory_owner="user"` → `context_types=[EVENT, DAILY_SUMMARY]`。
 - **drill-up 遍历**（`_collect_ancestors()`）：通过 `refs` 字段找到父节点 ID → `get_contexts_by_ids()` 获取父节点 → 父节点的 `context_type` 自然标识其层级。不再需要按 `hierarchy_level` 过滤。
 - **drill-down 遍历**（`hierarchical_event_tool.py`）：通过 `refs` 字段获取子节点 ID 列表 → `get_contexts_by_ids()`。
 
@@ -442,23 +442,14 @@ POST /api/search
 ### 4.2 内部变更
 
 - 移除硬编码 `EVENT_TYPE = ContextType.EVENT.value`
-- 新增 `MEMORY_OWNER_TYPE_MAP`：
+- 新增 `MEMORY_OWNER_TYPES`：
 
 ```python
-MEMORY_OWNER_TYPE_MAP = {
-    "user": {
-        "l0": ContextType.EVENT,
-        "l1": ContextType.DAILY_SUMMARY,
-        "l2": ContextType.WEEKLY_SUMMARY,
-        "l3": ContextType.MONTHLY_SUMMARY,
-    },
-    "agent": {
-        "l0": ContextType.AGENT_EVENT,
-        "l1": ContextType.AGENT_DAILY_SUMMARY,
-        "l2": ContextType.AGENT_WEEKLY_SUMMARY,
-        "l3": ContextType.AGENT_MONTHLY_SUMMARY,
-    },
+MEMORY_OWNER_TYPES = {
+    "user": [ContextType.EVENT, ContextType.DAILY_SUMMARY, ContextType.WEEKLY_SUMMARY, ContextType.MONTHLY_SUMMARY],
+    "agent": [ContextType.AGENT_EVENT, ContextType.AGENT_DAILY_SUMMARY, ContextType.AGENT_WEEKLY_SUMMARY, ContextType.AGENT_MONTHLY_SUMMARY],
 }
+# index 0=L0, 1=L1, 2=L2, 3=L3
 ```
 
 ### 4.3 Hierarchy drill-up 端到端示例
