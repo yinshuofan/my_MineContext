@@ -954,6 +954,19 @@ class UnifiedStorage:
         return await self._vector_backend.get_by_ids(ids, context_type, need_vector=need_vector)
 
     @_require_backend("_vector_backend", default=0)
+    async def batch_update_refs(
+        self,
+        context_ids: List[str],
+        ref_key: str,
+        ref_value: str,
+        context_type: str,
+    ) -> int:
+        """Add a ref entry to multiple contexts. Delegates to vector backend."""
+        return await self._vector_backend.batch_update_refs(
+            context_ids, ref_key, ref_value, context_type
+        )
+
+    @_require_backend("_vector_backend", default=0)
     async def batch_set_parent_id(
         self,
         children_ids: List[str],

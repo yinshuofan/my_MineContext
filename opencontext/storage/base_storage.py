@@ -275,6 +275,19 @@ class IVectorStorageBackend(IStorageBackend):
             List of ProcessedContext objects
         """
 
+    async def batch_update_refs(
+        self,
+        context_ids: List[str],
+        ref_key: str,
+        ref_value: str,
+        context_type: str,
+    ) -> int:
+        """Add a ref entry (ref_key -> ref_value) to the refs dict of multiple contexts.
+
+        Default implementation: no-op. Backends with refs support should override.
+        """
+        raise NotImplementedError
+
     async def batch_set_parent_id(
         self,
         children_ids: List[str],

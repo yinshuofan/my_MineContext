@@ -83,6 +83,7 @@ FIELD_HIERARCHY_LEVEL = "hierarchy_level"
 FIELD_PARENT_ID = "parent_id"
 FIELD_TIME_BUCKET = "time_bucket"
 FIELD_CHILDREN_IDS = "children_ids"
+FIELD_REFS = "refs"
 
 # Multimodal fields
 FIELD_CONTENT_MODALITIES = "content_modalities"
@@ -648,6 +649,7 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_PARENT_ID, "FieldType": "string"},
             {"FieldName": FIELD_TIME_BUCKET, "FieldType": "string"},
             {"FieldName": FIELD_CHILDREN_IDS, "FieldType": "string"},
+            {"FieldName": FIELD_REFS, "FieldType": "string"},
             {"FieldName": FIELD_DOCUMENT, "FieldType": "string"},
             {"FieldName": FIELD_CONTENT_MODALITIES, "FieldType": "string"},
             {"FieldName": FIELD_MEDIA_REFS, "FieldType": "string"},
@@ -795,6 +797,13 @@ class VikingDBBackend(IVectorStorageBackend):
             properties_dict = context.properties.model_dump(exclude_none=True)
             properties_dict.pop("raw_properties", None)
             doc.update(properties_dict)
+
+        # Explicit refs serialization — always present for backward compatibility
+        doc[FIELD_REFS] = (
+            json.dumps(context.properties.refs)
+            if context.properties and context.properties.refs
+            else "{}"
+        )
 
         def default_json_serializer(obj):
             if isinstance(obj, datetime.datetime):
@@ -1658,6 +1667,80 @@ class VikingDBBackend(IVectorStorageBackend):
                     )
             except Exception as e:
                 logger.warning(f"batch_set_parent_id failed for batch: {e}")
+        return updated
+
+    async def batch_update_refs(
+        self,
+        context_ids: List[str],
+        ref_key: str,
+        ref_value: str,
+        context_type: str,
+    ) -> int:
+        """Add a ref entry to multiple contexts."""
+        if not self._initialized or not context_ids:
+            return 0
+
+        # Fetch current refs for all context_ids
+        try:
+            fetch_result = await self._client.async_data_request(
+                path="/api/vikingdb/data/fetch_in_collection",
+                data={
+                    "collection_name": self._collection_name,
+                    "ids": context_ids,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"batch_update_refs fetch failed: {e}")
+            return 0
+
+        if fetch_result.get("code") != "Success":
+            logger.warning(f"batch_update_refs fetch failed: {fetch_result.get('message')}")
+            return 0
+
+        fetched_items = fetch_result.get("result", {}).get("fetch", [])
+        if not fetched_items:
+            return 0
+
+        # Build update data list with merged refs
+        data_list = []
+        for item in fetched_items:
+            try:
+                existing_refs_str = item.get("fields", {}).get(FIELD_REFS, "{}")
+                existing_refs = json.loads(existing_refs_str) if existing_refs_str else {}
+                if ref_key not in existing_refs:
+                    existing_refs[ref_key] = []
+                if ref_value not in existing_refs[ref_key]:
+                    existing_refs[ref_key].append(ref_value)
+                data_list.append({
+                    "id": item.get("id"),
+                    FIELD_REFS: json.dumps(existing_refs),
+                })
+            except Exception as e:
+                logger.warning(f"batch_update_refs parse failed for {item.get('id')}: {e}")
+
+        if not data_list:
+            return 0
+
+        updated = 0
+        # VikingDB update API limit: 100 items per request
+        for i in range(0, len(data_list), 100):
+            batch = data_list[i : i + 100]
+            try:
+                result = await self._client.async_data_request(
+                    path="/api/vikingdb/data/update",
+                    data={
+                        "collection_name": self._collection_name,
+                        "data": batch,
+                    },
+                )
+                if result.get("code") == "Success":
+                    updated += len(batch)
+                else:
+                    logger.warning(
+                        f"batch_update_refs update failed: {result.get('message')}"
+                    )
+            except Exception as e:
+                logger.warning(f"batch_update_refs failed for batch: {e}")
         return updated
 
     async def close(self):

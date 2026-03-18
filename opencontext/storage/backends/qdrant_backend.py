@@ -130,6 +130,11 @@ class QdrantBackend(IVectorStorageBackend):
             properties_dict = context.properties.model_dump(exclude_none=True)
             payload.update(properties_dict)
 
+        # Explicit refs serialization — always present for backward compatibility
+        payload["refs"] = (
+            json.dumps(context.properties.refs) if context.properties and context.properties.refs else "{}"
+        )
+
         def default_json_serializer(obj):
             if isinstance(obj, datetime.datetime):
                 return obj.isoformat()
@@ -810,3 +815,44 @@ class QdrantBackend(IVectorStorageBackend):
         except Exception as e:
             logger.warning(f"batch_set_parent_id failed: {e}")
             return 0
+
+    async def batch_update_refs(
+        self,
+        context_ids: List[str],
+        ref_key: str,
+        ref_value: str,
+        context_type: str,
+    ) -> int:
+        """Add a ref entry to multiple contexts."""
+        if not self._initialized or not context_ids:
+            return 0
+        collection_name = self._collections.get(context_type)
+        if not collection_name:
+            return 0
+
+        updated = 0
+        for ctx_id in context_ids:
+            try:
+                points = await self._client.retrieve(
+                    collection_name=collection_name,
+                    ids=[ctx_id],
+                    with_payload=True,
+                )
+                if not points:
+                    continue
+
+                existing_refs = json.loads(points[0].payload.get("refs", "{}"))
+                if ref_key not in existing_refs:
+                    existing_refs[ref_key] = []
+                if ref_value not in existing_refs[ref_key]:
+                    existing_refs[ref_key].append(ref_value)
+
+                await self._client.set_payload(
+                    collection_name=collection_name,
+                    payload={"refs": json.dumps(existing_refs)},
+                    points=[ctx_id],
+                )
+                updated += 1
+            except Exception as e:
+                logger.warning(f"batch_update_refs failed for {ctx_id}: {e}")
+        return updated
