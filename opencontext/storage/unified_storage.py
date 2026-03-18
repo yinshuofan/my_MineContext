@@ -875,6 +875,7 @@ class UnifiedStorage:
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
+        owner_type: str = "user",
     ) -> bool:
         """Store/update user profile → relational DB"""
         return await self._document_backend.upsert_profile(
@@ -886,21 +887,34 @@ class UnifiedStorage:
             entities=entities,
             importance=importance,
             metadata=metadata,
+            owner_type=owner_type,
         )
 
     @_require_backend("_document_backend")
     async def get_profile(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        owner_type: str = "user",
     ) -> Optional[Dict]:
         """Get user profile → relational DB"""
-        return await self._document_backend.get_profile(user_id, device_id, agent_id)
+        return await self._document_backend.get_profile(
+            user_id, device_id, agent_id, owner_type=owner_type
+        )
 
     @_require_backend("_document_backend", default=False)
     async def delete_profile(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        owner_type: str = "user",
     ) -> bool:
         """Delete user profile → relational DB"""
-        return await self._document_backend.delete_profile(user_id, device_id, agent_id)
+        return await self._document_backend.delete_profile(
+            user_id, device_id, agent_id, owner_type=owner_type
+        )
 
 
     # ── Hierarchy routing (→ vector DB) ──

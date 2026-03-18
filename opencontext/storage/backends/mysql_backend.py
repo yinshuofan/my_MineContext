@@ -90,6 +90,19 @@ class MySQLBackend(IDocumentStorageBackend):
             # Create table structure
             await self._create_tables()
 
+            # Migration: add owner_type to existing profiles table
+            async with self._get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    try:
+                        await cursor.execute(
+                            "ALTER TABLE profiles ADD COLUMN owner_type VARCHAR(50) NOT NULL DEFAULT 'user'"
+                        )
+                        await cursor.execute(
+                            "CREATE INDEX idx_profiles_owner_type ON profiles(owner_type)"
+                        )
+                    except Exception:
+                        pass  # Column already exists
+
             self._initialized = True
             logger.info(
                 f"MySQL backend initialized successfully, database: {self.db_config['db']}"
@@ -194,6 +207,7 @@ class MySQLBackend(IDocumentStorageBackend):
                         user_id VARCHAR(255) NOT NULL,
                         device_id VARCHAR(100) NOT NULL DEFAULT 'default',
                         agent_id VARCHAR(100) NOT NULL DEFAULT 'default',
+                        owner_type VARCHAR(50) NOT NULL DEFAULT 'user',
                         factual_profile LONGTEXT NOT NULL,
                         behavioral_profile LONGTEXT,
                         entities JSON,
@@ -201,7 +215,8 @@ class MySQLBackend(IDocumentStorageBackend):
                         metadata JSON,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        PRIMARY KEY (user_id, device_id, agent_id)
+                        PRIMARY KEY (user_id, device_id, agent_id),
+                        INDEX idx_profiles_owner_type (owner_type)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """
                 )
@@ -642,6 +657,7 @@ class MySQLBackend(IDocumentStorageBackend):
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
+        owner_type: str = "user",
     ) -> bool:
         if not self._initialized:
             return False
@@ -655,9 +671,10 @@ class MySQLBackend(IDocumentStorageBackend):
 
                     await cursor.execute(
                         """
-                        INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                                              entities, importance, metadata, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO profiles (user_id, device_id, agent_id, owner_type, factual_profile,
+                                              behavioral_profile, entities, importance, metadata,
+                                              created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
                             factual_profile = VALUES(factual_profile),
                             behavioral_profile = VALUES(behavioral_profile),
@@ -666,8 +683,8 @@ class MySQLBackend(IDocumentStorageBackend):
                             metadata = VALUES(metadata),
                             updated_at = VALUES(updated_at)
                         """,
-                        (user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                         entities_json, importance, metadata_json, now, now),
+                        (user_id, device_id, agent_id, owner_type, factual_profile,
+                         behavioral_profile, entities_json, importance, metadata_json, now, now),
                     )
                     await conn.commit()
                     logger.info(f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}")
@@ -677,7 +694,11 @@ class MySQLBackend(IDocumentStorageBackend):
                     return False
 
     async def get_profile(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        owner_type: str = "user",
     ) -> Optional[Dict]:
         if not self._initialized:
             return None
@@ -687,12 +708,13 @@ class MySQLBackend(IDocumentStorageBackend):
                 try:
                     await cursor.execute(
                         """
-                        SELECT user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                               entities, importance, metadata, created_at, updated_at
+                        SELECT user_id, device_id, agent_id, owner_type, factual_profile,
+                               behavioral_profile, entities, importance, metadata,
+                               created_at, updated_at
                         FROM profiles
-                        WHERE user_id = %s AND device_id = %s AND agent_id = %s
+                        WHERE user_id = %s AND device_id = %s AND agent_id = %s AND owner_type = %s
                         """,
-                        (user_id, device_id, agent_id),
+                        (user_id, device_id, agent_id, owner_type),
                     )
                     row = await cursor.fetchone()
                     if row:
@@ -708,7 +730,11 @@ class MySQLBackend(IDocumentStorageBackend):
                     return None
 
     async def delete_profile(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        owner_type: str = "user",
     ) -> bool:
         if not self._initialized:
             return False
@@ -717,8 +743,8 @@ class MySQLBackend(IDocumentStorageBackend):
             async with conn.cursor() as cursor:
                 try:
                     await cursor.execute(
-                        "DELETE FROM profiles WHERE user_id = %s AND device_id = %s AND agent_id = %s",
-                        (user_id, device_id, agent_id),
+                        "DELETE FROM profiles WHERE user_id = %s AND device_id = %s AND agent_id = %s AND owner_type = %s",
+                        (user_id, device_id, agent_id, owner_type),
                     )
                     await conn.commit()
                     return cursor.rowcount > 0

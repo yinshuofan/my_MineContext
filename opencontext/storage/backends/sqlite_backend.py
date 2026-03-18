@@ -55,6 +55,18 @@ class SQLiteBackend(IDocumentStorageBackend):
             # Create table structure
             await self._create_tables()
 
+            # Migration: add owner_type to existing profiles table
+            try:
+                await self._connection.execute(
+                    "ALTER TABLE profiles ADD COLUMN owner_type TEXT NOT NULL DEFAULT 'user'"
+                )
+                await self._connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_profiles_owner_type ON profiles(owner_type)"
+                )
+                await self._connection.commit()
+            except Exception:
+                pass  # Column already exists
+
             self._initialized = True
             logger.info(f"SQLite backend initialized successfully, database path: {self.db_path}")
             return True
@@ -142,6 +154,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 user_id TEXT NOT NULL,
                 device_id TEXT NOT NULL DEFAULT 'default',
                 agent_id TEXT NOT NULL DEFAULT 'default',
+                owner_type TEXT NOT NULL DEFAULT 'user',
                 factual_profile TEXT NOT NULL,
                 behavioral_profile TEXT,
                 entities JSON,
@@ -152,6 +165,9 @@ class SQLiteBackend(IDocumentStorageBackend):
                 PRIMARY KEY (user_id, device_id, agent_id)
             )
         """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_profiles_owner_type ON profiles(owner_type)"
         )
 
         # Monitoring tables
@@ -798,6 +814,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
+        owner_type: str = "user",
     ) -> bool:
         """Insert or update user profile (composite key: user_id + device_id + agent_id)"""
         if not self._initialized:
@@ -811,9 +828,10 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             await conn.execute(
                 """
-                INSERT INTO profiles (user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                                      entities, importance, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO profiles (user_id, device_id, agent_id, owner_type, factual_profile,
+                                      behavioral_profile, entities, importance, metadata,
+                                      created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, device_id, agent_id) DO UPDATE SET
                     factual_profile = excluded.factual_profile,
                     behavioral_profile = excluded.behavioral_profile,
@@ -826,6 +844,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                     user_id,
                     device_id,
                     agent_id,
+                    owner_type,
                     factual_profile,
                     behavioral_profile,
                     entities_json,
@@ -846,7 +865,11 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
     async def get_profile(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        owner_type: str = "user",
     ) -> Optional[Dict]:
         """Get user profile by composite key"""
         if not self._initialized:
@@ -856,12 +879,13 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor = await conn.execute(
                 """
-                SELECT user_id, device_id, agent_id, factual_profile, behavioral_profile,
-                       entities, importance, metadata, created_at, updated_at
+                SELECT user_id, device_id, agent_id, owner_type, factual_profile,
+                       behavioral_profile, entities, importance, metadata,
+                       created_at, updated_at
                 FROM profiles
-                WHERE user_id = ? AND device_id = ? AND agent_id = ?
+                WHERE user_id = ? AND device_id = ? AND agent_id = ? AND owner_type = ?
                 """,
-                (user_id, device_id, agent_id),
+                (user_id, device_id, agent_id, owner_type),
             )
             row = await cursor.fetchone()
             if row:
@@ -877,7 +901,11 @@ class SQLiteBackend(IDocumentStorageBackend):
             return None
 
     async def delete_profile(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        owner_type: str = "user",
     ) -> bool:
         """Delete user profile"""
         if not self._initialized:
@@ -886,8 +914,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
         try:
             cursor = await conn.execute(
-                "DELETE FROM profiles WHERE user_id = ? AND device_id = ? AND agent_id = ?",
-                (user_id, device_id, agent_id),
+                "DELETE FROM profiles WHERE user_id = ? AND device_id = ? AND agent_id = ? AND owner_type = ?",
+                (user_id, device_id, agent_id, owner_type),
             )
             await conn.commit()
             return cursor.rowcount > 0

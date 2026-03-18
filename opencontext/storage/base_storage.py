@@ -393,6 +393,7 @@ class IDocumentStorageBackend(IStorageBackend):
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
+        owner_type: str = "user",
     ) -> bool:
         """Insert or update user profile (composite key: user_id + device_id + agent_id)
 
@@ -405,6 +406,7 @@ class IDocumentStorageBackend(IStorageBackend):
             entities: Entities list
             importance: Importance score
             metadata: Additional metadata
+            owner_type: Owner type ('user' or 'agent')
 
         Returns:
             True if successful, False otherwise
@@ -412,7 +414,11 @@ class IDocumentStorageBackend(IStorageBackend):
 
     @abstractmethod
     async def get_profile(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        owner_type: str = "user",
     ) -> Optional[Dict]:
         """Get user profile by composite key
 
@@ -420,6 +426,7 @@ class IDocumentStorageBackend(IStorageBackend):
             user_id: User identifier
             device_id: Device identifier
             agent_id: Agent identifier
+            owner_type: Owner type ('user' or 'agent')
 
         Returns:
             Profile dict or None if not found
@@ -427,7 +434,11 @@ class IDocumentStorageBackend(IStorageBackend):
 
     @abstractmethod
     async def delete_profile(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        owner_type: str = "user",
     ) -> bool:
         """Delete user profile
 
@@ -435,6 +446,7 @@ class IDocumentStorageBackend(IStorageBackend):
             user_id: User identifier
             device_id: Device identifier
             agent_id: Agent identifier
+            owner_type: Owner type ('user' or 'agent')
 
         Returns:
             True if successful, False otherwise
