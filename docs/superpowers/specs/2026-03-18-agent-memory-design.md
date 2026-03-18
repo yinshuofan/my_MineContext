@@ -91,8 +91,8 @@ CREATE TABLE chat_batches (
 
 Push 流程变为：
 1. 持久化 messages → 得到 `batch_id`
-2. 将 `batch_id` 和 messages 包装为 `RawContextProperties`（`raw_type="chat_batch"`, `raw_id=batch_id`）传给所有 processor
-3. 每个 processor 产出的 `ProcessedContext` 继承 `raw_type="chat_batch"`, `raw_id=batch_id`
+2. 将 `batch_id` 存入 `RawContextProperties.additional_info["batch_id"]`，传给所有 processor
+3. 每个 processor 在输出的 `ProcessedContext` 上设置 `properties.raw_type="chat_batch"`, `properties.raw_id=batch_id`（这两个字段在 `ContextProperties` 上，不在 `RawContextProperties` 上）
 
 ### 1.3 ContextType 扩展
 
@@ -119,8 +119,9 @@ class ContextType(str, Enum):
 
 现有系统用 `ContextType.EVENT` + `hierarchy_level`（0/1/2/3）来区分层级。新的 ContextType（`DAILY_SUMMARY` 等）将**替代** `hierarchy_level` 作为层级判断的主要依据：
 
-- **写入端**（`hierarchy_summary.py` `_store_summary()`）：生成 L1 摘要时设 `context_type=DAILY_SUMMARY`（不再是 `EVENT`），L2 设 `WEEKLY_SUMMARY`，L3 设 `MONTHLY_SUMMARY`。`hierarchy_level` 字段保留但降级为辅助信息。
+- **写入端**（`hierarchy_summary.py` `_store_summary()`）：生成 L1 摘要时设 `context_type=DAILY_SUMMARY`（不再是 `EVENT`），L2 设 `WEEKLY_SUMMARY`，L3 设 `MONTHLY_SUMMARY`。`hierarchy_level` 字段保留但降级为辅助信息。摘要的幂等性保证仍来自 `_generate_daily_summary` 等方法中的 dedup check（`search_hierarchy`），与 UpdateStrategy 无关。
 - **查询端**（`search_hierarchy()`）：改用 `context_type` 过滤而非 `hierarchy_level`。例如查 L1 摘要：`context_types=[DAILY_SUMMARY]`。
+- **`hierarchy_levels` 请求参数兼容**：`EventSearchRequest` 的 `hierarchy_levels: List[int]` 参数保留，内部通过 `MEMORY_OWNER_TYPE_MAP` 映射为对应的 ContextType 列表。例如 `hierarchy_levels=[0, 1]` + `memory_owner="user"` → `context_types=[EVENT, DAILY_SUMMARY]`。
 - **drill-up 遍历**（`_collect_ancestors()`）：通过 `refs` 字段找到父节点 ID → `get_contexts_by_ids()` 获取父节点 → 父节点的 `context_type` 自然标识其层级。不再需要按 `hierarchy_level` 过滤。
 - **drill-down 遍历**（`hierarchical_event_tool.py`）：通过 `refs` 字段获取子节点 ID 列表 → `get_contexts_by_ids()`。
 
@@ -130,7 +131,7 @@ class ContextType(str, Enum):
 
 | 映射 | DAILY/WEEKLY/MONTHLY_SUMMARY | AGENT_EVENT | AGENT_DAILY/WEEKLY/MONTHLY |
 |------|------------------------------|-------------|----------------------------|
-| `CONTEXT_UPDATE_STRATEGIES` | OVERWRITE | APPEND | OVERWRITE |
+| `CONTEXT_UPDATE_STRATEGIES` | APPEND | APPEND | APPEND |
 | `CONTEXT_STORAGE_BACKENDS` | vector_db | vector_db | vector_db |
 | `ContextDescriptions` | 新增描述 | 新增描述 | 新增描述 |
 | Prompt 文件 | 更新分类描述 | 更新分类描述 | 更新分类描述 |
@@ -335,7 +336,7 @@ POST /api/push/chat
 ```
 POST /api/push/chat
   → 持久化 messages → chat_batches 表 → batch_id
-  → 构建 RawContextProperties（source=CHAT_LOG, raw_type="chat_batch", raw_id=batch_id, content_text=messages）
+  → 构建 RawContextProperties（source=CHAT_LOG, content_text=messages, additional_info={"batch_id": batch_id}）
   → ProcessorManager.process_batch(raw_context, processor_names=["user_memory", "agent_memory"])
     → 按 processor_names 查找已注册的 processor 实例
     → asyncio.gather(
@@ -366,9 +367,20 @@ async def process_batch(
 ```
 
 - 接收 `RawContextProperties`（与现有 `process()` 的输入类型一致）
-- 按 `processor_names` 从已注册 processor 中查找实例
+- 按 `processor_names` 从 processor 名称映射表中查找实例
 - 每个 processor 仍通过 `can_process()` → `process()` 标准接口调用
 - 合并所有 processor 的输出后通过 callback 路由存储
+
+**Processor 名称映射**：`process_batch` 使用独立的名称映射表（非 `ProcessorFactory` 的 type 注册表，也非 routing table）：
+
+```python
+BATCH_PROCESSOR_MAP = {
+    "user_memory": "text_chat_processor",      # 已有 processor 的别名
+    "agent_memory": "agent_memory_processor",   # 新增 processor
+}
+```
+
+`processors` 请求参数中的名称通过此映射表解析为已注册的 processor 实例。
 
 现有的 `process()` 方法保留用于非 chat 场景（document processor 等），其行为不变（按 routing table 选择单个 processor）。
 
@@ -385,8 +397,9 @@ async def process_batch(
   4. 调用 LLM 从 agent 视角提取：
      - Agent profile 更新（对用户的认知变化）→ `context_type=PROFILE`（通过 `_store_profile` 走 agent profile merge）
      - Agent events（agent 的感受/评价/反应）→ `context_type=AGENT_EVENT`
-  5. 每个输出的 `ProcessedContext` 设置 `raw_type="chat_batch"`, `raw_id=batch_id`
-  6. 返回 `List[ProcessedContext]`
+  5. 每个输出的 `ProcessedContext` 设置 `properties.raw_type="chat_batch"`, `properties.raw_id=batch_id`（从 `raw_context.additional_info["batch_id"]` 获取）
+  6. Profile 类型输出通过 `_store_profile()` → `refresh_profile()` 存储。`refresh_profile()` 需新增 `owner_type` 参数，agent profile 调用时传 `owner_type="agent"`，确保 `get_profile()` 和 `upsert_profile()` 操作正确的 profile 行
+  7. 返回 `List[ProcessedContext]`
 
 在 `ProcessorFactory._register_built_in_processors()` 中注册为 `"agent_memory"`。
 
@@ -568,6 +581,8 @@ agent_memory_analyze:
 | Hierarchy 检索 | `tools/retrieval_tools/hierarchical_event_tool.py` | 修改（refs） |
 | Search hierarchy | `server/routes/search.py` | 修改（refs + type map） |
 | TextChatCapture | `context_capture/text_chat.py` | 修改（删 buffer） |
+| refresh_profile | `context_processing/processor/profile_processor.py` | 修改（新增 owner_type 参数） |
+| chat_batches 清理任务 | `periodic_task/` | 新增（90 天过期清理） |
 | MODULE.md 更新 | `context_capture/MODULE.md`、`server/MODULE.md`、`models/MODULE.md` 等 | 修改 |
 
 ---
