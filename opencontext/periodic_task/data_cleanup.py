@@ -136,6 +136,18 @@ class DataCleanupTask(BasePeriodicTask):
                     message="Neither ContextMerger nor Storage has cleanup methods",
                 )
 
+            # Clean up old chat batches
+            try:
+                from opencontext.storage.global_storage import get_storage as _get_storage
+
+                _storage = _get_storage()
+                if _storage:
+                    deleted = await _storage.cleanup_chat_batches(retention_days=90)
+                    if deleted > 0:
+                        logger.info(f"Cleaned up {deleted} chat batches older than 90 days")
+            except Exception as e:
+                logger.warning(f"Chat batch cleanup failed: {e}")
+
             execution_time = int((time.time() - start_time) * 1000)
 
             logger.info(f"Data cleanup completed using {cleanup_result} " f"in {execution_time}ms")
