@@ -12,6 +12,7 @@ Provides centralized creation and management of processor instances.
 from typing import Dict, List, Optional, Type
 
 from opencontext.config import GlobalConfig
+from opencontext.context_processing.processor.agent_memory_processor import AgentMemoryProcessor
 from opencontext.context_processing.processor.document_processor import DocumentProcessor
 from opencontext.context_processing.processor.text_chat_processor import TextChatProcessor
 from opencontext.interfaces import IContextProcessor
@@ -43,6 +44,7 @@ class ProcessorFactory:
         built_in_processors = {
             "document_processor": DocumentProcessor,
             "text_chat_processor": TextChatProcessor,
+            "agent_memory_processor": AgentMemoryProcessor,
         }
 
         for name, processor_class in built_in_processors.items():

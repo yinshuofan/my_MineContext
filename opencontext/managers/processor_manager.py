@@ -19,7 +19,7 @@ from opencontext.models import ContextSource, ProcessedContext, RawContextProper
 
 BATCH_PROCESSOR_MAP = {
     "user_memory": "text_chat_processor",
-    # "agent_memory": "agent_memory_processor",  # Added in Plan 3
+    "agent_memory": "agent_memory_processor",
 }
 
 
