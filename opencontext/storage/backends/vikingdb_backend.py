@@ -80,9 +80,7 @@ FIELD_RAW_ID = "raw_id"
 
 # Hierarchy and document overwrite fields
 FIELD_HIERARCHY_LEVEL = "hierarchy_level"
-FIELD_PARENT_ID = "parent_id"
 FIELD_TIME_BUCKET = "time_bucket"
-FIELD_CHILDREN_IDS = "children_ids"
 FIELD_REFS = "refs"
 
 # Multimodal fields
@@ -646,9 +644,9 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_RAW_TYPE, "FieldType": "string"},
             {"FieldName": FIELD_RAW_ID, "FieldType": "string"},
             {"FieldName": FIELD_HIERARCHY_LEVEL, "FieldType": "int64"},
-            {"FieldName": FIELD_PARENT_ID, "FieldType": "string"},
+            {"FieldName": "parent_id", "FieldType": "string"},  # legacy, kept for schema compat
             {"FieldName": FIELD_TIME_BUCKET, "FieldType": "string"},
-            {"FieldName": FIELD_CHILDREN_IDS, "FieldType": "string"},
+            {"FieldName": "children_ids", "FieldType": "string"},  # legacy, kept for schema compat
             {"FieldName": FIELD_REFS, "FieldType": "string"},
             {"FieldName": FIELD_DOCUMENT, "FieldType": "string"},
             {"FieldName": FIELD_CONTENT_MODALITIES, "FieldType": "string"},
@@ -705,7 +703,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_RAW_TYPE,
                 FIELD_RAW_ID,
                 FIELD_TIME_BUCKET,
-                FIELD_PARENT_ID,
+                "parent_id",  # legacy, kept for index compat
                 FIELD_IS_PROCESSED,
                 FIELD_HAS_COMPRESSION,
                 FIELD_ENABLE_MERGE,
@@ -1637,37 +1635,6 @@ class VikingDBBackend(IVectorStorageBackend):
         except Exception as e:
             logger.exception(f"Failed to get contexts by IDs: {e}")
             return []
-
-    async def batch_set_parent_id(
-        self,
-        children_ids: List[str],
-        parent_id: str,
-        context_type: str,
-    ) -> int:
-        if not self._initialized or not children_ids:
-            return 0
-        updated = 0
-        # VikingDB update API limit: 100 items per request
-        for i in range(0, len(children_ids), 100):
-            batch = children_ids[i : i + 100]
-            data_list = [{"id": cid, FIELD_PARENT_ID: parent_id} for cid in batch]
-            try:
-                result = await self._client.async_data_request(
-                    path="/api/vikingdb/data/update",
-                    data={
-                        "collection_name": self._collection_name,
-                        "data": data_list,
-                    },
-                )
-                if result.get("code") == "Success":
-                    updated += len(batch)
-                else:
-                    logger.warning(
-                        f"batch_set_parent_id update failed: {result.get('message')}"
-                    )
-            except Exception as e:
-                logger.warning(f"batch_set_parent_id failed for batch: {e}")
-        return updated
 
     async def batch_update_refs(
         self,

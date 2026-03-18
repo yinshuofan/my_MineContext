@@ -794,28 +794,6 @@ class QdrantBackend(IVectorStorageBackend):
 
         return results
 
-    async def batch_set_parent_id(
-        self,
-        children_ids: List[str],
-        parent_id: str,
-        context_type: str,
-    ) -> int:
-        if not self._initialized or not children_ids:
-            return 0
-        collection_name = self._collections.get(context_type)
-        if not collection_name:
-            return 0
-        try:
-            await self._client.set_payload(
-                collection_name=collection_name,
-                payload={"parent_id": parent_id},
-                points=children_ids,
-            )
-            return len(children_ids)
-        except Exception as e:
-            logger.warning(f"batch_set_parent_id failed: {e}")
-            return 0
-
     async def batch_update_refs(
         self,
         context_ids: List[str],

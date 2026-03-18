@@ -101,7 +101,6 @@ class EventNode(BaseModel):
     id: str
     hierarchy_level: int = 0
     time_bucket: Optional[str] = None
-    parent_id: Optional[str] = None
     refs: Dict[str, List[str]] = Field(default_factory=dict)
     title: Optional[str] = None
     summary: Optional[str] = None

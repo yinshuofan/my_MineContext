@@ -170,8 +170,6 @@ class BaseContextRetrievalTool(BaseTool):
             "event_time": props.event_time.isoformat() if props.event_time else None,
             "hierarchy_level": props.hierarchy_level,
             "time_bucket": props.time_bucket,
-            "parent_id": props.parent_id,
-            "children_ids": props.children_ids or [],
             "metadata": context.metadata or {},
         }
 

@@ -222,7 +222,7 @@ async def _execute_search(
     roots: List[EventNode] = []
     linked: set = set()
     for node_id, node in nodes.items():
-        pid = node.parent_id
+        pid = _extract_parent_id_from_refs(node.refs, nodes)
         if pid and pid in nodes and node_id not in linked:
             nodes[pid].children.append(node)
             linked.add(node_id)
@@ -339,13 +339,13 @@ async def _collect_ancestors(
     for ctx, score in results:
         seen.add(ctx.id)
         if not ctx.properties or not ctx.properties.refs:
-            # Fallback to parent_id for old data
-            if ctx.properties and ctx.properties.parent_id:
-                pid = ctx.properties.parent_id
-                if pid not in seen:
-                    seen.add(pid)
-                    current_batch.append(pid)
-                    ancestor_map.setdefault(ctx.id, []).append(pid)
+            # Fallback to parent_id for old data (field removed from model, may exist in metadata)
+            old_pid = (ctx.metadata or {}).get("parent_id") if ctx.properties else None
+            if old_pid:
+                if old_pid not in seen:
+                    seen.add(old_pid)
+                    current_batch.append(old_pid)
+                    ancestor_map.setdefault(ctx.id, []).append(old_pid)
             continue
         for ref_key, ref_ids in ctx.properties.refs.items():
             if ref_key in summary_type_values:
@@ -362,12 +362,12 @@ async def _collect_ancestors(
         for parent in parents:
             all_ancestors[parent.id] = parent
             if not parent.properties or not parent.properties.refs:
-                # Fallback to parent_id for old data
-                if parent.properties and parent.properties.parent_id:
-                    pid = parent.properties.parent_id
-                    if pid not in seen:
-                        seen.add(pid)
-                        next_batch.append(pid)
+                # Fallback to parent_id for old data (field removed from model, may exist in metadata)
+                old_pid = (parent.metadata or {}).get("parent_id") if parent.properties else None
+                if old_pid:
+                    if old_pid not in seen:
+                        seen.add(old_pid)
+                        next_batch.append(old_pid)
                 continue
             for ref_key, ref_ids in parent.properties.refs.items():
                 if ref_key in summary_type_values:
@@ -432,10 +432,12 @@ def _format_timestamp(value) -> Optional[str]:
         return str(value)
 
 
-def _normalize_parent_id(props) -> Optional[str]:
-    """Return parent_id or None."""
-    if props and props.parent_id:
-        return props.parent_id
+def _extract_parent_id_from_refs(refs: Dict[str, List[str]], nodes: Dict[str, Any]) -> Optional[str]:
+    """Find the first ref target that exists in the nodes map (i.e., a known ancestor)."""
+    for ref_ids in refs.values():
+        for pid in ref_ids:
+            if pid in nodes:
+                return pid
     return None
 
 
@@ -455,7 +457,6 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
         id=ctx.id,
         hierarchy_level=props.hierarchy_level if props else 0,
         time_bucket=props.time_bucket if props else None,
-        parent_id=_normalize_parent_id(props),
         refs=props.refs if props else {},
         title=extracted.title if extracted else None,
         summary=extracted.summary if extracted else None,
@@ -480,7 +481,6 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         score=score,
         hierarchy_level=props.hierarchy_level if props else 0,
         time_bucket=props.time_bucket if props else None,
-        parent_id=_normalize_parent_id(props),
         refs=props.refs if props else {},
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),

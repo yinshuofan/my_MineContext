@@ -966,18 +966,6 @@ class UnifiedStorage:
             context_ids, ref_key, ref_value, context_type
         )
 
-    @_require_backend("_vector_backend", default=0)
-    async def batch_set_parent_id(
-        self,
-        children_ids: List[str],
-        parent_id: str,
-        context_type: str,
-    ) -> int:
-        """Set parent_id on child contexts. Delegates to vector backend."""
-        return await self._vector_backend.batch_set_parent_id(
-            children_ids, parent_id, context_type
-        )
-
     # ── System Settings (→ document DB) ──
 
     @_require_backend("_document_backend", default={})

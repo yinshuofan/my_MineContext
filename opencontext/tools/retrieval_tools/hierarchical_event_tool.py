@@ -374,8 +374,6 @@ class HierarchicalEventTool(BaseTool):
             "hierarchy_level": hierarchy_level,
             "time_bucket": props.time_bucket,
             "refs": props.refs if props else {},
-            "parent_id": props.parent_id if props else None,  # keep for compat
-            "children_ids": props.children_ids if props else [],  # keep for compat
             "metadata": context.metadata or {},
         }
 

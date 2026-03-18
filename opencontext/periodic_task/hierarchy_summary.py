@@ -1471,9 +1471,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             agent_id=agent_id,
             hierarchy_level=level,
             time_bucket=time_bucket,
-            parent_id=None,
-            children_ids=children_ids,  # keep for backward compat
-            refs={child_type.value: children_ids} if children_ids else {},  # new refs format
+            refs={child_type.value: children_ids} if children_ids else {},
         )
 
         # Build vectorize object for semantic search (use parsed summary, not raw JSON)
@@ -1515,22 +1513,6 @@ class HierarchySummaryTask(BasePeriodicTask):
                     f"Stored {level_name} summary id={summary_id}, "
                     f"time_bucket={time_bucket}, children={len(children_ids)}"
                 )
-                # Backfill parent_id on child contexts (legacy)
-                if children_ids:
-                    try:
-                        updated = await storage.batch_set_parent_id(
-                            children_ids, summary_id, ContextType.EVENT.value
-                        )
-                        logger.info(
-                            f"Set parent_id on {updated}/{len(children_ids)} children "
-                            f"for {level_name} summary {summary_id}"
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to backfill parent_id for {level_name} summary: {e}"
-                        )
-                        # Non-fatal: summary is already stored, parent_id is a bonus link
-
                 # Backfill refs on child contexts (pointing to this summary)
                 if children_ids:
                     try:

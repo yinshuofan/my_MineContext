@@ -542,14 +542,12 @@ class MemoryCacheManager:
 
     @staticmethod
     def _count_refs(ctx: ProcessedContext) -> int:
-        """Count total child IDs from refs, with children_ids fallback for old data."""
+        """Count total child IDs from refs."""
         if ctx.properties.refs:
             count = 0
             for key, ids in ctx.properties.refs.items():
                 count += len(ids)
             return count
-        if hasattr(ctx.properties, "children_ids") and ctx.properties.children_ids:
-            return len(ctx.properties.children_ids)
         return 0
 
     @staticmethod

@@ -128,8 +128,6 @@ class ContextProperties(BaseModel):
 
     # Hierarchy indexing fields (event type only, for time-based hierarchical summaries)
     hierarchy_level: int = 0  # 0=original, 1=daily summary, 2=weekly summary, 3=monthly summary
-    parent_id: Optional[str] = None  # Parent summary ID
-    children_ids: List[str] = Field(default_factory=list)  # Child record IDs
     time_bucket: Optional[str] = None  # Time bucket: "2026-02-21" / "2026-W08" / "2026-02"
     refs: Dict[str, List[str]] = Field(default_factory=dict)
 
@@ -339,8 +337,6 @@ class ProcessedContextModel(BaseModel):
     agent_id: Optional[str] = None  # Agent identifier
     # Hierarchy fields
     hierarchy_level: int = 0
-    parent_id: Optional[str] = None
-    children_ids: List[str] = Field(default_factory=list)
     time_bucket: Optional[str] = None
     refs: Dict[str, List[str]] = Field(default_factory=dict)
 
@@ -391,8 +387,6 @@ class ProcessedContextModel(BaseModel):
             agent_id=pc.properties.agent_id,
             # Hierarchy fields
             hierarchy_level=pc.properties.hierarchy_level,
-            parent_id=pc.properties.parent_id,
-            children_ids=pc.properties.children_ids,
             time_bucket=pc.properties.time_bucket,
             refs=pc.properties.refs,
         )
