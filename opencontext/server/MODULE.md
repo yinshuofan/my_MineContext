@@ -25,6 +25,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/messages.py` | Message CRUD and streaming (`/api/agent/chat/message/*`) |
 | `routes/monitoring.py` | Monitoring endpoints (`/api/monitoring/*`) -- overview, context-types, token-usage, processing, etc. |
 | `routes/settings.py` | Model settings, general settings, prompts CRUD (`/api/model_settings/*`, `/api/settings/*`) |
+| `routes/agents.py` | Agent registry CRUD and agent base memory endpoints (`/api/agents/*`) |
 | `routes/vaults.py` | Vault document management (`/api/vaults/*`) with background context processing |
 | `routes/web.py` | HTML pages -- contexts list, vector search, chat, monitoring, settings, file serving |
 | `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
@@ -317,6 +318,23 @@ Push endpoints that schedule hierarchy summary: `push_chat`.
 | POST | `/api/settings/reset` | `reset_settings` | Reset all to defaults |
 | POST | `/api/settings/apply` | `apply_settings` | Broadcast config reload signal to all workers |
 
+### Agent Routes (`/api/agents/*`)
+
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| POST | `/api/agents` | `create_agent` | Register a new agent (`agent_id`, `name`, `description`) |
+| GET | `/api/agents` | `list_agents` | List all active agents |
+| GET | `/api/agents/{agent_id}` | `get_agent` | Get a single agent by ID |
+| PUT | `/api/agents/{agent_id}` | `update_agent` | Update agent name and/or description |
+| DELETE | `/api/agents/{agent_id}` | `delete_agent` | Soft-delete an agent |
+| POST | `/api/agents/{agent_id}/base/profile` | `set_base_profile` | Set or overwrite the agent's base profile (stored with `user_id="__base__"`, `owner_type="agent"`) |
+| GET | `/api/agents/{agent_id}/base/profile` | `get_base_profile` | Retrieve the agent's base profile |
+| POST | `/api/agents/{agent_id}/base/events` | `push_base_events` | Push structured base events (no LLM extraction; generates embeddings and stores as `AGENT_EVENT`) |
+| GET | `/api/agents/{agent_id}/base/events` | `list_base_events` | List base events for an agent (filtered by `user_id=None`) |
+| DELETE | `/api/agents/{agent_id}/base/events/{event_id}` | `delete_base_event` | Delete a single base event by ID |
+
+Agent base memory routes use `user_id="__base__"` as a sentinel to distinguish base profiles from per-user agent profiles generated during conversations. Base events have no `user_id` set, distinguishing them from conversation-extracted agent events.
+
 ### Vault Routes (`/api/vaults/*`)
 
 | Method | Path | Handler | Description |
@@ -412,7 +430,7 @@ HTTP Request
 
 New `processors` parameter (default: `["user_memory"]`) controls which processors run on the input. Processor names are resolved via `BATCH_PROCESSOR_MAP` in `opencontext/managers/processor_manager.py`:
 - `"user_memory"` -> `"text_chat_processor"`
-- (future: `"agent_memory"` -> `"agent_memory_processor"`)
+- `"agent_memory"` -> `"agent_memory_processor"` (extracts memories from the agent's perspective; requires a registered agent)
 
 Both text-only and multimodal messages (OpenAI format) are supported. Before processing, `_process_multimodal_messages()` (async) handles base64 media:
 - Text-only messages (`content` is a string): pass through unchanged

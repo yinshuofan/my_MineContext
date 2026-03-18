@@ -515,3 +515,385 @@ curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&
   ]
 }
 ```
+
+---
+
+## 5. Agents — Agent 注册与管理
+
+Agent CRUD 和基础记忆管理。Agent 注册后可通过 push/chat 的 `processors: ["agent_memory"]` 从对话中提取 agent 视角的记忆。
+
+### 5.1 创建 Agent
+
+`POST /api/agents`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `agent_id` | `string` | **是** | Agent 唯一标识（1-100 字符，不可为 `"__base__"`） |
+| `name` | `string` | **是** | Agent 名称（1-255 字符） |
+| `description` | `string` | 否 | Agent 描述 |
+
+```bash
+curl -X POST http://localhost:1733/api/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "assistant_01",
+    "name": "Personal Assistant",
+    "description": "A helpful personal assistant that remembers user preferences"
+  }'
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "Agent created",
+  "data": {"agent_id": "assistant_01"}
+}
+```
+
+**ID 已存在（400）**
+```json
+{
+  "detail": "Agent creation failed (ID may already exist)"
+}
+```
+
+### 5.2 列出所有 Agent
+
+`GET /api/agents`
+
+```bash
+curl -X GET http://localhost:1733/api/agents
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "success",
+  "data": {
+    "agents": [
+      {
+        "agent_id": "assistant_01",
+        "name": "Personal Assistant",
+        "description": "A helpful personal assistant",
+        "created_at": "2026-03-18T10:00:00",
+        "updated_at": "2026-03-18T10:00:00"
+      }
+    ]
+  }
+}
+```
+
+### 5.3 获取单个 Agent
+
+`GET /api/agents/{agent_id}`
+
+```bash
+curl -X GET http://localhost:1733/api/agents/assistant_01
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "success",
+  "data": {
+    "agent": {
+      "agent_id": "assistant_01",
+      "name": "Personal Assistant",
+      "description": "A helpful personal assistant",
+      "created_at": "2026-03-18T10:00:00",
+      "updated_at": "2026-03-18T10:00:00"
+    }
+  }
+}
+```
+
+**不存在（404）**
+```json
+{
+  "detail": "Agent not found"
+}
+```
+
+### 5.4 更新 Agent
+
+`PUT /api/agents/{agent_id}`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 否 | 新名称（最长 255 字符） |
+| `description` | `string` | 否 | 新描述 |
+
+```bash
+curl -X PUT http://localhost:1733/api/agents/assistant_01 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Smart Assistant",
+    "description": "Updated description"
+  }'
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "Agent updated"
+}
+```
+
+### 5.5 删除 Agent（软删除）
+
+`DELETE /api/agents/{agent_id}`
+
+```bash
+curl -X DELETE http://localhost:1733/api/agents/assistant_01
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "Agent deleted"
+}
+```
+
+---
+
+## 6. Agent Base Memory — Agent 基础记忆
+
+Agent 的基础记忆（base memory）是预先配置的 profile 和事件，与对话提取的记忆分开管理。基础 profile 使用 `user_id="__base__"` 作为哨兵值，基础事件没有关联 `user_id`。
+
+### 6.1 设置基础 Profile
+
+`POST /api/agents/{agent_id}/base/profile`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `factual_profile` | `string` | **是** | Agent 的事实性 profile 描述 |
+| `behavioral_profile` | `string` | 否 | 行为模式描述 |
+| `entities` | `List[string]` | 否 | 相关实体列表 |
+| `importance` | `int` | 否 | 重要性（默认 0） |
+
+```bash
+curl -X POST http://localhost:1733/api/agents/assistant_01/base/profile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "factual_profile": "I am a personal assistant specialized in scheduling and task management. I prefer concise communication.",
+    "behavioral_profile": "Responds in a friendly, professional tone. Proactively suggests reminders.",
+    "entities": ["calendar", "task management", "reminders"],
+    "importance": 8
+  }'
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "Base profile saved"
+}
+```
+
+### 6.2 获取基础 Profile
+
+`GET /api/agents/{agent_id}/base/profile`
+
+```bash
+curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "success",
+  "data": {
+    "profile": {
+      "user_id": "__base__",
+      "device_id": "default",
+      "agent_id": "assistant_01",
+      "owner_type": "agent",
+      "factual_profile": "I am a personal assistant specialized in scheduling and task management.",
+      "behavioral_profile": "Responds in a friendly, professional tone.",
+      "keywords": [],
+      "entities": ["calendar", "task management", "reminders"],
+      "importance": 8,
+      "metadata": {}
+    }
+  }
+}
+```
+
+**不存在（404）**
+```json
+{
+  "detail": "Base profile not found"
+}
+```
+
+### 6.3 推送基础事件
+
+`POST /api/agents/{agent_id}/base/events`
+
+推送结构化的基础事件，不经过 LLM 提取。系统会为每个事件生成 embedding 并存储为 `AGENT_EVENT`。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `events` | `List[Object]` | **是** | 事件列表（至少 1 项） |
+| `events[].title` | `string` | **是** | 事件标题 |
+| `events[].summary` | `string` | **是** | 事件摘要 |
+| `events[].event_time` | `string` | 否 | ISO 8601 时间（默认当前时间） |
+| `events[].keywords` | `List[string]` | 否 | 关键词列表 |
+| `events[].entities` | `List[string]` | 否 | 实体列表 |
+| `events[].importance` | `int` | 否 | 重要性 0-10（默认 5） |
+
+```bash
+curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "title": "Product launch v2.0",
+        "summary": "The product team launched version 2.0 with new scheduling features and improved UI.",
+        "event_time": "2026-03-15T09:00:00+00:00",
+        "keywords": ["product launch", "v2.0", "scheduling"],
+        "entities": ["product team"],
+        "importance": 8
+      },
+      {
+        "title": "Company policy update",
+        "summary": "New remote work policy allows 3 days WFH per week starting April.",
+        "keywords": ["policy", "remote work"],
+        "importance": 6
+      }
+    ]
+  }'
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "Base events saved",
+  "data": {"count": 2}
+}
+```
+
+### 6.4 列出基础事件
+
+`GET /api/agents/{agent_id}/base/events`
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `limit` | `int` | 否 | `50` | 每页数量 |
+| `offset` | `int` | 否 | `0` | 偏移量 |
+
+```bash
+curl -X GET "http://localhost:1733/api/agents/assistant_01/base/events?limit=10&offset=0"
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "success",
+  "data": {
+    "events": [
+      {
+        "id": "a1b2c3d4-...",
+        "context_type": "agent_event",
+        "title": "Product launch v2.0",
+        "summary": "The product team launched version 2.0...",
+        "keywords": ["product launch", "v2.0"],
+        "entities": ["product team"],
+        "importance": 8,
+        "event_time": "2026-03-15T09:00:00+00:00",
+        "create_time": "2026-03-18T10:30:00+00:00"
+      }
+    ]
+  }
+}
+```
+
+### 6.5 删除基础事件
+
+`DELETE /api/agents/{agent_id}/base/events/{event_id}`
+
+```bash
+curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+**成功**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "Event deleted"
+}
+```
+
+**不存在（404）**
+```json
+{
+  "detail": "Event not found"
+}
+```
+
+---
+
+## 7. Agent Memory via Push Chat
+
+通过 push/chat 接口的 `processors` 参数触发 agent 记忆提取。需要先注册 agent。
+
+```bash
+curl -X POST http://localhost:1733/api/push/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "I need to prepare the quarterly report by Friday"},
+      {"role": "assistant", "content": "Got it! I will remind you about the quarterly report deadline on Friday."}
+    ],
+    "user_id": "test_user",
+    "agent_id": "assistant_01",
+    "processors": ["user_memory", "agent_memory"]
+  }'
+```
+
+`"agent_memory"` 处理器会从 agent 视角分析对话，提取 `AGENT_EVENT` 和 `PROFILE` 类型的记忆。提取的记忆通过标准存储路由：profile -> 关系数据库，agent_event -> 向量数据库。
+
+---
+
+## 8. memory_owner 参数
+
+Search 和 Memory Cache 接口支持 `memory_owner` 参数（`"user"` 或 `"agent"`），用于切换查询的 ContextType 集合。
+
+- `memory_owner="user"`（默认）：查询 `EVENT` / `DAILY_SUMMARY` / `WEEKLY_SUMMARY` / `MONTHLY_SUMMARY`
+- `memory_owner="agent"`：查询 `AGENT_EVENT` / `AGENT_DAILY_SUMMARY` / `AGENT_WEEKLY_SUMMARY` / `AGENT_MONTHLY_SUMMARY`
+
+**Search 示例（查询 agent 记忆）**
+```bash
+curl -X POST http://localhost:1733/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": [{"type": "text", "text": "quarterly report"}],
+    "user_id": "test_user",
+    "agent_id": "assistant_01",
+    "memory_owner": "agent",
+    "top_k": 5
+  }'
+```
+
+**Memory Cache 示例（获取 agent 记忆快照）**
+```bash
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=test_user&agent_id=assistant_01&memory_owner=agent&include=profile,events"
+```

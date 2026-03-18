@@ -821,6 +821,136 @@ curl -X POST http://localhost:1733/api/settings/apply
 
 
 # ============================================================================
+# 17. Agents — CRUD
+# ============================================================================
+
+# Create Agent
+curl -X POST http://localhost:1733/api/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "assistant_01",
+    "name": "Personal Assistant",
+    "description": "A helpful personal assistant that remembers user preferences"
+  }'
+# -H "X-API-Key: your-api-key"
+
+# List Agents
+curl -X GET http://localhost:1733/api/agents
+# -H "X-API-Key: your-api-key"
+
+# Get Agent by ID
+curl -X GET http://localhost:1733/api/agents/assistant_01
+# -H "X-API-Key: your-api-key"
+
+# Update Agent
+curl -X PUT http://localhost:1733/api/agents/assistant_01 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Smart Assistant",
+    "description": "Updated description for the assistant"
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Delete Agent (soft delete)
+curl -X DELETE http://localhost:1733/api/agents/assistant_01
+# -H "X-API-Key: your-api-key"
+
+
+# ============================================================================
+# 18. Agents — Base Memory (Profile & Events)
+# ============================================================================
+# Base memory is pre-configured agent knowledge, separate from conversation-extracted memory.
+# Base profile uses user_id="__base__" internally; base events have no user_id.
+
+# Set Base Profile
+curl -X POST http://localhost:1733/api/agents/assistant_01/base/profile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "factual_profile": "I am a personal assistant specialized in scheduling and task management.",
+    "behavioral_profile": "Responds in a friendly, professional tone. Proactively suggests reminders.",
+    "entities": ["calendar", "task management", "reminders"],
+    "importance": 8
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Get Base Profile
+curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
+# -H "X-API-Key: your-api-key"
+
+# Push Base Events (structured, no LLM extraction; generates embeddings directly)
+curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "title": "Product launch v2.0",
+        "summary": "The product team launched version 2.0 with new scheduling features.",
+        "event_time": "2026-03-15T09:00:00+00:00",
+        "keywords": ["product launch", "v2.0", "scheduling"],
+        "entities": ["product team"],
+        "importance": 8
+      },
+      {
+        "title": "Company policy update",
+        "summary": "New remote work policy allows 3 days WFH per week.",
+        "keywords": ["policy", "remote work"],
+        "importance": 6
+      }
+    ]
+  }'
+# -H "X-API-Key: your-api-key"
+
+# List Base Events
+curl -X GET "http://localhost:1733/api/agents/assistant_01/base/events?limit=50&offset=0"
+# -H "X-API-Key: your-api-key"
+
+# Delete Base Event
+curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events/evt_abc123
+# -H "X-API-Key: your-api-key"
+
+
+# ============================================================================
+# 19. Agent Memory via Push Chat
+# ============================================================================
+# Use processors: ["agent_memory"] to extract memories from the agent's perspective.
+# Requires a registered agent (see section 17).
+
+# Push chat with agent memory extraction
+curl -X POST http://localhost:1733/api/push/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "I need to prepare the quarterly report by Friday"},
+      {"role": "assistant", "content": "Got it! I will remind you about the quarterly report deadline on Friday."}
+    ],
+    "user_id": "user_001",
+    "agent_id": "assistant_01",
+    "processors": ["user_memory", "agent_memory"]
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Search agent memories (memory_owner="agent")
+curl -X POST http://localhost:1733/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": [{"type": "text", "text": "quarterly report"}],
+    "user_id": "user_001",
+    "agent_id": "assistant_01",
+    "memory_owner": "agent",
+    "top_k": 10
+  }'
+# -H "X-API-Key: your-api-key"
+
+# Get agent memory cache snapshot (memory_owner="agent")
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=assistant_01&memory_owner=agent&include=profile,events"
+# -H "X-API-Key: your-api-key"
+
+# Invalidate agent memory cache
+curl -X DELETE "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=assistant_01&memory_owner=agent"
+# -H "X-API-Key: your-api-key"
+
+
+# ============================================================================
 # NOT REGISTERED IN MAIN ROUTER (route files exist but not included in api.py)
 # ============================================================================
 # The following route modules exist but are NOT registered in the main router:

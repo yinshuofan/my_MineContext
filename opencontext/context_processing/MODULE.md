@@ -10,6 +10,7 @@
 | `processor/processor_factory.py` | Factory for creating processor instances; global singleton `processor_factory` |
 | `processor/text_chat_processor.py` | Extracts structured memories from chat logs via LLM analysis |
 | `processor/document_processor.py` | Processes documents (PDF, DOCX, images, CSV, XLSX, JSONL, MD, TXT) |
+| `processor/agent_memory_processor.py` | Extracts agent-perspective memories from conversations via LLM analysis |
 | `processor/profile_processor.py` | Standalone functions for LLM-driven profile merge-before-write to relational DB |
 | `processor/document_converter.py` | Converts documents to images and analyzes page structure (PDF, DOCX, PPTX, MD) |
 | **chunker/** | |
@@ -27,6 +28,7 @@
 IContextProcessor (interface: opencontext/interfaces/processor_interface.py)
   +-- BaseContextProcessor (ABC)
         +-- TextChatProcessor        (processor/text_chat_processor.py)
+        +-- AgentMemoryProcessor     (processor/agent_memory_processor.py)
         +-- DocumentProcessor        (processor/document_processor.py)
         +-- ContextMerger            (merger/context_merger.py)
 
@@ -55,6 +57,7 @@ Global singleton: `processor_factory = ProcessorFactory()`
 Registers built-in processors on init:
 - `"document_processor"` -> `DocumentProcessor`
 - `"text_chat_processor"` -> `TextChatProcessor`
+- `"agent_memory_processor"` -> `AgentMemoryProcessor`
 
 ```python
 class ProcessorFactory:
@@ -118,6 +121,38 @@ Pipeline:
 6. Returns `List[ProcessedContext]` — callback invocation is handled by `ContextProcessorManager`
 
 The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, generates a `time_bucket` field with per-second granularity (`%Y-%m-%dT%H:%M:%S`) to support fine-grained time-based sorting in search results. When the LLM returns `related_media` (indices into the media index), resolves them to actual URLs and sets `vectorize.images`/`vectorize.videos` with `ContentFormat.MULTIMODAL`, and stores `media_refs` and `content_modalities` in `ProcessedContext.metadata`.
+
+### AgentMemoryProcessor (`processor/agent_memory_processor.py`)
+
+Extracts memories from conversations as seen from the agent's perspective. Registered in `ProcessorFactory` as `"agent_memory_processor"` and mapped in `BATCH_PROCESSOR_MAP` as `"agent_memory"`.
+
+```python
+class AgentMemoryProcessor(BaseContextProcessor):
+    def get_name(self) -> str             # returns "agent_memory_processor"
+    def get_description(self) -> str
+    def can_process(self, context: Any) -> bool
+    async def process(self, context: RawContextProperties) -> List[ProcessedContext]
+    async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]
+    def _build_agent_context(self, memory: Dict, raw_context: RawContextProperties, batch_id: Optional[str]) -> Optional[ProcessedContext]
+```
+
+Pipeline:
+1. Validates `agent_id` is present and not `"default"`; skips if missing
+2. Loads agent info from storage (`get_agent(agent_id)`) to get agent name/description
+3. Loads prompt `processing.extraction.agent_memory_analyze` and substitutes `{agent_name}` and `{agent_description}` into system prompt
+4. Calls LLM via `generate_with_messages()` with chat history
+5. Parses JSON response -> `memories` array
+6. Builds `ProcessedContext` per memory via `_build_agent_context()`:
+   - Memory type `"profile"` -> `ContextType.PROFILE`; all others -> `ContextType.AGENT_EVENT`
+   - Validates/sanitizes all fields (title, summary, keywords, entities, importance, confidence, event_time)
+   - Generates embedding via `do_vectorize()` for each context
+7. Returns `List[ProcessedContext]`
+
+Key differences from `TextChatProcessor`:
+- Output types: `AGENT_EVENT` and `PROFILE` (not `EVENT`/`KNOWLEDGE`)
+- Requires a registered agent in the agent registry; skips if agent not found
+- Does not support multimodal content (text-only prompt)
+- Always calls `do_vectorize()` on each result for embedding generation
 
 ### DocumentProcessor (`processor/document_processor.py`)
 
