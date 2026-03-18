@@ -205,7 +205,7 @@ class OpenContext:
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
     ) -> None:
-        """Invalidate and proactively refresh user cache snapshot."""
+        """Invalidate and proactively refresh both user and agent cache snapshots."""
         if not user_id:
             return
         try:
@@ -214,8 +214,9 @@ class OpenContext:
             manager = get_memory_cache_manager()
             did = device_id or "default"
             aid = agent_id or "default"
-            await manager.refresh_snapshot(user_id, did, aid)
-            logger.debug(f"Cache refreshed for user={user_id}")
+            await manager.refresh_snapshot(user_id, did, aid, memory_owner="user")
+            await manager.refresh_snapshot(user_id, did, aid, memory_owner="agent")
+            logger.debug(f"Cache refreshed (user + agent) for user={user_id}")
         except Exception as e:
             logger.warning(f"Cache refresh failed for user={user_id}: {e}")
 

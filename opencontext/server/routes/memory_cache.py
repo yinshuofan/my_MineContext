@@ -42,6 +42,10 @@ async def get_user_memory_cache(
     user_id: str = Query(..., description="User identifier (required)"),
     device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
+    memory_owner: str = Query(
+        default="user",
+        description="Memory owner type: 'user' or 'agent'. Controls which context types are queried.",
+    ),
     include: Optional[str] = Query(
         default=None,
         description="Comma-separated response sections: profile,events,accessed,all. Default: profile,events,accessed",
@@ -76,6 +80,7 @@ async def get_user_memory_cache(
                 max_accessed=max_accessed,
                 force_refresh=force_refresh,
                 include_sections=include_sections,
+                memory_owner=memory_owner,
             ),
             timeout=15.0,
         )
@@ -100,12 +105,19 @@ async def invalidate_user_memory_cache(
     user_id: str = Query(..., description="User identifier"),
     device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
+    memory_owner: str = Query(
+        default="user",
+        description="Memory owner type: 'user' or 'agent'.",
+    ),
     _auth: str = auth_dependency,
 ):
-    """Manually invalidate a user's memory cache snapshot."""
+    """Manually invalidate a user's (or agent's) memory cache snapshot."""
     manager = get_memory_cache_manager()
-    await manager.invalidate_snapshot(user_id, device_id, agent_id)
+    await manager.invalidate_snapshot(user_id, device_id, agent_id, memory_owner=memory_owner)
     return {
         "success": True,
-        "message": f"Cache invalidated for user={user_id}, device={device_id}, agent={agent_id}",
+        "message": (
+            f"Cache invalidated for owner={memory_owner}, user={user_id}, "
+            f"device={device_id}, agent={agent_id}"
+        ),
     }

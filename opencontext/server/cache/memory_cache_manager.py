@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 
 """
-UserMemoryCacheManager
+MemoryCacheManager
 
-Builds and maintains per-user memory cache snapshots in Redis.
+Builds and maintains per-user (or per-agent) memory cache snapshots in Redis.
 Four response sections: profile, recently accessed, today events, daily summaries.
 
 Snapshot is cached in Redis with a short TTL (internally stores full data for all types).
 Response assembly (_merge_response) simplifies to: SimpleProfile, SimpleTodayEvent, SimpleDailySummary.
 Recently accessed items are stored in a separate Redis Hash and always read in real-time.
+
+Parameterized by ``memory_owner`` ("user" or "agent") so the same manager can
+build snapshots for both user-owned and agent-owned memory.
 """
 
 import asyncio
@@ -19,7 +22,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from opencontext.config.global_config import get_config
 from opencontext.models.context import ProcessedContext
-from opencontext.models.enums import ContextType
+from opencontext.models.enums import MEMORY_OWNER_TYPES, ContextType
 from opencontext.server.cache.models import (
     DailySummaryItem,
     RecentlyAccessedItem,
@@ -37,8 +40,8 @@ from opencontext.utils.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
-class UserMemoryCacheManager:
-    """Manages per-user memory cache snapshots."""
+class MemoryCacheManager:
+    """Manages per-user (or per-agent) memory cache snapshots."""
 
     def __init__(self):
         self._config = self._load_config()
@@ -66,8 +69,10 @@ class UserMemoryCacheManager:
         return f"memory_cache:accessed:{user_id}:{device_id}:{agent_id}"
 
     @staticmethod
-    def _snapshot_key(user_id: str, device_id: str, agent_id: str) -> str:
-        return f"memory_cache:snapshot:{user_id}:{device_id}:{agent_id}"
+    def _snapshot_key(
+        memory_owner: str, user_id: str, device_id: str, agent_id: str
+    ) -> str:
+        return f"memory_cache:snapshot:{memory_owner}:{user_id}:{device_id}:{agent_id}"
 
     # ─── Access Tracking (called after every search) ───
 
@@ -142,19 +147,27 @@ class UserMemoryCacheManager:
     # ─── Snapshot Invalidation ───
 
     async def invalidate_snapshot(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        memory_owner: str = "user",
     ) -> None:
-        """Invalidate the cached snapshot for a user."""
+        """Invalidate the cached snapshot for a user (or agent)."""
         cache = await get_cache()
-        key = self._snapshot_key(user_id, device_id, agent_id)
+        key = self._snapshot_key(memory_owner, user_id, device_id, agent_id)
         await cache.delete(key)
         logger.debug(
-            f"Invalidated memory cache snapshot for user={user_id}, "
+            f"Invalidated memory cache snapshot for owner={memory_owner}, user={user_id}, "
             f"device={device_id}, agent={agent_id}"
         )
 
     async def refresh_snapshot(
-        self, user_id: str, device_id: str = "default", agent_id: str = "default"
+        self,
+        user_id: str,
+        device_id: str = "default",
+        agent_id: str = "default",
+        memory_owner: str = "user",
     ) -> bool:
         """Invalidate and proactively rebuild the snapshot cache.
 
@@ -164,8 +177,8 @@ class UserMemoryCacheManager:
         Returns True if snapshot was rebuilt, False if skipped (lock held by another worker).
         """
         cache = await get_cache()
-        snapshot_key = self._snapshot_key(user_id, device_id, agent_id)
-        lock_key = f"memory_cache:build:{user_id}:{device_id}:{agent_id}"
+        snapshot_key = self._snapshot_key(memory_owner, user_id, device_id, agent_id)
+        lock_key = f"memory_cache:build:{memory_owner}:{user_id}:{device_id}:{agent_id}"
 
         lock_token = await cache.acquire_lock(
             lock_key, timeout=30, blocking=True, blocking_timeout=5
@@ -174,13 +187,13 @@ class UserMemoryCacheManager:
             try:
                 await cache.delete(snapshot_key)
                 snapshot_data = await self._build_snapshot(
-                    user_id, device_id, agent_id, None, None
+                    user_id, device_id, agent_id, None, None, memory_owner=memory_owner
                 )
                 ttl = self._config["snapshot_ttl"]
                 await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
                 logger.info(
-                    f"Proactively refreshed memory cache for user={user_id}, "
-                    f"device={device_id}, agent={agent_id}"
+                    f"Proactively refreshed memory cache for owner={memory_owner}, "
+                    f"user={user_id}, device={device_id}, agent={agent_id}"
                 )
                 return True
             finally:
@@ -189,8 +202,8 @@ class UserMemoryCacheManager:
             # Another worker is building — just invalidate, next read will rebuild
             await cache.delete(snapshot_key)
             logger.debug(
-                f"Proactive refresh skipped (lock held) for user={user_id}, "
-                f"falling back to invalidation"
+                f"Proactive refresh skipped (lock held) for owner={memory_owner}, "
+                f"user={user_id}, falling back to invalidation"
             )
             return False
 
@@ -206,10 +219,13 @@ class UserMemoryCacheManager:
         max_accessed: int = 5,
         force_refresh: bool = False,
         include_sections: Optional[Set[str]] = None,
+        memory_owner: str = "user",
     ) -> UserMemoryCacheResponse:
-        """Get the user's memory cache with stampede prevention.
+        """Get the user's (or agent's) memory cache with stampede prevention.
 
         Args:
+            memory_owner: "user" or "agent" — determines which ContextTypes are
+                queried for events/summaries and which profile owner_type to fetch.
             include_sections: Set of section names to include in response.
                 Valid values: "profile", "events", "accessed".
                 Default (None): {"profile", "events", "accessed"}.
@@ -234,7 +250,7 @@ class UserMemoryCacheManager:
                 accessed, cache_hit=False, ttl_remaining=0, include_sections=sections,
             )
 
-        snapshot_key = self._snapshot_key(user_id, device_id, agent_id)
+        snapshot_key = self._snapshot_key(memory_owner, user_id, device_id, agent_id)
 
         # 3. Try cached snapshot
         if not force_refresh:
@@ -248,7 +264,7 @@ class UserMemoryCacheManager:
                 )
 
         # 4. Cache miss — acquire distributed lock to prevent stampede
-        lock_key = f"memory_cache:build:{user_id}:{device_id}:{agent_id}"
+        lock_key = f"memory_cache:build:{memory_owner}:{user_id}:{device_id}:{agent_id}"
         lock_token = await cache.acquire_lock(
             lock_key, timeout=30, blocking=True, blocking_timeout=5
         )
@@ -266,7 +282,8 @@ class UserMemoryCacheManager:
 
                 # Actually build snapshot (always full, for caching)
                 snapshot_data = await self._build_snapshot(
-                    user_id, device_id, agent_id, recent_days, max_recent_events_today
+                    user_id, device_id, agent_id, recent_days,
+                    max_recent_events_today, memory_owner=memory_owner,
                 )
                 ttl = self._config["snapshot_ttl"]
                 await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
@@ -287,7 +304,8 @@ class UserMemoryCacheManager:
                 )
             # Another instance likely holds the lock and is building; build uncached
             snapshot_data = await self._build_snapshot(
-                user_id, device_id, agent_id, recent_days, max_recent_events_today
+                user_id, device_id, agent_id, recent_days,
+                max_recent_events_today, memory_owner=memory_owner,
             )
             return self._merge_response(
                 snapshot_data, accessed, cache_hit=False, ttl_remaining=0,
@@ -346,12 +364,24 @@ class UserMemoryCacheManager:
         agent_id: str,
         recent_days: Optional[int],
         max_today_events: Optional[int],
+        memory_owner: str = "user",
     ) -> Dict[str, Any]:
-        """Build the snapshot from storage backends (profile + recent memories)."""
+        """Build the snapshot from storage backends (profile + recent memories).
+
+        Args:
+            memory_owner: "user" or "agent". Determines which ContextTypes are
+                used for events/summaries and which profile owner_type to fetch.
+                For "agent", docs/knowledge sections are skipped.
+        """
         t0 = time.perf_counter()
         storage = get_storage()
         days = recent_days if recent_days is not None else self._config["recent_days"]
         max_events_today = max_today_events or self._config["max_today_events"]
+
+        # Resolve context types from memory_owner
+        types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
+        l0_type = types[0].value  # EVENT or AGENT_EVENT
+        l1_type = types[1].value  # DAILY_SUMMARY or AGENT_DAILY_SUMMARY
 
         # Compute time boundaries
         now = datetime.now(tz=timezone.utc)
@@ -362,11 +392,16 @@ class UserMemoryCacheManager:
         week_start_ts = int(week_start.timestamp())
         period_start = (today_start - timedelta(days=days - 1)).strftime("%Y-%m-%d")
 
-        # Parallel queries
+        # Profile owner_type for DB query
+        profile_owner_type = "agent" if memory_owner == "agent" else "user"
+
+        # Parallel queries — agent snapshots skip docs/knowledge
         tasks = {
-            "profile": storage.get_profile(user_id, device_id, agent_id),
+            "profile": storage.get_profile(
+                user_id, device_id, agent_id, owner_type=profile_owner_type
+            ),
             "today_events": storage.get_all_processed_contexts(
-                context_types=[ContextType.EVENT.value],
+                context_types=[l0_type],
                 limit=max_events_today,
                 offset=0,
                 filter={
@@ -379,7 +414,7 @@ class UserMemoryCacheManager:
                 agent_id=agent_id,
             ),
             "daily_summaries": storage.search_hierarchy(
-                context_type=ContextType.EVENT.value,
+                context_type=l1_type,
                 hierarchy_level=1,  # L1
                 time_bucket_start=period_start,
                 time_bucket_end=yesterday,
@@ -388,7 +423,11 @@ class UserMemoryCacheManager:
                 agent_id=agent_id,
                 top_k=days,
             ),
-            "recent_docs": storage.get_all_processed_contexts(
+        }
+
+        # Only include docs/knowledge for user memory owner
+        if memory_owner != "agent":
+            tasks["recent_docs"] = storage.get_all_processed_contexts(
                 context_types=[ContextType.DOCUMENT.value],
                 limit=self._config["max_recent_documents"],
                 offset=0,
@@ -397,8 +436,8 @@ class UserMemoryCacheManager:
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
-            ),
-            "recent_knowledge": storage.get_all_processed_contexts(
+            )
+            tasks["recent_knowledge"] = storage.get_all_processed_contexts(
                 context_types=[ContextType.KNOWLEDGE.value],
                 limit=self._config["max_recent_knowledge"],
                 offset=0,
@@ -407,8 +446,7 @@ class UserMemoryCacheManager:
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
-            ),
-        }
+            )
 
         task_names = list(tasks.keys())
         raw_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -469,9 +507,7 @@ class UserMemoryCacheManager:
                         "time_bucket": ctx.properties.time_bucket or "",
                         "title": ctx.extracted_data.title if ctx.extracted_data else None,
                         "summary": ctx.extracted_data.summary if ctx.extracted_data else None,
-                        "children_count": (
-                            len(ctx.properties.children_ids) if ctx.properties.children_ids else 0
-                        ),
+                        "children_count": self._count_refs(ctx),
                     }
                 )
             daily_items.sort(key=lambda x: x["time_bucket"], reverse=True)
@@ -503,6 +539,18 @@ class UserMemoryCacheManager:
         logger.info(f"[memory-cache] snapshot built for user={user_id}: {(t_end - t0)*1000:.0f}ms")
 
         return snapshot
+
+    @staticmethod
+    def _count_refs(ctx: ProcessedContext) -> int:
+        """Count total child IDs from refs, with children_ids fallback for old data."""
+        if ctx.properties.refs:
+            count = 0
+            for key, ids in ctx.properties.refs.items():
+                count += len(ids)
+            return count
+        if hasattr(ctx.properties, "children_ids") and ctx.properties.children_ids:
+            return len(ctx.properties.children_ids)
+        return 0
 
     @staticmethod
     def _ctx_to_recent_item(ctx: ProcessedContext) -> Dict[str, Any]:
@@ -631,14 +679,18 @@ class UserMemoryCacheManager:
         )
 
 
+# Backward compatibility alias
+UserMemoryCacheManager = MemoryCacheManager
+
+
 # ─── Module-level singleton ───
 
-_manager: Optional[UserMemoryCacheManager] = None
+_manager: Optional[MemoryCacheManager] = None
 
 
-def get_memory_cache_manager() -> UserMemoryCacheManager:
-    """Get or create the singleton UserMemoryCacheManager."""
+def get_memory_cache_manager() -> MemoryCacheManager:
+    """Get or create the singleton MemoryCacheManager."""
     global _manager
     if _manager is None:
-        _manager = UserMemoryCacheManager()
+        _manager = MemoryCacheManager()
     return _manager
