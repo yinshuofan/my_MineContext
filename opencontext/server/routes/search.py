@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import ProcessedContext, Vectorize
-from opencontext.models.enums import ContentFormat, ContextType
+from opencontext.models.enums import MEMORY_OWNER_TYPES, ContentFormat, ContextType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.search.models import (
     EventNode,
@@ -34,7 +34,18 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["search"])
 
-EVENT_TYPE = ContextType.EVENT.value
+def _get_l0_type(memory_owner: str) -> str:
+    """Get the L0 event ContextType value for a memory owner."""
+    types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
+    return types[0].value  # index 0 = L0
+
+
+def _get_context_types_for_levels(memory_owner: str, levels: Optional[List[int]]) -> List[str]:
+    """Map hierarchy_levels + memory_owner to ContextType values."""
+    types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
+    if levels:
+        return [types[l].value for l in levels if l < len(types)]
+    return [t.value for t in types]
 
 
 @router.post("/search")
@@ -99,6 +110,7 @@ async def search_events(
                     search_hits,
                     device_id=request.device_id or "default",
                     agent_id=request.agent_id or "default",
+                    memory_owner=request.memory_owner,
                 )
             )
 
@@ -148,9 +160,11 @@ async def _execute_search(
     # ── Step 1: Get raw results ──
     raw_results: List[Tuple[ProcessedContext, float]] = []
 
+    l0_type = _get_l0_type(request.memory_owner)
+
     if request.event_ids:
         # Path A: Exact ID lookup
-        contexts = await storage.get_contexts_by_ids(request.event_ids, EVENT_TYPE)
+        contexts = await storage.get_contexts_by_ids(request.event_ids, l0_type)
         raw_results = [(ctx, 1.0) for ctx in contexts]
 
     elif request.query:
@@ -169,7 +183,7 @@ async def _execute_search(
         raw_results = await storage.search(
             query=vectorize,
             top_k=request.top_k,
-            context_types=[EVENT_TYPE],
+            context_types=_get_context_types_for_levels(request.memory_owner, None),
             filters=filters,
             user_id=request.user_id,
             device_id=request.device_id,
@@ -185,7 +199,9 @@ async def _execute_search(
     all_ancestors: Dict[str, ProcessedContext] = {}
     if request.drill_up and raw_results:
         max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
-        all_ancestors = await _collect_ancestors(storage, raw_results, max_level)
+        all_ancestors = await _collect_ancestors(
+            storage, raw_results, max_level, memory_owner=request.memory_owner
+        )
 
     # ── Step 3: Build node map ──
     nodes: Dict[str, EventNode] = {}
@@ -240,20 +256,24 @@ async def _filter_only_search(
                 request.time_range.start, request.time_range.end
             )
 
+        owner_types = MEMORY_OWNER_TYPES.get(
+            request.memory_owner, MEMORY_OWNER_TYPES["user"]
+        )
         tasks = []
         for level in request.hierarchy_levels:
-            tasks.append(
-                storage.search_hierarchy(
-                    context_type=EVENT_TYPE,
-                    hierarchy_level=level,
-                    time_bucket_start=time_bucket_start,
-                    time_bucket_end=time_bucket_end,
-                    user_id=request.user_id,
-                    device_id=request.device_id,
-                    agent_id=request.agent_id,
-                    top_k=request.top_k,
+            if level < len(owner_types):
+                tasks.append(
+                    storage.search_hierarchy(
+                        context_type=owner_types[level].value,
+                        hierarchy_level=level,
+                        time_bucket_start=time_bucket_start,
+                        time_bucket_end=time_bucket_end,
+                        user_id=request.user_id,
+                        device_id=request.device_id,
+                        agent_id=request.agent_id,
+                        top_k=request.top_k,
+                    )
                 )
-            )
 
         level_results = await asyncio.gather(*tasks)
         merged: List[Tuple[ProcessedContext, float]] = []
@@ -279,8 +299,9 @@ async def _filter_only_search(
         if ts_filter:
             filters["event_time_ts"] = ts_filter
 
+    all_types = _get_context_types_for_levels(request.memory_owner, None)
     result = await storage.get_all_processed_contexts(
-        context_types=[EVENT_TYPE],
+        context_types=all_types,
         limit=request.top_k,
         filter=filters,
         user_id=request.user_id,
@@ -289,7 +310,9 @@ async def _filter_only_search(
     )
 
     # get_all_processed_contexts returns Dict[str, List[ProcessedContext]]
-    contexts = result.get(EVENT_TYPE, [])
+    contexts: List[ProcessedContext] = []
+    for ct in all_types:
+        contexts.extend(result.get(ct, []))
     return [(ctx, 1.0) for ctx in contexts]
 
 
@@ -297,64 +320,65 @@ async def _collect_ancestors(
     storage,
     results: List[Tuple[ProcessedContext, float]],
     max_level: int,
+    memory_owner: str = "user",
 ) -> Dict[str, ProcessedContext]:
     """
-    Batch collect ancestors: for each result, follow parent_id chain upward.
+    Collect ancestors by following refs upward (to summary types).
 
+    Uses refs-based traversal with parent_id fallback for old data.
     Returns a mapping of ancestor_id -> ProcessedContext (excluding search results themselves).
-    Uses a shared cache to avoid duplicate fetches (multiple L0 events may share the same L1 parent).
     """
-    # Map of context_id -> ProcessedContext (cache)
-    seen: Dict[str, ProcessedContext] = {}
+    owner_types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
+    summary_type_values = {t.value for t in owner_types[1:]}
 
-    # Seed the cache with the search results themselves
-    for ctx, _ in results:
-        seen[ctx.id] = ctx
+    ancestor_map = {}
+    all_ancestors = {}
+    seen = set()
+    current_batch = []
 
-    # Collect initial parent_ids to fetch
-    current_round: Dict[str, List[str]] = {}  # parent_id -> list of child context IDs needing it
-    for ctx, _ in results:
-        if ctx.properties and ctx.properties.parent_id:
-            pid = ctx.properties.parent_id
-            if pid not in seen:
-                current_round.setdefault(pid, []).append(ctx.id)
+    for ctx, score in results:
+        seen.add(ctx.id)
+        if not ctx.properties or not ctx.properties.refs:
+            # Fallback to parent_id for old data
+            if ctx.properties and ctx.properties.parent_id:
+                pid = ctx.properties.parent_id
+                if pid not in seen:
+                    seen.add(pid)
+                    current_batch.append(pid)
+                    ancestor_map.setdefault(ctx.id, []).append(pid)
+            continue
+        for ref_key, ref_ids in ctx.properties.refs.items():
+            if ref_key in summary_type_values:
+                for pid in ref_ids:
+                    if pid not in seen:
+                        seen.add(pid)
+                        current_batch.append(pid)
+                        ancestor_map.setdefault(ctx.id, []).append(pid)
 
-    # Iterative batch fetch (max 3 rounds: L0->L1, L1->L2, L2->L3)
-    for _ in range(3):
-        if not current_round:
-            break
-
-        # Batch fetch all needed parent IDs
-        parent_ids = list(current_round.keys())
-        parents = await storage.get_contexts_by_ids(parent_ids, EVENT_TYPE)
-        parent_by_id = {p.id: p for p in parents}
-
-        next_round: Dict[str, List[str]] = {}
-
-        for pid, child_ids in current_round.items():
-            parent = parent_by_id.get(pid)
-            if parent is None:
+    rounds = 0
+    while current_batch and rounds < 3:
+        parents = await storage.get_contexts_by_ids(current_batch)
+        next_batch = []
+        for parent in parents:
+            all_ancestors[parent.id] = parent
+            if not parent.properties or not parent.properties.refs:
+                # Fallback to parent_id for old data
+                if parent.properties and parent.properties.parent_id:
+                    pid = parent.properties.parent_id
+                    if pid not in seen:
+                        seen.add(pid)
+                        next_batch.append(pid)
                 continue
+            for ref_key, ref_ids in parent.properties.refs.items():
+                if ref_key in summary_type_values:
+                    for pid in ref_ids:
+                        if pid not in seen:
+                            seen.add(pid)
+                            next_batch.append(pid)
+        current_batch = next_batch
+        rounds += 1
 
-            # Check if this parent exceeds max_level
-            parent_level = parent.properties.hierarchy_level if parent.properties else 0
-            if parent_level > max_level:
-                continue
-
-            seen[pid] = parent
-
-            # Queue next level parent
-            if parent.properties and parent.properties.parent_id:
-                next_pid = parent.properties.parent_id
-                if next_pid not in seen:
-                    for cid in child_ids:
-                        next_round.setdefault(next_pid, []).append(cid)
-
-        current_round = next_round
-
-    # Return only ancestors (exclude search results themselves)
-    result_ids = {ctx.id for ctx, _ in results}
-    return {k: v for k, v in seen.items() if k not in result_ids}
+    return all_ancestors
 
 
 def _build_filters(
@@ -432,6 +456,7 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
         hierarchy_level=props.hierarchy_level if props else 0,
         time_bucket=props.time_bucket if props else None,
         parent_id=_normalize_parent_id(props),
+        refs=props.refs if props else {},
         title=extracted.title if extracted else None,
         summary=extracted.summary if extracted else None,
         event_time=_format_timestamp(props.event_time if props else None),
@@ -456,6 +481,7 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         hierarchy_level=props.hierarchy_level if props else 0,
         time_bucket=props.time_bucket if props else None,
         parent_id=_normalize_parent_id(props),
+        refs=props.refs if props else {},
         event_time=_format_timestamp(props.event_time if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=True,
@@ -468,15 +494,17 @@ async def _track_accessed_safe(
     results: List[EventNode],
     device_id: str = "default",
     agent_id: str = "default",
+    memory_owner: str = "user",
 ) -> None:
     """Fire-and-forget: record accessed event IDs in Redis for memory cache."""
     try:
+        l0_type = _get_l0_type(memory_owner)
         items: List[dict] = []
         for er in results:
             items.append(
                 {
                     "id": er.id,
-                    "context_type": EVENT_TYPE,
+                    "context_type": l0_type,
                     "title": er.title,
                     "summary": er.summary,
                     "keywords": er.keywords,

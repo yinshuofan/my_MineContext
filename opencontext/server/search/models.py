@@ -70,6 +70,7 @@ class EventSearchRequest(BaseModel):
     agent_id: Optional[str] = Field(
         default=None, description="Agent identifier for multi-user filtering"
     )
+    memory_owner: str = Field(default="user", description="Memory owner: 'user' or 'agent'")
 
     @model_validator(mode="after")
     def validate_search_criteria(self) -> "EventSearchRequest":
@@ -101,6 +102,7 @@ class EventNode(BaseModel):
     hierarchy_level: int = 0
     time_bucket: Optional[str] = None
     parent_id: Optional[str] = None
+    refs: Dict[str, List[str]] = Field(default_factory=dict)
     title: Optional[str] = None
     summary: Optional[str] = None
     event_time: Optional[str] = None
