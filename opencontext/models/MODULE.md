@@ -32,9 +32,16 @@ TEXT = "text"  |  IMAGE = "image"  |  VIDEO = "video"  |  MULTIMODAL = "multimod
 
 ### ContextType(str, Enum)
 ```
-PROFILE = "profile"  |  DOCUMENT = "document"
-EVENT = "event"      |  KNOWLEDGE = "knowledge"
+PROFILE = "profile"              |  DOCUMENT = "document"
+EVENT = "event"                  |  KNOWLEDGE = "knowledge"
+DAILY_SUMMARY = "daily_summary"  |  WEEKLY_SUMMARY = "weekly_summary"  |  MONTHLY_SUMMARY = "monthly_summary"
+AGENT_EVENT = "agent_event"
+AGENT_DAILY_SUMMARY = "agent_daily_summary"  |  AGENT_WEEKLY_SUMMARY = "agent_weekly_summary"  |  AGENT_MONTHLY_SUMMARY = "agent_monthly_summary"
 ```
+
+- `DAILY_SUMMARY`, `WEEKLY_SUMMARY`, `MONTHLY_SUMMARY`: User-side hierarchy summaries (L1/L2/L3). Formerly stored as `EVENT` with `hierarchy_level > 0`; now have their own types.
+- `AGENT_EVENT`: Agent-observed events (same role as `EVENT` but for agent memory owner).
+- `AGENT_DAILY_SUMMARY`, `AGENT_WEEKLY_SUMMARY`, `AGENT_MONTHLY_SUMMARY`: Agent-side hierarchy summaries.
 
 ### UpdateStrategy(str, Enum)
 ```
@@ -58,18 +65,38 @@ REFERENCE_SUGGESTION = "reference_suggestion"    |  CONTEXT_AWARE = "context_awa
 CONTEXT_UPDATE_STRATEGIES = {
     PROFILE: OVERWRITE, DOCUMENT: OVERWRITE,
     EVENT: APPEND, KNOWLEDGE: APPEND_MERGE,
+    DAILY_SUMMARY: APPEND, WEEKLY_SUMMARY: APPEND, MONTHLY_SUMMARY: APPEND,
+    AGENT_EVENT: APPEND,
+    AGENT_DAILY_SUMMARY: APPEND, AGENT_WEEKLY_SUMMARY: APPEND, AGENT_MONTHLY_SUMMARY: APPEND,
 }
 
 CONTEXT_STORAGE_BACKENDS = {
     PROFILE: "document_db",
     DOCUMENT: "vector_db", EVENT: "vector_db", KNOWLEDGE: "vector_db",
+    DAILY_SUMMARY: "vector_db", WEEKLY_SUMMARY: "vector_db", MONTHLY_SUMMARY: "vector_db",
+    AGENT_EVENT: "vector_db",
+    AGENT_DAILY_SUMMARY: "vector_db", AGENT_WEEKLY_SUMMARY: "vector_db", AGENT_MONTHLY_SUMMARY: "vector_db",
+}
+
+MEMORY_OWNER_TYPES = {
+    "user":  [EVENT, DAILY_SUMMARY, WEEKLY_SUMMARY, MONTHLY_SUMMARY],        # index 0=L0, 1=L1, 2=L2, 3=L3
+    "agent": [AGENT_EVENT, AGENT_DAILY_SUMMARY, AGENT_WEEKLY_SUMMARY, AGENT_MONTHLY_SUMMARY],
+}
+
+SYSTEM_GENERATED_TYPES = {
+    DAILY_SUMMARY, WEEKLY_SUMMARY, MONTHLY_SUMMARY,
+    AGENT_DAILY_SUMMARY, AGENT_WEEKLY_SUMMARY, AGENT_MONTHLY_SUMMARY,
 }
 
 STRUCTURED_FILE_TYPES = {XLSX, XLS, CSV, JSONL, PARQUET, FAQ_XLSX}
 ```
 
+`MEMORY_OWNER_TYPES` maps a `memory_owner` string (`"user"` or `"agent"`) to an ordered list of 4 ContextTypes (L0-L3). Used by search, cache, and hierarchy tools to resolve types dynamically instead of hardcoding `EVENT`.
+
+`SYSTEM_GENERATED_TYPES` is a guard set. `get_context_type_for_analysis()` falls back to `KNOWLEDGE` if the LLM output matches a system-generated type, preventing LLM from classifying user input as a summary type.
+
 ### ContextDescriptions / ContextSimpleDescriptions
-Both are `Dict[ContextType, dict]`. `ContextDescriptions` includes `key_indicators`, `examples`, `classification_priority` (used in LLM prompts). `ContextSimpleDescriptions` has `name`, `description`, `purpose`.
+Both are `Dict[ContextType, dict]`. `ContextDescriptions` includes `key_indicators`, `examples`, `classification_priority` (used in LLM prompts). `ContextSimpleDescriptions` has `name`, `description`, `purpose`. Both now include entries for all 11 context types.
 
 ## Helper Functions (enums.py)
 
@@ -138,9 +165,12 @@ Tracking and hierarchy metadata. Fields:
 | `raw_id` | `Optional[str]` | `None` | |
 | `user_id`, `device_id`, `agent_id` | `Optional[str]` | `None` | 3-key identifier |
 | `hierarchy_level` | `int` | `0` | 0=raw, 1=daily, 2=weekly, 3=monthly |
-| `parent_id` | `Optional[str]` | `None` | Parent summary context ID; backfilled by `batch_set_parent_id()` after hierarchy summary generation, enables upward traversal (L0 → L1/L2/L3) |
-| `children_ids` | `List[str]` | `[]` | Child context IDs; set during hierarchy summary generation, enables downward traversal and drill-down |
 | `time_bucket` | `Optional[str]` | `None` | e.g. `"2026-02-21"`, `"2026-W08"` |
+| `refs` | `Dict[str, List[str]]` | `{}` | Flexible reference map. Keys are ContextType values (e.g. `"daily_summary"`, `"event"`), values are lists of context IDs. Replaces former `parent_id`/`children_ids` fields. See below. |
+
+**`refs` field**: A single bidirectional reference map that replaces the old `parent_id` (str) and `children_ids` (List[str]) fields. Key = the ContextType of the referenced contexts, value = list of context IDs.
+- **Downward** (summary → children): e.g. `refs: {"event": ["id1", "id2"]}` on a DAILY_SUMMARY means it was generated from those L0 events.
+- **Upward** (child → parent summary): e.g. `refs: {"daily_summary": ["sum-id"]}` on an EVENT means it was summarized by that daily summary. Backfilled by `batch_update_refs()` after summary storage.
 
 ### VideoInput
 Video input model for multimodal embedding. Fields:
@@ -237,7 +267,7 @@ Fields: `knowledge_source`, `knowledge_file_path`, `knowledge_title`, `knowledge
 ## Conventions and Constraints
 
 1. **ProcessedContextModel must mirror ContextProperties**: If you add a field to `ContextProperties`, also add it to `ProcessedContextModel` and update `from_processed_context()`, or it will be silently dropped from API responses.
-2. **All 4 types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files.
+2. **All types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `MEMORY_OWNER_TYPES` (if event-family), `SYSTEM_GENERATED_TYPES` (if system-generated), `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files.
 3. **3-key identifier required**: `ProfileData` always requires `(user_id, device_id, agent_id)`. Defaults are `"default"` for `device_id` and `agent_id`.
 4. **Timezone-aware datetimes**: Use `datetime.now(tz=datetime.timezone.utc)`, never `datetime.utcnow()`.
 5. **`get_context_type_for_analysis()` falls back to KNOWLEDGE**: Unrecognized type strings from LLM output default to `KNOWLEDGE`, not `EVENT`.

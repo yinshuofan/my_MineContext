@@ -95,7 +95,7 @@ Global retention-based cleanup. Delegates to `ContextMerger.intelligent_memory_c
 
 ### HierarchySummaryTask
 
-Generates hierarchical time-based summaries (L1 daily, L2 weekly, L3 monthly) for EVENT contexts.
+Generates hierarchical time-based summaries (L1 daily, L2 weekly, L3 monthly). Summaries are now stored with their own ContextType (DAILY_SUMMARY, WEEKLY_SUMMARY, MONTHLY_SUMMARY) instead of all being EVENT with hierarchy_level > 0.
 
 | Property | Value |
 |----------|-------|
@@ -110,13 +110,20 @@ Generates hierarchical time-based summaries (L1 daily, L2 weekly, L3 monthly) fo
 
 No external dependency injection -- uses `get_storage()` and LLM globals directly.
 
+**Level-to-type mappings** (module-level constants):
+
+```python
+LEVEL_TO_CONTEXT_TYPE = {1: DAILY_SUMMARY, 2: WEEKLY_SUMMARY, 3: MONTHLY_SUMMARY}
+LEVEL_TO_CHILD_TYPE = {1: EVENT, 2: DAILY_SUMMARY, 3: WEEKLY_SUMMARY}
+```
+
 **Core flow in `async execute(context)`**:
 1. Backfill L1 daily summaries for recent N days via `_backfill_daily_summaries()` (N = `backfill_days` config, default 7). Batch-queries existing L1 summaries in the window (1 query) to skip already-generated dates, then generates missing ones most-recent-first.
 2. Generate L2 weekly summary for the most recent completed ISO week
 3. Generate L3 monthly summary for the most recent completed month
 
 Each `async _generate_{level}_summary()` method:
-1. Checks for existing summary via `await storage.search_hierarchy()` (idempotent dedup)
+1. **Dual-format dedup check**: Checks for existing summary in both old format (EVENT with hierarchy_level=N) and new format (DAILY_SUMMARY/WEEKLY_SUMMARY/MONTHLY_SUMMARY). This backward-compat check prevents regeneration of summaries created before the migration.
 2. Queries child-level data from storage (all `await`ed)
 3. Formats content, handles token overflow via batch splitting
 4. Calls LLM (`await generate_with_messages()`), stores result as `ProcessedContext`
@@ -150,7 +157,11 @@ Each overflow handler: format -> check tokens -> if over limit, split into batch
 
 Prompt resolution: prompt group `"hierarchy_summary"` from YAML -> `{level}_summary` / `{level}_partial_summary` / `{level}_merge` keys -> fallback to `_FALLBACK_PROMPTS` dict.
 
-**Storage**: `async _store_summary(user_id, summary_text, level, time_bucket, children_ids, device_id=None, agent_id=None) -> Optional[ProcessedContext]` -- parses the LLM JSON response (`{title, summary, keywords, entities, importance}`) to extract structured fields, builds `ProcessedContext` with hierarchy fields (including `device_id`/`agent_id` on `ContextProperties`), generates embedding via `await do_vectorize()`, calls `await storage.upsert_processed_context()`. After successful upsert, backfills `parent_id` on all child contexts via `await storage.batch_set_parent_id(children_ids, summary_id, "event")` — this enables upward traversal (child → parent summary). The backfill is non-fatal: if it fails, the summary itself is still valid. Falls back to heuristic title extraction if the LLM response is not valid JSON. Also handles markdown code fence stripping (` ```json ... ``` `).
+**Storage**: `async _store_summary(user_id, summary_text, level, time_bucket, children_ids, device_id=None, agent_id=None) -> Optional[ProcessedContext]` -- parses the LLM JSON response (`{title, summary, keywords, entities, importance}`) to extract structured fields. Resolves `summary_context_type` from `LEVEL_TO_CONTEXT_TYPE[level]` and `child_type` from `LEVEL_TO_CHILD_TYPE[level]`. Builds `ProcessedContext` with:
+- `extracted_data.context_type` = `summary_context_type` (e.g. `DAILY_SUMMARY`)
+- `properties.refs` = `{child_type.value: children_ids}` (downward refs)
+
+Generates embedding via `await do_vectorize()`, calls `await storage.upsert_processed_context()`. After successful upsert, backfills upward refs on all child contexts via `await storage.batch_update_refs(children_ids, ref_key=summary_context_type.value, ref_value=summary_id, context_type=child_type.value)` -- this enables upward traversal (child -> parent summary). The backfill is non-fatal: if it fails, the summary itself is still valid. Falls back to heuristic title extraction if the LLM response is not valid JSON. Also handles markdown code fence stripping (` ```json ... ``` `).
 
 **Factory**: `create_hierarchy_handler() -> async TaskHandler`
 
@@ -193,30 +204,32 @@ execute(context)
   │
   ├─> _backfill_daily_summaries(user_id, today, device_id, agent_id)
   │     ├─ Read backfill_days from config (default 7)
-  │     ├─ search_hierarchy(level=1, time_bucket_start/end=window, device_id, agent_id) -- batch dedup
+  │     ├─ search_hierarchy(level=1, context_type=EVENT or DAILY_SUMMARY, ...) -- batch dedup (dual-format)
   │     └─ For each missing date (most recent first):
   │           └─> _generate_daily_summary(user_id, date, device_id, agent_id)
-  │                 ├─ search_hierarchy(level=1, time_bucket=date, device_id, agent_id) -- dedup check
+  │                 ├─ Dual-format dedup: search_hierarchy(EVENT, level=1) + search_hierarchy(DAILY_SUMMARY)
   │                 ├─ get_all_processed_contexts(EVENT, filter=..., device_id, agent_id)
   │                 ├─ _batch_summarize_and_merge(l0_events, level=1, ..., _format_l0_events)
   │                 │     ├─ If fits: _call_llm_for_summary()
   │                 │     └─ If overflow: _split_into_batches() -> partial summaries -> _call_llm_for_merge()
-  │                 └─ _store_summary(level=1, ..., device_id, agent_id)
+  │                 └─ _store_summary(level=1, context_type=DAILY_SUMMARY, refs={EVENT: ids})
   │
   ├─> _generate_weekly_summary(user_id, prev_week, device_id, agent_id)
-  │     ├─ search_hierarchy(level=2, time_bucket=week, device_id, agent_id) -- dedup check
-  │     ├─ search_hierarchy(level=1, week date range, device_id, agent_id) -- fetch L1
+  │     ├─ Dual-format dedup: search_hierarchy(EVENT, level=2) + search_hierarchy(WEEKLY_SUMMARY)
+  │     ├─ Fetch L1: search_hierarchy(EVENT, level=1) + search_hierarchy(DAILY_SUMMARY) -- merged
   │     ├─ _batch_summarize_weekly(l1, week_str)
-  │     └─ _store_summary(level=2, ..., device_id, agent_id)
+  │     └─ _store_summary(level=2, context_type=WEEKLY_SUMMARY, refs={DAILY_SUMMARY: ids})
   │
   └─> _generate_monthly_summary(user_id, prev_month, device_id, agent_id)
-        ├─ search_hierarchy(level=3, time_bucket=month, device_id, agent_id) -- dedup check
+        ├─ Dual-format dedup: search_hierarchy(EVENT, level=3) + search_hierarchy(MONTHLY_SUMMARY)
         ├─ For each ISO week in month:
-        │     ├─ search_hierarchy(level=2, week, device_id, agent_id) -- fetch L2
-        │     └─ search_hierarchy(level=1, week date range, device_id, agent_id) -- fetch L1
+        │     ├─ Fetch L2: search_hierarchy(EVENT, level=2) + search_hierarchy(WEEKLY_SUMMARY) -- merged
+        │     └─ Fetch L1: search_hierarchy(EVENT, level=1) + search_hierarchy(DAILY_SUMMARY) -- merged
         ├─ _batch_summarize_monthly(l2, l1_by_week, month_str)
-        └─ _store_summary(level=3, ..., device_id, agent_id)
+        └─ _store_summary(level=3, context_type=MONTHLY_SUMMARY, refs={WEEKLY_SUMMARY: ids})
 ```
+
+Note: The dual-format dedup checks (querying both old EVENT-with-hierarchy-level and new typed ContextTypes) ensure backward compatibility with summaries generated before the migration. New summaries are always stored with their dedicated ContextType.
 
 ## Cross-Module Dependencies
 

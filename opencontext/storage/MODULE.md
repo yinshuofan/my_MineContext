@@ -71,11 +71,11 @@ Non-abstract methods with default implementation (backends may override):
 | Method | Signature | Returns/Yields |
 |--------|-----------|----------------|
 | `scroll_processed_contexts` | `(context_types, batch_size=100, filter, need_vector, user_id, device_id, agent_id) -> Generator[ProcessedContext, None, None]` | `ProcessedContext` objects one at a time |
-| `batch_set_parent_id` | `(children_ids: List[str], parent_id: str, context_type: str) -> int` | Count of updated contexts |
+| `batch_update_refs` | `(context_ids: List[str], ref_key: str, ref_value: str, context_type: str) -> int` | Count of updated contexts |
 
 **`scroll_processed_contexts`**: Generator that iterates all matching contexts. The default implementation uses offset-based `get_all_processed_contexts` calls (O(n^2) for backends like ChromaDB). `QdrantBackend` overrides this with native cursor-based scrolling via `_client.scroll(offset=next_page_offset)` for O(n) performance. Used by `ContextMerger._cleanup_contexts_by_type()` for data cleanup iteration.
 
-**`batch_set_parent_id`**: Sets `parent_id` on multiple child contexts. The default implementation fetches contexts with vectors (`get_by_ids(need_vector=True)`), modifies `parent_id`, and re-upserts. `QdrantBackend` overrides with native `set_payload` API (payload-only update, no vector traffic). `VikingDBBackend` overrides with `/api/vikingdb/data/update` API (batch limit 100). Called by `HierarchySummaryTask._store_summary()` to backfill parent_id on children after storing a hierarchy summary.
+**`batch_update_refs`** (replaces former `batch_set_parent_id`): Adds a `ref_key -> ref_value` entry to the `refs` dict of multiple contexts. For example, after storing a daily summary, calls `batch_update_refs(child_event_ids, ref_key="daily_summary", ref_value=summary_id, context_type="event")` to backfill upward refs on children. `QdrantBackend` overrides with native `set_payload` API (payload-only update, no vector traffic). `VikingDBBackend` overrides with `/api/vikingdb/data/update` API (batch limit 100). The default implementation raises `NotImplementedError`.
 
 ### IDocumentStorageBackend (ABC) -- `base_storage.py`
 
@@ -93,9 +93,9 @@ Extends `IStorageBackend`. All abstract methods that new document backends must 
 | `update_todo_status` | `(todo_id: int, status: int, end_time)` | `bool` |
 | `insert_tip` | `(content: str)` | `int` |
 | `get_tips` | `(limit, offset)` | `List[Dict]` |
-| `upsert_profile` | `(user_id, device_id, agent_id, factual_profile, behavioral_profile, keywords, entities, importance, metadata)` | `bool` |
-| `get_profile` | `(user_id, device_id, agent_id)` | `Optional[Dict]` |
-| `delete_profile` | `(user_id, device_id, agent_id)` | `bool` |
+| `upsert_profile` | `(user_id, device_id, agent_id, factual_profile, behavioral_profile, entities, importance, metadata, owner_type="user")` | `bool` |
+| `get_profile` | `(user_id, device_id, agent_id, owner_type="user")` | `Optional[Dict]` |
+| `delete_profile` | `(user_id, device_id, agent_id, owner_type="user")` | `bool` |
 Note: Document backends also implement non-abstract methods for conversations, messages, message thinking, and monitoring (not listed in the interface but present in both SQLite and MySQL implementations).
 
 ### StorageBackendFactory -- `unified_storage.py`
@@ -331,7 +331,7 @@ get_storage()                          # global_storage.py -> UnifiedStorage
 ## Conventions and Constraints
 
 - **Always use `get_storage()`** from `global_storage.py` to access storage. Never use `GlobalStorage.get_instance()` or `get_global_storage()` directly -- they return the wrapper which lacks profile/hierarchy methods.
-- **All profile calls require the 3-key tuple** `(user_id, device_id, agent_id)`. Omitting `device_id` or `agent_id` causes positional argument mismatches.
+- **All profile calls require the 3-key tuple + owner_type** `(user_id, device_id, agent_id, owner_type)`. `owner_type` defaults to `"user"`; pass `"agent"` for agent profiles. The `profiles` table has an `owner_type` column and an `idx_profiles_owner_type` index. Both MySQL and SQLite backends include `owner_type` in all profile WHERE clauses.
 - **SQLite `_get_connection()` must be used for all method-level DB access.** Only `initialize()` and `close()` may use `self.connection` directly. This prevents thread-safety issues under `asyncio.to_thread()`.
 - **MySQL `_get_connection()` is a context manager** -- always use `with self._get_connection() as conn:`. It auto-returns to pool and auto-rolls-back on exceptions.
 - **Qdrant `search_by_hierarchy`** uses in-code string comparison for `time_bucket` filtering because `models.Range` does not support string fields. Over-fetch with `top_k * 3`, then filter.

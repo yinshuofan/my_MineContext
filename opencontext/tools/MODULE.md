@@ -162,14 +162,14 @@ class HierarchicalEventTool(BaseTool):
 **Retrieval algorithm (execute):**
 1. Convert `time_range` timestamps to day/week/month bucket strings
 2. Search L1, L2, L3 summaries via `storage.search_hierarchy()`
-3. BFS drill-down from matched summaries through `children_ids` to reach L0 events; blended score = `0.5 * child_score(0.3) + 0.5 * parent_score`
+3. BFS drill-down from matched summaries through `refs` to reach L0 events; blended score = `0.5 * child_score(0.3) + 0.5 * parent_score`. Child IDs are extracted from `refs` dict by excluding keys that match upward/summary types (DAILY_SUMMARY, WEEKLY_SUMMARY, MONTHLY_SUMMARY, etc.); falls back to old `children_ids` field for data written before the refs migration.
 4. Direct L0 semantic search as fallback (catches un-aggregated events)
 5. Merge both paths, deduplicate by context ID (keep higher score)
 6. Sort by score descending, truncate to `top_k`
 
-**Hierarchy traversal is bidirectional:**
-- **Downward** (top-down): parent summaries → children via `children_ids` (used by HierarchicalEventTool drill-down above)
-- **Upward** (bottom-up): L0 events → parent summaries via `parent_id` (used by search API `_collect_ancestors()` to build hierarchy tree with ancestor context nodes)
+**Hierarchy traversal is bidirectional via `refs`:**
+- **Downward** (top-down): parent summaries → children via `refs` entries whose keys are child types (e.g. `refs: {"event": ["id1", "id2"]}` on a DAILY_SUMMARY). Used by HierarchicalEventTool drill-down above.
+- **Upward** (bottom-up): L0 events → parent summaries via `refs` entries whose keys are summary types (e.g. `refs: {"daily_summary": ["sum-id"]}` on an EVENT). Used by search API `_collect_ancestors()` to build hierarchy tree with ancestor context nodes.
 
 ### ProfileRetrievalTool -- `retrieval_tools/profile_retrieval_tool.py`
 
@@ -276,7 +276,9 @@ execute(**kwargs)
   │     ├── _search_summaries(level=2, week_buckets, user_id, top_k, device_id, agent_id) → L2 hits
   │     ├── _search_summaries(level=3, month_buckets, user_id, top_k, device_id, agent_id) → L3 hits
   │     └── _drill_down_children(all_hits)
-  │           ├── BFS through children_ids via storage.get_contexts_by_ids()
+  │           ├── Extract child IDs from refs (exclude upward/summary type keys)
+  │           ├── Fallback to old children_ids field for pre-migration data
+  │           ├── BFS through children via storage.get_contexts_by_ids()
   │           └── Blended score: 0.5 * child(0.3) + 0.5 * parent_score
   │
   ├── Path 2: Direct L0 fallback
