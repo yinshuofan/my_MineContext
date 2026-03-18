@@ -81,7 +81,7 @@ CREATE TABLE chat_batches (
     agent_id VARCHAR(100) DEFAULT 'default',
     message_count INT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_chat_batches_user_agent (user_id, agent_id, created_at)
+    INDEX idx_chat_batches_created_at (created_at)
 );
 ```
 
@@ -238,7 +238,7 @@ CREATE INDEX idx_profiles_owner_type ON profiles(owner_type);
 #### `__base__` 哨兵值处理规则
 
 - **Base profile 写入**：通过 `/api/agents/{id}/base/profile` 端点直接写入，**不走 `refresh_profile()` 的 LLM merge**。是纯 OVERWRITE（调用方提供完整 profile 内容）。
-- **Interaction profile 写入**：通过 push 流程中 agent_memory_processor 触发 `refresh_profile()`，执行 LLM merge。merge 时 `get_profile()` 查询条件为 `owner_type="agent" AND user_id=Y AND agent_id=X`，不会混入 base profile（因为 base 的 `user_id="__base__"`）。
+- **Interaction profile 写入**：通过 push 流程中 agent_memory_processor 触发 `refresh_profile()`，执行 LLM merge。**首次写入时**，`get_profile(owner_type="agent", user_id=Y, agent_id=X)` 返回空，此时 **fallback 读取 base profile**（`user_id="__base__"`）作为初始值，再 LLM merge 新提取的内容，写入 interaction profile。后续更新正常读取已有的 interaction profile → LLM merge → 覆盖写入。
 - **用户侧查询隔离**：所有面向用户的 profile 查询默认带 `owner_type="user"` 过滤，不会返回 agent profile。现有 `get_profile()` 方法签名不变，但内部默认加 `owner_type="user"` 条件，新增可选参数 `owner_type` 供 agent 场景使用。
 
 ---
