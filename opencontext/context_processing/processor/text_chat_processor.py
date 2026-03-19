@@ -86,7 +86,7 @@ class TextChatProcessor(BaseContextProcessor):
 
         # 3. 调用 LLM
         response = await generate_with_messages(messages)
-        logger.debug(f"LLM response: {response}")
+        logger.debug(f"[text_chat_processor] LLM response: {response}")
 
         # 4. 解析结果
         analysis = parse_json_from_response(response)
@@ -110,7 +110,7 @@ class TextChatProcessor(BaseContextProcessor):
             except Exception as e:
                 logger.warning(f"Failed to build ProcessedContext for memory: {e}")
 
-        logger.debug(f"Extracted {len(processed_list)} memories from chat")
+        logger.debug(f"[text_chat_processor] Extracted {len(processed_list)} memories from chat")
         return processed_list
 
     @staticmethod

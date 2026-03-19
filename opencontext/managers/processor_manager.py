@@ -173,10 +173,11 @@ class ContextProcessorManager:
                 continue
             if result:
                 all_contexts.extend(result)
+                logger.info(f"process_batch: {name} → {len(result)} contexts")
 
         logger.info(
             f"process_batch: {len(processor_names)} processors → "
-            f"{len(all_contexts)} contexts"
+            f"{len(all_contexts)} contexts total"
         )
 
         # Invoke callback to route to storage

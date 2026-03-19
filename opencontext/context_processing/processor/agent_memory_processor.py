@@ -86,6 +86,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         # 4. Call LLM (disable tool executor — pure extraction)
         response = await generate_with_messages(messages, enable_executor=False)
+        logger.debug(f"[agent_memory_processor] LLM response: {response}")
         if not response:
             return []
 
@@ -96,7 +97,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         memories = analysis.get("memories", [])
         if not memories:
-            logger.info("No agent memories extracted from chat analysis")
+            logger.info("[agent_memory_processor] No memories extracted from chat analysis")
             return []
 
         # 6. Build ProcessedContext for each memory
@@ -108,7 +109,11 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 await do_vectorize(ctx.vectorize)
                 results.append(ctx)
 
-        logger.debug(f"Extracted {len(results)} agent memories from chat")
+        type_counts = {}
+        for ctx in results:
+            t = ctx.extracted_data.context_type.value
+            type_counts[t] = type_counts.get(t, 0) + 1
+        logger.info(f"[agent_memory_processor] Extracted {len(results)} memories: {type_counts}")
         return results
 
     def _build_agent_context(
@@ -132,7 +137,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
             elif mem_type == "agent_event":
                 context_type = ContextType.AGENT_EVENT
             else:
-                logger.warning(f"Unknown agent memory type: {mem_type}, skipping")
+                logger.warning(f"[agent_memory_processor] Unknown type: {mem_type}, skipping")
                 return None
 
             # Validate and sanitize title

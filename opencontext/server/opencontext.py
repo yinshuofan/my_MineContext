@@ -139,6 +139,12 @@ class OpenContext:
             return False
 
         try:
+            type_summary = {}
+            for ctx in contexts:
+                t = ctx.extracted_data.context_type.value
+                type_summary[t] = type_summary.get(t, 0) + 1
+            logger.info(f"Routing {len(contexts)} contexts: {type_summary}")
+
             vector_contexts = []
             db_contexts = []
 
