@@ -67,6 +67,8 @@ class AgentMemoryProcessor(BaseContextProcessor):
             logger.warning("agent_memory_analyze prompt not found")
             return []
 
+        logger.debug(f"[agent_memory_processor] Processing: user={raw_context.user_id}, agent={raw_context.agent_id}, agent_name={agent_name}")
+
         # 3. Build LLM messages
         system_prompt = prompt_group.get("system", "")
         system_prompt = system_prompt.replace("{agent_name}", agent_name)
@@ -83,6 +85,8 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 ),
             },
         ]
+
+        logger.debug("[agent_memory_processor] LLM messages prepared")
 
         # 4. Call LLM (disable tool executor — pure extraction)
         response = await generate_with_messages(messages, enable_executor=False)

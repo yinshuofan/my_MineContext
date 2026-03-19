@@ -43,7 +43,7 @@ class TextChatProcessor(BaseContextProcessor):
 
     async def process(self, context: RawContextProperties) -> List[ProcessedContext]:
         """Process chat context asynchronously."""
-        logger.debug(f"Processing chat context: {context}")
+        logger.debug(f"[text_chat_processor] Processing: user={context.user_id}, agent={context.agent_id}, source={context.source}, content_length={len(context.content_text or '')}")
         try:
             processed_list = await self._process_async(context)
             return processed_list or []
@@ -82,7 +82,7 @@ class TextChatProcessor(BaseContextProcessor):
                     ),
                 },
             ]
-        logger.debug(f"LLM messages prepared (multimodal={is_multimodal})")
+        logger.debug(f"[text_chat_processor] LLM messages prepared (multimodal={is_multimodal})")
 
         # 3. 调用 LLM
         response = await generate_with_messages(messages)
