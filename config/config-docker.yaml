@@ -41,6 +41,8 @@ processing:
   enabled: true
   text_chat_processor:
     enabled: true
+  agent_memory_processor:
+    enabled: true
   document_processor:
     enabled: true
     batch_size: 5
