@@ -382,6 +382,7 @@ class MemoryCacheManager:
         types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
         l0_type = types[0].value  # EVENT or AGENT_EVENT
         l1_type = types[1].value  # DAILY_SUMMARY or AGENT_DAILY_SUMMARY
+        summary_type_values = {t.value for t in types[1:]}  # L1+ are summary types
 
         # Compute time boundaries
         now = datetime.now(tz=timezone.utc)
@@ -507,7 +508,7 @@ class MemoryCacheManager:
                         "time_bucket": ctx.properties.time_bucket or "",
                         "title": ctx.extracted_data.title if ctx.extracted_data else None,
                         "summary": ctx.extracted_data.summary if ctx.extracted_data else None,
-                        "children_count": self._count_refs(ctx),
+                        "children_count": self._count_refs(ctx, summary_type_values),
                     }
                 )
             daily_items.sort(key=lambda x: x["time_bucket"], reverse=True)
@@ -541,11 +542,13 @@ class MemoryCacheManager:
         return snapshot
 
     @staticmethod
-    def _count_refs(ctx: ProcessedContext) -> int:
-        """Count total child IDs from refs."""
+    def _count_refs(ctx: ProcessedContext, summary_type_values: set = None) -> int:
+        """Count child IDs from refs, excluding upward (parent/summary) refs."""
         if ctx.properties.refs:
             count = 0
             for key, ids in ctx.properties.refs.items():
+                if summary_type_values and key in summary_type_values:
+                    continue  # skip upward refs to parent summaries
                 count += len(ids)
             return count
         return 0

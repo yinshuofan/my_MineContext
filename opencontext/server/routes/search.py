@@ -219,10 +219,13 @@ async def _execute_search(
             nodes[aid] = _to_context_node(actx)
 
     # ── Step 4: Link children to parents, build tree ──
+    owner_types = MEMORY_OWNER_TYPES.get(request.memory_owner, MEMORY_OWNER_TYPES["user"])
+    summary_type_values = {t.value for t in owner_types[1:]}
+
     roots: List[EventNode] = []
     linked: set = set()
     for node_id, node in nodes.items():
-        pid = _extract_parent_id_from_refs(node.refs, nodes)
+        pid = _extract_parent_id_from_refs(node.refs, nodes, summary_type_values)
         if pid and pid in nodes and node_id not in linked:
             nodes[pid].children.append(node)
             linked.add(node_id)
@@ -432,9 +435,17 @@ def _format_timestamp(value) -> Optional[str]:
         return str(value)
 
 
-def _extract_parent_id_from_refs(refs: Dict[str, List[str]], nodes: Dict[str, Any]) -> Optional[str]:
-    """Find the first ref target that exists in the nodes map (i.e., a known ancestor)."""
-    for ref_ids in refs.values():
+def _extract_parent_id_from_refs(
+    refs: Dict[str, List[str]], nodes: Dict[str, Any], summary_type_values: set = None
+) -> Optional[str]:
+    """Find the first upward ref target that exists in the nodes map (i.e., a known ancestor).
+
+    Only considers refs whose keys are summary types (upward/parent direction).
+    Skips child refs to avoid incorrect parent-child linkage.
+    """
+    for ref_key, ref_ids in refs.items():
+        if summary_type_values and ref_key not in summary_type_values:
+            continue  # skip downward (child) refs
         for pid in ref_ids:
             if pid in nodes:
                 return pid

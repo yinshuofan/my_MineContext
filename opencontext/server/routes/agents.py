@@ -196,11 +196,12 @@ async def push_base_events(
     contexts: List[ProcessedContext] = []
     for event in request.events:
         now = datetime.datetime.now(tz=datetime.timezone.utc)
-        event_time = (
-            datetime.datetime.fromisoformat(event.event_time)
-            if event.event_time
-            else now
-        )
+        if event.event_time:
+            event_time = datetime.datetime.fromisoformat(event.event_time)
+            if event_time.tzinfo is None:
+                event_time = event_time.replace(tzinfo=datetime.timezone.utc)
+        else:
+            event_time = now
 
         text_for_embedding = f"{event.title}\n{event.summary}\n{', '.join(event.keywords)}"
         vectorize = Vectorize(

@@ -235,6 +235,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 properties=properties,
                 extracted_data=extracted_data,
                 vectorize=vectorize,
+                metadata={"owner_type": "agent"},
             )
 
         except Exception as e:

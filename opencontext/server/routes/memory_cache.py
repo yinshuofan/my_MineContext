@@ -11,7 +11,7 @@ import asyncio
 import time
 from typing import Optional, Set
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
@@ -65,6 +65,9 @@ async def get_user_memory_cache(
     - recently_accessed: Memories recently returned in search results (real-time)
     - recent_memories: Hierarchical recent memories (today L0 events + daily summaries)
     """
+    if memory_owner not in ("user", "agent"):
+        raise HTTPException(400, "memory_owner must be 'user' or 'agent'")
+
     t0 = time.monotonic()
     manager = get_memory_cache_manager()
     include_sections = _parse_include(include)

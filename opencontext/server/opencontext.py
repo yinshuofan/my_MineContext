@@ -188,13 +188,9 @@ class OpenContext:
         props = ctx.properties
         agent_id = props.agent_id or "default"
 
-        # Determine owner_type: if agent_id refers to a registered agent, this is an agent profile
-        owner_type = "user"
-        if agent_id != "default":
-            storage = get_storage()
-            agent = await storage.get_agent(agent_id)
-            if agent:
-                owner_type = "agent"
+        # Determine owner_type from context metadata (set by AgentMemoryProcessor)
+        # or fall back to "user" for normal user profiles
+        owner_type = (ctx.metadata or {}).get("owner_type", "user")
 
         await refresh_profile(
             new_factual_profile=ed.summary or "",

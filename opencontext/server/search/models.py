@@ -70,7 +70,11 @@ class EventSearchRequest(BaseModel):
     agent_id: Optional[str] = Field(
         default=None, description="Agent identifier for multi-user filtering"
     )
-    memory_owner: str = Field(default="user", description="Memory owner: 'user' or 'agent'")
+    memory_owner: str = Field(
+        default="user",
+        pattern="^(user|agent)$",
+        description="Memory owner: 'user' or 'agent'",
+    )
 
     @model_validator(mode="after")
     def validate_search_criteria(self) -> "EventSearchRequest":
