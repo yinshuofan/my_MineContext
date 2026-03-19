@@ -735,14 +735,15 @@ class MySQLBackend(IDocumentStorageBackend):
                                               behavioral_profile, entities, importance, metadata, refs,
                                               created_at, updated_at)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        AS new_val
                         ON DUPLICATE KEY UPDATE
-                            factual_profile = VALUES(factual_profile),
-                            behavioral_profile = VALUES(behavioral_profile),
-                            entities = VALUES(entities),
-                            importance = VALUES(importance),
-                            metadata = VALUES(metadata),
-                            refs = VALUES(refs),
-                            updated_at = VALUES(updated_at)
+                            factual_profile = new_val.factual_profile,
+                            behavioral_profile = new_val.behavioral_profile,
+                            entities = new_val.entities,
+                            importance = new_val.importance,
+                            metadata = new_val.metadata,
+                            refs = new_val.refs,
+                            updated_at = new_val.updated_at
                         """,
                         (user_id, device_id, agent_id, context_type, factual_profile,
                          behavioral_profile, entities_json, importance, metadata_json,
@@ -839,11 +840,11 @@ class MySQLBackend(IDocumentStorageBackend):
                     await cursor.execute(
                         """
                         INSERT INTO monitoring_token_usage (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s) AS new_val
                         ON DUPLICATE KEY UPDATE
-                            prompt_tokens = prompt_tokens + VALUES(prompt_tokens),
-                            completion_tokens = completion_tokens + VALUES(completion_tokens),
-                            total_tokens = total_tokens + VALUES(total_tokens)
+                            prompt_tokens = prompt_tokens + new_val.prompt_tokens,
+                            completion_tokens = completion_tokens + new_val.completion_tokens,
+                            total_tokens = total_tokens + new_val.total_tokens
                         """,
                         (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, now),
                     )
@@ -872,14 +873,14 @@ class MySQLBackend(IDocumentStorageBackend):
                         INSERT INTO monitoring_stage_timing
                         (time_bucket, stage_name, count, total_duration_ms, min_duration_ms,
                          max_duration_ms, avg_duration_ms, success_count, error_count, metadata, created_at)
-                        VALUES (%s, %s, 1, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, 1, %s, %s, %s, %s, %s, %s, %s, %s) AS new_val
                         ON DUPLICATE KEY UPDATE
                             count = count + 1,
-                            total_duration_ms = total_duration_ms + VALUES(total_duration_ms),
-                            min_duration_ms = LEAST(min_duration_ms, VALUES(min_duration_ms)),
-                            max_duration_ms = GREATEST(max_duration_ms, VALUES(max_duration_ms)),
-                            success_count = success_count + VALUES(success_count),
-                            error_count = error_count + VALUES(error_count),
+                            total_duration_ms = total_duration_ms + new_val.total_duration_ms,
+                            min_duration_ms = LEAST(min_duration_ms, new_val.min_duration_ms),
+                            max_duration_ms = GREATEST(max_duration_ms, new_val.max_duration_ms),
+                            success_count = success_count + new_val.success_count,
+                            error_count = error_count + new_val.error_count,
                             avg_duration_ms = total_duration_ms DIV count
                         """,
                         (time_bucket, stage_name, duration_ms, duration_ms, duration_ms, duration_ms,
@@ -905,8 +906,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     await cursor.execute(
                         """
                         INSERT INTO monitoring_data_stats (time_bucket, data_type, count, context_type, metadata, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        ON DUPLICATE KEY UPDATE count = count + VALUES(count)
+                        VALUES (%s, %s, %s, %s, %s, %s) AS new_val
+                        ON DUPLICATE KEY UPDATE count = count + new_val.count
                         """,
                         (time_bucket, data_type, count, context_type, metadata, now),
                     )
@@ -1525,9 +1526,9 @@ class MySQLBackend(IDocumentStorageBackend):
                     await cursor.execute(
                         """
                         INSERT INTO system_settings (setting_key, setting_value)
-                        VALUES (%s, %s)
+                        VALUES (%s, %s) AS new_val
                         ON DUPLICATE KEY UPDATE
-                            setting_value = JSON_MERGE_PATCH(setting_value, VALUES(setting_value))
+                            setting_value = JSON_MERGE_PATCH(setting_value, new_val.setting_value)
                         """,
                         (key, json_value),
                     )
