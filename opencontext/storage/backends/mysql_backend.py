@@ -842,9 +842,9 @@ class MySQLBackend(IDocumentStorageBackend):
                         INSERT INTO monitoring_token_usage (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, created_at)
                         VALUES (%s, %s, %s, %s, %s, %s) AS new_val
                         ON DUPLICATE KEY UPDATE
-                            prompt_tokens = prompt_tokens + new_val.prompt_tokens,
-                            completion_tokens = completion_tokens + new_val.completion_tokens,
-                            total_tokens = total_tokens + new_val.total_tokens
+                            prompt_tokens = monitoring_token_usage.prompt_tokens + new_val.prompt_tokens,
+                            completion_tokens = monitoring_token_usage.completion_tokens + new_val.completion_tokens,
+                            total_tokens = monitoring_token_usage.total_tokens + new_val.total_tokens
                         """,
                         (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, now),
                     )
@@ -875,13 +875,13 @@ class MySQLBackend(IDocumentStorageBackend):
                          max_duration_ms, avg_duration_ms, success_count, error_count, metadata, created_at)
                         VALUES (%s, %s, 1, %s, %s, %s, %s, %s, %s, %s, %s) AS new_val
                         ON DUPLICATE KEY UPDATE
-                            count = count + 1,
-                            total_duration_ms = total_duration_ms + new_val.total_duration_ms,
-                            min_duration_ms = LEAST(min_duration_ms, new_val.min_duration_ms),
-                            max_duration_ms = GREATEST(max_duration_ms, new_val.max_duration_ms),
-                            success_count = success_count + new_val.success_count,
-                            error_count = error_count + new_val.error_count,
-                            avg_duration_ms = total_duration_ms DIV count
+                            count = monitoring_stage_timing.count + 1,
+                            total_duration_ms = monitoring_stage_timing.total_duration_ms + new_val.total_duration_ms,
+                            min_duration_ms = LEAST(monitoring_stage_timing.min_duration_ms, new_val.min_duration_ms),
+                            max_duration_ms = GREATEST(monitoring_stage_timing.max_duration_ms, new_val.max_duration_ms),
+                            success_count = monitoring_stage_timing.success_count + new_val.success_count,
+                            error_count = monitoring_stage_timing.error_count + new_val.error_count,
+                            avg_duration_ms = monitoring_stage_timing.total_duration_ms DIV monitoring_stage_timing.count
                         """,
                         (time_bucket, stage_name, duration_ms, duration_ms, duration_ms, duration_ms,
                          success_inc, error_inc, metadata, now),
@@ -907,7 +907,7 @@ class MySQLBackend(IDocumentStorageBackend):
                         """
                         INSERT INTO monitoring_data_stats (time_bucket, data_type, count, context_type, metadata, created_at)
                         VALUES (%s, %s, %s, %s, %s, %s) AS new_val
-                        ON DUPLICATE KEY UPDATE count = count + new_val.count
+                        ON DUPLICATE KEY UPDATE count = monitoring_data_stats.count + new_val.count
                         """,
                         (time_bucket, data_type, count, context_type, metadata, now),
                     )
@@ -1528,7 +1528,7 @@ class MySQLBackend(IDocumentStorageBackend):
                         INSERT INTO system_settings (setting_key, setting_value)
                         VALUES (%s, %s) AS new_val
                         ON DUPLICATE KEY UPDATE
-                            setting_value = JSON_MERGE_PATCH(setting_value, new_val.setting_value)
+                            setting_value = JSON_MERGE_PATCH(system_settings.setting_value, new_val.setting_value)
                         """,
                         (key, json_value),
                     )
