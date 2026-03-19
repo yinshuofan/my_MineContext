@@ -123,7 +123,7 @@ class ComponentInitializer:
 
         # Now config.yaml structure is flattened, directly under processing
         # Create various processors
-        processor_types = ["document_processor", "text_chat_processor"]
+        processor_types = ["document_processor", "text_chat_processor", "agent_memory_processor"]
 
         processor_manager.set_callback(processed_context_callback)
 
