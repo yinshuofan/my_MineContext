@@ -55,17 +55,26 @@ class SQLiteBackend(IDocumentStorageBackend):
             # Create table structure
             await self._create_tables()
 
-            # Migration: add owner_type to existing profiles table
+            # Migration: owner_type → context_type on profiles table
             try:
                 await self._connection.execute(
-                    "ALTER TABLE profiles ADD COLUMN owner_type TEXT NOT NULL DEFAULT 'user'"
+                    "ALTER TABLE profiles ADD COLUMN context_type TEXT NOT NULL DEFAULT 'profile'"
                 )
+            except Exception:
+                pass
+
+            try:
+                await self._connection.execute("ALTER TABLE profiles ADD COLUMN refs JSON")
+            except Exception:
+                pass
+
+            try:
                 await self._connection.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_profiles_owner_type ON profiles(owner_type)"
+                    "UPDATE profiles SET context_type = 'agent_profile' WHERE owner_type = 'agent'"
                 )
                 await self._connection.commit()
             except Exception:
-                pass  # Column already exists
+                pass
 
             self._initialized = True
             logger.info(f"SQLite backend initialized successfully, database path: {self.db_path}")
@@ -147,27 +156,28 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         )
 
-        # Profiles table - user profiles (composite key: user_id + device_id + agent_id)
+        # Profiles table - user profiles (composite key: user_id + device_id + agent_id + context_type)
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id TEXT NOT NULL,
                 device_id TEXT NOT NULL DEFAULT 'default',
                 agent_id TEXT NOT NULL DEFAULT 'default',
-                owner_type TEXT NOT NULL DEFAULT 'user',
+                context_type TEXT NOT NULL DEFAULT 'profile',
                 factual_profile TEXT NOT NULL,
                 behavioral_profile TEXT,
                 entities JSON,
                 importance INTEGER DEFAULT 0,
                 metadata JSON,
+                refs JSON,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, device_id, agent_id)
+                PRIMARY KEY (user_id, device_id, agent_id, context_type)
             )
         """
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_profiles_owner_type ON profiles(owner_type)"
+            "CREATE INDEX IF NOT EXISTS idx_profiles_context_type ON profiles(context_type)"
         )
 
         # Monitoring tables

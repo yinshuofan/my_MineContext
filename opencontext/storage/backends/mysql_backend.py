@@ -90,18 +90,45 @@ class MySQLBackend(IDocumentStorageBackend):
             # Create table structure
             await self._create_tables()
 
-            # Migration: add owner_type to existing profiles table
+            # Migration: owner_type → context_type on profiles table
             async with self._get_connection() as conn:
                 async with conn.cursor() as cursor:
                     try:
                         await cursor.execute(
-                            "ALTER TABLE profiles ADD COLUMN owner_type VARCHAR(50) NOT NULL DEFAULT 'user'"
-                        )
-                        await cursor.execute(
-                            "CREATE INDEX idx_profiles_owner_type ON profiles(owner_type)"
+                            "ALTER TABLE profiles ADD COLUMN context_type VARCHAR(30) NOT NULL DEFAULT 'profile'"
                         )
                     except Exception:
                         pass  # Column already exists
+
+                    try:
+                        await cursor.execute(
+                            "ALTER TABLE profiles ADD COLUMN refs JSON"
+                        )
+                    except Exception:
+                        pass  # Column already exists
+
+                    try:
+                        await cursor.execute(
+                            "UPDATE profiles SET context_type = 'agent_profile' WHERE owner_type = 'agent'"
+                        )
+                        await conn.commit()
+                    except Exception:
+                        pass  # owner_type column may not exist (fresh install)
+
+                    try:
+                        await cursor.execute("ALTER TABLE profiles DROP PRIMARY KEY")
+                        await cursor.execute(
+                            "ALTER TABLE profiles ADD PRIMARY KEY (user_id, device_id, agent_id, context_type)"
+                        )
+                    except Exception:
+                        pass  # PK already has 4 columns
+
+                    try:
+                        await cursor.execute(
+                            "CREATE INDEX idx_profiles_context_type ON profiles(context_type)"
+                        )
+                    except Exception:
+                        pass  # Index already exists
 
             self._initialized = True
             logger.info(
@@ -207,16 +234,17 @@ class MySQLBackend(IDocumentStorageBackend):
                         user_id VARCHAR(255) NOT NULL,
                         device_id VARCHAR(100) NOT NULL DEFAULT 'default',
                         agent_id VARCHAR(100) NOT NULL DEFAULT 'default',
-                        owner_type VARCHAR(50) NOT NULL DEFAULT 'user',
+                        context_type VARCHAR(30) NOT NULL DEFAULT 'profile',
                         factual_profile LONGTEXT NOT NULL,
                         behavioral_profile LONGTEXT,
                         entities JSON,
                         importance INT DEFAULT 0,
                         metadata JSON,
+                        refs JSON,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        PRIMARY KEY (user_id, device_id, agent_id),
-                        INDEX idx_profiles_owner_type (owner_type)
+                        PRIMARY KEY (user_id, device_id, agent_id, context_type),
+                        INDEX idx_profiles_context_type (context_type)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """
                 )
