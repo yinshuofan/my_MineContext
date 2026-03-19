@@ -604,15 +604,17 @@ processing:
 
         Based on the following conversation with a user, extract memories from YOUR perspective.
 
-        Extract two types:
-        1. "profile" — What you learned about this user, how your perception of them changed
-        2. "agent_event" — What happened from your point of view, your feelings and reactions
+        Extract ONLY two types of memories — both from YOUR perspective as {agent_name}:
+        1. "agent_profile" — What you NOW know or feel about this user: their personality, preferences, habits, relationship with you
+        2. "agent_event" — What happened from YOUR point of view: your feelings, reactions, evaluations
+
+        IMPORTANT: Only output "agent_profile" or "agent_event". Do NOT output "event", "profile", "knowledge" or any other type.
 
         Output JSON:
         {
           "memories": [
             {
-              "type": "agent_event" | "profile",
+              "context_type": "agent_event" | "agent_profile",
               "title": "brief title",
               "summary": "your subjective perspective",
               "event_time": "YYYY-MM-DDTHH:MM:SS",
@@ -624,8 +626,8 @@ processing:
         }
 
         For event_time, use the time the conversation took place.
-        For events: describe what happened from your subjective point of view — your feelings, reactions, evaluations.
-        For profile: describe what you now know or feel about the user — their personality, preferences, relationship with you.
+        For agent_event: describe what happened from your subjective point of view — your feelings, reactions, evaluations.
+        For agent_profile: describe what you now know or feel about the user — their personality, preferences, relationship with you.
         If nothing noteworthy happened, return {"memories": []}.
       user: |
         Current time: {current_time}

@@ -121,16 +121,19 @@ class AgentMemoryProcessor(BaseContextProcessor):
             return None
 
         try:
-            # Validate context_type
-            mem_type = memory.get("type", "agent_event")
+            # Validate context_type — read both "type" and "context_type" fields
+            mem_type = memory.get("type") or memory.get("context_type") or "agent_event"
             if not isinstance(mem_type, str):
                 mem_type = "agent_event"
             mem_type = mem_type.lower().strip()
 
-            if mem_type == "profile":
+            if mem_type == "agent_profile":
                 context_type = ContextType.AGENT_PROFILE
-            else:
+            elif mem_type == "agent_event":
                 context_type = ContextType.AGENT_EVENT
+            else:
+                logger.warning(f"Unknown agent memory type: {mem_type}, skipping")
+                return None
 
             # Validate and sanitize title
             title = memory.get("title", "")
