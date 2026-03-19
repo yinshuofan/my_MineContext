@@ -89,6 +89,7 @@ class ContextType(str, Enum):
     AGENT_DAILY_SUMMARY = "agent_daily_summary"
     AGENT_WEEKLY_SUMMARY = "agent_weekly_summary"
     AGENT_MONTHLY_SUMMARY = "agent_monthly_summary"
+    AGENT_PROFILE = "agent_profile"
 
 
 class UpdateStrategy(str, Enum):
@@ -112,6 +113,7 @@ CONTEXT_UPDATE_STRATEGIES = {
     ContextType.AGENT_DAILY_SUMMARY: UpdateStrategy.APPEND,
     ContextType.AGENT_WEEKLY_SUMMARY: UpdateStrategy.APPEND,
     ContextType.AGENT_MONTHLY_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.AGENT_PROFILE: UpdateStrategy.OVERWRITE,
 }
 
 # Type → storage backend mapping (for routing decisions)
@@ -127,6 +129,7 @@ CONTEXT_STORAGE_BACKENDS = {
     ContextType.AGENT_DAILY_SUMMARY: "vector_db",  # Vector DB
     ContextType.AGENT_WEEKLY_SUMMARY: "vector_db",  # Vector DB
     ContextType.AGENT_MONTHLY_SUMMARY: "vector_db",  # Vector DB
+    ContextType.AGENT_PROFILE: "document_db",  # Relational DB
 }
 
 MEMORY_OWNER_TYPES = {
@@ -209,6 +212,11 @@ ContextSimpleDescriptions = {
         "name": "Agent Monthly Summary",
         "description": "Auto-generated monthly summary of agent events",
         "purpose": "Provides a condensed view of the agent's monthly experience",
+    },
+    ContextType.AGENT_PROFILE: {
+        "name": "Agent Profile",
+        "description": "Agent's perception and knowledge about a specific user",
+        "purpose": "Stores the agent's subjective understanding of user personality, preferences, and relationship",
     },
 }
 
