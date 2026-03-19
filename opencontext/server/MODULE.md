@@ -52,7 +52,7 @@ class OpenContext:
 
     # Context processing pipeline
     def _handle_captured_context(self, contexts: List[RawContextProperties]) -> bool
-    def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool  # Routes by CONTEXT_STORAGE_BACKENDS
+    def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool  # Routes PROFILE/AGENT_PROFILE to _store_profile, others by CONTEXT_STORAGE_BACKENDS
     def _store_profile(self, ctx: ProcessedContext) -> None     # -> storage.upsert_profile()
     def _invalidate_user_cache(self, user_id, device_id, agent_id) -> None  # Fire-and-forget
 
@@ -161,7 +161,7 @@ class MemoryCacheManager:
     @staticmethod _snapshot_key(memory_owner, user_id, device_id, agent_id) -> str
 ```
 
-**`memory_owner` parameter**: Controls which ContextTypes are used in snapshot queries. `_build_snapshot()` resolves types from `MEMORY_OWNER_TYPES[memory_owner]` (e.g., `"user"` → EVENT/DAILY_SUMMARY/..., `"agent"` → AGENT_EVENT/AGENT_DAILY_SUMMARY/...). Profile queries pass `owner_type` derived from `memory_owner`. Agent memory owner skips document/knowledge sections.
+**`memory_owner` parameter**: Controls which ContextTypes are used in snapshot queries. `_build_snapshot()` resolves types from `MEMORY_OWNER_TYPES[memory_owner]` (e.g., `"user"` → EVENT/DAILY_SUMMARY/..., `"agent"` → AGENT_EVENT/AGENT_DAILY_SUMMARY/...). Profile queries pass `context_type` derived from `memory_owner` (`"profile"` for user, `"agent_profile"` for agent). Agent memory owner skips document/knowledge sections.
 
 Caching architecture:
 - **Snapshot** (profile + today events + daily summaries + recent docs + recent knowledge): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{memory_owner}:{user_id}:{device_id}:{agent_id}`. Snapshot always stores full internal data; response assembly in `_merge_response()` filters by `include_sections` and simplifies to `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`.
@@ -327,7 +327,7 @@ Push endpoints that schedule hierarchy summary: `push_chat`.
 | GET | `/api/agents/{agent_id}` | `get_agent` | Get a single agent by ID |
 | PUT | `/api/agents/{agent_id}` | `update_agent` | Update agent name and/or description |
 | DELETE | `/api/agents/{agent_id}` | `delete_agent` | Soft-delete an agent |
-| POST | `/api/agents/{agent_id}/base/profile` | `set_base_profile` | Set or overwrite the agent's base profile (stored with `user_id="__base__"`, `owner_type="agent"`) |
+| POST | `/api/agents/{agent_id}/base/profile` | `set_base_profile` | Set or overwrite the agent's base profile (stored with `user_id="__base__"`, `context_type="agent_profile"`) |
 | GET | `/api/agents/{agent_id}/base/profile` | `get_base_profile` | Retrieve the agent's base profile |
 | POST | `/api/agents/{agent_id}/base/events` | `push_base_events` | Push structured base events (no LLM extraction; generates embeddings and stores as `AGENT_EVENT`) |
 | GET | `/api/agents/{agent_id}/base/events` | `list_base_events` | List base events for an agent (filtered by `user_id=None`) |
@@ -430,7 +430,7 @@ HTTP Request
 
 New `processors` parameter (default: `["user_memory"]`) controls which processors run on the input. Processor names are resolved via `BATCH_PROCESSOR_MAP` in `opencontext/managers/processor_manager.py`:
 - `"user_memory"` -> `"text_chat_processor"`
-- `"agent_memory"` -> `"agent_memory_processor"` (extracts memories from the agent's perspective; requires a registered agent)
+- `"agent_memory"` -> `"agent_memory_processor"` (extracts memories from the agent's perspective; requires a registered agent). Sets `AGENT_PROFILE` directly on extracted data, routed to `_store_profile()` alongside `PROFILE`.
 
 Both text-only and multimodal messages (OpenAI format) are supported. Before processing, `_process_multimodal_messages()` (async) handles base64 media:
 - Text-only messages (`content` is a string): pass through unchanged
@@ -457,8 +457,8 @@ ProcessorManager.process_batch(raw_context, ["user_memory"])
   -> Each processor returns List[ProcessedContext]
   -> Merge all results, invoke callback:
      -> OpenContext._handle_processed_context()
-        -> Routes by CONTEXT_STORAGE_BACKENDS:
-           profile -> _store_profile() -> storage.upsert_profile()
+        -> Routes by context_type:
+           PROFILE / AGENT_PROFILE -> _store_profile() -> storage.upsert_profile(context_type=...)
            document/event/knowledge -> storage.batch_upsert_processed_context() -> vector DB
         -> _invalidate_user_cache() for affected users
 ```
@@ -565,7 +565,7 @@ get_user_memory_cache(include_sections, memory_owner)
      MISS -> acquire_lock()
           -> Double-check snapshot
           -> _build_snapshot(memory_owner=memory_owner)  # Resolves types from MEMORY_OWNER_TYPES
-             profile (owner_type from memory_owner), today_events, daily_summaries,
+             profile (context_type from memory_owner: "profile" or "agent_profile"), today_events, daily_summaries,
              recent_docs (skipped for agent), recent_knowledge (skipped for agent)
           -> cache.set_json(snapshot, ttl=300s)
           -> release_lock()

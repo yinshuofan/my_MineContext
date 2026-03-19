@@ -78,7 +78,8 @@ All data flows through a unified `ProcessedContext` model, but each type has its
 
 | Type | Update Strategy | Storage | Description |
 |------|----------------|---------|-------------|
-| `profile` | OVERWRITE | Relational DB | User's own preferences, habits, communication style. Key: `(user_id, device_id, agent_id)` |
+| `profile` | OVERWRITE | Relational DB | User's own preferences, habits, communication style. Key: `(user_id, device_id, agent_id, context_type)` |
+| `agent_profile` | OVERWRITE | Relational DB | Agent's perception and knowledge about a specific user. Same table as `profile`, distinguished by `context_type="agent_profile"` |
 | `document` | OVERWRITE | Vector DB | Uploaded files and web links. Overwrite = delete old chunks + insert new. Tracked by `raw_type` + `raw_id` |
 | `event` | APPEND | Vector DB | Immutable activity records, meetings, status changes. Never modified after creation |
 | `knowledge` | APPEND_MERGE | Vector DB | Reusable concepts, procedures, patterns. Similar entries merged to avoid duplication |
@@ -95,8 +96,8 @@ Input → Processor → ProcessedContext → _handle_processed_context (routes b
    - `LOCAL_FILE`, `VAULT`, `WEB_LINK` → `DocumentProcessor`
    - `CHAT_LOG`, `INPUT` → `TextChatProcessor`
 
-2. **Route** (`opencontext/server/opencontext.py` → `_handle_processed_context()`): The central routing point. Reads `CONTEXT_STORAGE_BACKENDS` to decide per context:
-   - profile → `storage.upsert_profile()` → relational DB
+2. **Route** (`opencontext/server/opencontext.py` → `_handle_processed_context()`): The central routing point. Routes by context type:
+   - profile / agent_profile → `_store_profile()` → `storage.upsert_profile()` → relational DB
    - document/event/knowledge → `storage.batch_upsert_processed_context()` → vector DB
 
 3. **Store** (`opencontext/storage/`): `UnifiedStorage` wraps dual backends:
@@ -167,8 +168,8 @@ These are real bugs encountered during development. Check for them when modifyin
 ### Multi-instance deployment — all shared-state operations must be concurrency-safe
 This service runs as multiple instances sharing the same Redis and MySQL. Any "read-then-write" sequence on shared state is a potential race condition. Use atomic operations: Lua scripts for Redis (see `_CONDITIONAL_ZPOPMIN_LUA` in `redis_scheduler.py` for the pattern, executed via `RedisCache.eval_lua()`), database transactions for MySQL. When adding new Redis operations that check-then-modify, ask: "What happens if two instances run this at the same time?" If the answer is "data corruption or duplicate work", make it atomic.
 
-### All profile operations require the 3-key identifier `(user_id, device_id, agent_id)`
-Every storage method for profiles requires all three identifiers. `device_id` and `agent_id` default to `"default"`. Omitting them causes positional argument mismatches. The same applies to tools, cache manager, and search strategies. Redis cache keys also use all three: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
+### All profile operations require the 4-key identifier `(user_id, device_id, agent_id, context_type)`
+Every storage method for profiles requires all four identifiers. `device_id` and `agent_id` default to `"default"`, `context_type` defaults to `"profile"`. Pass `context_type="agent_profile"` for agent profiles. Omitting them causes positional argument mismatches. The same applies to tools, cache manager, and search strategies. Redis cache keys also use the 3-key tuple: `memory_cache:snapshot:{memory_owner}:{user_id}:{device_id}:{agent_id}`.
 
 ### Qdrant Range filter only supports numeric/datetime
 Qdrant's `models.Range(gte=..., lte=...)` does NOT work on string fields like `time_bucket`. Use in-code string comparison filtering instead (over-fetch with `top_k * 3`, then filter). See `qdrant_backend.py` `search_by_hierarchy()`.
@@ -200,7 +201,7 @@ Both MySQL and SQLite backends use `threading.local()` for per-thread connection
 VikingDB stores `hierarchy_level` as `int64`. Use `must` filter directly: `{"op": "must", "field": "hierarchy_level", "conds": [0]}`. Do NOT use `range` format — it's unnecessary for int64 fields. `must` also supports list filtering: `"conds": [0, 1, 2]`.
 
 ### Context type routing must match CONTEXT_STORAGE_BACKENDS
-`_handle_processed_context()` routes profile to relational DB and others to vector DB. Bypassing this (e.g., calling `batch_upsert_processed_context()` for all types) makes profile data unretrievable.
+`_handle_processed_context()` routes `PROFILE` and `AGENT_PROFILE` to relational DB via `_store_profile()`, and others to vector DB. Bypassing this (e.g., calling `batch_upsert_processed_context()` for all types) makes profile data unretrievable.
 
 ### Use `run_coroutine_threadsafe` not `create_task` from sync blocking code
 When sync code runs via `asyncio.to_thread`, `loop.create_task()` doesn't reliably wake the event loop. Use `asyncio.run_coroutine_threadsafe(coro, loop)` instead. The `_capture_loop()` pattern stores the loop reference from async entry points.

@@ -93,9 +93,9 @@ Extends `IStorageBackend`. All abstract methods that new document backends must 
 | `update_todo_status` | `(todo_id: int, status: int, end_time)` | `bool` |
 | `insert_tip` | `(content: str)` | `int` |
 | `get_tips` | `(limit, offset)` | `List[Dict]` |
-| `upsert_profile` | `(user_id, device_id, agent_id, factual_profile, behavioral_profile, entities, importance, metadata, owner_type="user")` | `bool` |
-| `get_profile` | `(user_id, device_id, agent_id, owner_type="user")` | `Optional[Dict]` |
-| `delete_profile` | `(user_id, device_id, agent_id, owner_type="user")` | `bool` |
+| `upsert_profile` | `(user_id, device_id, agent_id, factual_profile, behavioral_profile, entities, importance, metadata, refs, context_type="profile")` | `bool` |
+| `get_profile` | `(user_id, device_id, agent_id, context_type="profile")` | `Optional[Dict]` |
+| `delete_profile` | `(user_id, device_id, agent_id, context_type="profile")` | `bool` |
 Note: Document backends also implement non-abstract methods for conversations, messages, message thinking, and monitoring (not listed in the interface but present in both SQLite and MySQL implementations).
 
 ### StorageBackendFactory -- `unified_storage.py`
@@ -331,7 +331,7 @@ get_storage()                          # global_storage.py -> UnifiedStorage
 ## Conventions and Constraints
 
 - **Always use `get_storage()`** from `global_storage.py` to access storage. Never use `GlobalStorage.get_instance()` or `get_global_storage()` directly -- they return the wrapper which lacks profile/hierarchy methods.
-- **All profile calls require the 3-key tuple + owner_type** `(user_id, device_id, agent_id, owner_type)`. `owner_type` defaults to `"user"`; pass `"agent"` for agent profiles. The `profiles` table has an `owner_type` column and an `idx_profiles_owner_type` index. Both MySQL and SQLite backends include `owner_type` in all profile WHERE clauses.
+- **All profile calls require the 3-key tuple + context_type** `(user_id, device_id, agent_id, context_type)`. `context_type` defaults to `"profile"`; pass `"agent_profile"` for agent profiles. The `profiles` table PK is 4 columns: `(user_id, device_id, agent_id, context_type)`. A `refs JSON` column stores reference links (e.g., source context IDs). Migration from the old `owner_type` column happens at startup: rows with `owner_type = 'agent'` are updated to `context_type = 'agent_profile'`. Both MySQL and SQLite backends include `context_type` in all profile WHERE clauses.
 - **SQLite `_get_connection()` must be used for all method-level DB access.** Only `initialize()` and `close()` may use `self.connection` directly. This prevents thread-safety issues under `asyncio.to_thread()`.
 - **MySQL `_get_connection()` is a context manager** -- always use `with self._get_connection() as conn:`. It auto-returns to pool and auto-rolls-back on exceptions.
 - **Qdrant `search_by_hierarchy`** uses in-code string comparison for `time_bucket` filtering because `models.Range` does not support string fields. Over-fetch with `top_k * 3`, then filter.

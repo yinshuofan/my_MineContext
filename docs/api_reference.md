@@ -720,7 +720,7 @@ curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
       "user_id": "__base__",
       "device_id": "default",
       "agent_id": "assistant_01",
-      "owner_type": "agent",
+      "context_type": "agent_profile",
       "factual_profile": "I am a personal assistant specialized in scheduling and task management.",
       "behavioral_profile": "Responds in a friendly, professional tone.",
       "keywords": [],
@@ -869,7 +869,7 @@ curl -X POST http://localhost:1733/api/push/chat \
   }'
 ```
 
-`"agent_memory"` 处理器会从 agent 视角分析对话，提取 `AGENT_EVENT` 和 `PROFILE` 类型的记忆。提取的记忆通过标准存储路由：profile -> 关系数据库，agent_event -> 向量数据库。
+`"agent_memory"` 处理器会从 agent 视角分析对话，提取 `AGENT_EVENT` 和 `AGENT_PROFILE` 类型的记忆。提取的记忆通过标准存储路由：agent_profile -> 关系数据库（`context_type="agent_profile"`），agent_event -> 向量数据库。
 
 ---
 
