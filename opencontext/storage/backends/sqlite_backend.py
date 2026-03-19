@@ -856,9 +856,10 @@ class SQLiteBackend(IDocumentStorageBackend):
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
-        owner_type: str = "user",
+        refs: Optional[Dict] = None,
+        context_type: str = "profile",
     ) -> bool:
-        """Insert or update user profile (composite key: user_id + device_id + agent_id)"""
+        """Insert or update user profile (composite key: user_id + device_id + agent_id + context_type)"""
         if not self._initialized:
             return False
 
@@ -867,31 +868,34 @@ class SQLiteBackend(IDocumentStorageBackend):
             now = datetime.now()
             entities_json = json.dumps(entities or [], ensure_ascii=False)
             metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
+            refs_json = json.dumps(refs or {}, ensure_ascii=False)
 
             await conn.execute(
                 """
-                INSERT INTO profiles (user_id, device_id, agent_id, owner_type, factual_profile,
-                                      behavioral_profile, entities, importance, metadata,
+                INSERT INTO profiles (user_id, device_id, agent_id, context_type, factual_profile,
+                                      behavioral_profile, entities, importance, metadata, refs,
                                       created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, device_id, agent_id) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, device_id, agent_id, context_type) DO UPDATE SET
                     factual_profile = excluded.factual_profile,
                     behavioral_profile = excluded.behavioral_profile,
                     entities = excluded.entities,
                     importance = excluded.importance,
                     metadata = excluded.metadata,
+                    refs = excluded.refs,
                     updated_at = excluded.updated_at
                 """,
                 (
                     user_id,
                     device_id,
                     agent_id,
-                    owner_type,
+                    context_type,
                     factual_profile,
                     behavioral_profile,
                     entities_json,
                     importance,
                     metadata_json,
+                    refs_json,
                     now,
                     now,
                 ),
@@ -911,7 +915,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        owner_type: str = "user",
+        context_type: str = "profile",
     ) -> Optional[Dict]:
         """Get user profile by composite key"""
         if not self._initialized:
@@ -921,13 +925,13 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor = await conn.execute(
                 """
-                SELECT user_id, device_id, agent_id, owner_type, factual_profile,
-                       behavioral_profile, entities, importance, metadata,
+                SELECT user_id, device_id, agent_id, context_type, factual_profile,
+                       behavioral_profile, entities, importance, metadata, refs,
                        created_at, updated_at
                 FROM profiles
-                WHERE user_id = ? AND device_id = ? AND agent_id = ? AND owner_type = ?
+                WHERE user_id = ? AND device_id = ? AND agent_id = ? AND context_type = ?
                 """,
-                (user_id, device_id, agent_id, owner_type),
+                (user_id, device_id, agent_id, context_type),
             )
             row = await cursor.fetchone()
             if row:
@@ -936,6 +940,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                     result["entities"] = json.loads(result["entities"])
                 if isinstance(result.get("metadata"), str):
                     result["metadata"] = json.loads(result["metadata"])
+                if isinstance(result.get("refs"), str):
+                    result["refs"] = json.loads(result["refs"])
                 return result
             return None
         except Exception as e:
@@ -947,7 +953,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        owner_type: str = "user",
+        context_type: str = "profile",
     ) -> bool:
         """Delete user profile"""
         if not self._initialized:
@@ -956,8 +962,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
         try:
             cursor = await conn.execute(
-                "DELETE FROM profiles WHERE user_id = ? AND device_id = ? AND agent_id = ? AND owner_type = ?",
-                (user_id, device_id, agent_id, owner_type),
+                "DELETE FROM profiles WHERE user_id = ? AND device_id = ? AND agent_id = ? AND context_type = ?",
+                (user_id, device_id, agent_id, context_type),
             )
             await conn.commit()
             return cursor.rowcount > 0

@@ -384,9 +384,10 @@ class IDocumentStorageBackend(IStorageBackend):
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
-        owner_type: str = "user",
+        refs: Optional[Dict] = None,
+        context_type: str = "profile",
     ) -> bool:
-        """Insert or update user profile (composite key: user_id + device_id + agent_id)
+        """Insert or update user profile (composite key: user_id + device_id + agent_id + context_type)
 
         Args:
             user_id: User identifier
@@ -397,7 +398,8 @@ class IDocumentStorageBackend(IStorageBackend):
             entities: Entities list
             importance: Importance score
             metadata: Additional metadata
-            owner_type: Owner type ('user' or 'agent')
+            refs: Reference links (e.g. source context IDs)
+            context_type: Context type ('profile' or 'agent_profile')
 
         Returns:
             True if successful, False otherwise
@@ -409,7 +411,7 @@ class IDocumentStorageBackend(IStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        owner_type: str = "user",
+        context_type: str = "profile",
     ) -> Optional[Dict]:
         """Get user profile by composite key
 
@@ -417,7 +419,7 @@ class IDocumentStorageBackend(IStorageBackend):
             user_id: User identifier
             device_id: Device identifier
             agent_id: Agent identifier
-            owner_type: Owner type ('user' or 'agent')
+            context_type: Context type ('profile' or 'agent_profile')
 
         Returns:
             Profile dict or None if not found
@@ -429,7 +431,7 @@ class IDocumentStorageBackend(IStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        owner_type: str = "user",
+        context_type: str = "profile",
     ) -> bool:
         """Delete user profile
 
@@ -437,7 +439,7 @@ class IDocumentStorageBackend(IStorageBackend):
             user_id: User identifier
             device_id: Device identifier
             agent_id: Agent identifier
-            owner_type: Owner type ('user' or 'agent')
+            context_type: Context type ('profile' or 'agent_profile')
 
         Returns:
             True if successful, False otherwise

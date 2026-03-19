@@ -715,7 +715,8 @@ class MySQLBackend(IDocumentStorageBackend):
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
-        owner_type: str = "user",
+        refs: Optional[Dict] = None,
+        context_type: str = "profile",
     ) -> bool:
         if not self._initialized:
             return False
@@ -726,23 +727,26 @@ class MySQLBackend(IDocumentStorageBackend):
                     now = datetime.now()
                     entities_json = json.dumps(entities or [], ensure_ascii=False)
                     metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
+                    refs_json = json.dumps(refs or {}, ensure_ascii=False)
 
                     await cursor.execute(
                         """
-                        INSERT INTO profiles (user_id, device_id, agent_id, owner_type, factual_profile,
-                                              behavioral_profile, entities, importance, metadata,
+                        INSERT INTO profiles (user_id, device_id, agent_id, context_type, factual_profile,
+                                              behavioral_profile, entities, importance, metadata, refs,
                                               created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
                             factual_profile = VALUES(factual_profile),
                             behavioral_profile = VALUES(behavioral_profile),
                             entities = VALUES(entities),
                             importance = VALUES(importance),
                             metadata = VALUES(metadata),
+                            refs = VALUES(refs),
                             updated_at = VALUES(updated_at)
                         """,
-                        (user_id, device_id, agent_id, owner_type, factual_profile,
-                         behavioral_profile, entities_json, importance, metadata_json, now, now),
+                        (user_id, device_id, agent_id, context_type, factual_profile,
+                         behavioral_profile, entities_json, importance, metadata_json,
+                         refs_json, now, now),
                     )
                     await conn.commit()
                     logger.info(f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}")
@@ -756,7 +760,7 @@ class MySQLBackend(IDocumentStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        owner_type: str = "user",
+        context_type: str = "profile",
     ) -> Optional[Dict]:
         if not self._initialized:
             return None
@@ -766,13 +770,13 @@ class MySQLBackend(IDocumentStorageBackend):
                 try:
                     await cursor.execute(
                         """
-                        SELECT user_id, device_id, agent_id, owner_type, factual_profile,
-                               behavioral_profile, entities, importance, metadata,
+                        SELECT user_id, device_id, agent_id, context_type, factual_profile,
+                               behavioral_profile, entities, importance, metadata, refs,
                                created_at, updated_at
                         FROM profiles
-                        WHERE user_id = %s AND device_id = %s AND agent_id = %s AND owner_type = %s
+                        WHERE user_id = %s AND device_id = %s AND agent_id = %s AND context_type = %s
                         """,
-                        (user_id, device_id, agent_id, owner_type),
+                        (user_id, device_id, agent_id, context_type),
                     )
                     row = await cursor.fetchone()
                     if row:
@@ -781,6 +785,8 @@ class MySQLBackend(IDocumentStorageBackend):
                             result["entities"] = json.loads(result["entities"])
                         if isinstance(result.get("metadata"), str):
                             result["metadata"] = json.loads(result["metadata"])
+                        if isinstance(result.get("refs"), str):
+                            result["refs"] = json.loads(result["refs"])
                         return result
                     return None
                 except Exception as e:
@@ -792,7 +798,7 @@ class MySQLBackend(IDocumentStorageBackend):
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        owner_type: str = "user",
+        context_type: str = "profile",
     ) -> bool:
         if not self._initialized:
             return False
@@ -801,8 +807,8 @@ class MySQLBackend(IDocumentStorageBackend):
             async with conn.cursor() as cursor:
                 try:
                     await cursor.execute(
-                        "DELETE FROM profiles WHERE user_id = %s AND device_id = %s AND agent_id = %s AND owner_type = %s",
-                        (user_id, device_id, agent_id, owner_type),
+                        "DELETE FROM profiles WHERE user_id = %s AND device_id = %s AND agent_id = %s AND context_type = %s",
+                        (user_id, device_id, agent_id, context_type),
                     )
                     await conn.commit()
                     return cursor.rowcount > 0

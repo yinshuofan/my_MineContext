@@ -875,7 +875,8 @@ class UnifiedStorage:
         entities: Optional[List[str]] = None,
         importance: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
-        owner_type: str = "user",
+        refs: Optional[Dict] = None,
+        context_type: str = "profile",
     ) -> bool:
         """Store/update user profile → relational DB"""
         return await self._document_backend.upsert_profile(
@@ -887,7 +888,8 @@ class UnifiedStorage:
             entities=entities,
             importance=importance,
             metadata=metadata,
-            owner_type=owner_type,
+            refs=refs,
+            context_type=context_type,
         )
 
     @_require_backend("_document_backend")
@@ -896,11 +898,11 @@ class UnifiedStorage:
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        owner_type: str = "user",
+        context_type: str = "profile",
     ) -> Optional[Dict]:
         """Get user profile → relational DB"""
         return await self._document_backend.get_profile(
-            user_id, device_id, agent_id, owner_type=owner_type
+            user_id, device_id, agent_id, context_type=context_type
         )
 
     @_require_backend("_document_backend", default=False)
@@ -909,11 +911,11 @@ class UnifiedStorage:
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        owner_type: str = "user",
+        context_type: str = "profile",
     ) -> bool:
         """Delete user profile → relational DB"""
         return await self._document_backend.delete_profile(
-            user_id, device_id, agent_id, owner_type=owner_type
+            user_id, device_id, agent_id, context_type=context_type
         )
 
 
