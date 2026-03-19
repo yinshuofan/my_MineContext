@@ -156,7 +156,7 @@ class OpenContext:
             if db_contexts:
                 for ctx in db_contexts:
                     ctx_type = ctx.extracted_data.context_type
-                    if ctx_type == ContextType.PROFILE:
+                    if ctx_type in (ContextType.PROFILE, ContextType.AGENT_PROFILE):
                         await self._store_profile(ctx)
                     uid = ctx.properties.user_id
                     if uid:
@@ -188,9 +188,8 @@ class OpenContext:
         props = ctx.properties
         agent_id = props.agent_id or "default"
 
-        # Determine owner_type from context metadata (set by AgentMemoryProcessor)
-        # or fall back to "user" for normal user profiles
-        owner_type = (ctx.metadata or {}).get("owner_type", "user")
+        # context_type comes directly from extracted_data — no inference needed
+        context_type = ed.context_type.value  # "profile" or "agent_profile"
 
         await refresh_profile(
             new_factual_profile=ed.summary or "",
@@ -200,11 +199,11 @@ class OpenContext:
             user_id=props.user_id or "default",
             device_id=props.device_id or "default",
             agent_id=agent_id,
-            owner_type=owner_type,
+            context_type=context_type,
         )
         logger.info(
             f"Profile stored for user={props.user_id}, device={props.device_id}, "
-            f"agent={props.agent_id}, owner_type={owner_type}"
+            f"agent={props.agent_id}, context_type={context_type}"
         )
 
     async def _invalidate_user_cache(

@@ -128,7 +128,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
             mem_type = mem_type.lower().strip()
 
             if mem_type == "profile":
-                context_type = ContextType.PROFILE
+                context_type = ContextType.AGENT_PROFILE
             else:
                 context_type = ContextType.AGENT_EVENT
 
@@ -235,7 +235,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 properties=properties,
                 extracted_data=extracted_data,
                 vectorize=vectorize,
-                metadata={"owner_type": "agent"},
+                metadata={},
             )
 
         except Exception as e:
