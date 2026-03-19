@@ -258,6 +258,52 @@ Both `MySQLBackend` and `SQLiteBackend` provide settings CRUD methods for DB-bac
 | `save_setting(key, value)` | Atomic upsert. MySQL uses `JSON_MERGE_PATCH`; SQLite uses Python-side `deep_merge` |
 | `delete_all_settings()` | Clear all settings (preserves sentinel rows) |
 
+### Agent Registry (MySQL and SQLite)
+
+Both backends implement agent CRUD for the `agent_registry` table. Methods are defined on `IDocumentStorageBackend` (with `raise NotImplementedError` defaults) and delegated through `UnifiedStorage`.
+
+**Table DDL** (`agent_registry`):
+| Column | Type | Notes |
+|--------|------|-------|
+| `agent_id` | `VARCHAR(100) PK` | Application-provided ID |
+| `name` | `VARCHAR(255) NOT NULL` | Display name |
+| `description` | `TEXT` | Optional description |
+| `is_deleted` | `BOOLEAN DEFAULT FALSE` | Soft delete flag |
+| `created_at` | `DATETIME` | Auto-set |
+| `updated_at` | `DATETIME` | Auto-updated |
+
+**Methods** (all async, on `UnifiedStorage` / `IDocumentStorageBackend`):
+
+| Method | Signature | Returns |
+|--------|-----------|---------|
+| `create_agent` | `(agent_id: str, name: str, description: str = "")` | `bool` |
+| `get_agent` | `(agent_id: str)` | `Optional[Dict]` (excludes soft-deleted) |
+| `list_agents` | `()` | `List[Dict]` (active only, ordered by `created_at DESC`) |
+| `update_agent` | `(agent_id: str, name: Optional[str], description: Optional[str])` | `bool` |
+| `delete_agent` | `(agent_id: str)` | `bool` (soft delete: sets `is_deleted = TRUE`) |
+
+### Chat Batches (MySQL and SQLite)
+
+Persists raw chat messages before processing, enabling processors to reference the original input. Methods defined on `IDocumentStorageBackend` and delegated through `UnifiedStorage`.
+
+**Table DDL** (`chat_batches`):
+| Column | Type | Notes |
+|--------|------|-------|
+| `batch_id` | `VARCHAR(36) PK` | App-generated UUID |
+| `messages` | `JSON NOT NULL` | Raw messages array |
+| `user_id` | `VARCHAR(255)` | |
+| `device_id` | `VARCHAR(100) DEFAULT 'default'` | |
+| `agent_id` | `VARCHAR(100) DEFAULT 'default'` | |
+| `message_count` | `INT NOT NULL` | |
+| `created_at` | `DATETIME` | Indexed for cleanup |
+
+**Methods** (all async):
+
+| Method | Signature | Returns |
+|--------|-----------|---------|
+| `create_chat_batch` | `(batch_id: str, messages: List[Dict], user_id: Optional[str], device_id: str, agent_id: str)` | `bool` |
+| `cleanup_chat_batches` | `(retention_days: int = 90)` | `int` (rows deleted) |
+
 ## Internal Data Flow
 
 ```

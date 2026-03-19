@@ -118,6 +118,9 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 | Scheduling (user_activity / periodic) | `opencontext/scheduler/` | `scheduler/MODULE.md` |
 | Data Models | `opencontext/models/context.py` | `models/MODULE.md` |
 | LLM Clients (embedding, VLM, text) | `opencontext/llm/` | `llm/MODULE.md` |
+| Agent Registry | `opencontext/storage/` | `agent_registry` table with soft delete |
+| Chat Batches | `opencontext/storage/` | Persists raw chat messages before processing |
+| Agent Memory Processor | `opencontext/context_processing/` | Extracts agent-perspective memories from conversations |
 
 ### Storage Access
 
@@ -133,10 +136,12 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/health` | GET | Health check with component status |
-| `/api/push/chat` | POST | Unified chat push (`process_mode: "buffer"` or `"direct"`) |
+| `/api/push/chat` | POST | Push chat messages with processor selection (`processors: ["user_memory", "agent_memory"]`) |
 | `/api/push/document` | POST | Push document (file_path or base64) |
-| `/api/search` | POST | Event search with semantic query, filters, and hierarchy drill-up |
-| `/api/memory-cache` | GET | User memory snapshot |
+| `/api/agents` | POST/GET/PUT/DELETE | Agent CRUD (register, list, get, update, soft-delete) |
+| `/api/agents/{id}/base/*` | POST/GET/DELETE | Agent base memory (profile + events) |
+| `/api/search` | POST | Event search with semantic query, filters, hierarchy drill-up, and `memory_owner` parameter |
+| `/api/memory-cache` | GET | User/agent memory snapshot (parameterized by `memory_owner`) |
 
 Request body uses OpenAI message format. The 3-key identifier `(user_id, device_id, agent_id)` is optional on all push endpoints, defaulting to `"default"`.
 

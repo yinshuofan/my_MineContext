@@ -68,6 +68,21 @@ class ProcessorFactory:
     def is_type_registered(self, type_name: str) -> bool
 ```
 
+### BATCH_PROCESSOR_MAP and Processor Dispatch (`opencontext/managers/processor_manager.py`)
+
+The push endpoint dispatches processing via `ProcessorManager.process_batch(raw_context, processor_names)`. Processor names from the API (`processors` field, default `["user_memory"]`) are resolved to internal processor names via `BATCH_PROCESSOR_MAP`:
+
+```python
+BATCH_PROCESSOR_MAP = {
+    "user_memory": "text_chat_processor",
+    "agent_memory": "agent_memory_processor",
+}
+```
+
+`process_batch` resolves each name through the map, looks up the registered processor instance from `ProcessorFactory`, and runs all resolved processors in parallel via `asyncio.gather`. Each processor returns `List[ProcessedContext]`. Results are merged and the callback (`OpenContext._handle_processed_context`) is invoked once with all combined results.
+
+Processors are pure data transformers -- they return results without performing storage writes. The `ContextProcessorManager` centrally handles callback dispatch.
+
 ### BaseContextProcessor (`processor/base_processor.py`)
 
 Abstract base implementing `IContextProcessor`. All processors inherit from this.
