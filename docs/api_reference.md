@@ -203,8 +203,11 @@ curl -X POST http://localhost:1733/api/push/document \
 | `user_id` | `string` | 否 | — | 用户标识 |
 | `device_id` | `string` | 否 | — | 设备标识 |
 | `agent_id` | `string` | 否 | — | Agent 标识 |
+| `memory_owner` | `string` | 否 | `"user"` | 记忆所有者：`"user"` 查询用户事件，`"agent"` 查询 agent 视角事件。仅接受 `"user"` 或 `"agent"` |
 
 > `query`、`event_ids`、`time_range`、`hierarchy_levels` 必须至少提供一项。
+>
+> `memory_owner` 控制查询的 ContextType 集合：`"user"` → EVENT / DAILY_SUMMARY / WEEKLY_SUMMARY / MONTHLY_SUMMARY；`"agent"` → AGENT_EVENT / AGENT_DAILY_SUMMARY / AGENT_WEEKLY_SUMMARY / AGENT_MONTHLY_SUMMARY。
 
 ### 请求示例
 
@@ -265,7 +268,7 @@ curl -X POST http://localhost:1733/api/search \
       "id": "0f9ae964-bd55-48bc-83a0-8cc8258db85d",
       "hierarchy_level": 0,
       "time_bucket": "2026-03-08T21:50:46",
-      "parent_id": "default",
+      "refs": {},
       "title": "Discussion on birthday gift for girlfriend",
       "summary": "Discussed choosing a birthday gift and decided to add matching earring.\n- Selected item priced at 580 yuan for girlfriend's next-week birthday\n- Confirmed the item fits girlfriend's style preference\n- Decided to pair with a matching earring after AI suggestion",
       "event_time": "2026-03-08T21:50:46.393574+00:00",
@@ -284,7 +287,7 @@ curl -X POST http://localhost:1733/api/search \
       "id": "0f0c5487-561b-4950-ba7c-c244b5261adf",
       "hierarchy_level": 0,
       "time_bucket": "2026-03-08T22:09:04",
-      "parent_id": "default",
+      "refs": {},
       "title": "User Shared Photo and Received Feedback",
       "summary": "User shared a photo and got positive feedback on its quality.\n- Photo features a traditional decorated item\n- AI praised the photo's lighting and composition.",
       "event_time": "2026-03-08T22:09:04+00:00",
@@ -316,7 +319,7 @@ curl -X POST http://localhost:1733/api/search \
       "id": "0f9ae964-bd55-48bc-83a0-8cc8258db85d",
       "hierarchy_level": 0,
       "time_bucket": "2026-03-08T21:50:46",
-      "parent_id": "default",
+      "refs": {},
       "title": "Discussion on birthday gift for girlfriend",
       "summary": "...",
       "event_time": "2026-03-08T21:50:46.393574+00:00",
@@ -384,6 +387,7 @@ curl -X POST http://localhost:1733/api/search \
 | `recent_days` | `int` | 否 | 配置值（默认 3） | 近期记忆时间窗口（天） |
 | `max_recent_events_today` | `int` | 否 | 配置值（默认 5） | 今日最大 L0 事件数 |
 | `max_accessed` | `int` | 否 | `5`（1-100） | 最近访问记录最大数量 |
+| `memory_owner` | `string` | 否 | `"user"` | 记忆所有者：`"user"` 查询用户记忆，`"agent"` 查询 agent 视角记忆。仅接受 `"user"` 或 `"agent"` |
 | `force_refresh` | `bool` | 否 | `false` | 是否强制重建缓存（跳过 Redis） |
 
 **`include` 参数说明：**
@@ -871,29 +875,3 @@ curl -X POST http://localhost:1733/api/push/chat \
 
 `"agent_memory"` 处理器会从 agent 视角分析对话，提取 `AGENT_EVENT` 和 `AGENT_PROFILE` 类型的记忆。提取的记忆通过标准存储路由：agent_profile -> 关系数据库（`context_type="agent_profile"`），agent_event -> 向量数据库。
 
----
-
-## 8. memory_owner 参数
-
-Search 和 Memory Cache 接口支持 `memory_owner` 参数（`"user"` 或 `"agent"`），用于切换查询的 ContextType 集合。
-
-- `memory_owner="user"`（默认）：查询 `EVENT` / `DAILY_SUMMARY` / `WEEKLY_SUMMARY` / `MONTHLY_SUMMARY`
-- `memory_owner="agent"`：查询 `AGENT_EVENT` / `AGENT_DAILY_SUMMARY` / `AGENT_WEEKLY_SUMMARY` / `AGENT_MONTHLY_SUMMARY`
-
-**Search 示例（查询 agent 记忆）**
-```bash
-curl -X POST http://localhost:1733/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": [{"type": "text", "text": "quarterly report"}],
-    "user_id": "test_user",
-    "agent_id": "assistant_01",
-    "memory_owner": "agent",
-    "top_k": 5
-  }'
-```
-
-**Memory Cache 示例（获取 agent 记忆快照）**
-```bash
-curl -X GET "http://localhost:1733/api/memory-cache?user_id=test_user&agent_id=assistant_01&memory_owner=agent&include=profile,events"
-```
