@@ -148,7 +148,7 @@ async def set_base_profile(
         user_id="__base__",
         device_id="default",
         agent_id=agent_id,
-        owner_type="agent",
+        context_type="agent_profile",
         factual_profile=request.factual_profile,
         behavioral_profile=request.behavioral_profile,
         entities=request.entities,
@@ -167,7 +167,7 @@ async def get_base_profile(agent_id: str, _auth: str = auth_dependency):
         user_id="__base__",
         device_id="default",
         agent_id=agent_id,
-        owner_type="agent",
+        context_type="agent_profile",
     )
     if not profile:
         raise HTTPException(status_code=404, detail="Base profile not found")

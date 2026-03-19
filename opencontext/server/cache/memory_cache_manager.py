@@ -393,13 +393,13 @@ class MemoryCacheManager:
         week_start_ts = int(week_start.timestamp())
         period_start = (today_start - timedelta(days=days - 1)).strftime("%Y-%m-%d")
 
-        # Profile owner_type for DB query
-        profile_owner_type = "agent" if memory_owner == "agent" else "user"
+        # Profile context_type for DB query
+        profile_context_type = ContextType.AGENT_PROFILE.value if memory_owner == "agent" else ContextType.PROFILE.value
 
         # Parallel queries — agent snapshots skip docs/knowledge
         tasks = {
             "profile": storage.get_profile(
-                user_id, device_id, agent_id, owner_type=profile_owner_type
+                user_id, device_id, agent_id, context_type=profile_context_type
             ),
             "today_events": storage.get_all_processed_contexts(
                 context_types=[l0_type],
