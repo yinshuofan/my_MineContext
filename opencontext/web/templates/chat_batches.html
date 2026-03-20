@@ -163,7 +163,7 @@ function renderBatchRow(batch) {
     const shortId = id.substring(0, 8);
     const time = batch.created_at ? batch.created_at.substring(0, 19).replace('T', ' ') : '-';
     return `
-        <tr class="batch-row" data-batch-id="${id}" onclick="toggleExpand('${id}')">
+        <tr class="batch-row" data-batch-id="${id}" onclick="toggleExpand('${escAttr(id)}')">
             <td class="text-center"><i data-feather="chevron-right" class="expand-btn" id="expand-${id}" style="width:16px;height:16px;"></i></td>
             <td><code title="${id}" style="cursor:pointer">${shortId}</code></td>
             <td>${esc(batch.user_id || '-')}</td>
@@ -319,6 +319,10 @@ function esc(str) {
     const div = document.createElement('div');
     div.textContent = String(str);
     return div.innerHTML;
+}
+
+function escAttr(str) {
+    return esc(str).replace(/'/g, '&#39;');
 }
 </script>
 {% endblock %}

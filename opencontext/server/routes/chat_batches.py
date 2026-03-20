@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
 """Chat batches debug/tracing endpoints."""
 
 import math
@@ -29,6 +35,8 @@ async def list_chat_batches(
     _auth: str = auth_dependency,
 ):
     """List chat batches with optional filters and pagination."""
+    limit = min(max(limit, 1), 100)
+    page = max(page, 1)
     storage = get_storage()
     offset = (page - 1) * limit
 
