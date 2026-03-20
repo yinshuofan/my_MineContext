@@ -30,6 +30,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/web.py` | HTML pages -- contexts list, vector search, chat, monitoring, settings, file serving |
 | `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | **search/** | |
+| `search/event_search_service.py` | `EventSearchService` — reusable stateless search service (vectorization, storage search, ancestor collection); `SearchResult` dataclass |
 | `search/models.py` | Pydantic models: `EventSearchRequest` (multimodal content parts query, `memory_owner` field), `EventSearchResponse`, `EventNode` (with `refs` and `media_refs`), `SearchMetadata`, `TimeRange` |
 | **cache/** | |
 | `cache/memory_cache_manager.py` | `MemoryCacheManager` singleton -- builds/caches per-owner memory snapshots in Redis (parameterized by `memory_owner`: `"user"` or `"agent"`) |
@@ -109,22 +110,48 @@ class ContextOperations:
     def get_context_types(self) -> List[str]
 ```
 
-### Event Search (routes/search.py)
+### EventSearchService (search/event_search_service.py)
 
-Event-only search with three paths and optional upward hierarchy drill-up. Returns a **tree structure** where ancestors are parent nodes containing search hits as nested children. Parameterized by `memory_owner` (`"user"` or `"agent"`) via `EventSearchRequest.memory_owner` to dynamically resolve ContextTypes from `MEMORY_OWNER_TYPES`.
+Reusable, stateless search service that encapsulates vectorization, storage search, and ancestor collection. Used by both the `/api/search` route and internal consumers (e.g., `AgentMemoryProcessor`). Accesses storage via a non-caching `@property` (follows the `get_storage()` pattern).
+
+```python
+@dataclass
+class SearchResult:
+    hits: List[Tuple[ProcessedContext, float]]     # (context, score) pairs
+    ancestors: Dict[str, ProcessedContext]          # id -> ancestor context (populated when drill_up=True)
+
+class EventSearchService:
+    @property storage                               # -> get_storage()
+
+    # Public API
+    async def semantic_search(query, user_id, device_id, agent_id, memory_owner="user",
+                              top_k=20, score_threshold=None, time_range=None,
+                              drill_up=False) -> SearchResult
+    async def filter_search(user_id, device_id, agent_id, memory_owner="user",
+                            hierarchy_levels=None, time_range=None, top_k=20) -> List[Tuple[ProcessedContext, float]]
+
+    # Helpers (public — used by route layer)
+    @staticmethod get_l0_type(memory_owner) -> str
+    @staticmethod _get_context_types_for_levels(memory_owner, levels) -> List[str]
+    @staticmethod _build_filters(time_range, hierarchy_levels) -> Dict[str, Any]
+    @staticmethod _time_range_to_buckets(start_ts, end_ts) -> Tuple[Optional[str], Optional[str]]
+    async def collect_ancestors(results, max_level, memory_owner="user") -> Dict[str, ProcessedContext]
+```
+
+`semantic_search()` handles vectorization internally — callers provide raw query content in OpenAI content parts format (`[{"type": "text", "text": "..."}]`). It vectorizes the query, searches storage with resolved context types from `MEMORY_OWNER_TYPES`, and optionally collects ancestors via `collect_ancestors()`.
+
+`filter_search()` performs filter-only search (no semantic vector): either per-level `search_hierarchy()` calls or `get_all_processed_contexts()` with time filter.
+
+### Event Search Route (routes/search.py)
+
+Thin HTTP wrapper over `EventSearchService`. Handles request validation, timeout (30s), tree building, response formatting, and access tracking. The route instantiates a module-level `_search_service = EventSearchService()`.
 
 ```python
 # Route handler
 async def search_events(request: EventSearchRequest, _auth) -> EventSearchResponse
 
-# Internal functions
-def _get_l0_type(memory_owner: str) -> str                         # Resolve L0 context type from MEMORY_OWNER_TYPES
-def _get_context_types_for_levels(memory_owner: str, levels: Optional[List[int]]) -> List[str]  # Map levels to ContextType values
-async def _execute_search(storage, request) -> Tuple[List[EventNode], List[EventNode]]
-async def _filter_only_search(storage, request) -> List[Tuple[ProcessedContext, float]]
-async def _collect_ancestors(storage, results, max_level, memory_owner="user") -> Dict[str, ProcessedContext]
-def _build_filters(time_range, hierarchy_levels) -> Dict[str, Any]
-def _time_range_to_buckets(start_ts, end_ts) -> Tuple[Optional[str], Optional[str]]
+# Route-level functions (tree building & formatting)
+async def _execute_search(search_service, request) -> Tuple[List[EventNode], List[EventNode]]
 def _to_context_node(ctx: ProcessedContext) -> EventNode
 def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode
 async def _track_accessed_safe(user_id, results, device_id, agent_id, memory_owner="user") -> None
@@ -133,9 +160,9 @@ async def _track_accessed_safe(user_id, results, device_id, agent_id, memory_own
 Algorithm:
 1. **Search path selection** (priority: event_ids > query > filters-only):
    - `event_ids` → `storage.get_contexts_by_ids()`, score=1.0
-   - `query` → `Vectorize` + `storage.search()` with time filter only, using context types from `_get_context_types_for_levels(memory_owner, None)`
-   - filters-only → `storage.search_hierarchy()` per level, or `get_all_processed_contexts()` with time filter
-2. **Collect ancestors** (if `drill_up=True`): Follows `refs` upward iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent ref. Strictly stops at `max_level`.
+   - `query` → `search_service.semantic_search()` (handles vectorization + storage search)
+   - filters-only → `search_service.filter_search()`
+2. **Collect ancestors** (if `drill_up=True`): Handled by `EventSearchService.collect_ancestors()` — follows `refs` upward iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent ref. Strictly stops at `max_level`.
 3. **Build node map**: Search hits become `EventNode` with is_search_hit=True (score/content/keywords populated), ancestors become lightweight `EventNode` with is_search_hit=False. Search hits are never overwritten by ancestors.
 4. **Link tree**: Parent is extracted from `refs` via `_extract_parent_id_from_refs()` — finds the first ref ID that exists in the node map. Nodes without a valid parent become roots.
 5. **Sort**: Roots and all children lists sorted by `time_bucket` ASC recursively.
@@ -417,6 +444,7 @@ Agent base memory routes use `user_id="__base__"` as a sentinel to distinguish b
 |----------|-------------|
 | `opencontext/cli.py` | Imports `api.router`, creates FastAPI app, manages `OpenContext` lifecycle via lifespan |
 | `opencontext/server/opencontext.py` (self) | Imports `cache.memory_cache_manager.get_memory_cache_manager` for cache invalidation |
+| `opencontext/context_processing/processor/agent_memory_processor.py` | Imports `EventSearchService` from `search.event_search_service` for related memory retrieval |
 
 ## Internal Data Flow
 
@@ -485,12 +513,11 @@ Query format uses OpenAI content parts (multimodal):
 ```
 search_events()
   -> Validate request (query/event_ids/time_range/hierarchy_levels at least one)
-  -> Resolve context types from memory_owner via _get_context_types_for_levels()
-  -> _execute_search() with 30s timeout
+  -> _execute_search(search_service, request) with 30s timeout
      Path A (event_ids): storage.get_contexts_by_ids()
-     Path B (query):     Vectorize(input=request.query) -> do_vectorize() -> storage.search(owner_context_types, time_filter_only)
-     Path C (filters):   storage.search_hierarchy() per level, or get_all_processed_contexts()
-  -> _collect_ancestors() if drill_up=True     # Follow refs upward iteratively (max 3 rounds)
+     Path B (query):     search_service.semantic_search() -> SearchResult (handles vectorization internally)
+     Path C (filters):   search_service.filter_search()
+  -> ancestors from SearchResult (drill_up) or search_service.collect_ancestors()
   -> Build tree: node map → refs-based parent-child linking → recursive sort by time_bucket ASC
   -> Fire-and-forget _track_accessed_safe()     # Includes media_refs in tracked items
   -> Return EventSearchResponse (tree roots + search hit count)
@@ -609,7 +636,7 @@ OpenContext._handle_processed_context()
 
 4. **3-key identifier required**: All profile operations and cache keys use `(user_id, device_id, agent_id)`. Default to `"default"` for device_id and agent_id. Omitting them causes argument mismatches.
 
-5. **Search logic lives directly in `routes/search.py`**. No strategy abstraction layer — the route handler calls storage directly.
+5. **Search logic lives in `EventSearchService`** (`search/event_search_service.py`), not directly in the route. The route (`routes/search.py`) is a thin HTTP wrapper that delegates to the service for search execution and ancestor collection, then handles tree building and response formatting. `EventSearchService` is also used by internal consumers (e.g., `AgentMemoryProcessor`) for related memory retrieval.
 
 6. **Cache invalidation uses `run_coroutine_threadsafe`** because `_handle_processed_context` runs in a thread pool via `asyncio.to_thread()`. Using `loop.create_task()` from a thread would silently fail. The `_capture_loop()` pattern stores the event loop reference.
 

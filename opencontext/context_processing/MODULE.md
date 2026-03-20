@@ -141,7 +141,7 @@ The `_build_processed_context` method validates and sanitizes all LLM output fie
 
 ### AgentMemoryProcessor (`processor/agent_memory_processor.py`)
 
-Extracts memories from conversations as seen from the agent's perspective. Registered in `ProcessorFactory` as `"agent_memory_processor"` and mapped in `BATCH_PROCESSOR_MAP` as `"agent_memory"`.
+Extracts memories from conversations as seen from the agent's perspective, using context-aware generation that incorporates the agent's persona and related past memories. Registered in `ProcessorFactory` as `"agent_memory_processor"` and mapped in `BATCH_PROCESSOR_MAP` as `"agent_memory"`.
 
 ```python
 class AgentMemoryProcessor(BaseContextProcessor):
@@ -150,24 +150,32 @@ class AgentMemoryProcessor(BaseContextProcessor):
     def can_process(self, context: Any) -> bool
     async def process(self, context: RawContextProperties) -> List[ProcessedContext]
     async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]
+    async def _extract_search_query(self, chat_content: str) -> Optional[str]
+    @staticmethod def _format_related_memories(search_result: SearchResult) -> str
     def _build_agent_context(self, memory: Dict, raw_context: RawContextProperties, batch_id: Optional[str]) -> Optional[ProcessedContext]
 ```
 
-Pipeline:
-1. Validates `agent_id` is present and not `"default"`; skips if missing
-2. Loads agent info from storage (`get_agent(agent_id)`) to get agent name/description
-3. Loads prompt `processing.extraction.agent_memory_analyze` and substitutes `{agent_name}` and `{agent_description}` into system prompt
-4. Calls LLM via `generate_with_messages()` with chat history
-5. Parses JSON response -> `memories` array
-6. Builds `ProcessedContext` per memory via `_build_agent_context()`:
-   - Memory type `"profile"` -> `ContextType.PROFILE`; all others -> `ContextType.AGENT_EVENT`
+Pipeline (5-step context-aware flow):
+1. **Parallel context gathering** (`asyncio.gather`): fetches the agent's existing profile via `storage.get_profile(context_type="agent_profile")` and extracts a search query from the chat content via LLM using the `agent_memory_query` prompt
+2. **Search related past memories**: uses `EventSearchService.semantic_search(memory_owner="agent", drill_up=True)` to find semantically related past agent events and hierarchy summaries. Skipped if query extraction returned nothing.
+3. **Format related memories**: merges hits + ancestors from `SearchResult`, deduplicates by ID, sorts by `time_bucket` ascending, formats as text lines (`[time_bucket] title\nsummary`)
+4. **Generate memories** via LLM with full context: loads `agent_memory_analyze` prompt and substitutes `{agent_name}`, `{agent_persona}` (from profile's `factual_profile` field), and `{related_memories}` into the system prompt. Calls `generate_with_messages()` with chat history.
+5. **Build ProcessedContext list**: parses JSON response -> `memories` array, builds via `_build_agent_context()` per memory:
+   - Memory type `"agent_profile"` -> `ContextType.AGENT_PROFILE`; `"agent_event"` -> `ContextType.AGENT_EVENT`; unknown types are skipped
    - Validates/sanitizes all fields (title, summary, keywords, entities, importance, confidence, event_time)
    - Generates embedding via `do_vectorize()` for each context
-7. Returns `List[ProcessedContext]`
+
+Returns early with empty list if:
+- `agent_id` is missing or `"default"`
+- Agent not found in registry
+- Agent profile not found (error logged — agent must have a profile before memory processing)
 
 Key differences from `TextChatProcessor`:
-- Output types: `AGENT_EVENT` and `PROFILE` (not `EVENT`/`KNOWLEDGE`)
-- Requires a registered agent in the agent registry; skips if agent not found
+- Output types: `AGENT_EVENT` and `AGENT_PROFILE` (not `EVENT`/`KNOWLEDGE`)
+- Makes 2 LLM calls instead of 1 (query extraction + memory generation)
+- Depends on `EventSearchService` from `opencontext.server.search` for related memory retrieval
+- Agent persona comes from `factual_profile` field of the existing agent profile (not `agent_description` from the agent registry)
+- Requires a registered agent in the agent registry AND an existing agent profile; skips if either is not found
 - Does not support multimodal content (text-only prompt)
 - Always calls `do_vectorize()` on each result for embedding generation
 
@@ -401,7 +409,8 @@ ProcessedContext (KNOWLEDGE, enable_merge=True)
 | `opencontext.config.global_config` | Processors, chunker | `get_config()`, `get_prompt_group()`, `get_prompt_manager()` |
 | `opencontext.llm.global_vlm_client` | TextChat, Document, Merger, Profile | `generate_with_messages_async()`, `generate_with_messages()` |
 | `opencontext.llm.global_embedding_client` | Merger | `do_vectorize()`, `do_vectorize_async()` |
-| `opencontext.storage.global_storage` | Profile, Merger | `get_storage()` -> `UnifiedStorage` |
+| `opencontext.storage.global_storage` | Profile, Merger, AgentMemory | `get_storage()` -> `UnifiedStorage` |
+| `opencontext.server.search.event_search_service` | AgentMemory | `EventSearchService`, `SearchResult` |
 | `opencontext.interfaces.processor_interface` | BaseProcessor | `IContextProcessor` interface |
 | `opencontext.utils.json_parser` | TextChat, Document, Profile, Merger | `parse_json_from_response()` |
 | `opencontext.monitoring.monitor` | Document | `record_processing_error()`, `record_processing_metrics()` |
