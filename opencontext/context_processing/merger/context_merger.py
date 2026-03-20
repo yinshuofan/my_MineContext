@@ -369,9 +369,10 @@ class ContextMerger(BaseContextProcessor):
                                     full_event_time_str
                                 ).replace(tzinfo=get_timezone())
                             else:
-                                properties.event_time_start = datetime.datetime.fromisoformat(
-                                    event_time_str
-                                ).replace(tzinfo=get_timezone())
+                                parsed_et = datetime.datetime.fromisoformat(event_time_str)
+                                if parsed_et.tzinfo is None:
+                                    parsed_et = parsed_et.replace(tzinfo=get_timezone())
+                                properties.event_time_start = parsed_et
                             properties.event_time_end = properties.event_time_start
                         except ValueError:
                             logger.warning(f"Cannot parse event_time format: {event_time_str}")
