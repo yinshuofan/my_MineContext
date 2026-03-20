@@ -202,7 +202,7 @@ storage:
       default: true
       config:
         host: "${MYSQL_HOST:localhost}"
-        port: 3306
+        port: ${MYSQL_PORT:3306}
         user: "${MYSQL_USER:root}"
         password: "${MYSQL_PASSWORD:root123}"
         database: "${MYSQL_DATABASE:opencontext}"
@@ -281,6 +281,13 @@ api_auth:
 # ============================================================
 prompts:
   language: "zh" # 选项: zh, en
+
+# ============================================================
+# 时区配置
+# 控制所有时间的生成和显示时区
+# 使用 IANA 时区名称，如 "Asia/Shanghai"、"UTC"、"America/New_York"
+# ============================================================
+timezone: "${TIMEZONE:UTC}"
 
 # ============================================================
 # 工具配置

@@ -435,6 +435,10 @@ def _setup_logging(config_path: Optional[str]) -> None:
 
     setup_logging(GlobalConfig.get_instance().get_config("logging"))
 
+    from opencontext.utils.time_utils import init_timezone
+    tz_name = GlobalConfig.get_instance().get_config("timezone")
+    init_timezone(tz_name)
+
 
 def main() -> int:
     """Main entry point."""

@@ -85,6 +85,14 @@ class GlobalConfig:
                     "GlobalConfig auto-initialization: no config file found, using defaults"
                 )
             self._auto_initialized = True
+
+            # Initialize timezone for subprocess workers
+            try:
+                from opencontext.utils.time_utils import init_timezone
+                tz_name = self._config_manager.get_config().get("timezone") if self._config_manager else None
+                init_timezone(tz_name)
+            except Exception as e:
+                logger.warning(f"Failed to init timezone in auto-initialize: {e}")
         except Exception as e:
             logger.error(f"GlobalConfig auto-initialization failed: {e}")
             self._auto_initialized = True  # Prevent repeated attempts
