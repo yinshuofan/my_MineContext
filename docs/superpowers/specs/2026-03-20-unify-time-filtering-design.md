@@ -28,7 +28,7 @@ One-shot refactor of all time fields and search logic. No backward compatibility
 - `event_time: datetime` → `event_time_start: datetime`
 
 **Add:**
-- `event_time_end: datetime`
+- `event_time_end: datetime` — defaults to `event_time_start` via Pydantic `model_validator` when not explicitly provided
 
 **Rules:**
 - Point events (L0), knowledge, documents: `event_time_end = event_time_start`
@@ -58,23 +58,29 @@ One-shot refactor of all time fields and search logic. No backward compatibility
 
 ### Unified time filter: numeric range overlap
 
-All search paths use one filtering approach:
+All search paths use one filtering approach — range overlap:
 
+```python
+# In _build_filters:
+filters["event_time_start_ts"] = {"$lte": time_range.end}
+filters["event_time_end_ts"] = {"$gte": time_range.start}
 ```
-event_time_start_ts <= query_end AND event_time_end_ts >= query_start
-```
+
+This finds all contexts whose time period overlaps with the query range.
 
 ### EventSearchService (`server/search/event_search_service.py`)
 
 - `_build_filters`: Convert `time_range` to overlap condition (two `_ts` fields with range filters). Replaces single-field `event_time_ts` filter.
-- `filter_search`: When `hierarchy_levels` present, use same numeric overlap filter instead of `_time_range_to_buckets`.
+- `filter_search`: When `hierarchy_levels` present, use same numeric overlap filter via `_build_filters` + `storage.search`/`get_all_processed_contexts`, instead of calling `search_hierarchy` with string buckets.
 - Delete `_time_range_to_buckets` method.
 - `semantic_search`: Follows `_build_filters` change automatically.
 
 ### search_by_hierarchy (both backends)
 
 - Signature: `time_bucket_start/end: str` → `time_start/end: Optional[float]` (timestamps)
-- Filter: Numeric range on `event_time_start_ts` / `event_time_end_ts` (VikingDB `range` op, Qdrant `models.Range`)
+- Filter: Numeric range overlap on `event_time_start_ts` / `event_time_end_ts`:
+  - VikingDB: `{"op": "range", "field": "event_time_start_ts", "lte": time_end}` + `{"op": "range", "field": "event_time_end_ts", "gte": time_start}`
+  - Qdrant: `models.FieldCondition(key="event_time_start_ts", range=models.Range(lte=time_end))` + `models.FieldCondition(key="event_time_end_ts", range=models.Range(gte=time_start))`
 - Delete in-code string comparison workaround.
 - VikingDB: Replace `FIELD_CREATED_AT_TS` sort field with `FIELD_CREATE_TIME_TS` in `search_by_hierarchy` and `get_all_processed_contexts`.
 
@@ -88,6 +94,7 @@ event_time_start_ts <= query_end AND event_time_end_ts >= query_start
 
 - Tree sorting: `time_bucket` → sort by `event_time_start`
 - EventNode construction: use `event_time_start` / `event_time_end`
+- `_track_accessed_safe`: `event_time` → `event_time_start`
 
 ### HierarchicalEventTool (`tools/retrieval_tools/hierarchical_event_tool.py`)
 
@@ -102,17 +109,24 @@ event_time_start_ts <= query_end AND event_time_end_ts >= query_start
 - Parameter schema: update valid sort options
 - Output format: `event_time` → `event_time_start`, add `event_time_end`, delete `time_bucket`
 
+### KnowledgeRetrievalTool (`tools/retrieval_tools/knowledge_retrieval_tool.py`)
+
+- Tool description string: `event_time` → `event_time_start`
+
 ### MemoryCacheManager (`server/cache/memory_cache_manager.py`)
 
 - `created_at_ts` → `create_time_ts`
 - `event_time_ts` → `event_time_start_ts`
 - Daily summary items: `time_bucket` → derive display label from `event_time_start` date portion
 - Sorting: `time_bucket` → sort by `event_time_start`
+- `_ctx_to_recent_item`: `props.event_time` → `props.event_time_start`
 
 ### Memory cache models (`server/cache/models.py`)
 
 - `DailySummaryItem.time_bucket` → `event_time_start` (str, date portion)
 - `SimpleDailySummary.time_bucket` → `event_time_start` (str, date portion)
+- `RecentlyAccessedItem.event_time` → `event_time_start`
+- `RecentMemoryItem.event_time` → `event_time_start`
 
 ### Monitoring route (`server/routes/monitoring.py`)
 
@@ -122,13 +136,15 @@ event_time_start_ts <= query_end AND event_time_end_ts >= query_start
 
 ### TextChatProcessor (`context_processing/processor/text_chat_processor.py`)
 
-- `event_time` → `event_time_start` (source unchanged: LLM extraction or fallback to `create_time`)
+- **Remove LLM `event_time` extraction**: no longer parse `memory.get("event_time")`
+- `event_time_start = create_time` (always use conversation time)
 - `event_time_end = event_time_start` (point events)
 - Delete `time_bucket` assignment
 
 ### AgentMemoryProcessor (`context_processing/processor/agent_memory_processor.py`)
 
-- `event_time` → `event_time_start`
+- **Remove LLM `event_time` extraction**: no longer parse `memory.get("event_time")`
+- `event_time_start = create_time` (always use conversation time)
 - `event_time_end = event_time_start` (point events)
 - Delete `time_bucket` assignment
 - Display formatting: replace `time_bucket` usage with `event_time_start` date formatting
@@ -155,14 +171,22 @@ In `_store_summary`:
 
 ### Context merger (`context_processing/merger/context_merger.py`, `merge_strategies.py`)
 
-- `event_time` → `event_time_start` in merge copy logic
+- `event_time` → `event_time_start` in all merge/copy/reinforcement logic
 - Add `event_time_end` copy
+- LLM merge prompt still returns `event_time` — parse result is assigned to `event_time_start` (no prompt change needed)
+
+### LLM Prompts (`config/prompts_en.yaml`, `config/prompts_zh.yaml`)
+
+- **Extraction prompts** (user_memory, agent_memory): remove `event_time` from required output fields and examples
+- **Merge prompts**: keep `event_time` field unchanged (out of scope for this refactor)
 
 ## Storage Layer Cleanup
 
 ### VikingDB backend
 
+- Add `FIELD_EVENT_TIME_START` / `FIELD_EVENT_TIME_START_TS` / `FIELD_EVENT_TIME_END` / `FIELD_EVENT_TIME_END_TS` constants and schema definitions
 - Delete `FIELD_CREATED_AT` / `FIELD_CREATED_AT_TS` constants and schema definitions
+- Delete `FIELD_EVENT_TIME` / `FIELD_EVENT_TIME_TS` constants (replaced by start/end variants)
 - Delete `FIELD_TIME_BUCKET` constant and schema definition
 - Delete `created_at` / `created_at_ts` assignment at storage time
 - Replace `FIELD_CREATED_AT_TS` sort field with `FIELD_CREATE_TIME_TS` in all query methods
@@ -171,6 +195,7 @@ In `_store_summary`:
 
 - Delete `time_bucket` related code
 - Delete `created_at` related code
+- `event_time_start_ts` / `event_time_end_ts` auto-generated by existing `_context_to_qdrant_format` logic (no new code needed)
 
 ### Both backends
 
@@ -181,38 +206,47 @@ In `_store_summary`:
 | File | Change |
 |------|--------|
 | **Models** | |
-| `opencontext/models/context.py` | Field rename/add/delete on ContextProperties, `get_llm_context_string()`, ProcessedContextModel |
+| `opencontext/models/context.py` | Field rename/add/delete on ContextProperties, `get_llm_context_string()`, ProcessedContextModel, add `model_validator` for `event_time_end` default |
 | **Write path** | |
-| `opencontext/context_processing/processor/text_chat_processor.py` | `event_time` → `event_time_start`, add `event_time_end`, delete `time_bucket` |
-| `opencontext/context_processing/processor/document_processor.py` | Same as above |
-| `opencontext/context_processing/processor/agent_memory_processor.py` | Same as above, plus display formatting |
-| `opencontext/context_processing/merger/context_merger.py` | `event_time` → `event_time_start`, add `event_time_end` copy |
-| `opencontext/context_processing/merger/merge_strategies.py` | Same as above |
+| `opencontext/context_processing/processor/text_chat_processor.py` | Remove LLM `event_time` extraction, `event_time_start = create_time`, delete `time_bucket` |
+| `opencontext/context_processing/processor/document_processor.py` | `event_time` → `event_time_start`, add `event_time_end`, delete `time_bucket` |
+| `opencontext/context_processing/processor/agent_memory_processor.py` | Remove LLM `event_time` extraction, `event_time_start = create_time`, delete `time_bucket`, update display formatting |
+| `opencontext/context_processing/merger/context_merger.py` | `event_time` → `event_time_start` in merge/copy/reinforcement logic, add `event_time_end` copy |
+| `opencontext/context_processing/merger/merge_strategies.py` | `event_time` → `event_time_start`, add `event_time_end` copy |
 | `opencontext/server/routes/agents.py` | push_base_events write logic |
 | `opencontext/periodic_task/hierarchy_summary.py` | `time_bucket` → `event_time_start/end`, delete bucket format logic, delete `_parse_event_time_from_bucket` |
+| `config/prompts_en.yaml` | Remove `event_time` from extraction prompt output fields and examples |
+| `config/prompts_zh.yaml` | Same as above |
 | **Search/retrieval** | |
-| `opencontext/server/search/event_search_service.py` | Unify time filtering, delete `_time_range_to_buckets` |
+| `opencontext/server/search/event_search_service.py` | Unify time filtering with overlap condition, delete `_time_range_to_buckets` |
 | `opencontext/server/search/models.py` | EventNode: delete `time_bucket`, rename `event_time`, add `event_time_end` |
-| `opencontext/server/routes/search.py` | Tree sorting, EventNode construction |
+| `opencontext/server/routes/search.py` | Tree sorting, EventNode construction, `_track_accessed_safe` |
 | `opencontext/server/routes/monitoring.py` | Replace `time_bucket` references |
-| `opencontext/server/cache/memory_cache_manager.py` | `created_at_ts` → `create_time_ts`, `event_time_ts` → `event_time_start_ts`, daily summary sorting |
-| `opencontext/server/cache/models.py` | `time_bucket` → `event_time_start` in summary models |
+| `opencontext/server/cache/memory_cache_manager.py` | `created_at_ts` → `create_time_ts`, `event_time` → `event_time_start`, daily summary sorting, `_ctx_to_recent_item` |
+| `opencontext/server/cache/models.py` | `time_bucket` → `event_time_start` in summary models, `event_time` → `event_time_start` in RecentlyAccessedItem/RecentMemoryItem |
 | `opencontext/tools/retrieval_tools/hierarchical_event_tool.py` | Delete bucket conversion, numeric filtering, update `_format_result` |
 | `opencontext/tools/retrieval_tools/base_context_retrieval_tool.py` | `time_type` default, parameter schema, output format |
+| `opencontext/tools/retrieval_tools/knowledge_retrieval_tool.py` | Tool description string update |
 | **Storage** | |
 | `opencontext/storage/base_storage.py` | `search_by_hierarchy` interface signature |
 | `opencontext/storage/unified_storage.py` | `search_hierarchy` signature |
-| `opencontext/storage/backends/vikingdb_backend.py` | Delete `created_at`/`time_bucket` fields, update sort field, update `search_by_hierarchy` |
+| `opencontext/storage/backends/vikingdb_backend.py` | Add new field constants, delete old fields, update sort field, update `search_by_hierarchy` |
 | `opencontext/storage/backends/qdrant_backend.py` | Delete `time_bucket`/`created_at`, update `search_by_hierarchy` |
 | **Documentation** | |
 | `opencontext/models/MODULE.md` | Update field documentation |
 | `opencontext/server/MODULE.md` | Update search/cache documentation |
 | `opencontext/tools/MODULE.md` | Update retrieval tool documentation |
+| `docs/api_reference.md` | Update response schemas and examples |
+| `docs/curls.sh` | Update response examples |
 | **Web UI templates** | |
-| Templates referencing `event_time`/`time_bucket` | Rename/remove as needed |
+| `opencontext/web/templates/agents.html` | `event_time` → `event_time_start` |
+| `opencontext/web/templates/context_detail.html` | `event_time` → `event_time_start`, delete `time_bucket` |
+| `opencontext/web/templates/memory_cache.html` | `event_time` → `event_time_start`, delete `time_bucket` |
+| `opencontext/web/templates/vector_search.html` | `event_time` → `event_time_start`, delete `time_bucket` |
 
 ## Out of Scope
 
 - Base events upload level support (separate follow-up)
 - `last_call_time` cleanup
+- Merge prompt `event_time` field (keep as-is)
 - No ChromaDB backend exists in codebase; no action needed
