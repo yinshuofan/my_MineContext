@@ -22,6 +22,7 @@ from opencontext.server.opencontext import OpenContext
 from opencontext.server.utils import get_context_lab
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import get_timezone
 
 router = APIRouter(tags=["web"])
 logger = get_logger(__name__)
@@ -80,7 +81,7 @@ async def read_contexts(
             for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
                 try:
                     start_dt = datetime.datetime.strptime(start_date, fmt).replace(
-                        tzinfo=datetime.timezone.utc
+                        tzinfo=get_timezone()
                     )
                     storage_filter.setdefault("create_time_ts", {})["$gte"] = start_dt.timestamp()
                     break
@@ -90,7 +91,7 @@ async def read_contexts(
             for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
                 try:
                     end_dt = datetime.datetime.strptime(end_date, fmt).replace(
-                        tzinfo=datetime.timezone.utc
+                        tzinfo=get_timezone()
                     )
                     if fmt == "%Y-%m-%d":
                         end_dt += datetime.timedelta(days=1)
@@ -137,7 +138,7 @@ async def read_contexts(
         def get_sort_key(context):
             dt = context.properties.create_time
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.timezone.utc)
+                dt = dt.replace(tzinfo=get_timezone())
             return dt
 
         contexts.sort(key=get_sort_key, reverse=True)

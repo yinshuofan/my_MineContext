@@ -22,6 +22,7 @@ from opencontext.context_consumption.completion import get_completion_service
 from opencontext.models.enums import CompletionType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["completions"])
@@ -64,7 +65,7 @@ async def get_completion_suggestions(request: CompletionRequest, _auth: str = au
     - Template completion: Structured completion for headings, lists, etc.
     - Reference suggestions: Recall relevant content from vector database
     """
-    start_time = datetime.now()
+    start_time = tz_now()
 
     try:
         # Parameter validation
@@ -97,7 +98,7 @@ async def get_completion_suggestions(request: CompletionRequest, _auth: str = au
             suggestions = suggestions[: request.max_suggestions]
 
         # Calculate processing time
-        processing_time = (datetime.now() - start_time).total_seconds() * 1000
+        processing_time = (tz_now() - start_time).total_seconds() * 1000
 
         # Convert to response format
         suggestion_dicts = [s.to_dict() for s in suggestions]
@@ -112,12 +113,12 @@ async def get_completion_suggestions(request: CompletionRequest, _auth: str = au
                 "suggestions": suggestion_dicts,
                 "processing_time_ms": processing_time,
                 "cache_hit": False,  # TODO: Implement cache hit detection
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": tz_now().isoformat(),
             }
         )
 
     except Exception as e:
-        processing_time = (datetime.now() - start_time).total_seconds() * 1000
+        processing_time = (tz_now() - start_time).total_seconds() * 1000
         logger.error(f"Completion request failed: {e}")
 
         return JSONResponse(
@@ -143,7 +144,7 @@ async def get_completion_suggestions_stream(
     async def generate_completions():
         try:
             # Send start event
-            yield f"data: {json.dumps({'type': 'start', 'timestamp': datetime.now().isoformat()})}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'timestamp': tz_now().isoformat()})}\n\n"
 
             # Get completion service
             completion_service = get_completion_service()
@@ -226,7 +227,7 @@ async def submit_completion_feedback(
             "document_id": document_id,
             "accepted": accepted,
             "completion_type": completion_type,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": tz_now().isoformat(),
         }
 
         # TODO: Store feedback data to database
@@ -253,7 +254,7 @@ async def get_completion_stats(_auth: str = auth_dependency):
             "service_status": "active",
             "cache_stats": cache_stats,
             "supported_types": [ct.value for ct in CompletionType],
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": tz_now().isoformat(),
         }
 
         return JSONResponse({"success": True, "data": stats})
@@ -271,7 +272,7 @@ async def get_cache_stats(_auth: str = auth_dependency):
         stats = await completion_service.get_cache_stats()
 
         return JSONResponse(
-            {"success": True, "data": stats, "timestamp": datetime.now().isoformat()}
+            {"success": True, "data": stats, "timestamp": tz_now().isoformat()}
         )
 
     except Exception as e:

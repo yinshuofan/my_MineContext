@@ -25,6 +25,7 @@ from opencontext.models.enums import VaultType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["vaults"])
@@ -332,7 +333,7 @@ async def trigger_document_processing(
             source=ContextSource.INPUT,
             content_format=ContentFormat.TEXT,
             content_text=document_data.get("content", ""),
-            create_time=datetime.now(),
+            create_time=tz_now(),
             object_id=f"vault_{doc_id}",
             additional_info={
                 "vault_id": doc_id,

@@ -26,6 +26,7 @@ from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.utils import convert_resp
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now, get_timezone
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -195,11 +196,11 @@ async def push_base_events(
 
     contexts: List[ProcessedContext] = []
     for event in request.events:
-        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        now = tz_now()
         if event.event_time:
             event_time = datetime.datetime.fromisoformat(event.event_time)
             if event_time.tzinfo is None:
-                event_time = event_time.replace(tzinfo=datetime.timezone.utc)
+                event_time = event_time.replace(tzinfo=get_timezone())
         else:
             event_time = now
 

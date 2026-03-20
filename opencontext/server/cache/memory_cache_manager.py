@@ -36,6 +36,7 @@ from opencontext.storage.global_storage import get_storage
 from opencontext.storage.redis_cache import get_cache
 from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now, today_start as tz_today_start
 
 logger = get_logger(__name__)
 
@@ -385,14 +386,14 @@ class MemoryCacheManager:
         summary_type_values = {t.value for t in types[1:]}  # L1+ are summary types
 
         # Compute time boundaries
-        now = datetime.now(tz=timezone.utc)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_start_ts = int(today_start.timestamp())
-        yesterday_start = today_start - timedelta(days=1)
+        now = tz_now()
+        today_start_val = tz_today_start()
+        today_start_ts = int(today_start_val.timestamp())
+        yesterday_start = today_start_val - timedelta(days=1)
         yesterday_end_ts = float(today_start_ts - 1)  # end of yesterday
-        week_start = today_start - timedelta(days=days)
+        week_start = today_start_val - timedelta(days=days)
         week_start_ts = int(week_start.timestamp())
-        period_start_dt = today_start - timedelta(days=days - 1)
+        period_start_dt = today_start_val - timedelta(days=days - 1)
         period_start_ts = float(int(period_start_dt.timestamp()))
 
         # Profile context_type for DB query
@@ -583,20 +584,14 @@ class MemoryCacheManager:
         create_time = None
         if props.create_time:
             if hasattr(props.create_time, "isoformat"):
-                dt = props.create_time
-                if dt.tzinfo is not None:
-                    dt = dt.replace(tzinfo=None)
-                create_time = dt.isoformat()
+                create_time = props.create_time.isoformat()
             else:
                 create_time = str(props.create_time)
 
         event_time_start = None
         if props.event_time_start:
             if hasattr(props.event_time_start, "isoformat"):
-                dt = props.event_time_start
-                if dt.tzinfo is not None:
-                    dt = dt.replace(tzinfo=None)
-                event_time_start = dt.isoformat()
+                event_time_start = props.event_time_start.isoformat()
             else:
                 event_time_start = str(props.event_time_start)
 

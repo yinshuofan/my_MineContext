@@ -16,6 +16,7 @@ from opencontext.models.context import ProcessedContext, RawContextProperties, V
 from opencontext.models.enums import ContentFormat, ContextSource, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -88,7 +89,7 @@ class ContextOperations:
             raw_context = RawContextProperties(
                 source=ContextSource.LOCAL_FILE,
                 content_format=ContentFormat.FILE,
-                create_time=datetime.datetime.now(),
+                create_time=tz_now(),
                 object_id=object_id,
                 content_path=str(path),
                 additional_info={

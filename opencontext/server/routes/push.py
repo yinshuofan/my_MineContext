@@ -31,6 +31,7 @@ from opencontext.server.opencontext import OpenContext
 from opencontext.server.utils import convert_resp, get_context_lab
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/push", tags=["push"])
@@ -457,7 +458,7 @@ async def push_chat(
         raw_context = RawContextProperties(
             source=ContextSource.CHAT_LOG,
             content_format=content_format,
-            create_time=datetime.datetime.now(tz=datetime.timezone.utc),
+            create_time=tz_now(),
             content_text=json.dumps(messages, ensure_ascii=False),
             user_id=request.user_id,
             device_id=request.device_id,
