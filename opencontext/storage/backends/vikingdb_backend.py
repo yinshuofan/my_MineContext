@@ -782,11 +782,12 @@ class VikingDBBackend(IVectorStorageBackend):
             # Store modality string for multimodal filtering
             doc[FIELD_CONTENT_MODALITIES] = context.vectorize.get_modality_string()
 
-        # Store media_refs from metadata
-        if context.metadata and "media_refs" in context.metadata:
-            doc[FIELD_MEDIA_REFS] = json.dumps(
-                context.metadata["media_refs"], ensure_ascii=False
-            )
+        # Store media_refs from metadata (always set to avoid VikingDB "default" placeholder)
+        doc[FIELD_MEDIA_REFS] = (
+            json.dumps(context.metadata["media_refs"], ensure_ascii=False)
+            if context.metadata and "media_refs" in context.metadata
+            else "[]"
+        )
 
         if context.properties:
             properties_dict = context.properties.model_dump(exclude_none=True)
