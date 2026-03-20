@@ -28,7 +28,7 @@ class TimeRangeFilter:
     start: Optional[int] = None
     end: Optional[int] = None
     timezone: Optional[str] = None
-    time_type: Optional[str] = "event_time_ts"
+    time_type: Optional[str] = "event_time_start_ts"
 
 
 @dataclass
@@ -167,9 +167,9 @@ class BaseContextRetrievalTool(BaseTool):
             "keywords": ed.keywords or [],
             "entities": ed.entities or [],
             "create_time": props.create_time.isoformat() if props.create_time else None,
-            "event_time": props.event_time.isoformat() if props.event_time else None,
+            "event_time_start": props.event_time_start.isoformat() if props.event_time_start else None,
+            "event_time_end": props.event_time_end.isoformat() if props.event_time_end else None,
             "hierarchy_level": props.hierarchy_level,
-            "time_bucket": props.time_bucket,
             "metadata": context.metadata or {},
         }
 
@@ -237,9 +237,9 @@ class BaseContextRetrievalTool(BaseTool):
                         },
                         "time_type": {
                             "type": "string",
-                            "enum": ["create_time_ts", "update_time_ts", "event_time_ts"],
-                            "default": "event_time_ts",
-                            "description": "Time type: create_time_ts (creation time), update_time_ts (update time), event_time_ts (event time)",
+                            "enum": ["create_time_ts", "update_time_ts", "event_time_start_ts"],
+                            "default": "event_time_start_ts",
+                            "description": "Time type: create_time_ts (creation time), update_time_ts (update time), event_time_start_ts (event start time)",
                         },
                     },
                     "description": f"Time range filter for {cls.CONTEXT_TYPE.value}. Context: {context_desc.get('description', '')}. Start and end must be pre-calculated integer timestamps.",

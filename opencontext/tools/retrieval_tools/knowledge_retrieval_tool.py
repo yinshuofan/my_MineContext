@@ -76,7 +76,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             "and/or entities (only knowledge type is retrieved in filter-only mode)\n"
             "\n"
             "**Filter options:**\n"
-            "- Time range filtering (by event_time, create_time, or update_time)\n"
+            "- Time range filtering (by event_time_start, create_time, or update_time)\n"
             "- Entity filtering (find knowledge mentioning specific technologies or concepts)\n"
             "- Configurable result count (top_k: 1-100, default 5)\n"
             "\n"

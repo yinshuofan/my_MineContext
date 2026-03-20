@@ -180,36 +180,11 @@ class HierarchicalEventTool(BaseTool):
         """Lazy access to the global storage singleton."""
         return get_storage()
 
-    @staticmethod
-    def _ts_to_day_bucket(ts: int) -> str:
-        """Convert a Unix timestamp (seconds) to a daily time-bucket string."""
-        import datetime
-
-        dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
-        return dt.strftime("%Y-%m-%d")
-
-    @staticmethod
-    def _ts_to_week_bucket(ts: int) -> str:
-        """Convert a Unix timestamp (seconds) to an ISO-week time-bucket string."""
-        import datetime
-
-        dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
-        iso_year, iso_week, _ = dt.isocalendar()
-        return f"{iso_year}-W{iso_week:02d}"
-
-    @staticmethod
-    def _ts_to_month_bucket(ts: int) -> str:
-        """Convert a Unix timestamp (seconds) to a monthly time-bucket string."""
-        import datetime
-
-        dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
-        return dt.strftime("%Y-%m")
-
     async def _search_summaries(
         self,
         level: int,
-        time_bucket_start: Optional[str],
-        time_bucket_end: Optional[str],
+        time_start: Optional[float],
+        time_end: Optional[float],
         user_id: Optional[str],
         top_k: int,
         device_id: Optional[str] = None,
@@ -220,8 +195,8 @@ class HierarchicalEventTool(BaseTool):
             return await self.storage.search_hierarchy(
                 context_type=self.CONTEXT_TYPE.value,
                 hierarchy_level=level,
-                time_bucket_start=time_bucket_start,
-                time_bucket_end=time_bucket_end,
+                time_start=time_start,
+                time_end=time_end,
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
@@ -367,9 +342,9 @@ class HierarchicalEventTool(BaseTool):
             "keywords": ed.keywords or [],
             "entities": ed.entities or [],
             "create_time": props.create_time.isoformat() if props.create_time else None,
-            "event_time": props.event_time.isoformat() if props.event_time else None,
+            "event_time_start": props.event_time_start.isoformat() if props.event_time_start else None,
+            "event_time_end": props.event_time_end.isoformat() if props.event_time_end else None,
             "hierarchy_level": hierarchy_level,
-            "time_bucket": props.time_bucket,
             "refs": props.refs if props else {},
             "metadata": context.metadata or {},
         }
@@ -409,13 +384,9 @@ class HierarchicalEventTool(BaseTool):
             return [{"error": "A query parameter is required for hierarchical event retrieval."}]
 
         try:
-            # ── Derive time-bucket bounds from time_range ────────────
-            time_bucket_start_day: Optional[str] = None
-            time_bucket_end_day: Optional[str] = None
-            time_bucket_start_week: Optional[str] = None
-            time_bucket_end_week: Optional[str] = None
-            time_bucket_start_month: Optional[str] = None
-            time_bucket_end_month: Optional[str] = None
+            # ── Derive time bounds from time_range ──────────────────
+            ts_start: Optional[float] = None
+            ts_end: Optional[float] = None
             time_filters: Dict[str, Any] = {}
 
             if time_range:
@@ -423,30 +394,19 @@ class HierarchicalEventTool(BaseTool):
                 ts_end = time_range.get("end")
 
                 if ts_start is not None:
-                    time_bucket_start_day = self._ts_to_day_bucket(ts_start)
-                    time_bucket_start_week = self._ts_to_week_bucket(ts_start)
-                    time_bucket_start_month = self._ts_to_month_bucket(ts_start)
-                    time_filters.setdefault("event_time_ts", {})["$gte"] = ts_start
-
+                    time_filters["event_time_end_ts"] = {"$gte": ts_start}
                 if ts_end is not None:
-                    time_bucket_end_day = self._ts_to_day_bucket(ts_end)
-                    time_bucket_end_week = self._ts_to_week_bucket(ts_end)
-                    time_bucket_end_month = self._ts_to_month_bucket(ts_end)
-                    time_filters.setdefault("event_time_ts", {})["$lte"] = ts_end
+                    time_filters["event_time_start_ts"] = {"$lte": ts_end}
 
             # ── Path 1: Top-down hierarchical search ─────────────────
             # Search each summary level and collect matched summaries.
             all_summary_hits: List[Tuple[ProcessedContext, float]] = []
 
-            for level, bucket_start, bucket_end in [
-                (1, time_bucket_start_day, time_bucket_end_day),
-                (2, time_bucket_start_week, time_bucket_end_week),
-                (3, time_bucket_start_month, time_bucket_end_month),
-            ]:
+            for level in [1, 2, 3]:
                 hits = await self._search_summaries(
                     level=level,
-                    time_bucket_start=bucket_start,
-                    time_bucket_end=bucket_end,
+                    time_start=ts_start,
+                    time_end=ts_end,
                     user_id=user_id,
                     top_k=top_k,
                     device_id=device_id,
