@@ -401,6 +401,21 @@ async def push_chat(
         if request.user_id == "__base__":
             raise HTTPException(400, "user_id '__base__' is reserved for system use")
 
+        # Validate agent exists when agent_memory processor is requested
+        if (
+            "agent_memory" in request.processors
+            and request.agent_id is not None
+            and request.agent_id != "default"
+        ):
+            storage = get_storage()
+            agent = await storage.get_agent(request.agent_id)
+            if not agent:
+                raise HTTPException(
+                    400,
+                    f"Agent '{request.agent_id}' is not registered. "
+                    f"Please register the agent via POST /api/agents before using agent_memory processor.",
+                )
+
         # Process multimodal messages: upload to object storage or save locally
         messages = await _process_multimodal_messages(request.messages, request.user_id)
 
