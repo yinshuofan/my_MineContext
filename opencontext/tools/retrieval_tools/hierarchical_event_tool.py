@@ -14,7 +14,7 @@ Events are organized in a 4-level hierarchy:
   L3 — monthly summaries (time_bucket: "YYYY-MM")
 
 The retrieval algorithm first searches higher-level summaries to identify
-relevant time periods, then drills down through children_ids to gather
+relevant time periods, then drills down through refs to gather
 fine-grained L0 details.  A parallel direct L0 semantic search acts as a
 fallback so that recent events not yet rolled up are still discoverable.
 """
@@ -67,7 +67,7 @@ class HierarchicalEventTool(BaseTool):
             "\n"
             "The retrieval algorithm works in two parallel paths:\n"
             "  1. **Top-down**: Search L1/L2/L3 summaries to find relevant time\n"
-            "     periods, then drill down through children_ids to collect the\n"
+            "     periods, then drill down through refs to collect the\n"
             "     underlying L0 events.  Each child's final score is a weighted\n"
             "     blend of the child's own relevance and the parent summary's\n"
             "     match score (0.5 * child_score + 0.5 * parent_score).\n"
@@ -237,7 +237,7 @@ class HierarchicalEventTool(BaseTool):
         user_id: Optional[str] = None,
     ) -> List[Tuple[ProcessedContext, float, int]]:
         """
-        Recursively drill down through children_ids of matched summaries
+        Recursively drill down through refs of matched summaries
         until L0 events are reached.
 
         Returns a list of (context, blended_score, hierarchy_level) triples.
@@ -265,9 +265,6 @@ class HierarchicalEventTool(BaseTool):
                 for key, ids in parent_ctx.properties.refs.items():
                     if key not in _ALL_SUMMARY_TYPES:
                         children_ids.extend(ids)
-            # Fallback to old field for data written before refs migration
-            if not children_ids:
-                children_ids = getattr(parent_ctx.properties, "children_ids", None) or []
             if not children_ids:
                 continue
 
@@ -386,7 +383,7 @@ class HierarchicalEventTool(BaseTool):
         Algorithm:
           1. Search L1/L2/L3 summaries via storage.search_hierarchy() to
              identify relevant time periods.
-          2. For matched summaries, drill down through children_ids to
+          2. For matched summaries, drill down through refs to
              collect L0 detail events. Each child's score is blended with
              its parent's match score (0.5 * child + 0.5 * parent).
           3. Also perform a direct L0 semantic search as fallback for
