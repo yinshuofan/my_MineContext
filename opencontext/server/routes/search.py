@@ -224,7 +224,7 @@ async def _execute_search(
 
     # ── Step 4: Sort ──
     def sort_tree(node_list: List[EventNode]):
-        node_list.sort(key=lambda n: (n.time_bucket or ""))
+        node_list.sort(key=lambda n: (n.event_time_start or ""))
         for n in node_list:
             if n.children:
                 sort_tree(n.children)
@@ -275,11 +275,11 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
     return EventNode(
         id=ctx.id,
         hierarchy_level=props.hierarchy_level if props else 0,
-        time_bucket=props.time_bucket if props else None,
         refs=props.refs if props else {},
         title=extracted.title if extracted else None,
         summary=extracted.summary if extracted else None,
-        event_time=_format_timestamp(props.event_time if props else None),
+        event_time_start=_format_timestamp(props.event_time_start if props else None),
+        event_time_end=_format_timestamp(props.event_time_end if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=False,
         media_refs=_extract_media_refs(ctx),
@@ -299,9 +299,9 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         entities=extracted.entities if extracted and extracted.entities else [],
         score=score,
         hierarchy_level=props.hierarchy_level if props else 0,
-        time_bucket=props.time_bucket if props else None,
         refs=props.refs if props else {},
-        event_time=_format_timestamp(props.event_time if props else None),
+        event_time_start=_format_timestamp(props.event_time_start if props else None),
+        event_time_end=_format_timestamp(props.event_time_end if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
         is_search_hit=True,
         media_refs=_extract_media_refs(ctx),
@@ -328,7 +328,7 @@ async def _track_accessed_safe(
                     "summary": er.summary,
                     "keywords": er.keywords,
                     "score": er.score,
-                    "event_time": er.event_time,
+                    "event_time_start": er.event_time_start,
                     "create_time": er.create_time,
                     "media_refs": er.media_refs,
                 }

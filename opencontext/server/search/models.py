@@ -104,11 +104,11 @@ class EventNode(BaseModel):
 
     id: str
     hierarchy_level: int = 0
-    time_bucket: Optional[str] = None
     refs: Dict[str, List[str]] = Field(default_factory=dict)
     title: Optional[str] = None
     summary: Optional[str] = None
-    event_time: Optional[str] = None
+    event_time_start: Optional[str] = None
+    event_time_end: Optional[str] = None
     create_time: Optional[str] = None
     is_search_hit: bool = False
     children: List["EventNode"] = Field(default_factory=list)
