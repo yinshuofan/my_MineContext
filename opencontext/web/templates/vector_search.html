@@ -104,6 +104,14 @@
                         <input type="text" class="form-control" id="agentId" placeholder="输入代理ID">
                     </div>
 
+                    <div class="mb-3">
+                        <label for="memoryOwner" class="form-label">记忆所有者</label>
+                        <select class="form-control" id="memoryOwner">
+                            <option value="user">用户事件</option>
+                            <option value="agent">Agent 事件</option>
+                        </select>
+                    </div>
+
                     <button type="submit" class="btn btn-primary w-100">
                         <span class="spinner-border spinner-border-sm d-none" role="status" id="loadingSpinner"></span>
                         <span id="searchButtonText">开始搜索</span>
@@ -423,6 +431,7 @@ async function handleSearch(event) {
         if (userId) requestBody.user_id = userId;
         if (deviceId) requestBody.device_id = deviceId;
         if (agentId) requestBody.agent_id = agentId;
+        requestBody.memory_owner = document.getElementById('memoryOwner').value;
 
         if (hasTimeRange) {
             requestBody.time_range = {};
@@ -602,7 +611,7 @@ function renderSearchHitCard(event) {
                     <span class="badge level-badge level-badge-${level}">${LEVEL_SHORT[level] || 'L?'}</span>
                     <span class="badge hit-badge">命中</span>
                     <h6 class="mb-0">
-                        <a href="#" onclick="viewContext('${event.id}', 'event'); return false;" class="text-decoration-none">${escapeHtml(title)}</a>
+                        <a href="#" onclick="viewContext('${event.id}', '${event.context_type || "event"}'); return false;" class="text-decoration-none">${escapeHtml(title)}</a>
                     </h6>
                     ${timeBucket ? `<small class="text-muted">${escapeHtml(timeBucket)}</small>` : ''}
                     ${toggleHtml}
@@ -614,7 +623,7 @@ function renderSearchHitCard(event) {
             ${renderMediaRefs(event.media_refs)}
             <div class="d-flex justify-content-between align-items-center mt-2">
                 ${displayTime ? `<small class="text-muted">${eventTime ? '事件时间' : '创建时间'}: ${displayTime}</small>` : '<span></span>'}
-                <button onclick="viewContext('${event.id}', 'event')" class="btn btn-sm btn-outline-primary">查看详情</button>
+                <button onclick="viewContext('${event.id}', '${event.context_type || "event"}')" class="btn btn-sm btn-outline-primary">查看详情</button>
             </div>
         </div>
     `;
