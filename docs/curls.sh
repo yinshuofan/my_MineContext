@@ -99,6 +99,20 @@ curl -X POST http://localhost:1733/api/push/chat \
   }'
 # -H "X-API-Key: your-api-key"
 
+# Push Chat (dual processor - user + agent memory)
+curl -X POST http://localhost:1733/api/push/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Hello"},
+      {"role": "assistant", "content": "Hi there!"}
+    ],
+    "user_id": "user_001",
+    "agent_id": "agent_001",
+    "processors": ["user_memory", "agent_memory"]
+  }'
+# -H "X-API-Key: your-api-key"
+
 # Push Multimodal Chat (text + image + video, OpenAI multimodal format)
 curl -X POST http://localhost:1733/api/push/chat \
   -H "Content-Type: application/json" \
@@ -308,6 +322,17 @@ curl -X POST http://localhost:1733/api/search \
 #   }
 # }
 
+# Search agent events
+curl -X POST http://localhost:1733/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": [{"type": "text", "text": "meeting notes"}],
+    "memory_owner": "agent",
+    "user_id": "user_001",
+    "agent_id": "agent_001"
+  }'
+# -H "X-API-Key: your-api-key"
+
 # Direct Vector Search
 curl -X POST http://localhost:1733/api/vector_search \
   -H "Content-Type: application/json" \
@@ -340,9 +365,27 @@ curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=pro
 curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=profile,events"
 # -H "X-API-Key: your-api-key"
 
+# Get agent memory cache
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=agent_001&memory_owner=agent"
+# -H "X-API-Key: your-api-key"
+
 # Invalidate Memory Cache
 curl -X DELETE "http://localhost:1733/api/memory-cache?user_id=user_001&device_id=default&agent_id=default"
 # -H "X-API-Key: your-api-key"
+
+
+# ============================================================
+# Chat Batches (Debug)
+# ============================================================
+
+# List chat batches
+curl -X GET "http://localhost:1733/api/chat-batches?user_id=user_001&limit=10"
+
+# Get batch detail with messages
+curl -X GET "http://localhost:1733/api/chat-batches/{batch_id}"
+
+# Get contexts produced by a batch
+curl -X GET "http://localhost:1733/api/chat-batches/{batch_id}/contexts"
 
 
 # ============================================================================

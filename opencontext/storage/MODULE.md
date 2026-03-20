@@ -302,6 +302,9 @@ Persists raw chat messages before processing, enabling processors to reference t
 | Method | Signature | Returns |
 |--------|-----------|---------|
 | `create_chat_batch` | `(batch_id: str, messages: List[Dict], user_id: Optional[str], device_id: str, agent_id: str)` | `bool` |
+| `list_chat_batches` | `(user_id?, device_id?, agent_id?, start_date?, end_date?, limit=20, offset=0)` | `List[Dict]` — List batches without messages, with optional filters, ordered by created_at DESC |
+| `count_chat_batches` | `(user_id?, device_id?, agent_id?, start_date?, end_date?)` | `int` — Count matching batches |
+| `get_chat_batch` | `(batch_id)` | `Optional[Dict]` — Get single batch with messages (JSON parsed) |
 | `cleanup_chat_batches` | `(retention_days: int = 90)` | `int` (rows deleted) |
 
 ## Internal Data Flow

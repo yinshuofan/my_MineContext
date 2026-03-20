@@ -335,6 +335,14 @@ Push endpoints that schedule hierarchy summary: `push_chat`.
 
 Agent base memory routes use `user_id="__base__"` as a sentinel to distinguish base profiles from per-user agent profiles generated during conversations. Base events have no `user_id` set, distinguishing them from conversation-extracted agent events.
 
+### Chat Batches Routes (`routes/chat_batches.py`)
+
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| GET | `/api/chat-batches` | `list_chat_batches` | List batches with filters (user_id, device_id, agent_id, start_date, end_date) + pagination |
+| GET | `/api/chat-batches/{batch_id}` | `get_chat_batch` | Get single batch with messages |
+| GET | `/api/chat-batches/{batch_id}/contexts` | `get_batch_contexts` | Get vector contexts produced by this batch (filter: raw_type="chat_batch", raw_id=batch_id) |
+
 ### Vault Routes (`/api/vaults/*`)
 
 | Method | Path | Handler | Description |
@@ -382,6 +390,7 @@ Agent base memory routes use `user_id="__base__"` as a sentinel to distinguish b
 | GET | `/monitoring` | `monitoring_page` | Monitoring dashboard |
 | GET | `/assistant` | `assistant_page` | Intelligent assistant page |
 | GET | `/settings` | `settings_page` | Settings page |
+| GET | `/chat_batches` | `chat_batches_page` | Chat batches debug page (table with expandable rows showing messages + related contexts) |
 
 ## Cross-Module Dependencies
 

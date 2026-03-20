@@ -137,6 +137,8 @@ Pipeline:
 
 The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-100, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, generates a `time_bucket` field with per-second granularity (`%Y-%m-%dT%H:%M:%S`) to support fine-grained time-based sorting in search results. When the LLM returns `related_media` (indices into the media index), resolves them to actual URLs and sets `vectorize.images`/`vectorize.videos` with `ContentFormat.MULTIMODAL`, and stores `media_refs` and `content_modalities` in `ProcessedContext.metadata`.
 
+**Source tracing**: TextChatProcessor now sets `raw_type="chat_batch"` and `raw_id=batch_id` on produced contexts when processing batches from the push endpoint. This enables tracing memories back to their source batch via the chat-batches debug API.
+
 ### AgentMemoryProcessor (`processor/agent_memory_processor.py`)
 
 Extracts memories from conversations as seen from the agent's perspective. Registered in `ProcessorFactory` as `"agent_memory_processor"` and mapped in `BATCH_PROCESSOR_MAP` as `"agent_memory"`.
