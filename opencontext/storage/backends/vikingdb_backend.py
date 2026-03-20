@@ -644,9 +644,7 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_RAW_TYPE, "FieldType": "string"},
             {"FieldName": FIELD_RAW_ID, "FieldType": "string"},
             {"FieldName": FIELD_HIERARCHY_LEVEL, "FieldType": "int64"},
-            {"FieldName": "parent_id", "FieldType": "string"},  # legacy, kept for schema compat
             {"FieldName": FIELD_TIME_BUCKET, "FieldType": "string"},
-            {"FieldName": "children_ids", "FieldType": "string"},  # legacy, kept for schema compat
             {"FieldName": FIELD_REFS, "FieldType": "string"},
             {"FieldName": FIELD_DOCUMENT, "FieldType": "string"},
             {"FieldName": FIELD_CONTENT_MODALITIES, "FieldType": "string"},
@@ -703,7 +701,6 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_RAW_TYPE,
                 FIELD_RAW_ID,
                 FIELD_TIME_BUCKET,
-                "parent_id",  # legacy, kept for index compat
                 FIELD_IS_PROCESSED,
                 FIELD_HAS_COMPRESSION,
                 FIELD_ENABLE_MERGE,
