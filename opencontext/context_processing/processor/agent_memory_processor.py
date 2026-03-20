@@ -17,7 +17,7 @@ from opencontext.models.context import (
 )
 from opencontext.models.enums import ContentFormat, ContextSource, ContextType
 from opencontext.storage.global_storage import get_storage
-from opencontext.server.search.event_search_service import EventSearchService
+from opencontext.server.search.event_search_service import EventSearchService, SearchResult
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 
@@ -163,25 +163,29 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
     async def _extract_search_query(self, chat_content: str) -> Optional[str]:
         """Use LLM to extract a search query from chat content (from AI's perspective)."""
-        prompt_group = get_prompt_group("processing.extraction.agent_memory_query")
-        if not prompt_group:
-            logger.warning("agent_memory_query prompt not found")
-            return None
+        try:
+            prompt_group = get_prompt_group("processing.extraction.agent_memory_query")
+            if not prompt_group:
+                logger.warning("agent_memory_query prompt not found")
+                return None
 
-        messages = [
-            {"role": "system", "content": prompt_group.get("system", "")},
-            {
-                "role": "user",
-                "content": prompt_group.get("user", "").format(chat_history=chat_content),
-            },
-        ]
-        response = await generate_with_messages(messages, enable_executor=False)
-        if not response or not response.strip():
+            messages = [
+                {"role": "system", "content": prompt_group.get("system", "")},
+                {
+                    "role": "user",
+                    "content": prompt_group.get("user", "").format(chat_history=chat_content),
+                },
+            ]
+            response = await generate_with_messages(messages, enable_executor=False)
+            if not response or not response.strip():
+                return None
+            return response.strip()
+        except Exception as e:
+            logger.warning(f"[agent_memory_processor] Query extraction failed, skipping memory search: {e}")
             return None
-        return response.strip()
 
     @staticmethod
-    def _format_related_memories(search_result) -> str:
+    def _format_related_memories(search_result: SearchResult) -> str:
         """Format search results (hits + ancestors) into text for the LLM prompt."""
         all_contexts = {}
 
