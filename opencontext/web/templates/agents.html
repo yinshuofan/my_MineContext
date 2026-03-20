@@ -144,7 +144,7 @@ function renderAgentList(agents) {
     empty.classList.add('d-none');
     list.innerHTML = agents.map(a => `
         <a href="#" class="list-group-item list-group-item-action agent-item ${a.agent_id === selectedAgentId ? 'active' : ''}"
-           data-agent-id="${esc(a.agent_id)}" onclick="selectAgent('${esc(a.agent_id)}'); return false;">
+           data-agent-id="${esc(a.agent_id)}" onclick="selectAgent('${escAttr(a.agent_id)}'); return false;">
             <div class="fw-semibold">${esc(a.name)}</div>
             <small class="text-muted">${esc((a.description || '').substring(0, 60))}${(a.description || '').length > 60 ? '...' : ''}</small>
         </a>
@@ -350,7 +350,7 @@ function renderEventsCard(events) {
                         ${evt.summary ? `<small class="text-muted">${esc(evt.summary)}</small>` : ''}
                         ${evt.keywords && evt.keywords.length ? `<div class="mt-1">${evt.keywords.map(k => `<span class="badge bg-info bg-opacity-75 me-1">${esc(k)}</span>`).join('')}</div>` : ''}
                     </div>
-                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteEvent('${esc(evt.id)}')" title="删除">
+                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteEvent('${escAttr(evt.id)}')" title="删除">
                         <i data-feather="trash-2" style="width:14px;height:14px;"></i>
                     </button>
                 </div>
@@ -450,6 +450,10 @@ function esc(str) {
     const div = document.createElement('div');
     div.textContent = String(str);
     return div.innerHTML;
+}
+
+function escAttr(str) {
+    return esc(str).replace(/'/g, '&#39;');
 }
 </script>
 {% endblock %}
