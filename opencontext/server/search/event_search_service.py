@@ -52,6 +52,15 @@ class EventSearchService:
         Handles vectorization internally — caller provides raw query content
         in OpenAI content parts format.
         """
+        query_text = " ".join(
+            item.get("text", "") for item in query if item.get("type") == "text"
+        )
+        logger.debug(
+            f"[EventSearchService] semantic_search: query='{query_text[:100]}', "
+            f"user_id={user_id}, agent_id={agent_id}, memory_owner={memory_owner}, "
+            f"top_k={top_k}, drill_up={drill_up}"
+        )
+
         # Vectorize query
         query_types = {item.get("type") for item in query}
         has_multimodal = bool(query_types & {"image_url", "video_url"})
@@ -63,10 +72,11 @@ class EventSearchService:
 
         # Search
         filters = self._build_filters(time_range, None)
+        context_types = self._get_context_types_for_levels(memory_owner, None)
         raw_results = await self.storage.search(
             query=vectorize,
             top_k=top_k,
-            context_types=self._get_context_types_for_levels(memory_owner, None),
+            context_types=context_types,
             filters=filters,
             user_id=user_id,
             device_id=device_id,
@@ -79,6 +89,19 @@ class EventSearchService:
         if drill_up and raw_results:
             ancestors = await self.collect_ancestors(
                 raw_results, max_level=3, memory_owner=memory_owner
+            )
+
+        logger.debug(
+            f"[EventSearchService] semantic_search results: "
+            f"{len(raw_results)} hits, {len(ancestors)} ancestors"
+        )
+        for ctx, score in raw_results:
+            ed = ctx.extracted_data
+            logger.debug(
+                f"[EventSearchService]   hit: score={score:.4f}, "
+                f"title='{ed.title if ed else ''}', "
+                f"type={ed.context_type.value if ed else ''}, "
+                f"time_bucket={ctx.properties.time_bucket if ctx.properties else ''}"
             )
 
         return SearchResult(hits=raw_results, ancestors=ancestors)
