@@ -63,7 +63,7 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `get_processed_context_count` | `(context_type, filter, user_id, device_id, agent_id) -> int` | Count (all params except context_type are optional) |
 | `get_filtered_context_count` | `(context_types, filter, user_id, device_id, agent_id) -> int` | Total count across multiple types with filters (UnifiedStorage only) |
 | `get_all_processed_context_counts` | `() -> Dict[str, int]` | Type-keyed counts |
-| `search_by_hierarchy` | `(context_type, hierarchy_level, time_bucket_start, time_bucket_end, user_id, device_id, agent_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results |
+| `search_by_hierarchy` | `(context_type, hierarchy_level, time_start, time_end, user_id, device_id, agent_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results. `time_start`/`time_end` are UTC timestamps (floats); returns contexts whose `[event_time_start, event_time_end]` overlaps the query range |
 | `get_by_ids` | `(ids: List[str], context_type: Optional[str], need_vector: bool) -> List[ProcessedContext]` | Contexts by ID |
 
 Non-abstract methods with default implementation (backends may override):
@@ -226,7 +226,7 @@ These fields are populated from `ProcessedContext.metadata["content_modalities"]
 | Collection strategy | Per context_type | Per context_type | Single collection, field filtering | Per context_type |
 | ID handling | String IDs directly | UUID5 from string ID | String IDs via HTTP API | String IDs via HTTP API |
 | Connection | Local or HTTP client | `QdrantClient` | HTTP with V4 signature auth | HTTP with API key |
-| `search_by_hierarchy` time_bucket | In-code string filter | In-code string filter (Range doesn't work on strings) | `must` filter with int64 `hierarchy_level` | In-code string filter |
+| `search_by_hierarchy` time range | In-code numeric range filter | Numeric `models.Range` filter on `event_time_start_ts`/`event_time_end_ts` | `must` filter with int64 `hierarchy_level` + numeric range | In-code numeric range filter |
 | Write buffering | `_pending_writes` with flush | None | Batch HTTP requests | None |
 | Graceful shutdown | `atexit` + signal handlers | None | None | None |
 
@@ -331,7 +331,7 @@ get_storage()                          # global_storage.py -> UnifiedStorage
     |                                     Returns List[Tuple[ProcessedContext, float]]
     |
     +-- Hierarchy search ----------------> _vector_backend.search_by_hierarchy(...)
-    |                                     Filter by hierarchy_level + time_bucket range
+    |                                     Filter by hierarchy_level + timestamp range overlap
     |
     +-- Document overwrite --------------> _vector_backend.delete_by_source_file(...)
                                           Then batch_upsert new chunks
@@ -383,7 +383,7 @@ get_storage()                          # global_storage.py -> UnifiedStorage
 - **All profile calls require the 3-key tuple + context_type** `(user_id, device_id, agent_id, context_type)`. `context_type` defaults to `"profile"`; pass `"agent_profile"` for agent profiles. The `profiles` table PK is 4 columns: `(user_id, device_id, agent_id, context_type)`. A `refs JSON` column stores reference links (e.g., source context IDs). Migration from the old `owner_type` column happens at startup: rows with `owner_type = 'agent'` are updated to `context_type = 'agent_profile'`. Both MySQL and SQLite backends include `context_type` in all profile WHERE clauses.
 - **SQLite `_get_connection()` must be used for all method-level DB access.** Only `initialize()` and `close()` may use `self.connection` directly. This prevents thread-safety issues under `asyncio.to_thread()`.
 - **MySQL `_get_connection()` is a context manager** -- always use `with self._get_connection() as conn:`. It auto-returns to pool and auto-rolls-back on exceptions.
-- **Qdrant `search_by_hierarchy`** uses in-code string comparison for `time_bucket` filtering because `models.Range` does not support string fields. Over-fetch with `top_k * 3`, then filter.
+- **Qdrant `search_by_hierarchy`** now uses numeric `models.Range` filters on `event_time_start_ts`/`event_time_end_ts` for timestamp range overlap queries. The old in-code string comparison workaround on `time_bucket` is no longer used.
 - **VikingDB `hierarchy_level`** is stored as int64. Use `must` filter directly (e.g., `{"op": "must", "field": "hierarchy_level", "conds": [0]}`). Supports list filtering: `"conds": [0, 1, 2]`.
 - **MySQL `lastrowid` is 0 for VARCHAR PKs**. Always SELECT back the persisted ID.
 - **Vector backends auto-vectorize** via `do_vectorize()` when `context.vectorize.vector` is None. This is a synchronous call to the embedding service.

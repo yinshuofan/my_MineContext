@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import asyncio
+import datetime
 import os
 import sys
 import time
@@ -76,7 +77,7 @@ async def main():
     l0_events = l0_dict.get(ContextType.EVENT.value, [])
     print(f"  Found {len(l0_events)} L0 events", flush=True)
     for evt in l0_events[:10]:
-        et = evt.properties.event_time
+        et = evt.properties.event_time_start
         title = evt.extracted_data.title or "(no title)"
         print(f"    {et} - {title[:60]}", flush=True)
 
@@ -111,19 +112,21 @@ async def main():
     # Step 5: Verify summaries
     print(f"[5/5] Verifying generated summaries...", flush=True)
     for level, label in [(1, "L1 daily"), (2, "L2 weekly"), (3, "L3 monthly")]:
+        _verify_start = datetime.datetime(2026, 2, 1, tzinfo=datetime.timezone.utc).timestamp()
+        _verify_end = datetime.datetime(2026, 3, 1, tzinfo=datetime.timezone.utc).timestamp()
         hits = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=level,
-            time_bucket_start="2026-02-01",
-            time_bucket_end="2026-03-01",
+            time_start=_verify_start,
+            time_end=_verify_end,
             user_id=user_id,
             top_k=10,
         )
         if hits:
             for ctx, score in hits:
-                tb = ctx.properties.time_bucket
+                et = ctx.properties.event_time_start.strftime("%Y-%m-%d")
                 title = ctx.extracted_data.title or "(no title)"
-                print(f"  {label} [{tb}]: {title[:80]}", flush=True)
+                print(f"  {label} [{et}]: {title[:80]}", flush=True)
         else:
             print(f"  {label}: none found", flush=True)
 

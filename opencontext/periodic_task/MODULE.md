@@ -157,7 +157,7 @@ Each overflow handler: format -> check tokens -> if over limit, split into batch
 
 Prompt resolution: prompt group `"hierarchy_summary"` from YAML -> `{level}_summary` / `{level}_partial_summary` / `{level}_merge` keys -> fallback to `_FALLBACK_PROMPTS` dict.
 
-**Storage**: `async _store_summary(user_id, summary_text, level, time_bucket, children_ids, device_id=None, agent_id=None) -> Optional[ProcessedContext]` -- parses the LLM JSON response (`{title, summary, keywords, entities, importance}`) to extract structured fields. Resolves `summary_context_type` from `LEVEL_TO_CONTEXT_TYPE[level]` and `child_type` from `LEVEL_TO_CHILD_TYPE[level]`. Builds `ProcessedContext` with:
+**Storage**: `async _store_summary(user_id, summary_text, level, event_time_start, event_time_end, children_ids, device_id=None, agent_id=None) -> Optional[ProcessedContext]` -- parses the LLM JSON response (`{title, summary, keywords, entities, importance}`) to extract structured fields. Resolves `summary_context_type` from `LEVEL_TO_CONTEXT_TYPE[level]` and `child_type` from `LEVEL_TO_CHILD_TYPE[level]`. Builds `ProcessedContext` with:
 - `extracted_data.context_type` = `summary_context_type` (e.g. `DAILY_SUMMARY`)
 - `properties.refs` = `{child_type.value: children_ids}` (downward refs)
 

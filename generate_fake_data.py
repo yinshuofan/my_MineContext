@@ -167,7 +167,7 @@ def generate_one_context(
     context_properties = ContextProperties(
         raw_properties=[raw_properties],
         create_time=event_time,
-        event_time=event_time,
+        event_time_start=event_time,
         is_processed=True,
         has_compression=False,
         update_time=event_time + datetime.timedelta(seconds=random.randint(10, 30)),

@@ -104,7 +104,7 @@ def create_l0_event(event_data: dict, user_id: str) -> ProcessedContext:
         properties=ContextProperties(
             raw_properties=[],
             create_time=now,
-            event_time=event_time,
+            event_time_start=event_time,
             update_time=now,
             is_processed=True,
             enable_merge=False,
@@ -220,11 +220,15 @@ async def verify_summaries(storage, user_id: str, dates: list[str], week: str, m
     # Verify L1
     l1_found = 0
     for date_str in dates:
+        _d = datetime.datetime.combine(
+            datetime.date.fromisoformat(date_str), datetime.time.min, tzinfo=datetime.timezone.utc
+        )
+        _ts = _d.timestamp()
         hits = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=1,
-            time_bucket_start=date_str,
-            time_bucket_end=date_str,
+            time_start=_ts,
+            time_end=_ts,
             user_id=user_id,
             top_k=1,
         )
@@ -238,11 +242,17 @@ async def verify_summaries(storage, user_id: str, dates: list[str], week: str, m
     print(f"  L1 summaries: {l1_found}/{len(dates)} ({status})")
 
     # Verify L2
+    _w_start = datetime.datetime.strptime(week + "-1", "%G-W%V-%u").replace(
+        tzinfo=datetime.timezone.utc
+    )
+    _w_end = (_w_start + datetime.timedelta(days=6)).replace(
+        hour=23, minute=59, second=59
+    )
     l2_hits = await storage.search_hierarchy(
         context_type=ContextType.EVENT.value,
         hierarchy_level=2,
-        time_bucket_start=week,
-        time_bucket_end=week,
+        time_start=_w_start.timestamp(),
+        time_end=_w_end.timestamp(),
         user_id=user_id,
         top_k=1,
     )
@@ -254,11 +264,24 @@ async def verify_summaries(storage, user_id: str, dates: list[str], week: str, m
         all_passed = False
 
     # Verify L3
+    _m_start = datetime.datetime.combine(
+        datetime.date.fromisoformat(month + "-01"),
+        datetime.time.min,
+        tzinfo=datetime.timezone.utc,
+    )
+    # last day of month
+    if _m_start.month == 12:
+        _m_end_date = _m_start.replace(year=_m_start.year + 1, month=1, day=1) - datetime.timedelta(days=1)
+    else:
+        _m_end_date = _m_start.replace(month=_m_start.month + 1, day=1) - datetime.timedelta(days=1)
+    _m_end = datetime.datetime.combine(
+        _m_end_date, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+    )
     l3_hits = await storage.search_hierarchy(
         context_type=ContextType.EVENT.value,
         hierarchy_level=3,
-        time_bucket_start=month,
-        time_bucket_end=month,
+        time_start=_m_start.timestamp(),
+        time_end=_m_end.timestamp(),
         user_id=user_id,
         top_k=1,
     )
@@ -272,20 +295,62 @@ async def verify_summaries(storage, user_id: str, dates: list[str], week: str, m
     return all_passed
 
 
+def _date_str_to_ts(date_str: str) -> float:
+    """Convert a date string like '2026-02-17' to a UTC timestamp."""
+    return datetime.datetime.combine(
+        datetime.date.fromisoformat(date_str),
+        datetime.time.min,
+        tzinfo=datetime.timezone.utc,
+    ).timestamp()
+
+
+def _week_str_to_ts_range(week_str: str) -> tuple[float, float]:
+    """Convert an ISO week string like '2026-W08' to (start_ts, end_ts)."""
+    w_start = datetime.datetime.strptime(week_str + "-1", "%G-W%V-%u").replace(
+        tzinfo=datetime.timezone.utc
+    )
+    w_end = (w_start + datetime.timedelta(days=6)).replace(hour=23, minute=59, second=59)
+    return w_start.timestamp(), w_end.timestamp()
+
+
+def _month_str_to_ts_range(month_str: str) -> tuple[float, float]:
+    """Convert a month string like '2026-02' to (start_ts, end_ts)."""
+    m_start = datetime.datetime.combine(
+        datetime.date.fromisoformat(month_str + "-01"),
+        datetime.time.min,
+        tzinfo=datetime.timezone.utc,
+    )
+    if m_start.month == 12:
+        m_end_date = m_start.replace(year=m_start.year + 1, month=1, day=1) - datetime.timedelta(
+            days=1
+        )
+    else:
+        m_end_date = m_start.replace(month=m_start.month + 1, day=1) - datetime.timedelta(days=1)
+    m_end = datetime.datetime.combine(
+        m_end_date, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+    )
+    return m_start.timestamp(), m_end.timestamp()
+
+
 async def print_summary_content(storage, user_id: str, dates: list[str], week: str, month: str):
     """Print the content of generated summaries for inspection."""
     print("\n--- Generated Summary Content ---\n")
 
-    for level, label, tb_start, tb_end in [
-        *[(1, f"L1 Daily {d}", d, d) for d in dates],
-        (2, f"L2 Weekly {week}", week, week),
-        (3, f"L3 Monthly {month}", month, month),
-    ]:
+    w_start_ts, w_end_ts = _week_str_to_ts_range(week)
+    m_start_ts, m_end_ts = _month_str_to_ts_range(month)
+
+    items: list[tuple[int, str, float, float]] = [
+        *[(1, f"L1 Daily {d}", _date_str_to_ts(d), _date_str_to_ts(d)) for d in dates],
+        (2, f"L2 Weekly {week}", w_start_ts, w_end_ts),
+        (3, f"L3 Monthly {month}", m_start_ts, m_end_ts),
+    ]
+
+    for level, label, ts_start, ts_end in items:
         hits = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=level,
-            time_bucket_start=tb_start,
-            time_bucket_end=tb_end,
+            time_start=ts_start,
+            time_end=ts_end,
             user_id=user_id,
             top_k=1,
         )
@@ -325,14 +390,16 @@ async def cleanup_test_data(storage, user_id: str, dates: list[str], week: str, 
     print(f"  Deleted {deleted} L0 events")
 
     # Delete L1/L2/L3 summaries
+    _cleanup_start_ts = _date_str_to_ts("2026-02-01")
+    _cleanup_end_ts = _date_str_to_ts("2026-02-28")
     for level in [1, 2, 3]:
         level_name = {1: "L1", 2: "L2", 3: "L3"}[level]
         # Use a broad time range to catch all test summaries
         hits = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=level,
-            time_bucket_start="2026-02-01",
-            time_bucket_end="2026-02-28",
+            time_start=_cleanup_start_ts,
+            time_end=_cleanup_end_ts,
             user_id=user_id,
             top_k=50,
         )
@@ -390,7 +457,7 @@ async def main():
         events = await store_test_events(storage, user_id)
         print(f"  OK ({len(events)} events stored)")
         for evt in events:
-            print(f"    {evt.properties.event_time.strftime('%Y-%m-%d %H:%M')} - {evt.extracted_data.title}")
+            print(f"    {evt.properties.event_time_start.strftime('%Y-%m-%d %H:%M')} - {evt.extracted_data.title}")
     except Exception as e:
         print(f"  FAILED: {e}")
         traceback.print_exc()

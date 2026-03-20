@@ -135,7 +135,7 @@ Pipeline:
 5. Builds `ProcessedContext` per memory via `_build_processed_context(media_index=...)`
 6. Returns `List[ProcessedContext]` — callback invocation is handled by `ContextProcessorManager`
 
-The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-10, event_time). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, generates a `time_bucket` field with per-second granularity (`%Y-%m-%dT%H:%M:%S`) to support fine-grained time-based sorting in search results. When the LLM returns `related_media` (indices into the media index), resolves them to actual URLs and sets `vectorize.images`/`vectorize.videos` with `ContentFormat.MULTIMODAL`, and stores `media_refs` and `content_modalities` in `ProcessedContext.metadata`.
+The `_build_processed_context` method validates and sanitizes all LLM output fields (context_type, title, summary, keywords, importance 0-10, confidence 0-10, event_time_start). Sets `enable_merge = True` only for `ContextType.KNOWLEDGE`. For event-type contexts, sets `event_time_start` (datetime) from the LLM-parsed event time to support fine-grained time-based sorting in search results. When the LLM returns `related_media` (indices into the media index), resolves them to actual URLs and sets `vectorize.images`/`vectorize.videos` with `ContentFormat.MULTIMODAL`, and stores `media_refs` and `content_modalities` in `ProcessedContext.metadata`.
 
 **Source tracing**: TextChatProcessor now sets `raw_type="chat_batch"` and `raw_id=batch_id` on produced contexts when processing batches from the push endpoint. This enables tracing memories back to their source batch via the chat-batches debug API.
 
@@ -158,11 +158,11 @@ class AgentMemoryProcessor(BaseContextProcessor):
 Pipeline (5-step context-aware flow):
 1. **Parallel context gathering** (`asyncio.gather`): fetches the agent's existing profile via `storage.get_profile(context_type="agent_profile")` and extracts a search query from the chat content via LLM using the `agent_memory_query` prompt
 2. **Search related past memories**: uses `EventSearchService.semantic_search(memory_owner="agent", drill_up=True)` to find semantically related past agent events and hierarchy summaries. Skipped if query extraction returned nothing.
-3. **Format related memories**: merges hits + ancestors from `SearchResult`, deduplicates by ID, sorts by `time_bucket` ascending, formats as text lines (`[time_bucket] title\nsummary`)
+3. **Format related memories**: merges hits + ancestors from `SearchResult`, deduplicates by ID, sorts by `event_time_start` ascending, formats as text lines (`[event_time_start] title\nsummary`)
 4. **Generate memories** via LLM with full context: loads `agent_memory_analyze` prompt and substitutes `{agent_name}`, `{agent_persona}` (from profile's `factual_profile` field), and `{related_memories}` into the system prompt. Calls `generate_with_messages()` with chat history.
 5. **Build ProcessedContext list**: parses JSON response -> `memories` array, builds via `_build_agent_context()` per memory:
    - Memory type `"agent_profile"` -> `ContextType.AGENT_PROFILE`; `"agent_event"` -> `ContextType.AGENT_EVENT`; unknown types are skipped
-   - Validates/sanitizes all fields (title, summary, keywords, entities, importance, confidence, event_time)
+   - Validates/sanitizes all fields (title, summary, keywords, entities, importance, confidence, event_time_start)
    - Generates embedding via `do_vectorize()` for each context
 
 Returns early with empty list if:

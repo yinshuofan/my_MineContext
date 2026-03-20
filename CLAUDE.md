@@ -178,7 +178,7 @@ This service runs as multiple instances sharing the same Redis and MySQL. Any "r
 Every storage method for profiles requires all four identifiers. `device_id` and `agent_id` default to `"default"`, `context_type` defaults to `"profile"`. Pass `context_type="agent_profile"` for agent profiles. Omitting them causes positional argument mismatches. The same applies to tools, cache manager, and search strategies. Redis cache keys also use the 3-key tuple: `memory_cache:snapshot:{memory_owner}:{user_id}:{device_id}:{agent_id}`.
 
 ### Qdrant Range filter only supports numeric/datetime
-Qdrant's `models.Range(gte=..., lte=...)` does NOT work on string fields like `time_bucket`. Use in-code string comparison filtering instead (over-fetch with `top_k * 3`, then filter). See `qdrant_backend.py` `search_by_hierarchy()`.
+**Resolved**: The old workaround (in-code string comparison on `time_bucket`, over-fetching with `top_k * 3`) is no longer used. `search_by_hierarchy` now uses numeric `models.Range` filters on `event_time_start_ts`/`event_time_end_ts` float fields, which Qdrant handles natively.
 
 ### ProcessedContextModel must declare all exposed fields
 If you add a field to `ContextProperties` and want it in API responses, you must also declare it on `ProcessedContextModel` and update `from_processed_context()`. Missing declarations cause silent Pydantic field drops.
