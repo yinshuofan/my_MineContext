@@ -217,6 +217,7 @@ async def push_base_events(
                 update_time=now,
                 event_time_start=event_time,
                 is_processed=True,
+                user_id="__base__",
                 agent_id=agent_id,
             ),
             extracted_data=ExtractedData(
@@ -249,19 +250,18 @@ async def list_base_events(
 ):
     """List base events for an agent.
 
-    Base events are identified by having no ``user_id`` (they are pre-interaction
-    background events pushed via this endpoint).
+    Base events use ``user_id="__base__"`` as a sentinel to distinguish
+    them from per-user events generated during conversations.
     """
     storage = get_storage()
     result = await storage.get_all_processed_contexts(
         context_types=[ContextType.AGENT_EVENT.value],
+        user_id="__base__",
         agent_id=agent_id,
         limit=limit + offset,
     )
     contexts = result.get(ContextType.AGENT_EVENT.value, [])
-    # Filter to base events (no user_id — base events have user_id=None)
-    base_events = [c for c in contexts if not getattr(c.properties, "user_id", None)]
-    page = base_events[offset : offset + limit]
+    page = contexts[offset : offset + limit]
     return convert_resp(
         data={
             "events": [
