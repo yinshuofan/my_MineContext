@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Agent 管理</h1>
+</div>
+
+<div class="row">
+    <!-- Left: Agent List -->
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Agent 列表</h5>
+                <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#createAgentModal">+ 创建</button>
+            </div>
+            <div class="card-body p-0" id="agentListBody">
+                <div class="text-muted text-center py-4" id="agentListEmpty">
+                    <small>暂无 Agent</small>
+                </div>
+                <div class="list-group list-group-flush" id="agentList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Agent Detail -->
+    <div class="col-md-9">
+        <div id="agentDetailArea">
+            <div class="text-muted text-center py-5">
+                <i data-feather="users" class="mb-3" style="width: 48px; height: 48px;"></i>
+                <p>选择一个 Agent 查看详情，或创建新的 Agent</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Agent Modal -->
+<div class="modal fade" id="createAgentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">创建 Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Agent ID <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="newAgentId" placeholder="唯一标识符" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">名称 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="newAgentName" placeholder="Agent 名称" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">描述</label>
+                    <textarea class="form-control" id="newAgentDesc" rows="2" placeholder="可选描述"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" onclick="createAgent()">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Event Modal -->
+<div class="modal fade" id="addEventModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加 Base Event</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">标题 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="newEventTitle" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">摘要 <span class="text-danger">*</span></label>
+                    <textarea class="form-control" id="newEventSummary" rows="3" required></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">事件时间</label>
+                    <input type="datetime-local" class="form-control" id="newEventTime">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">关键词</label>
+                    <input type="text" class="form-control" id="newEventKeywords" placeholder="逗号分隔，如: 旅行, 签证, 亚洲">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">重要性 (0-10)</label>
+                    <input type="number" class="form-control" id="newEventImportance" value="5" min="0" max="10">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" onclick="addBaseEvent()">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .agent-item { cursor: pointer; transition: background-color 0.15s; }
+    .agent-item:hover { background-color: #f0f4f8; }
+    .agent-item.active { background-color: #e8f4fd; border-left: 3px solid #0d6efd; }
+    .detail-card { margin-bottom: 16px; }
+    .detail-card .card-header { cursor: pointer; }
+    .profile-display { white-space: pre-wrap; background: #f8f9fa; border-radius: 6px; padding: 12px; min-height: 60px; }
+    .event-item { border-left: 3px solid #198754; padding-left: 12px; margin-bottom: 8px; }
+</style>
+<script>
+let selectedAgentId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadAgentList();
+});
+
+// ========== Agent List ==========
+
+async function loadAgentList() {
+    try {
+        const resp = await fetch('/api/agents');
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Failed to load agents');
+        const agents = data.data.agents || [];
+        renderAgentList(agents);
+    } catch (e) {
+        console.error('Load agents failed:', e);
+    }
+}
+
+function renderAgentList(agents) {
+    const list = document.getElementById('agentList');
+    const empty = document.getElementById('agentListEmpty');
+    if (agents.length === 0) {
+        list.innerHTML = '';
+        empty.classList.remove('d-none');
+        return;
+    }
+    empty.classList.add('d-none');
+    list.innerHTML = agents.map(a => `
+        <a href="#" class="list-group-item list-group-item-action agent-item ${a.agent_id === selectedAgentId ? 'active' : ''}"
+           data-agent-id="${esc(a.agent_id)}" onclick="selectAgent('${esc(a.agent_id)}'); return false;">
+            <div class="fw-semibold">${esc(a.name)}</div>
+            <small class="text-muted">${esc((a.description || '').substring(0, 60))}${(a.description || '').length > 60 ? '...' : ''}</small>
+        </a>
+    `).join('');
+    feather.replace();
+}
+
+async function selectAgent(agentId) {
+    selectedAgentId = agentId;
+    document.querySelectorAll('.agent-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.agentId === agentId);
+    });
+    await loadAgentDetail(agentId);
+}
+
+// ========== Agent Detail ==========
+
+async function loadAgentDetail(agentId) {
+    const area = document.getElementById('agentDetailArea');
+    area.innerHTML = '<div class="text-center py-5"><div class="spinner-border" role="status"></div></div>';
+
+    try {
+        const resp = await fetch(`/api/agents/${encodeURIComponent(agentId)}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Agent not found');
+        const agent = data.data.agent;
+
+        const [profileResp, eventsResp] = await Promise.all([
+            fetch(`/api/agents/${encodeURIComponent(agentId)}/base/profile`).catch(() => null),
+            fetch(`/api/agents/${encodeURIComponent(agentId)}/base/events`).catch(() => null),
+        ]);
+
+        let profile = null;
+        if (profileResp && profileResp.ok) {
+            const pd = await profileResp.json();
+            profile = pd.data.profile;
+        }
+
+        let events = [];
+        if (eventsResp && eventsResp.ok) {
+            const ed = await eventsResp.json();
+            events = ed.data.events || [];
+        }
+
+        renderAgentDetail(agent, profile, events);
+    } catch (e) {
+        area.innerHTML = `<div class="alert alert-danger">加载失败: ${esc(e.message)}</div>`;
+    }
+}
+
+function renderAgentDetail(agent, profile, events) {
+    const area = document.getElementById('agentDetailArea');
+    area.innerHTML = `
+        ${renderInfoCard(agent)}
+        ${renderProfileCard(profile)}
+        ${renderEventsCard(events)}
+    `;
+    feather.replace();
+}
+
+// ---- Card 1: Basic Info ----
+
+function renderInfoCard(agent) {
+    return `
+    <div class="card detail-card">
+        <div class="card-header d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#infoCardBody">
+            <h6 class="mb-0"><i data-feather="info" style="width:16px;height:16px;" class="me-2"></i>基本信息</h6>
+            <div>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="event.stopPropagation(); startEditInfo()">编辑</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteAgent()">删除</button>
+            </div>
+        </div>
+        <div class="collapse show" id="infoCardBody">
+            <div class="card-body" id="infoContent">
+                <div class="row">
+                    <div class="col-md-6 mb-2"><strong>Agent ID:</strong> ${esc(agent.agent_id)}</div>
+                    <div class="col-md-6 mb-2"><strong>名称:</strong> <span id="infoName">${esc(agent.name)}</span></div>
+                    <div class="col-12 mb-2"><strong>描述:</strong> <span id="infoDesc">${esc(agent.description || '无')}</span></div>
+                    <div class="col-md-6"><small class="text-muted">创建: ${agent.created_at || '-'}</small></div>
+                    <div class="col-md-6"><small class="text-muted">更新: ${agent.updated_at || '-'}</small></div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function startEditInfo() {
+    const nameEl = document.getElementById('infoName');
+    const descEl = document.getElementById('infoDesc');
+    const name = nameEl.textContent;
+    const desc = descEl.textContent === '无' ? '' : descEl.textContent;
+
+    nameEl.innerHTML = `<input type="text" class="form-control form-control-sm d-inline-block" style="width:200px" id="editName" value="${esc(name)}">`;
+    descEl.innerHTML = `<input type="text" class="form-control form-control-sm d-inline-block" style="width:300px" id="editDesc" value="${esc(desc)}">`;
+
+    const content = document.getElementById('infoContent');
+    if (!document.getElementById('editInfoBtns')) {
+        content.insertAdjacentHTML('beforeend', `
+            <div id="editInfoBtns" class="mt-2">
+                <button class="btn btn-sm btn-primary" onclick="saveInfo()">保存</button>
+                <button class="btn btn-sm btn-secondary ms-1" onclick="loadAgentDetail(selectedAgentId)">取消</button>
+            </div>
+        `);
+    }
+}
+
+async function saveInfo() {
+    const name = document.getElementById('editName').value.trim();
+    const desc = document.getElementById('editDesc').value.trim();
+    if (!name) { alert('名称不能为空'); return; }
+    try {
+        const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, description: desc})
+        });
+        if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Update failed'); }
+        loadAgentList();
+        loadAgentDetail(selectedAgentId);
+    } catch (e) {
+        alert('更新失败: ' + e.message);
+    }
+}
+
+async function deleteAgent() {
+    if (!confirm(`确定要删除 Agent "${selectedAgentId}" 吗？此操作不可撤销。`)) return;
+    try {
+        const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}`, {method: 'DELETE'});
+        if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Delete failed'); }
+        selectedAgentId = null;
+        document.getElementById('agentDetailArea').innerHTML = `
+            <div class="text-muted text-center py-5">
+                <i data-feather="users" class="mb-3" style="width: 48px; height: 48px;"></i>
+                <p>选择一个 Agent 查看详情，或创建新的 Agent</p>
+            </div>`;
+        feather.replace();
+        loadAgentList();
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
+
+// ---- Card 2: Base Profile ----
+
+function renderProfileCard(profile) {
+    const text = profile ? (profile.factual_profile || '无内容') : null;
+    const content = text
+        ? `<div class="profile-display" id="profileText">${esc(text)}</div>`
+        : '<p class="text-muted" id="profileText">暂无 Base Profile，点击编辑添加</p>';
+    return `
+    <div class="card detail-card">
+        <div class="card-header d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#profileCardBody">
+            <h6 class="mb-0"><i data-feather="user" style="width:16px;height:16px;" class="me-2"></i>Base Profile</h6>
+            <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); startEditProfile()">编辑</button>
+        </div>
+        <div class="collapse show" id="profileCardBody">
+            <div class="card-body" id="profileContent">${content}</div>
+        </div>
+    </div>`;
+}
+
+function startEditProfile() {
+    const container = document.getElementById('profileContent');
+    const existing = document.getElementById('profileText');
+    const text = existing ? (existing.classList.contains('profile-display') ? existing.textContent : '') : '';
+    container.innerHTML = `
+        <textarea class="form-control" id="editProfileText" rows="5">${esc(text)}</textarea>
+        <div class="mt-2">
+            <button class="btn btn-sm btn-primary" onclick="saveProfile()">保存</button>
+            <button class="btn btn-sm btn-secondary ms-1" onclick="loadAgentDetail(selectedAgentId)">取消</button>
+        </div>
+    `;
+}
+
+async function saveProfile() {
+    const text = document.getElementById('editProfileText').value.trim();
+    if (!text) { alert('Profile 内容不能为空'); return; }
+    try {
+        const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/profile`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({factual_profile: text})
+        });
+        if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Save failed'); }
+        loadAgentDetail(selectedAgentId);
+    } catch (e) {
+        alert('保存失败: ' + e.message);
+    }
+}
+
+// ---- Card 3: Base Events ----
+
+function renderEventsCard(events) {
+    let content;
+    if (events.length === 0) {
+        content = '<p class="text-muted">暂无 Base Events</p>';
+    } else {
+        content = events.map(evt => `
+            <div class="event-item">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="fw-semibold">${esc(evt.title || '未命名')}</div>
+                        ${evt.summary ? `<small class="text-muted">${esc(evt.summary)}</small>` : ''}
+                        ${evt.keywords && evt.keywords.length ? `<div class="mt-1">${evt.keywords.map(k => `<span class="badge bg-info bg-opacity-75 me-1">${esc(k)}</span>`).join('')}</div>` : ''}
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteEvent('${esc(evt.id)}')" title="删除">
+                        <i data-feather="trash-2" style="width:14px;height:14px;"></i>
+                    </button>
+                </div>
+                ${evt.event_time ? `<small class="text-muted">${new Date(evt.event_time).toLocaleString('zh-CN')}</small>` : ''}
+            </div>
+        `).join('');
+    }
+    return `
+    <div class="card detail-card">
+        <div class="card-header d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#eventsCardBody">
+            <h6 class="mb-0"><i data-feather="zap" style="width:16px;height:16px;" class="me-2"></i>Base Events <span class="badge bg-secondary">${events.length}</span></h6>
+            <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); showAddEventModal()">+ 添加</button>
+        </div>
+        <div class="collapse show" id="eventsCardBody">
+            <div class="card-body" id="eventsContent">${content}</div>
+        </div>
+    </div>`;
+}
+
+function showAddEventModal() {
+    document.getElementById('newEventTitle').value = '';
+    document.getElementById('newEventSummary').value = '';
+    document.getElementById('newEventTime').value = '';
+    document.getElementById('newEventKeywords').value = '';
+    document.getElementById('newEventImportance').value = '5';
+    new bootstrap.Modal(document.getElementById('addEventModal')).show();
+}
+
+async function addBaseEvent() {
+    const title = document.getElementById('newEventTitle').value.trim();
+    const summary = document.getElementById('newEventSummary').value.trim();
+    if (!title || !summary) { alert('标题和摘要不能为空'); return; }
+
+    const eventObj = {title, summary};
+    const eventTime = document.getElementById('newEventTime').value;
+    if (eventTime) eventObj.event_time = new Date(eventTime).toISOString();
+    const kw = document.getElementById('newEventKeywords').value.trim();
+    if (kw) eventObj.keywords = kw.split(',').map(s => s.trim()).filter(Boolean);
+    const imp = parseInt(document.getElementById('newEventImportance').value);
+    if (!isNaN(imp)) eventObj.importance = Math.max(0, Math.min(10, imp));
+
+    try {
+        const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/events`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({events: [eventObj]})
+        });
+        if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Add failed'); }
+        bootstrap.Modal.getInstance(document.getElementById('addEventModal')).hide();
+        loadAgentDetail(selectedAgentId);
+    } catch (e) {
+        alert('添加失败: ' + e.message);
+    }
+}
+
+async function deleteEvent(eventId) {
+    if (!confirm('确定删除此事件？')) return;
+    try {
+        const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/events/${encodeURIComponent(eventId)}`, {method: 'DELETE'});
+        if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Delete failed'); }
+        loadAgentDetail(selectedAgentId);
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
+
+// ========== Create Agent ==========
+
+async function createAgent() {
+    const agentId = document.getElementById('newAgentId').value.trim();
+    const name = document.getElementById('newAgentName').value.trim();
+    const desc = document.getElementById('newAgentDesc').value.trim();
+    if (!agentId || !name) { alert('Agent ID 和名称不能为空'); return; }
+
+    try {
+        const resp = await fetch('/api/agents', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({agent_id: agentId, name, description: desc})
+        });
+        if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Create failed'); }
+        bootstrap.Modal.getInstance(document.getElementById('createAgentModal')).hide();
+        document.getElementById('newAgentId').value = '';
+        document.getElementById('newAgentName').value = '';
+        document.getElementById('newAgentDesc').value = '';
+        await loadAgentList();
+        selectAgent(agentId);
+    } catch (e) {
+        alert('创建失败: ' + e.message);
+    }
+}
+
+// ========== Utilities ==========
+
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
