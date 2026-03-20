@@ -39,12 +39,12 @@ DEFAULT_INDEX_NAME = "opencontext_index"
 FIELD_DOCUMENT = "document"
 
 # Time fields
-FIELD_CREATED_AT = "created_at"
-FIELD_CREATED_AT_TS = "created_at_ts"
 FIELD_CREATE_TIME = "create_time"
 FIELD_CREATE_TIME_TS = "create_time_ts"
-FIELD_EVENT_TIME = "event_time"
-FIELD_EVENT_TIME_TS = "event_time_ts"
+FIELD_EVENT_TIME_START = "event_time_start"
+FIELD_EVENT_TIME_START_TS = "event_time_start_ts"
+FIELD_EVENT_TIME_END = "event_time_end"
+FIELD_EVENT_TIME_END_TS = "event_time_end_ts"
 FIELD_UPDATE_TIME = "update_time"
 FIELD_UPDATE_TIME_TS = "update_time_ts"
 FIELD_LAST_CALL_TIME = "last_call_time"
@@ -78,7 +78,6 @@ FIELD_RAW_ID = "raw_id"
 
 # Hierarchy and document overwrite fields
 FIELD_HIERARCHY_LEVEL = "hierarchy_level"
-FIELD_TIME_BUCKET = "time_bucket"
 FIELD_REFS = "refs"
 
 # Multimodal fields
@@ -614,12 +613,12 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_USER_ID, "FieldType": "string"},
             {"FieldName": FIELD_DEVICE_ID, "FieldType": "string"},
             {"FieldName": FIELD_AGENT_ID, "FieldType": "string"},
-            {"FieldName": FIELD_CREATED_AT, "FieldType": "string"},
-            {"FieldName": FIELD_CREATED_AT_TS, "FieldType": "float32"},
             {"FieldName": FIELD_CREATE_TIME, "FieldType": "string"},
             {"FieldName": FIELD_CREATE_TIME_TS, "FieldType": "float32"},
-            {"FieldName": FIELD_EVENT_TIME, "FieldType": "string"},
-            {"FieldName": FIELD_EVENT_TIME_TS, "FieldType": "float32"},
+            {"FieldName": FIELD_EVENT_TIME_START, "FieldType": "string"},
+            {"FieldName": FIELD_EVENT_TIME_START_TS, "FieldType": "float32"},
+            {"FieldName": FIELD_EVENT_TIME_END, "FieldType": "string"},
+            {"FieldName": FIELD_EVENT_TIME_END_TS, "FieldType": "float32"},
             {"FieldName": FIELD_UPDATE_TIME, "FieldType": "string"},
             {"FieldName": FIELD_UPDATE_TIME_TS, "FieldType": "float32"},
             {"FieldName": FIELD_LAST_CALL_TIME, "FieldType": "string"},
@@ -641,7 +640,6 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_RAW_TYPE, "FieldType": "string"},
             {"FieldName": FIELD_RAW_ID, "FieldType": "string"},
             {"FieldName": FIELD_HIERARCHY_LEVEL, "FieldType": "int64"},
-            {"FieldName": FIELD_TIME_BUCKET, "FieldType": "string"},
             {"FieldName": FIELD_REFS, "FieldType": "string"},
             {"FieldName": FIELD_DOCUMENT, "FieldType": "string"},
             {"FieldName": FIELD_CONTENT_MODALITIES, "FieldType": "string"},
@@ -696,13 +694,12 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_AGENT_ID,
                 FIELD_RAW_TYPE,
                 FIELD_RAW_ID,
-                FIELD_TIME_BUCKET,
                 FIELD_IS_PROCESSED,
                 FIELD_HAS_COMPRESSION,
                 FIELD_ENABLE_MERGE,
-                FIELD_CREATED_AT_TS,
                 FIELD_CREATE_TIME_TS,
-                FIELD_EVENT_TIME_TS,
+                FIELD_EVENT_TIME_START_TS,
+                FIELD_EVENT_TIME_END_TS,
                 FIELD_UPDATE_TIME_TS,
                 FIELD_LAST_CALL_TIME_TS,
                 FIELD_CONFIDENCE,
@@ -836,10 +833,6 @@ class VikingDBBackend(IVectorStorageBackend):
                 fields[key] = str(value)
 
         fields[FIELD_DATA_TYPE] = DATA_TYPE_CONTEXT
-
-        now = datetime.datetime.now()
-        fields[FIELD_CREATED_AT] = now.isoformat()
-        fields[FIELD_CREATED_AT_TS] = now.timestamp()
 
         return fields
 
@@ -988,7 +981,7 @@ class VikingDBBackend(IVectorStorageBackend):
                     "index_name": self._index_name,
                     "limit": fetch_limit,
                     "offset": fetch_offset,
-                    "field": FIELD_CREATED_AT_TS,
+                    "field": FIELD_CREATE_TIME_TS,
                     "order": "desc",
                 }
                 if filter_dict:
@@ -1276,15 +1269,13 @@ class VikingDBBackend(IVectorStorageBackend):
         conditions = []
 
         TIME_FIELD_MAPPING = {
-            "created_at": FIELD_CREATED_AT_TS,
             "create_time": FIELD_CREATE_TIME_TS,
-            FIELD_CREATED_AT: FIELD_CREATED_AT_TS,
         }
 
         RANGE_SUPPORTED_FIELDS = {
-            FIELD_CREATED_AT_TS,
             FIELD_CREATE_TIME_TS,
-            FIELD_EVENT_TIME_TS,
+            FIELD_EVENT_TIME_START_TS,
+            FIELD_EVENT_TIME_END_TS,
             FIELD_UPDATE_TIME_TS,
             FIELD_LAST_CALL_TIME_TS,
             FIELD_CONFIDENCE,
@@ -1440,7 +1431,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 "index_name": self._index_name,
                 "limit": 100000,
                 "output_fields": [],
-                "field": FIELD_CREATED_AT_TS,
+                "field": FIELD_CREATE_TIME_TS,
                 "order": "desc",
             }
             if filter_dict:
@@ -1470,8 +1461,8 @@ class VikingDBBackend(IVectorStorageBackend):
         self,
         context_type: str,
         hierarchy_level: int,
-        time_bucket_start: Optional[str] = None,
-        time_bucket_end: Optional[str] = None,
+        time_start: Optional[float] = None,
+        time_end: Optional[float] = None,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
@@ -1479,109 +1470,61 @@ class VikingDBBackend(IVectorStorageBackend):
     ) -> List[Tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
-
         try:
             conditions = [
-                {
-                    "op": "must",
-                    "field": FIELD_DATA_TYPE,
-                    "conds": [DATA_TYPE_CONTEXT],
-                },
-                {
-                    "op": "must",
-                    "field": FIELD_CONTEXT_TYPE,
-                    "conds": [context_type],
-                },
-                {
-                    "op": "must",
-                    "field": FIELD_HIERARCHY_LEVEL,
-                    "conds": [int(hierarchy_level)],
-                },
+                {"op": "must", "field": FIELD_DATA_TYPE, "conds": [DATA_TYPE_CONTEXT]},
+                {"op": "must", "field": FIELD_CONTEXT_TYPE, "conds": [context_type]},
+                {"op": "must", "field": FIELD_HIERARCHY_LEVEL, "conds": [int(hierarchy_level)]},
             ]
-
             if user_id:
-                conditions.append(
-                    {
-                        "op": "must",
-                        "field": FIELD_USER_ID,
-                        "conds": [user_id],
-                    }
-                )
+                conditions.append({"op": "must", "field": FIELD_USER_ID, "conds": [user_id]})
             if device_id:
                 conditions.append({"op": "must", "field": FIELD_DEVICE_ID, "conds": [device_id]})
             if agent_id:
                 conditions.append({"op": "must", "field": FIELD_AGENT_ID, "conds": [agent_id]})
-
-            time_bucket_filter_start = time_bucket_start
-            time_bucket_filter_end = time_bucket_end
-
-            if time_bucket_start and not time_bucket_end:
-                pass
-            elif time_bucket_end and not time_bucket_start:
-                pass
-            elif time_bucket_start and time_bucket_end and time_bucket_start == time_bucket_end:
+            # Numeric range overlap
+            if time_end is not None:
                 conditions.append(
                     {
-                        "op": "must",
-                        "field": FIELD_TIME_BUCKET,
-                        "conds": [time_bucket_start],
+                        "op": "range",
+                        "field": FIELD_EVENT_TIME_START_TS,
+                        "lte": float(time_end),
                     }
                 )
-                time_bucket_filter_start = None
-                time_bucket_filter_end = None
-
-            if len(conditions) == 1:
-                filter_dict = conditions[0]
-            else:
-                filter_dict = {
-                    "op": "and",
-                    "conds": conditions,
-                }
-
-            fetch_limit = top_k
-            if time_bucket_filter_start or time_bucket_filter_end:
-                fetch_limit = max(top_k * 5, 100)
-
+            if time_start is not None:
+                conditions.append(
+                    {
+                        "op": "range",
+                        "field": FIELD_EVENT_TIME_END_TS,
+                        "gte": float(time_start),
+                    }
+                )
+            filter_dict = (
+                {"op": "and", "conds": conditions} if len(conditions) > 1 else conditions[0]
+            )
             data = {
                 "collection_name": self._collection_name,
                 "index_name": self._index_name,
-                "limit": fetch_limit,
-                "field": FIELD_CREATED_AT_TS,
+                "limit": top_k,
+                "field": FIELD_CREATE_TIME_TS,
                 "order": "desc",
                 "filter": filter_dict,
             }
-
             result = await self._client.async_data_request(
-                path="/api/vikingdb/data/search/scalar",
-                data=data,
+                path="/api/vikingdb/data/search/scalar", data=data
             )
-
             if result.get("code") != "Success":
                 logger.error(f"Failed to search by hierarchy: {result.get('message')}")
                 return []
-
             output = result.get("result", {}).get("data", [])
-
             results = []
             for item in output:
                 doc = {"id": item.get("id")}
                 doc.update(item.get("fields", {}))
-
-                if time_bucket_filter_start or time_bucket_filter_end:
-                    item_time_bucket = doc.get(FIELD_TIME_BUCKET, "")
-                    if not item_time_bucket:
-                        continue
-                    if time_bucket_filter_start and item_time_bucket < time_bucket_filter_start:
-                        continue
-                    if time_bucket_filter_end and item_time_bucket > time_bucket_filter_end:
-                        continue
-
                 context = self._doc_to_context(doc, need_vector=False)
                 if context:
                     results.append((context, 1.0))
-
             return results[:top_k]
-
         except Exception as e:
             logger.exception(f"Failed to search by hierarchy: {e}")
             return []
