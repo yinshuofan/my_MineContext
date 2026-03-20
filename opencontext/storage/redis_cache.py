@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Union
 
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -1017,7 +1018,7 @@ class InMemoryCache:
     def _check_expiry(self, key: str) -> bool:
         """Check if key is expired and remove if so."""
         if key in self._expiry:
-            if datetime.now() > self._expiry[key]:
+            if tz_now() > self._expiry[key]:
                 # Remove expired key from all storages
                 self._data.pop(key, None)
                 self._lists.pop(key, None)
@@ -1046,7 +1047,7 @@ class InMemoryCache:
                 return False
             self._data[key] = value
             if ttl and ttl > 0:
-                self._expiry[key] = datetime.now() + timedelta(seconds=ttl)
+                self._expiry[key] = tz_now() + timedelta(seconds=ttl)
             return True
 
     async def delete(self, *keys: str) -> int:
@@ -1084,14 +1085,14 @@ class InMemoryCache:
                 or key in self._sets
                 or key in self._sorted_sets
             ):
-                self._expiry[key] = datetime.now() + timedelta(seconds=ttl)
+                self._expiry[key] = tz_now() + timedelta(seconds=ttl)
                 return True
             return False
 
     async def ttl(self, key: str) -> int:
         async with self._async_lock:
             if key in self._expiry:
-                remaining = (self._expiry[key] - datetime.now()).total_seconds()
+                remaining = (self._expiry[key] - tz_now()).total_seconds()
                 return int(remaining) if remaining > 0 else -2
             return -1
 

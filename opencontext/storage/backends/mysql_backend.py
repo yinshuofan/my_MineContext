@@ -25,6 +25,7 @@ from opencontext.storage.base_storage import (
     StorageType,
 )
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -434,7 +435,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     """,
                         (
                             title, summary, content, tags, parent_id, is_folder,
-                            document_type, datetime.now(), datetime.now(),
+                            document_type, tz_now(), tz_now(),
                         ),
                     )
                     vault_id = cursor.lastrowid
@@ -573,7 +574,7 @@ class MySQLBackend(IDocumentStorageBackend):
                         INSERT INTO todo (content, start_time, end_time, status, urgency, assignee, reason, created_at)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                        (content, start_time or datetime.now(), end_time, status, urgency, assignee, reason, datetime.now()),
+                        (content, start_time or tz_now(), end_time, status, urgency, assignee, reason, tz_now()),
                     )
                     todo_id = cursor.lastrowid
                     await conn.commit()
@@ -633,7 +634,7 @@ class MySQLBackend(IDocumentStorageBackend):
             async with conn.cursor() as cursor:
                 try:
                     if status == 1 and end_time is None:
-                        end_time = datetime.now()
+                        end_time = tz_now()
                     await cursor.execute(
                         "UPDATE todo SET status = %s, end_time = %s WHERE id = %s",
                         (status, end_time, todo_id),
@@ -655,7 +656,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 try:
                     await cursor.execute(
                         "INSERT INTO tips (content, created_at) VALUES (%s, %s)",
-                        (content, datetime.now()),
+                        (content, tz_now()),
                     )
                     tip_id = cursor.lastrowid
                     await conn.commit()
@@ -724,7 +725,7 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor() as cursor:
                 try:
-                    now = datetime.now()
+                    now = tz_now()
                     entities_json = json.dumps(entities or [], ensure_ascii=False)
                     metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
                     refs_json = json.dumps(refs or {}, ensure_ascii=False)
@@ -835,7 +836,7 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             async with self._get_connection() as conn:
                 async with conn.cursor() as cursor:
-                    now = datetime.now()
+                    now = tz_now()
                     time_bucket = now.strftime("%Y-%m-%d %H:00:00")
                     await cursor.execute(
                         """
@@ -863,7 +864,7 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             async with self._get_connection() as conn:
                 async with conn.cursor() as cursor:
-                    now = datetime.now()
+                    now = tz_now()
                     time_bucket = now.strftime("%Y-%m-%d %H:00:00")
                     success_inc = 1 if status == "success" else 0
                     error_inc = 0 if status == "success" else 1
@@ -901,7 +902,7 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             async with self._get_connection() as conn:
                 async with conn.cursor() as cursor:
-                    now = datetime.now()
+                    now = tz_now()
                     time_bucket = now.strftime("%Y-%m-%d %H:00:00")
                     await cursor.execute(
                         """
@@ -922,7 +923,7 @@ class MySQLBackend(IDocumentStorageBackend):
             return []
 
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             async with self._get_connection() as conn:
                 async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
@@ -944,7 +945,7 @@ class MySQLBackend(IDocumentStorageBackend):
             return []
 
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             async with self._get_connection() as conn:
                 async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
@@ -976,7 +977,7 @@ class MySQLBackend(IDocumentStorageBackend):
             return []
 
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             async with self._get_connection() as conn:
                 async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
@@ -1024,7 +1025,7 @@ class MySQLBackend(IDocumentStorageBackend):
             return []
 
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             async with self._get_connection() as conn:
                 async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
@@ -1047,7 +1048,7 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
         try:
-            cutoff_time = datetime.now() - timedelta(days=days)
+            cutoff_time = tz_now() - timedelta(days=days)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             async with self._get_connection() as conn:
                 async with conn.cursor() as cursor:
@@ -1071,7 +1072,7 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor() as cursor:
                 try:
-                    now = datetime.now()
+                    now = tz_now()
                     meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
                     await cursor.execute(
                         """
@@ -1214,7 +1215,7 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor() as cursor:
                 try:
-                    now = datetime.now()
+                    now = tz_now()
                     status = "completed" if is_complete else "streaming"
                     completed_at = now if is_complete else None
                     meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
@@ -1252,7 +1253,7 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor() as cursor:
                 try:
-                    now = datetime.now()
+                    now = tz_now()
                     set_clauses = ["content = %s", "updated_at = %s"]
                     params = [new_content, now]
                     if token_count is not None:
@@ -1291,7 +1292,7 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor() as cursor:
                 try:
-                    now = datetime.now()
+                    now = tz_now()
                     await cursor.execute(
                         """
                         UPDATE messages SET content = CONCAT(content, %s), token_count = token_count + %s,
@@ -1320,7 +1321,7 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor() as cursor:
                 try:
-                    now = datetime.now()
+                    now = tz_now()
                     meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
                     await cursor.execute("UPDATE messages SET metadata = %s, updated_at = %s WHERE id = %s", (meta_str, now, message_id))
                     success = cursor.rowcount > 0
@@ -1342,7 +1343,7 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
                 try:
-                    now = datetime.now()
+                    now = tz_now()
                     set_clauses = ["status = %s", "completed_at = %s", "updated_at = %s"]
                     params = [status, now, now]
                     if error_message:

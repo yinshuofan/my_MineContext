@@ -7,6 +7,8 @@ import hmac
 from datetime import datetime, timezone
 from urllib.parse import quote
 
+from opencontext.utils.time_utils import utc_now
+
 
 class S3Auth:
     """
@@ -45,7 +47,7 @@ class S3Auth:
         Returns:
             Updated headers dict with Authorization, X-Amz-Date, X-Amz-Content-Sha256
         """
-        now = datetime.now(tz=timezone.utc)
+        now = utc_now()
         amz_date = now.strftime("%Y%m%dT%H%M%SZ")
         date_stamp = now.strftime("%Y%m%d")
 

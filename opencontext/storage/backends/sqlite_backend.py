@@ -24,6 +24,7 @@ from opencontext.storage.base_storage import (
 )
 from opencontext.utils.dict_utils import deep_merge
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -477,8 +478,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                     parent_id,
                     is_folder,
                     document_type,
-                    datetime.now(),
-                    datetime.now(),
+                    tz_now(),
+                    tz_now(),
                 ),
             )
 
@@ -687,13 +688,13 @@ class SQLiteBackend(IDocumentStorageBackend):
             """,
                 (
                     content,
-                    start_time or datetime.now(),
+                    start_time or tz_now(),
                     end_time,
                     status,
                     urgency,
                     assignee,
                     reason,
-                    datetime.now(),
+                    tz_now(),
                 ),
             )
 
@@ -758,7 +759,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
         try:
             if status == 1 and end_time is None:
-                end_time = datetime.now()
+                end_time = tz_now()
 
             cursor = await conn.execute(
                 """
@@ -789,7 +790,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 INSERT INTO tips (content, created_at)
                 VALUES (?, ?)
             """,
-                (content, datetime.now()),
+                (content, tz_now()),
             )
 
             tip_id = cursor.lastrowid
@@ -865,7 +866,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         conn = self._connection
         try:
-            now = datetime.now()
+            now = tz_now()
             entities_json = json.dumps(entities or [], ensure_ascii=False)
             metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
             refs_json = json.dumps(refs or {}, ensure_ascii=False)
@@ -992,7 +993,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             conn = self._connection
 
             # Calculate time bucket (hour precision)
-            now = datetime.now()
+            now = tz_now()
             time_bucket = now.strftime("%Y-%m-%d %H:00:00")
 
             # Use INSERT ... ON CONFLICT to update or insert
@@ -1042,7 +1043,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         try:
             conn = self._connection
-            now = datetime.now()
+            now = tz_now()
             time_bucket = now.strftime("%Y-%m-%d %H:00:00")
             success_inc = 1 if status == "success" else 0
             error_inc = 0 if status == "success" else 1
@@ -1090,7 +1091,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             conn = self._connection
 
             # Calculate time bucket (hour precision)
-            now = datetime.now()
+            now = tz_now()
             time_bucket = now.strftime("%Y-%m-%d %H:00:00")
 
             # Use INSERT ... ON CONFLICT to update or insert
@@ -1120,7 +1121,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return []
 
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             conn = self._connection
             cursor = await conn.execute(
@@ -1153,7 +1154,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return []
 
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             conn = self._connection
             cursor = await conn.execute(
@@ -1192,7 +1193,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return []
 
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             conn = self._connection
             cursor = await conn.execute(
@@ -1268,7 +1269,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return []
 
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             conn = self._connection
 
@@ -1307,7 +1308,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
         try:
-            cutoff_time = datetime.now() - timedelta(days=days)
+            cutoff_time = tz_now() - timedelta(days=days)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             conn = self._connection
 
@@ -1356,7 +1357,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         conn = self._connection
         try:
-            now = datetime.now()
+            now = tz_now()
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
             cursor = await conn.execute(
@@ -1497,7 +1498,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 return await self.get_conversation(conversation_id)
 
             set_clauses.append("updated_at = ?")
-            params.append(datetime.now())
+            params.append(tz_now())
             params.append(conversation_id)
 
             sql = f"UPDATE conversations SET {', '.join(set_clauses)} WHERE id = ?"
@@ -1589,7 +1590,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         conn = self._connection
         try:
-            now = datetime.now()
+            now = tz_now()
             # Map is_complete to status and completed_at
             status = "completed" if is_complete else "streaming"
             completed_at = now if is_complete else None
@@ -1666,7 +1667,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         conn = self._connection
         try:
-            now = datetime.now()
+            now = tz_now()
             set_clauses = ["content = ?", "updated_at = ?"]
             params = [new_content, now]
 
@@ -1724,7 +1725,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         conn = self._connection
         try:
-            now = datetime.now()
+            now = tz_now()
 
             # Use SQLite string concatenation ||
             # Also update status to 'streaming' if it was 'pending'
@@ -1769,7 +1770,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         conn = self._connection
         try:
-            now = datetime.now()
+            now = tz_now()
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
             cursor = await conn.execute(
@@ -1803,7 +1804,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         conn = self._connection
         try:
-            now = datetime.now()
+            now = tz_now()
 
             set_clauses = ["status = ?", "completed_at = ?", "updated_at = ?"]
             params = [status, now, now]

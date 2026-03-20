@@ -28,6 +28,7 @@ from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
 from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -183,7 +184,7 @@ class VolcengineAuth:
             Headers with Authorization added
         """
         # Get current time
-        t = datetime.datetime.now(tz=datetime.timezone.utc)
+        t = tz_now()
         x_date = t.strftime("%Y%m%dT%H%M%SZ")
         date_stamp = t.strftime("%Y%m%d")
 
