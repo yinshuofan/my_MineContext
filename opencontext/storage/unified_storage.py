@@ -926,19 +926,19 @@ class UnifiedStorage:
         self,
         context_type: str,
         hierarchy_level: int,
-        time_bucket_start: Optional[str] = None,
-        time_bucket_end: Optional[str] = None,
+        time_start: Optional[float] = None,
+        time_end: Optional[float] = None,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         top_k: int = 20,
     ) -> List[Tuple[ProcessedContext, float]]:
-        """Search by hierarchy level and time bucket → vector DB"""
+        """Search by hierarchy level and timestamp range → vector DB"""
         return await self._vector_backend.search_by_hierarchy(
             context_type=context_type,
             hierarchy_level=hierarchy_level,
-            time_bucket_start=time_bucket_start,
-            time_bucket_end=time_bucket_end,
+            time_start=time_start,
+            time_end=time_end,
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,

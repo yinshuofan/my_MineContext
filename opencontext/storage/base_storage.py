@@ -234,20 +234,23 @@ class IVectorStorageBackend(IStorageBackend):
         self,
         context_type: str,
         hierarchy_level: int,
-        time_bucket_start: Optional[str] = None,
-        time_bucket_end: Optional[str] = None,
+        time_start: Optional[float] = None,
+        time_end: Optional[float] = None,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         top_k: int = 20,
     ) -> List[Tuple[ProcessedContext, float]]:
-        """Search contexts by hierarchy level and time bucket range
+        """Search contexts by hierarchy level and numeric timestamp range overlap.
+
+        Returns contexts whose [event_time_start, event_time_end] overlaps
+        with the query range [time_start, time_end] (UTC timestamps as floats).
 
         Args:
             context_type: Context type to search
             hierarchy_level: Hierarchy level to search (0=original, 1=daily, 2=weekly, 3=monthly)
-            time_bucket_start: Start of time bucket range (inclusive)
-            time_bucket_end: End of time bucket range (inclusive)
+            time_start: Start of query time range as UTC timestamp (inclusive), or None for unbounded
+            time_end: End of query time range as UTC timestamp (inclusive), or None for unbounded
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-device isolation
             agent_id: Agent identifier for multi-agent isolation
