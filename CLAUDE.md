@@ -119,7 +119,7 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 | Data Models | `opencontext/models/context.py` | `models/MODULE.md` |
 | LLM Clients (embedding, VLM, text) | `opencontext/llm/` | `llm/MODULE.md` |
 | Agent Registry | `opencontext/storage/` | `agent_registry` table with soft delete |
-| Chat Batches | `opencontext/storage/` | Persists raw chat messages before processing |
+| Chat Batches | `opencontext/storage/`, `opencontext/server/routes/` | Persists raw chat messages; debug page traces batch → produced contexts |
 | Agent Memory Processor | `opencontext/context_processing/` | Extracts agent-perspective memories from conversations |
 
 ### Storage Access
@@ -142,6 +142,7 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 | `/api/agents/{id}/base/*` | POST/GET/DELETE | Agent base memory (profile + events) |
 | `/api/search` | POST | Event search with semantic query, filters, hierarchy drill-up, and `memory_owner` parameter |
 | `/api/memory-cache` | GET | User/agent memory snapshot (parameterized by `memory_owner`) |
+| `/api/chat-batches` | GET | List/get chat batches and their related vector contexts (debug) |
 
 Request body uses OpenAI message format. The 3-key identifier `(user_id, device_id, agent_id)` is optional on all push endpoints, defaulting to `"default"`.
 

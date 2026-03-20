@@ -875,3 +875,84 @@ curl -X POST http://localhost:1733/api/push/chat \
 
 `"agent_memory"` 处理器会从 agent 视角分析对话，提取 `AGENT_EVENT` 和 `AGENT_PROFILE` 类型的记忆。提取的记忆通过标准存储路由：agent_profile -> 关系数据库（`context_type="agent_profile"`），agent_event -> 向量数据库。
 
+---
+
+## 8. Chat Batches (Debug)
+
+调试接口，用于查看聊天批次及其产生的向量上下文。
+
+### 8.1 列出聊天批次
+
+`GET /api/chat-batches`
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `user_id` | `string` | 否 | — | 用户标识 |
+| `device_id` | `string` | 否 | — | 设备标识 |
+| `agent_id` | `string` | 否 | — | Agent 标识 |
+| `start_date` | `string` | 否 | — | 起始日期 |
+| `end_date` | `string` | 否 | — | 结束日期 |
+| `page` | `int` | 否 | `1` | 页码 |
+| `limit` | `int` | 否 | `20` | 每页数量 |
+
+```bash
+curl "http://localhost:1733/api/chat-batches?user_id=test_user&page=1&limit=20"
+```
+
+**成功**
+```json
+{
+  "data": {
+    "batches": [...],
+    "total": 42,
+    "page": 1,
+    "limit": 20,
+    "total_pages": 3
+  }
+}
+```
+
+### 8.2 获取聊天批次详情
+
+`GET /api/chat-batches/{batch_id}`
+
+```bash
+curl "http://localhost:1733/api/chat-batches/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+```
+
+**成功**
+```json
+{
+  "data": {
+    "batch": {
+      "batch_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "messages": [...],
+      "user_id": "test_user",
+      "device_id": "default",
+      "agent_id": "default",
+      "message_count": 2,
+      "created_at": "2026-03-18T10:00:00"
+    }
+  }
+}
+```
+
+### 8.3 获取批次关联的上下文
+
+`GET /api/chat-batches/{batch_id}/contexts`
+
+返回该批次产生的所有向量数据库上下文（通过 `raw_type="chat_batch"` + `raw_id=batch_id` 匹配）。
+
+```bash
+curl "http://localhost:1733/api/chat-batches/a1b2c3d4-e5f6-7890-abcd-ef1234567890/contexts"
+```
+
+**成功**
+```json
+{
+  "data": {
+    "contexts": [...]
+  }
+}
+```
+
