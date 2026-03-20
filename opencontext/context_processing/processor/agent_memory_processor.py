@@ -1,5 +1,6 @@
 """Agent Memory Processor — extracts memories from the agent's perspective."""
 
+import asyncio
 import datetime
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +17,7 @@ from opencontext.models.context import (
 )
 from opencontext.models.enums import ContentFormat, ContextSource, ContextType
 from opencontext.storage.global_storage import get_storage
+from opencontext.server.search.event_search_service import EventSearchService
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 
@@ -46,7 +48,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
             return []
 
     async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
-        # 1. Load agent info
+        # 0. Validate agent_id
         agent_id = raw_context.agent_id
         if not agent_id or agent_id == "default":
             logger.debug("No agent_id in context, skipping agent memory processing")
@@ -59,42 +61,82 @@ class AgentMemoryProcessor(BaseContextProcessor):
             return []
 
         agent_name = agent.get("name", agent_id)
-        agent_description = agent.get("description", "")
+        chat_content = raw_context.content_text or ""
 
-        # 2. Load prompt
+        # 1. Parallel: fetch persona + extract search query
+        profile_task = storage.get_profile(
+            user_id=raw_context.user_id,
+            device_id=raw_context.device_id or "default",
+            agent_id=raw_context.agent_id,
+            context_type="agent_profile",
+        )
+        query_task = self._extract_search_query(chat_content)
+
+        profile_result, query_text = await asyncio.gather(profile_task, query_task)
+
+        if not profile_result:
+            logger.error(
+                f"[agent_memory_processor] Agent profile not found for "
+                f"user={raw_context.user_id}, agent={agent_id}. "
+                f"Agent must have a profile set up before agent memory processing."
+            )
+            return []
+
+        agent_persona = profile_result.get("factual_profile", "")
+
+        # 2. Search related past agent memories
+        search_result = None
+        if query_text:
+            search_service = EventSearchService()
+            search_result = await search_service.semantic_search(
+                query=[{"type": "text", "text": query_text}],
+                user_id=raw_context.user_id,
+                device_id=raw_context.device_id or "default",
+                agent_id=raw_context.agent_id,
+                memory_owner="agent",
+                drill_up=True,
+            )
+
+        # 3. Format related memories
+        related_memories_text = ""
+        if search_result:
+            related_memories_text = self._format_related_memories(search_result)
+
+        # 4. Load prompt and build LLM messages
         prompt_group = get_prompt_group("processing.extraction.agent_memory_analyze")
         if not prompt_group:
             logger.warning("agent_memory_analyze prompt not found")
             return []
 
-        logger.debug(f"[agent_memory_processor] Processing: user={raw_context.user_id}, agent={raw_context.agent_id}, agent_name={agent_name}")
+        logger.debug(
+            f"[agent_memory_processor] Processing: user={raw_context.user_id}, "
+            f"agent={raw_context.agent_id}, agent_name={agent_name}, "
+            f"related_memories={len(related_memories_text)} chars"
+        )
 
-        # 3. Build LLM messages
         system_prompt = prompt_group.get("system", "")
         system_prompt = system_prompt.replace("{agent_name}", agent_name)
-        system_prompt = system_prompt.replace("{agent_description}", agent_description)
+        system_prompt = system_prompt.replace("{agent_persona}", agent_persona)
+        system_prompt = system_prompt.replace("{related_memories}", related_memories_text)
 
-        chat_history = raw_context.content_text or ""
         messages = [
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": prompt_group.get("user", "").format(
-                    chat_history=chat_history,
+                    chat_history=chat_content,
                     current_time=datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
                 ),
             },
         ]
 
-        logger.debug("[agent_memory_processor] LLM messages prepared")
-
-        # 4. Call LLM (disable tool executor — pure extraction)
+        # 5. Call LLM
         response = await generate_with_messages(messages, enable_executor=False)
         logger.debug(f"[agent_memory_processor] LLM response: {response}")
         if not response:
             return []
 
-        # 5. Parse response
+        # 6. Parse and build contexts (unchanged)
         analysis = parse_json_from_response(response)
         if not analysis:
             return []
@@ -104,7 +146,6 @@ class AgentMemoryProcessor(BaseContextProcessor):
             logger.info("[agent_memory_processor] No memories extracted from chat analysis")
             return []
 
-        # 6. Build ProcessedContext for each memory
         batch_id = (raw_context.additional_info or {}).get("batch_id")
         results = []
         for memory in memories:
@@ -119,6 +160,58 @@ class AgentMemoryProcessor(BaseContextProcessor):
             type_counts[t] = type_counts.get(t, 0) + 1
         logger.info(f"[agent_memory_processor] Extracted {len(results)} memories: {type_counts}")
         return results
+
+    async def _extract_search_query(self, chat_content: str) -> Optional[str]:
+        """Use LLM to extract a search query from chat content (from AI's perspective)."""
+        prompt_group = get_prompt_group("processing.extraction.agent_memory_query")
+        if not prompt_group:
+            logger.warning("agent_memory_query prompt not found")
+            return None
+
+        messages = [
+            {"role": "system", "content": prompt_group.get("system", "")},
+            {
+                "role": "user",
+                "content": prompt_group.get("user", "").format(chat_history=chat_content),
+            },
+        ]
+        response = await generate_with_messages(messages, enable_executor=False)
+        if not response or not response.strip():
+            return None
+        return response.strip()
+
+    @staticmethod
+    def _format_related_memories(search_result) -> str:
+        """Format search results (hits + ancestors) into text for the LLM prompt."""
+        all_contexts = {}
+
+        # Merge hits and ancestors, deduplicate by ID
+        for ctx, score in search_result.hits:
+            all_contexts[ctx.id] = ctx
+        for ctx_id, ctx in search_result.ancestors.items():
+            if ctx_id not in all_contexts:
+                all_contexts[ctx_id] = ctx
+
+        if not all_contexts:
+            return ""
+
+        # Sort by time_bucket ascending
+        sorted_contexts = sorted(
+            all_contexts.values(),
+            key=lambda c: (c.properties.time_bucket or "") if c.properties else "",
+        )
+
+        lines = []
+        for ctx in sorted_contexts:
+            title = ctx.extracted_data.title if ctx.extracted_data else ""
+            summary = ctx.extracted_data.summary if ctx.extracted_data else ""
+            time_bucket = ctx.properties.time_bucket if ctx.properties else ""
+            lines.append(f"[{time_bucket}] {title}")
+            if summary:
+                lines.append(summary)
+            lines.append("")  # blank line between entries
+
+        return "\n".join(lines).strip()
 
     def _build_agent_context(
         self, memory: Dict, raw_context: RawContextProperties, batch_id: Optional[str]
