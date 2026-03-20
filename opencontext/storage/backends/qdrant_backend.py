@@ -666,8 +666,8 @@ class QdrantBackend(IVectorStorageBackend):
         self,
         context_type: str,
         hierarchy_level: int,
-        time_bucket_start: Optional[str] = None,
-        time_bucket_end: Optional[str] = None,
+        time_start: Optional[float] = None,
+        time_end: Optional[float] = None,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
@@ -711,37 +711,38 @@ class QdrantBackend(IVectorStorageBackend):
                 )
             )
 
-        filter_condition = models.Filter(must=must_conditions)
+        # Numeric range overlap
+        if time_end is not None:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="event_time_start_ts",
+                    range=models.Range(lte=time_end),
+                )
+            )
+        if time_start is not None:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="event_time_end_ts",
+                    range=models.Range(gte=time_start),
+                )
+            )
 
-        # Fetch more results to allow for in-code time_bucket filtering
-        fetch_limit = top_k * 3 if (time_bucket_start or time_bucket_end) else top_k
+        filter_condition = models.Filter(must=must_conditions)
 
         try:
             records, _ = await self._client.scroll(
                 collection_name=collection_name,
                 scroll_filter=filter_condition,
-                limit=fetch_limit,
+                limit=top_k,
                 with_payload=True,
                 with_vectors=False,
             )
 
             results = []
             for point in records:
-                # In-code string comparison filtering for time_bucket
-                # (Qdrant Range filter does not support string fields)
-                if time_bucket_start or time_bucket_end:
-                    payload = point.payload or {}
-                    tb = payload.get("time_bucket", "")
-                    if time_bucket_start and tb < time_bucket_start:
-                        continue
-                    if time_bucket_end and tb > time_bucket_end:
-                        continue
-
                 context = self._qdrant_result_to_context(point, need_vector=False)
                 if context:
                     results.append((context, 1.0))
-                    if len(results) >= top_k:
-                        break
 
             return results
 
