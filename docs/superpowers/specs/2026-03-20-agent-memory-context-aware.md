@@ -22,7 +22,19 @@ Extract core search logic from `opencontext/server/routes/search.py` into a stat
 **Class design:**
 
 ```python
+@dataclass
+class SearchResult:
+    """Return type for semantic_search."""
+    hits: List[Tuple[ProcessedContext, float]]       # (context, score) search matches
+    ancestors: Dict[str, ProcessedContext]            # drill-up parent summaries (id → context)
+
 class EventSearchService:
+    """Stateless service. Access storage via get_storage() property (never cache in __init__)."""
+
+    @property
+    def storage(self):
+        return get_storage()
+
     async def semantic_search(
         self,
         query: List[Dict],          # OpenAI content parts format
@@ -35,7 +47,8 @@ class EventSearchService:
         time_range: Optional[Dict] = None,
         drill_up: bool = False,
     ) -> SearchResult:
-        """Semantic search with optional drill-up. Returns search hits + ancestor nodes."""
+        """Semantic search with optional drill-up.
+        Handles vectorization internally — caller provides raw query content."""
         ...
 
     async def filter_search(
@@ -77,7 +90,12 @@ class EventSearchService:
    ) → related agent_events + hierarchy summaries
 
 4. Format related memories as text
-   ProcessedContext list → text (title, summary, time_bucket per entry, sorted by time)
+   ProcessedContext list → text, sorted by time_bucket ascending, each entry:
+   ```
+   [{time_bucket}] {title}
+   {summary}
+   ```
+   Hits and ancestors are merged and deduplicated before formatting.
 
 5. Generate memories (modified LLM call)
    LLM receives:
@@ -91,8 +109,10 @@ class EventSearchService:
    → agent_event → vector DB
 ```
 
+**Search scope:** Scoped to current user — `user_id` is passed to `semantic_search` so the agent only recalls memories from interactions with this specific user. Cross-user memory is not included.
+
 **Error handling:**
-- No profile → error (not handled, by design)
+- No profile → error (not handled, by design — agent must have a profile set up before agent memory processing)
 - No search results → continue with empty `{related_memories}` (degrades gracefully to current behavior)
 
 ### 3. Prompt Changes
@@ -116,6 +136,8 @@ Replace `{agent_description}` with `{agent_persona}` (from factual_profile) and 
 ```yaml
 agent_memory_analyze:
   system: |
+    你是{agent_name}。
+
     你的人设:
     {agent_persona}
 
@@ -168,6 +190,8 @@ AgentMemoryProcessor._process_async()
 | `opencontext/context_processing/processor/agent_memory_processor.py` | Restructure flow: add steps 1-4 |
 | `config/prompts_en.yaml` | Add agent_memory_query, modify agent_memory_analyze |
 | `config/prompts_zh.yaml` | Sync updates |
+| `opencontext/context_processing/MODULE.md` | Update processor documentation |
+| `opencontext/server/MODULE.md` | Update search architecture documentation |
 
 ## What Does NOT Change
 
