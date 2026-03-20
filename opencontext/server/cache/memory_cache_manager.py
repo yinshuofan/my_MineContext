@@ -106,7 +106,7 @@ class MemoryCacheManager:
                 "summary": item.get("summary"),
                 "keywords": item.get("keywords", []),
                 "score": item.get("score"),
-                "event_time": item.get("event_time"),
+                "event_time_start": item.get("event_time_start"),
                 "create_time": item.get("create_time"),
                 "media_refs": normalize_media_refs(item.get("media_refs")),
                 "accessed_ts": now,
@@ -343,7 +343,7 @@ class MemoryCacheManager:
                         keywords=data.get("keywords", []),
                         accessed_ts=data.get("accessed_ts", 0),
                         score=data.get("score"),
-                        event_time=data.get("event_time"),
+                        event_time_start=data.get("event_time_start"),
                         create_time=data.get("create_time"),
                         media_refs=normalize_media_refs(data.get("media_refs")),
                     )
@@ -388,10 +388,12 @@ class MemoryCacheManager:
         now = datetime.now(tz=timezone.utc)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_start_ts = int(today_start.timestamp())
-        yesterday = (today_start - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday_start = today_start - timedelta(days=1)
+        yesterday_end_ts = float(today_start_ts - 1)  # end of yesterday
         week_start = today_start - timedelta(days=days)
         week_start_ts = int(week_start.timestamp())
-        period_start = (today_start - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+        period_start_dt = today_start - timedelta(days=days - 1)
+        period_start_ts = float(int(period_start_dt.timestamp()))
 
         # Profile context_type for DB query
         profile_context_type = ContextType.AGENT_PROFILE.value if memory_owner == "agent" else ContextType.PROFILE.value
@@ -407,7 +409,7 @@ class MemoryCacheManager:
                 offset=0,
                 filter={
                     "hierarchy_level": 0,
-                    "event_time_ts": {"$gte": today_start_ts},
+                    "event_time_start_ts": {"$gte": today_start_ts},
                 },
                 need_vector=False,
                 user_id=user_id,
@@ -417,8 +419,8 @@ class MemoryCacheManager:
             "daily_summaries": storage.search_hierarchy(
                 context_type=l1_type,
                 hierarchy_level=1,  # L1
-                time_bucket_start=period_start,
-                time_bucket_end=yesterday,
+                time_start=period_start_ts,
+                time_end=yesterday_end_ts,
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
@@ -432,7 +434,7 @@ class MemoryCacheManager:
                 context_types=[ContextType.DOCUMENT.value],
                 limit=self._config["max_recent_documents"],
                 offset=0,
-                filter={"created_at_ts": {"$gte": week_start_ts}},
+                filter={"create_time_ts": {"$gte": week_start_ts}},
                 need_vector=False,
                 user_id=user_id,
                 device_id=device_id,
@@ -442,7 +444,7 @@ class MemoryCacheManager:
                 context_types=[ContextType.KNOWLEDGE.value],
                 limit=self._config["max_recent_knowledge"],
                 offset=0,
-                filter={"created_at_ts": {"$gte": week_start_ts}},
+                filter={"create_time_ts": {"$gte": week_start_ts}},
                 need_vector=False,
                 user_id=user_id,
                 device_id=device_id,
@@ -504,7 +506,7 @@ class MemoryCacheManager:
                 for ctx in contexts:
                     today_items.append(self._ctx_to_recent_item(ctx))
             today_items.sort(
-                key=lambda x: x.get("event_time") or x.get("create_time") or "",
+                key=lambda x: x.get("event_time_start") or x.get("create_time") or "",
             )
             recent_memories["today_events"] = today_items[:max_events_today]
 
@@ -513,16 +515,24 @@ class MemoryCacheManager:
         if summaries_data and not isinstance(summaries_data, Exception):
             daily_items = []
             for ctx, score in summaries_data:
+                # Derive event_time_start string from properties
+                ets = ""
+                if ctx.properties and ctx.properties.event_time_start:
+                    ets_val = ctx.properties.event_time_start
+                    if hasattr(ets_val, "isoformat"):
+                        ets = ets_val.isoformat()
+                    else:
+                        ets = str(ets_val)
                 daily_items.append(
                     {
                         "id": ctx.id,
-                        "time_bucket": ctx.properties.time_bucket or "",
+                        "event_time_start": ets,
                         "title": ctx.extracted_data.title if ctx.extracted_data else None,
                         "summary": ctx.extracted_data.summary if ctx.extracted_data else None,
                         "children_count": self._count_refs(ctx, summary_type_values),
                     }
                 )
-            daily_items.sort(key=lambda x: x["time_bucket"], reverse=True)
+            daily_items.sort(key=lambda x: x["event_time_start"], reverse=True)
             recent_memories["daily_summaries"] = daily_items
 
         # Recent documents
@@ -580,15 +590,15 @@ class MemoryCacheManager:
             else:
                 create_time = str(props.create_time)
 
-        event_time = None
-        if props.event_time:
-            if hasattr(props.event_time, "isoformat"):
-                dt = props.event_time
+        event_time_start = None
+        if props.event_time_start:
+            if hasattr(props.event_time_start, "isoformat"):
+                dt = props.event_time_start
                 if dt.tzinfo is not None:
                     dt = dt.replace(tzinfo=None)
-                event_time = dt.isoformat()
+                event_time_start = dt.isoformat()
             else:
-                event_time = str(props.event_time)
+                event_time_start = str(props.event_time_start)
 
         result = {
             "id": ctx.id,
@@ -599,7 +609,7 @@ class MemoryCacheManager:
             "entities": ed.entities if ed else [],
             "importance": ed.importance if ed else 0,
             "create_time": create_time,
-            "event_time": event_time,
+            "event_time_start": event_time_start,
         }
 
         # Include media_refs from metadata if present (multimodal content)
@@ -655,7 +665,7 @@ class MemoryCacheManager:
 
             daily_summaries = [
                 SimpleDailySummary(
-                    time_bucket=item.get("time_bucket", ""),
+                    event_time_start=item.get("event_time_start", ""),
                     title=item.get("title"),
                     summary=item.get("summary"),
                 )
@@ -665,7 +675,7 @@ class MemoryCacheManager:
                 SimpleTodayEvent(
                     title=item.get("title"),
                     summary=item.get("summary"),
-                    event_time=item.get("event_time"),
+                    event_time_start=item.get("event_time_start"),
                 )
                 for item in rm_data.get("today_events", [])
             ]

@@ -27,7 +27,7 @@ class RecentlyAccessedItem(BaseModel):
     keywords: List[str] = Field(default_factory=list)
     accessed_ts: float  # Unix timestamp of last access
     score: Optional[float] = None  # Last search relevance score
-    event_time: Optional[str] = None
+    event_time_start: Optional[str] = None
     create_time: Optional[str] = None
     media_refs: List[Dict[str, Any]] = Field(default_factory=list)
 
@@ -43,14 +43,14 @@ class RecentMemoryItem(BaseModel):
     entities: List[str] = Field(default_factory=list)
     importance: int = 0
     create_time: Optional[str] = None
-    event_time: Optional[str] = None
+    event_time_start: Optional[str] = None
 
 
 class DailySummaryItem(BaseModel):
     """An L1 daily summary for a specific day (internal use for snapshot building)."""
 
     id: str
-    time_bucket: str  # e.g. "2026-02-21"
+    event_time_start: str  # e.g. "2026-02-21T00:00:00"
     summary: Optional[str] = None
     children_count: int = 0
 
@@ -58,7 +58,7 @@ class DailySummaryItem(BaseModel):
 class SimpleDailySummary(BaseModel):
     """Simplified daily summary for cache response."""
 
-    time_bucket: str
+    event_time_start: str
     title: Optional[str] = None
     summary: Optional[str] = None
 
@@ -68,7 +68,7 @@ class SimpleTodayEvent(BaseModel):
 
     title: Optional[str] = None
     summary: Optional[str] = None
-    event_time: Optional[str] = None
+    event_time_start: Optional[str] = None
 
 
 class UserMemoryCacheResponse(BaseModel):
