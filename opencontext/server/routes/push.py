@@ -399,7 +399,7 @@ async def push_chat(
     try:
         # Validate reserved user_id
         if request.user_id == "__base__":
-            raise HTTPException(400, "user_id '__base__' is reserved for system use")
+            raise HTTPException(status_code=400, detail="user_id '__base__' is reserved for system use")
 
         # Validate agent exists when agent_memory processor is requested
         if (
