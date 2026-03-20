@@ -285,3 +285,9 @@ async def settings_page(request: Request):
 async def agents_page(request: Request):
     """Agent management page"""
     return templates.TemplateResponse("agents.html", {"request": request, "title": "Agent 管理"})
+
+
+@router.get("/chat_batches", response_class=HTMLResponse)
+async def chat_batches_page(request: Request):
+    """Chat batches debug page"""
+    return templates.TemplateResponse("chat_batches.html", {"request": request, "title": "消息追踪"})

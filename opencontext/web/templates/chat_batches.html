@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">消息追踪</h1>
+</div>
+
+<!-- Filter Bar -->
+<div class="card mb-4" style="border-top: 3px solid #2c3e50;">
+    <div class="card-body py-3 px-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md">
+                <label class="form-label small text-muted mb-1">User ID</label>
+                <input type="text" class="form-control form-control-sm" id="filterUserId" placeholder="可选">
+            </div>
+            <div class="col-6 col-md">
+                <label class="form-label small text-muted mb-1">Device ID</label>
+                <input type="text" class="form-control form-control-sm" id="filterDeviceId" placeholder="可选">
+            </div>
+            <div class="col-6 col-md">
+                <label class="form-label small text-muted mb-1">Agent ID</label>
+                <input type="text" class="form-control form-control-sm" id="filterAgentId" placeholder="可选">
+            </div>
+            <div class="col-6 col-md">
+                <label class="form-label small text-muted mb-1">开始时间</label>
+                <input type="datetime-local" class="form-control form-control-sm" id="filterStartDate">
+            </div>
+            <div class="col-6 col-md">
+                <label class="form-label small text-muted mb-1">结束时间</label>
+                <input type="datetime-local" class="form-control form-control-sm" id="filterEndDate">
+            </div>
+            <div class="col-12 col-md-auto">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-dark" onclick="loadBatches(1)">
+                        <i data-feather="search" style="width:13px;height:13px;vertical-align:-1px;" class="me-1"></i>筛选
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()">重置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card" style="border-top: 3px solid #2c3e50;">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="batchTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px;"></th>
+                        <th>Batch ID</th>
+                        <th>User ID</th>
+                        <th>Agent ID</th>
+                        <th>消息数</th>
+                        <th>创建时间</th>
+                    </tr>
+                </thead>
+                <tbody id="batchTableBody">
+                    <tr><td colspan="6" class="text-center text-muted py-5">
+                        <i data-feather="git-commit" style="width:36px;height:36px;" class="mb-2 d-block mx-auto"></i>
+                        点击"筛选"加载消息批次
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Pagination -->
+<div id="paginationArea" class="mt-3"></div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .expand-btn { cursor: pointer; transition: transform 0.2s; }
+    .expand-btn.open { transform: rotate(90deg); }
+    .detail-row td { padding: 0 !important; background: #f8f9fa; }
+    .detail-content { padding: 16px 24px; }
+    .msg-bubble { padding: 8px 12px; border-radius: 8px; margin-bottom: 6px; max-width: 85%; }
+    .msg-user { background: #e3f2fd; margin-left: auto; }
+    .msg-assistant { background: #f5f5f5; }
+    .msg-system { background: #fff3cd; font-style: italic; }
+    .ctx-card { border-left: 3px solid; padding: 10px 14px; margin-bottom: 8px; border-radius: 4px; background: #fff; }
+    .ctx-card-event { border-left-color: #ffc107; }
+    .ctx-card-agent_event { border-left-color: #ffc107; }
+    .ctx-card-knowledge { border-left-color: #6f42c1; }
+    .ctx-card-agent_profile { border-left-color: #0d6efd; }
+    .ctx-card-profile { border-left-color: #0d6efd; }
+    .ctx-card-document { border-left-color: #198754; }
+    .type-badge { font-size: 0.7rem; }
+</style>
+<script>
+let currentPage = 1;
+let currentLimit = 20;
+let expandedBatchId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-load on page visit
+    loadBatches(1);
+});
+
+function getFilterParams() {
+    const params = new URLSearchParams();
+    const userId = document.getElementById('filterUserId').value.trim();
+    const deviceId = document.getElementById('filterDeviceId').value.trim();
+    const agentId = document.getElementById('filterAgentId').value.trim();
+    const startDate = document.getElementById('filterStartDate').value;
+    const endDate = document.getElementById('filterEndDate').value;
+    if (userId) params.set('user_id', userId);
+    if (deviceId) params.set('device_id', deviceId);
+    if (agentId) params.set('agent_id', agentId);
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    return params;
+}
+
+function resetFilters() {
+    document.getElementById('filterUserId').value = '';
+    document.getElementById('filterDeviceId').value = '';
+    document.getElementById('filterAgentId').value = '';
+    document.getElementById('filterStartDate').value = '';
+    document.getElementById('filterEndDate').value = '';
+    loadBatches(1);
+}
+
+async function loadBatches(page) {
+    currentPage = page;
+    const params = getFilterParams();
+    params.set('page', page);
+    params.set('limit', currentLimit);
+
+    const tbody = document.getElementById('batchTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm"></div> 加载中...</td></tr>';
+
+    try {
+        const resp = await fetch(`/api/chat-batches?${params}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || '加载失败');
+
+        const batches = data.data.batches || [];
+        const total = data.data.total || 0;
+        const totalPages = data.data.total_pages || 1;
+
+        if (batches.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5"><i data-feather="inbox" style="width:36px;height:36px;" class="mb-2 d-block mx-auto"></i>没有找到消息批次</td></tr>';
+            document.getElementById('paginationArea').innerHTML = '';
+            feather.replace();
+            return;
+        }
+
+        expandedBatchId = null;
+        tbody.innerHTML = batches.map(b => renderBatchRow(b)).join('');
+        renderPagination(page, totalPages, total);
+        feather.replace();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">加载失败: ${esc(e.message)}</td></tr>`;
+    }
+}
+
+function renderBatchRow(batch) {
+    const id = esc(batch.batch_id);
+    const shortId = id.substring(0, 8);
+    const time = batch.created_at ? batch.created_at.substring(0, 19).replace('T', ' ') : '-';
+    return `
+        <tr class="batch-row" data-batch-id="${id}" onclick="toggleExpand('${id}')">
+            <td class="text-center"><i data-feather="chevron-right" class="expand-btn" id="expand-${id}" style="width:16px;height:16px;"></i></td>
+            <td><code title="${id}" style="cursor:pointer">${shortId}</code></td>
+            <td>${esc(batch.user_id || '-')}</td>
+            <td>${esc(batch.agent_id || 'default')}</td>
+            <td><span class="badge bg-secondary">${batch.message_count}</span></td>
+            <td><small>${time}</small></td>
+        </tr>
+        <tr class="detail-row d-none" id="detail-${id}"><td colspan="6"><div class="detail-content" id="detail-content-${id}"></div></td></tr>
+    `;
+}
+
+async function toggleExpand(batchId) {
+    const detailRow = document.getElementById('detail-' + batchId);
+    const expandBtn = document.getElementById('expand-' + batchId);
+
+    if (expandedBatchId === batchId) {
+        // Collapse
+        detailRow.classList.add('d-none');
+        expandBtn.classList.remove('open');
+        expandedBatchId = null;
+        return;
+    }
+
+    // Collapse previous
+    if (expandedBatchId) {
+        const prevDetail = document.getElementById('detail-' + expandedBatchId);
+        const prevBtn = document.getElementById('expand-' + expandedBatchId);
+        if (prevDetail) prevDetail.classList.add('d-none');
+        if (prevBtn) prevBtn.classList.remove('open');
+    }
+
+    // Expand new
+    expandedBatchId = batchId;
+    detailRow.classList.remove('d-none');
+    expandBtn.classList.add('open');
+
+    const content = document.getElementById('detail-content-' + batchId);
+    content.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> 加载详情...</div>';
+
+    try {
+        // Fetch batch detail and contexts in parallel
+        const [batchResp, ctxResp] = await Promise.all([
+            fetch(`/api/chat-batches/${encodeURIComponent(batchId)}`),
+            fetch(`/api/chat-batches/${encodeURIComponent(batchId)}/contexts`),
+        ]);
+
+        const batchData = await batchResp.json();
+        const ctxData = await ctxResp.json();
+
+        if (!batchResp.ok) throw new Error(batchData.detail || '加载批次失败');
+
+        const batch = batchData.data.batch;
+        const contexts = (ctxResp.ok && ctxData.data) ? (ctxData.data.contexts || []) : [];
+
+        content.innerHTML = `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="mb-2"><i data-feather="message-circle" style="width:14px;height:14px;" class="me-1"></i>原始消息 (${batch.message_count})</h6>
+                    <div class="border rounded p-2" style="max-height:400px;overflow-y:auto;">
+                        ${renderMessages(batch.messages || [])}
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="mb-2"><i data-feather="database" style="width:14px;height:14px;" class="me-1"></i>关联数据 (${contexts.length})</h6>
+                    <div style="max-height:400px;overflow-y:auto;">
+                        ${contexts.length > 0 ? contexts.map(c => renderContextCard(c)).join('') : '<p class="text-muted">暂无关联数据</p>'}
+                    </div>
+                </div>
+            </div>
+        `;
+        feather.replace();
+    } catch (e) {
+        content.innerHTML = `<div class="alert alert-danger mb-0">加载失败: ${esc(e.message)}</div>`;
+    }
+}
+
+function renderMessages(messages) {
+    if (!messages || messages.length === 0) return '<p class="text-muted">无消息</p>';
+    return messages.map(m => {
+        const role = (m.role || 'user').toLowerCase();
+        const roleClass = role === 'assistant' ? 'msg-assistant' : role === 'system' ? 'msg-system' : 'msg-user';
+        const roleBadge = role === 'user' ? 'primary' : role === 'assistant' ? 'success' : 'warning';
+        let content = '';
+        if (typeof m.content === 'string') {
+            content = esc(m.content);
+        } else if (Array.isArray(m.content)) {
+            content = m.content.map(part => {
+                if (part.type === 'text') return esc(part.text || '');
+                if (part.type === 'image_url') return '<span class="badge bg-info">🖼 图片</span>';
+                if (part.type === 'video_url') return '<span class="badge bg-dark">▶ 视频</span>';
+                return '';
+            }).join(' ');
+        }
+        return `
+            <div class="msg-bubble ${roleClass}">
+                <span class="badge bg-${roleBadge} me-1" style="font-size:0.65rem;">${esc(role)}</span>
+                <span style="font-size:0.85rem;">${content}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderContextCard(ctx) {
+    const TYPE_COLORS = {
+        event: 'warning', agent_event: 'warning', knowledge: 'purple',
+        document: 'success', profile: 'primary', agent_profile: 'primary',
+        daily_summary: 'info', weekly_summary: 'info', monthly_summary: 'info',
+        agent_daily_summary: 'info', agent_weekly_summary: 'info', agent_monthly_summary: 'info',
+    };
+    const color = TYPE_COLORS[ctx.context_type] || 'secondary';
+    const cssClass = 'ctx-card-' + (ctx.context_type || 'event');
+    const keywords = (ctx.keywords || []).map(k => `<span class="badge bg-info bg-opacity-75 me-1">${esc(k)}</span>`).join('');
+    return `
+        <div class="ctx-card ${cssClass}">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <span class="badge bg-${color} type-badge me-1">${esc(ctx.context_type)}</span>
+                    <strong>${esc(ctx.title || '未命名')}</strong>
+                </div>
+                ${ctx.importance != null ? `<span class="badge bg-light text-dark">重要性: ${ctx.importance}</span>` : ''}
+            </div>
+            ${ctx.summary ? `<p class="text-muted small mb-1 mt-1">${esc(ctx.summary)}</p>` : ''}
+            ${keywords ? `<div class="mt-1">${keywords}</div>` : ''}
+        </div>
+    `;
+}
+
+function renderPagination(page, totalPages, total) {
+    const area = document.getElementById('paginationArea');
+    if (totalPages <= 1) {
+        area.innerHTML = `<div class="text-muted small text-center">共 ${total} 条</div>`;
+        return;
+    }
+
+    let btns = '';
+    // Prev
+    btns += `<button class="btn btn-sm btn-outline-dark me-1" ${page <= 1 ? 'disabled' : ''} onclick="loadBatches(${page - 1})">&laquo;</button>`;
+    // Page numbers
+    for (let p = Math.max(1, page - 2); p <= Math.min(totalPages, page + 2); p++) {
+        btns += `<button class="btn btn-sm ${p === page ? 'btn-dark' : 'btn-outline-dark'} me-1" onclick="loadBatches(${p})">${p}</button>`;
+    }
+    // Next
+    btns += `<button class="btn btn-sm btn-outline-dark" ${page >= totalPages ? 'disabled' : ''} onclick="loadBatches(${page + 1})">&raquo;</button>`;
+
+    area.innerHTML = `<div class="d-flex justify-content-between align-items-center">
+        <small class="text-muted">共 ${total} 条，第 ${page}/${totalPages} 页</small>
+        <div>${btns}</div>
+    </div>`;
+}
+
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
