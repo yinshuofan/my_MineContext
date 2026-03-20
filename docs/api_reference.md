@@ -680,7 +680,7 @@ curl -X DELETE http://localhost:1733/api/agents/assistant_01
 
 ## 6. Agent Base Memory — Agent 基础记忆
 
-Agent 的基础记忆（base memory）是预先配置的 profile 和事件，与对话提取的记忆分开管理。基础 profile 使用 `user_id="__base__"` 作为哨兵值，基础事件没有关联 `user_id`。
+Agent 的基础记忆（base memory）是预先配置的 profile 和事件，与对话提取的记忆分开管理。基础 profile 和基础事件均使用 `user_id="__base__"` 作为哨兵值，以区分对话中产生的 per-user 数据。
 
 ### 6.1 设置基础 Profile
 

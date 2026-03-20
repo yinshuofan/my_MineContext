@@ -356,11 +356,11 @@ Push endpoints that schedule hierarchy summary: `push_chat`.
 | DELETE | `/api/agents/{agent_id}` | `delete_agent` | Soft-delete an agent |
 | POST | `/api/agents/{agent_id}/base/profile` | `set_base_profile` | Set or overwrite the agent's base profile (stored with `user_id="__base__"`, `context_type="agent_profile"`) |
 | GET | `/api/agents/{agent_id}/base/profile` | `get_base_profile` | Retrieve the agent's base profile |
-| POST | `/api/agents/{agent_id}/base/events` | `push_base_events` | Push structured base events (no LLM extraction; generates embeddings and stores as `AGENT_EVENT`) |
-| GET | `/api/agents/{agent_id}/base/events` | `list_base_events` | List base events for an agent (filtered by `user_id=None`) |
+| POST | `/api/agents/{agent_id}/base/events` | `push_base_events` | Push structured base events (no LLM extraction; generates embeddings and stores as `AGENT_EVENT` with `user_id="__base__"`) |
+| GET | `/api/agents/{agent_id}/base/events` | `list_base_events` | List base events for an agent (filtered by `user_id="__base__"`) |
 | DELETE | `/api/agents/{agent_id}/base/events/{event_id}` | `delete_base_event` | Delete a single base event by ID |
 
-Agent base memory routes use `user_id="__base__"` as a sentinel to distinguish base profiles from per-user agent profiles generated during conversations. Base events have no `user_id` set, distinguishing them from conversation-extracted agent events.
+Agent base memory routes use `user_id="__base__"` as a sentinel to distinguish both base profiles and base events from per-user data generated during conversations.
 
 ### Chat Batches Routes (`routes/chat_batches.py`)
 
