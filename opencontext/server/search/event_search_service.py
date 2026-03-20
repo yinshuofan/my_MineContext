@@ -6,7 +6,6 @@ Event Search Service — reusable search logic for routes and processors.
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.llm.global_embedding_client import do_vectorize
@@ -101,7 +100,7 @@ class EventSearchService:
                 f"[EventSearchService]   hit: score={score:.4f}, "
                 f"title='{ed.title if ed else ''}', "
                 f"type={ed.context_type.value if ed else ''}, "
-                f"time_bucket={ctx.properties.time_bucket if ctx.properties else ''}"
+                f"event_time_start={ctx.properties.event_time_start if ctx.properties else ''}"
             )
 
         return SearchResult(hits=raw_results, ancestors=ancestors)
@@ -118,12 +117,8 @@ class EventSearchService:
     ) -> List[Tuple[ProcessedContext, float]]:
         """Filter-only search (no semantic vector)."""
         if hierarchy_levels:
-            time_bucket_start = None
-            time_bucket_end = None
-            if time_range:
-                time_bucket_start, time_bucket_end = self._time_range_to_buckets(
-                    time_range.start, time_range.end
-                )
+            time_start = time_range.start if time_range else None
+            time_end = time_range.end if time_range else None
 
             owner_types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
             tasks = []
@@ -133,8 +128,8 @@ class EventSearchService:
                         self.storage.search_hierarchy(
                             context_type=owner_types[level].value,
                             hierarchy_level=level,
-                            time_bucket_start=time_bucket_start,
-                            time_bucket_end=time_bucket_end,
+                            time_start=time_start,
+                            time_end=time_end,
                             user_id=user_id,
                             device_id=device_id,
                             agent_id=agent_id,
@@ -154,16 +149,13 @@ class EventSearchService:
                     deduped.append(item)
             return deduped[:top_k]
 
-        # Only time_range — fetch all events
+        # Only time_range — fetch all events (range-overlap pattern)
         filters: Dict[str, Any] = {}
         if time_range:
-            ts_filter: Dict[str, Any] = {}
             if time_range.start is not None:
-                ts_filter["$gte"] = time_range.start
+                filters["event_time_end_ts"] = {"$gte": time_range.start}
             if time_range.end is not None:
-                ts_filter["$lte"] = time_range.end
-            if ts_filter:
-                filters["event_time_ts"] = ts_filter
+                filters["event_time_start_ts"] = {"$lte": time_range.end}
 
         all_types = self._get_context_types_for_levels(memory_owner, None)
         result = await self.storage.get_all_processed_contexts(
@@ -203,16 +195,17 @@ class EventSearchService:
         time_range: Optional[Any],
         hierarchy_levels: Optional[List[int]],
     ) -> Dict[str, Any]:
-        """Build storage filter dict from request parameters."""
+        """Build storage filter dict from request parameters.
+
+        Uses range-overlap pattern on two fields (event_time_start_ts, event_time_end_ts)
+        so that events whose [start, end] interval overlaps the query [start, end] are matched.
+        """
         filters: Dict[str, Any] = {}
         if time_range:
-            ts_filter: Dict[str, Any] = {}
-            if time_range.start is not None:
-                ts_filter["$gte"] = time_range.start
             if time_range.end is not None:
-                ts_filter["$lte"] = time_range.end
-            if ts_filter:
-                filters["event_time_ts"] = ts_filter
+                filters["event_time_start_ts"] = {"$lte": time_range.end}
+            if time_range.start is not None:
+                filters["event_time_end_ts"] = {"$gte": time_range.start}
 
         if hierarchy_levels is not None and len(hierarchy_levels) == 1:
             filters["hierarchy_level"] = hierarchy_levels[0]
@@ -220,22 +213,6 @@ class EventSearchService:
             filters["hierarchy_level"] = hierarchy_levels
 
         return filters
-
-    @staticmethod
-    def _time_range_to_buckets(
-        start_ts: Optional[int],
-        end_ts: Optional[int],
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Convert Unix timestamps to date bucket strings for search_hierarchy."""
-        bucket_start = None
-        bucket_end = None
-        if start_ts is not None:
-            dt = datetime.fromtimestamp(start_ts, tz=timezone.utc)
-            bucket_start = dt.strftime("%Y-%m-%d")
-        if end_ts is not None:
-            dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
-            bucket_end = dt.strftime("%Y-%m-%d")
-        return bucket_start, bucket_end
 
     async def collect_ancestors(
         self,
