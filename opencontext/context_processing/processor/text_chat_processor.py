@@ -100,11 +100,12 @@ class TextChatProcessor(BaseContextProcessor):
             return []
 
         # 6. 为每条 memory 构建 ProcessedContext
+        batch_id = (raw_context.additional_info or {}).get("batch_id")
         processed_list = []
 
         for memory in memories:
             try:
-                pc = self._build_processed_context(memory, raw_context, media_index=media_index)
+                pc = self._build_processed_context(memory, raw_context, media_index=media_index, batch_id=batch_id)
                 if pc:
                     processed_list.append(pc)
             except Exception as e:
@@ -190,6 +191,7 @@ class TextChatProcessor(BaseContextProcessor):
         memory: Dict,
         raw_context: RawContextProperties,
         media_index: Optional[List[Dict[str, str]]] = None,
+        batch_id: Optional[str] = None,
     ) -> Optional[ProcessedContext]:
         """Build ProcessedContext for a single memory with input validation.
 
@@ -199,6 +201,7 @@ class TextChatProcessor(BaseContextProcessor):
             media_index: Ordered list of media items from multimodal messages.
                          Each item is {"type": "image"|"video", "url": "..."}.
                          Used to resolve related_media indices from LLM output.
+            batch_id: Optional chat batch ID for traceability.
         """
         # Validate memory is a dict
         if not isinstance(memory, dict):
@@ -369,6 +372,8 @@ class TextChatProcessor(BaseContextProcessor):
                 user_id=raw_context.user_id,
                 device_id=raw_context.device_id,
                 agent_id=raw_context.agent_id,
+                raw_type="chat_batch" if batch_id else None,
+                raw_id=batch_id,
             ),
             extracted_data=extracted_data,
             vectorize=Vectorize(
