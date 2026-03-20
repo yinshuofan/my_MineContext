@@ -74,10 +74,19 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         profile_result, query_text = await asyncio.gather(profile_task, query_task)
 
+        # Fallback to __base__ profile if per-user profile doesn't exist
+        if not profile_result:
+            profile_result = await storage.get_profile(
+                user_id="__base__",
+                device_id=raw_context.device_id or "default",
+                agent_id=raw_context.agent_id,
+                context_type="agent_profile",
+            )
+
         if not profile_result:
             logger.error(
                 f"[agent_memory_processor] Agent profile not found for "
-                f"user={raw_context.user_id}, agent={agent_id}. "
+                f"user={raw_context.user_id}, agent={agent_id} (also checked __base__). "
                 f"Agent must have a profile set up before agent memory processing."
             )
             return []
