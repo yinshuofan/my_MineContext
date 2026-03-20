@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -103,7 +103,8 @@ class ContextProperties(BaseModel):
         default_factory=list
     )  # raw context properties
     create_time: datetime.datetime  # creation time
-    event_time: datetime.datetime  # event occurrence time, can be future
+    event_time_start: datetime.datetime  # event time range start
+    event_time_end: datetime.datetime  # event time range end (equals start for point events)
     is_processed: bool = False  # whether processed
     has_compression: bool = False  # whether compressed
     update_time: datetime.datetime  # update time
@@ -128,8 +129,14 @@ class ContextProperties(BaseModel):
 
     # Hierarchy indexing fields (event type only, for time-based hierarchical summaries)
     hierarchy_level: int = 0  # 0=original, 1=daily summary, 2=weekly summary, 3=monthly summary
-    time_bucket: Optional[str] = None  # Time bucket: "2026-02-21" / "2026-W08" / "2026-02"
     refs: Dict[str, List[str]] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_event_time_end(cls, data):
+        if isinstance(data, dict) and "event_time_end" not in data and "event_time_start" in data:
+            data["event_time_end"] = data["event_time_start"]
+        return data
 
 
 class VideoInput(BaseModel):
@@ -235,16 +242,16 @@ class ProcessedContext(BaseModel):
         #     parts.append(f"raw context source {i+1}: {source}")
         create_time = self.properties.create_time
         parts.append(f"create time: {create_time.isoformat()}")
-        event_time = self.properties.event_time
-        parts.append(f"event time: {event_time.isoformat()}")
+        event_time_start = self.properties.event_time_start
+        parts.append(f"event time: {event_time_start.isoformat()}")
+        if self.properties.event_time_end != event_time_start:
+            parts.append(f"event time end: {self.properties.event_time_end.isoformat()}")
         duration_count = self.properties.duration_count
         parts.append(f"duration count: {duration_count}")
 
         # Hierarchy info (for event summaries)
         if self.properties.hierarchy_level > 0:
             parts.append(f"hierarchy level: {self.properties.hierarchy_level}")
-        if self.properties.time_bucket:
-            parts.append(f"time bucket: {self.properties.time_bucket}")
 
         return "\n".join(parts)
 
@@ -326,7 +333,8 @@ class ProcessedContextModel(BaseModel):
     last_call_time: Optional[str] = None
     create_time: str
     update_time: str
-    event_time: str
+    event_time_start: str
+    event_time_end: str
     embedding: Optional[List[float]] = None
     raw_contexts: List["RawContextModel"] = Field(default_factory=list)
     duration_count: int  # context duration count
@@ -337,7 +345,6 @@ class ProcessedContextModel(BaseModel):
     agent_id: Optional[str] = None  # Agent identifier
     # Hierarchy fields
     hierarchy_level: int = 0
-    time_bucket: Optional[str] = None
     refs: Dict[str, List[str]] = Field(default_factory=dict)
 
     @classmethod
@@ -377,7 +384,8 @@ class ProcessedContextModel(BaseModel):
             ),
             create_time=pc.properties.create_time.strftime("%Y-%m-%d %H:%M:%S"),
             update_time=pc.properties.update_time.strftime("%Y-%m-%d %H:%M:%S"),
-            event_time=pc.properties.event_time.strftime("%Y-%m-%d %H:%M:%S"),
+            event_time_start=pc.properties.event_time_start.strftime("%Y-%m-%d %H:%M:%S"),
+            event_time_end=pc.properties.event_time_end.strftime("%Y-%m-%d %H:%M:%S"),
             embedding=pc.vectorize.vector,
             raw_contexts=raw_contexts,
             metadata=pc.metadata,  # add metadata
@@ -387,7 +395,6 @@ class ProcessedContextModel(BaseModel):
             agent_id=pc.properties.agent_id,
             # Hierarchy fields
             hierarchy_level=pc.properties.hierarchy_level,
-            time_bucket=pc.properties.time_bucket,
             refs=pc.properties.refs,
         )
 
