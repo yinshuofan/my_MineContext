@@ -411,8 +411,8 @@ async def push_chat(
             agent = await storage.get_agent(request.agent_id)
             if not agent:
                 raise HTTPException(
-                    400,
-                    f"Agent '{request.agent_id}' is not registered. "
+                    status_code=400,
+                    detail=f"Agent '{request.agent_id}' is not registered. "
                     f"Please register the agent via POST /api/agents before using agent_memory processor.",
                 )
 
