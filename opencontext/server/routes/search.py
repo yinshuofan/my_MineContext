@@ -328,7 +328,7 @@ async def _collect_ancestors(
     """
     Collect ancestors by following refs upward (to summary types).
 
-    Uses refs-based traversal with parent_id fallback for old data.
+    Uses refs-based traversal to walk up the hierarchy.
     Returns a mapping of ancestor_id -> ProcessedContext (excluding search results themselves).
     """
     owner_types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
@@ -342,13 +342,6 @@ async def _collect_ancestors(
     for ctx, score in results:
         seen.add(ctx.id)
         if not ctx.properties or not ctx.properties.refs:
-            # Fallback to parent_id for old data (field removed from model, may exist in metadata)
-            old_pid = (ctx.metadata or {}).get("parent_id") if ctx.properties else None
-            if old_pid:
-                if old_pid not in seen:
-                    seen.add(old_pid)
-                    current_batch.append(old_pid)
-                    ancestor_map.setdefault(ctx.id, []).append(old_pid)
             continue
         for ref_key, ref_ids in ctx.properties.refs.items():
             if ref_key in summary_type_values:
@@ -365,12 +358,6 @@ async def _collect_ancestors(
         for parent in parents:
             all_ancestors[parent.id] = parent
             if not parent.properties or not parent.properties.refs:
-                # Fallback to parent_id for old data (field removed from model, may exist in metadata)
-                old_pid = (parent.metadata or {}).get("parent_id") if parent.properties else None
-                if old_pid:
-                    if old_pid not in seen:
-                        seen.add(old_pid)
-                        next_batch.append(old_pid)
                 continue
             for ref_key, ref_ids in parent.properties.refs.items():
                 if ref_key in summary_type_values:
