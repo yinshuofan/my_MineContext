@@ -101,7 +101,7 @@ async def read_contexts(
                 except ValueError:
                     continue
 
-        context_types = [ct for ct in storage.get_available_context_types() if ct != "profile"]
+        context_types = [ct for ct in storage.get_available_context_types() if ct not in ("profile", "agent_profile")]
         types_for_query = list(types) if types else context_types
 
         # Get total count for pagination
@@ -279,3 +279,9 @@ async def assistant_page(request: Request):
 async def settings_page(request: Request):
     """System settings page"""
     return templates.TemplateResponse("settings.html", {"request": request, "title": "系统设置"})
+
+
+@router.get("/agents", response_class=HTMLResponse)
+async def agents_page(request: Request):
+    """Agent management page"""
+    return templates.TemplateResponse("agents.html", {"request": request, "title": "Agent 管理"})

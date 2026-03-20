@@ -82,7 +82,7 @@
 
 <!-- Context Cards -->
 {% if contexts %}
-{% set type_colors = {'profile': 'primary', 'document': 'success', 'event': 'warning', 'knowledge': 'purple'} %}
+{% set type_colors = {'profile': 'primary', 'agent_profile': 'primary', 'document': 'success', 'event': 'warning', 'agent_event': 'warning', 'knowledge': 'purple', 'daily_summary': 'info', 'weekly_summary': 'info', 'monthly_summary': 'info', 'agent_daily_summary': 'info', 'agent_weekly_summary': 'info', 'agent_monthly_summary': 'info'} %}
 <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 mb-4">
     {% for context in contexts %}
     <div class="col">
@@ -90,7 +90,7 @@
             <div class="card-header py-2 d-flex justify-content-between align-items-center">
                 <div>
                     <span class="badge bg-{{ type_colors.get(context.context_type, 'secondary') }}">{{ context.context_type }}</span>
-                    {% if context.context_type == 'event' and context.hierarchy_level is not none and context.hierarchy_level > 0 %}
+                    {% if context.hierarchy_level is not none and context.hierarchy_level > 0 %}
                     {% set level_colors = {1: 'success', 2: 'warning', 3: 'danger'} %}
                     <span class="badge bg-{{ level_colors.get(context.hierarchy_level, 'info') }}">L{{ context.hierarchy_level }}</span>
                     {% endif %}
