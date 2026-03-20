@@ -486,3 +486,31 @@ class IDocumentStorageBackend(IStorageBackend):
         """Delete chat batches older than retention_days."""
         raise NotImplementedError
 
+    async def list_chat_batches(
+        self,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """List chat batches (without messages) with optional filters."""
+        raise NotImplementedError
+
+    async def count_chat_batches(
+        self,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> int:
+        """Count chat batches matching filters."""
+        raise NotImplementedError
+
+    async def get_chat_batch(self, batch_id: str) -> Optional[Dict]:
+        """Get single chat batch with messages."""
+        raise NotImplementedError
+

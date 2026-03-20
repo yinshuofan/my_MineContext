@@ -1034,3 +1034,18 @@ class UnifiedStorage:
     async def cleanup_chat_batches(self, retention_days: int = 90) -> int:
         """Delete chat batches older than retention_days."""
         return await self._document_backend.cleanup_chat_batches(retention_days)
+
+    @_require_backend("_document_backend", default=[])
+    async def list_chat_batches(self, **kwargs) -> List[Dict]:
+        """List chat batches from document backend."""
+        return await self._document_backend.list_chat_batches(**kwargs)
+
+    @_require_backend("_document_backend", default=0)
+    async def count_chat_batches(self, **kwargs) -> int:
+        """Count chat batches from document backend."""
+        return await self._document_backend.count_chat_batches(**kwargs)
+
+    @_require_backend("_document_backend", default=None)
+    async def get_chat_batch(self, batch_id: str) -> Optional[Dict]:
+        """Get single chat batch from document backend."""
+        return await self._document_backend.get_chat_batch(batch_id)

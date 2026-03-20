@@ -1609,6 +1609,130 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.error(f"cleanup_chat_batches failed: {e}")
                     return 0
 
+    def _parse_date(self, date_str: str) -> Optional[datetime]:
+        """Parse date string supporting multiple formats."""
+        for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        return None
+
+    def _build_chat_batches_where(
+        self,
+        user_id: Optional[str],
+        device_id: Optional[str],
+        agent_id: Optional[str],
+        start_date: Optional[str],
+        end_date: Optional[str],
+    ) -> tuple:
+        """Build WHERE clause and params for chat_batches queries."""
+        conditions = []
+        params = []
+        if user_id is not None:
+            conditions.append("user_id = %s")
+            params.append(user_id)
+        if device_id is not None:
+            conditions.append("device_id = %s")
+            params.append(device_id)
+        if agent_id is not None:
+            conditions.append("agent_id = %s")
+            params.append(agent_id)
+        if start_date is not None:
+            parsed = self._parse_date(start_date)
+            if parsed:
+                conditions.append("created_at >= %s")
+                params.append(parsed)
+        if end_date is not None:
+            parsed = self._parse_date(end_date)
+            if parsed:
+                conditions.append("created_at < %s")
+                params.append(parsed)
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        return where, params
+
+    async def list_chat_batches(
+        self,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """List chat batches (without messages) with optional filters."""
+        if not self._initialized:
+            return []
+
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    where, params = self._build_chat_batches_where(
+                        user_id, device_id, agent_id, start_date, end_date
+                    )
+                    sql = (
+                        "SELECT batch_id, user_id, device_id, agent_id, message_count, created_at"
+                        f" FROM chat_batches{where} ORDER BY created_at DESC LIMIT %s OFFSET %s"
+                    )
+                    params.extend([limit, offset])
+                    await cursor.execute(sql, params)
+                    rows = await cursor.fetchall()
+                    columns = [desc[0] for desc in cursor.description]
+                    return [dict(zip(columns, row)) for row in rows]
+                except Exception as e:
+                    logger.error(f"list_chat_batches failed: {e}")
+                    return []
+
+    async def count_chat_batches(
+        self,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> int:
+        """Count chat batches matching filters."""
+        if not self._initialized:
+            return 0
+
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    where, params = self._build_chat_batches_where(
+                        user_id, device_id, agent_id, start_date, end_date
+                    )
+                    sql = f"SELECT COUNT(*) FROM chat_batches{where}"
+                    await cursor.execute(sql, params)
+                    row = await cursor.fetchone()
+                    return row[0] if row else 0
+                except Exception as e:
+                    logger.error(f"count_chat_batches failed: {e}")
+                    return 0
+
+    async def get_chat_batch(self, batch_id: str) -> Optional[Dict]:
+        """Get single chat batch with messages."""
+        if not self._initialized:
+            return None
+
+        async with self._get_connection() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    await cursor.execute(
+                        "SELECT * FROM chat_batches WHERE batch_id = %s", (batch_id,)
+                    )
+                    row = await cursor.fetchone()
+                    if not row:
+                        return None
+                    columns = [desc[0] for desc in cursor.description]
+                    result = dict(zip(columns, row))
+                    if isinstance(result.get("messages"), str):
+                        result["messages"] = json.loads(result["messages"])
+                    return result
+                except Exception as e:
+                    logger.error(f"get_chat_batch failed: {e}")
+                    return None
+
     # ── Agent Registry CRUD ──
 
     async def create_agent(self, agent_id: str, name: str, description: str = "") -> bool:
