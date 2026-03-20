@@ -135,7 +135,7 @@ Algorithm:
    - `event_ids` → `storage.get_contexts_by_ids()`, score=1.0
    - `query` → `Vectorize` + `storage.search()` with time filter only, using context types from `_get_context_types_for_levels(memory_owner, None)`
    - filters-only → `storage.search_hierarchy()` per level, or `get_all_processed_contexts()` with time filter
-2. **Collect ancestors** (if `drill_up=True`): Follows `refs` upward iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent ref. Strictly stops at `max_level`. Falls back to `metadata.parent_id` for old data written before the refs migration.
+2. **Collect ancestors** (if `drill_up=True`): Follows `refs` upward iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent ref. Strictly stops at `max_level`.
 3. **Build node map**: Search hits become `EventNode` with is_search_hit=True (score/content/keywords populated), ancestors become lightweight `EventNode` with is_search_hit=False. Search hits are never overwritten by ancestors.
 4. **Link tree**: Parent is extracted from `refs` via `_extract_parent_id_from_refs()` — finds the first ref ID that exists in the node map. Nodes without a valid parent become roots.
 5. **Sort**: Roots and all children lists sorted by `time_bucket` ASC recursively.
@@ -480,7 +480,7 @@ search_events()
      Path A (event_ids): storage.get_contexts_by_ids()
      Path B (query):     Vectorize(input=request.query) -> do_vectorize() -> storage.search(owner_context_types, time_filter_only)
      Path C (filters):   storage.search_hierarchy() per level, or get_all_processed_contexts()
-  -> _collect_ancestors() if drill_up=True     # Follow refs upward iteratively (max 3 rounds), with parent_id fallback
+  -> _collect_ancestors() if drill_up=True     # Follow refs upward iteratively (max 3 rounds)
   -> Build tree: node map → refs-based parent-child linking → recursive sort by time_bucket ASC
   -> Fire-and-forget _track_accessed_safe()     # Includes media_refs in tracked items
   -> Return EventSearchResponse (tree roots + search hit count)
@@ -547,7 +547,7 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 - `children`: Nested child nodes, sorted by `time_bucket` ASC. Root nodes are also sorted by `time_bucket` ASC.
 - `hierarchy_level`: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
 - `time_bucket`: `"YYYY-MM-DDTHH:MM:SS"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
-- `refs`: Dict mapping ContextType values to lists of context IDs (replaces former `parent_id`). E.g. `{"daily_summary": ["sum-id"]}` on an L0 event points to its parent daily summary.
+- `refs`: Dict mapping ContextType values to lists of context IDs. E.g. `{"daily_summary": ["sum-id"]}` on an L0 event points to its parent daily summary.
 - `total_results`: Count of actual search hits (not total tree nodes)
 - `score`: Semantic similarity score for query search; `1.0` for ID lookup and filter-only search
 

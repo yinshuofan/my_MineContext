@@ -170,9 +170,9 @@ Tracking and hierarchy metadata. Fields:
 | `user_id`, `device_id`, `agent_id` | `Optional[str]` | `None` | 3-key identifier |
 | `hierarchy_level` | `int` | `0` | 0=raw, 1=daily, 2=weekly, 3=monthly |
 | `time_bucket` | `Optional[str]` | `None` | e.g. `"2026-02-21"`, `"2026-W08"` |
-| `refs` | `Dict[str, List[str]]` | `{}` | Flexible reference map. Keys are ContextType values (e.g. `"daily_summary"`, `"event"`), values are lists of context IDs. Replaces former `parent_id`/`children_ids` fields. See below. |
+| `refs` | `Dict[str, List[str]]` | `{}` | Flexible bidirectional reference map. Keys are ContextType values (e.g. `"daily_summary"`, `"event"`), values are lists of context IDs. See below. |
 
-**`refs` field**: A single bidirectional reference map that replaces the old `parent_id` (str) and `children_ids` (List[str]) fields. Key = the ContextType of the referenced contexts, value = list of context IDs.
+**`refs` field**: A single bidirectional reference map linking contexts across hierarchy levels. Key = the ContextType of the referenced contexts, value = list of context IDs.
 - **Downward** (summary → children): e.g. `refs: {"event": ["id1", "id2"]}` on a DAILY_SUMMARY means it was generated from those L0 events.
 - **Upward** (child → parent summary): e.g. `refs: {"daily_summary": ["sum-id"]}` on an EVENT means it was summarized by that daily summary. Backfilled by `batch_update_refs()` after summary storage.
 
