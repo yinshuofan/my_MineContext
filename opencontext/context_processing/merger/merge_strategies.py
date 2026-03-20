@@ -19,6 +19,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from opencontext.utils.time_utils import now as tz_now
+
 from opencontext.models.context import ExtractedData, ProcessedContext
 from opencontext.models.enums import ContextType
 from opencontext.utils.logging_utils import get_logger
@@ -69,7 +71,7 @@ class ContextTypeAwareStrategy(ABC):
         if not context.properties.update_time:
             return 0.0
 
-        age_days = (datetime.now() - context.properties.update_time).days
+        age_days = (tz_now() - context.properties.update_time).days
 
         tau = self.retention_days / 3
         base_forgetting = 1.0 - math.exp(-age_days / tau)
@@ -87,7 +89,7 @@ class ContextTypeAwareStrategy(ABC):
         if not context.properties.update_time:
             return False
 
-        age_days = (datetime.now() - context.properties.update_time).days
+        age_days = (tz_now() - context.properties.update_time).days
 
         if age_days > self.retention_days and context.extracted_data.importance < 5:
             return True
@@ -238,7 +240,7 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
             event_time_end=target.properties.event_time_end,
             is_processed=True,
             has_compression=True,
-            update_time=datetime.now(),
+            update_time=tz_now(),
             merge_count=target.properties.merge_count + len(sources),
             duration_count=target.properties.duration_count
             + sum(s.properties.duration_count for s in sources),

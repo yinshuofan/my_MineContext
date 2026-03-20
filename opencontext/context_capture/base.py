@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List
 
 from opencontext.interfaces.capture_interface import ICaptureComponent
+from opencontext.utils.time_utils import now as tz_now
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContextSource
 from opencontext.utils.async_utils import fire_and_forget
@@ -190,7 +191,7 @@ class BaseCaptureComponent(ICaptureComponent):
         try:
             # Record capture start time
             start_time = time.time()
-            self._last_capture_time = datetime.now()
+            self._last_capture_time = tz_now()
 
             # Subclasses need to implement specific capture logic in _capture_impl
             result = self._capture_impl()
@@ -353,7 +354,7 @@ class BaseCaptureComponent(ICaptureComponent):
                 "error_count": self._error_count,
                 "last_error": self._last_error,
                 "uptime": (
-                    (datetime.now() - self._last_capture_time).total_seconds()
+                    (tz_now() - self._last_capture_time).total_seconds()
                     if self._last_capture_time
                     else 0
                 ),

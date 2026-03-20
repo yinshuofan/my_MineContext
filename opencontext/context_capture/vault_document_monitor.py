@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from opencontext.context_capture import BaseCaptureComponent
+from opencontext.utils.time_utils import now as tz_now
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContentFormat, ContextSource
 from opencontext.storage.global_storage import get_storage
@@ -81,7 +82,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             self._monitor_interval = config.get("monitor_interval", 5)
 
             # Set initial scan time to current time
-            self._last_scan_time = datetime.now()
+            self._last_scan_time = tz_now()
 
             logger.info(
                 f"Vault document monitoring component initialized successfully, monitor interval: {self._monitor_interval}s"
@@ -182,7 +183,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
                         "event_type": "existing",
                         "vault_id": doc["id"],
                         "document_data": doc,
-                        "timestamp": datetime.now(),
+                        "timestamp": tz_now(),
                     }
 
                     with self._event_lock:
@@ -198,7 +199,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
         """Scan changes in the vaults table"""
         try:
             # Get recent documents (based on created_at and updated_at)
-            current_time = datetime.now()
+            current_time = tz_now()
             documents = self._get_vaults_sync(limit=100, offset=0, is_deleted=False)
 
             new_documents = []

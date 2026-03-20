@@ -18,6 +18,7 @@ from opencontext.models.context import (
 from opencontext.models.enums import ContentFormat, ContextSource, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.server.search.event_search_service import EventSearchService, SearchResult
+from opencontext.utils.time_utils import now as tz_now
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 
@@ -134,7 +135,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 "role": "user",
                 "content": prompt_group.get("user", "").format(
                     chat_history=chat_content,
-                    current_time=datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+                    current_time=tz_now().isoformat(),
                 ),
             },
         ]
@@ -297,7 +298,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 confidence = 7
             confidence = max(0, min(10, confidence))
 
-            event_time_start = raw_context.create_time or datetime.datetime.now(tz=datetime.timezone.utc)
+            event_time_start = raw_context.create_time or tz_now()
 
             # Only knowledge type enables merge
             enable_merge = context_type == ContextType.KNOWLEDGE
@@ -314,8 +315,8 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
             properties = ContextProperties(
                 raw_properties=[raw_context],
-                create_time=raw_context.create_time or datetime.datetime.now(tz=datetime.timezone.utc),
-                update_time=datetime.datetime.now(tz=datetime.timezone.utc),
+                create_time=raw_context.create_time or tz_now(),
+                update_time=tz_now(),
                 event_time_start=event_time_start,
                 is_processed=True,
                 enable_merge=enable_merge,

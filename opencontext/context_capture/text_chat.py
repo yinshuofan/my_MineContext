@@ -3,6 +3,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from opencontext.context_capture.base import BaseCaptureComponent
+from opencontext.utils.time_utils import now as tz_now
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContentFormat, ContextSource
 from opencontext.utils.logging_utils import get_logger
@@ -49,7 +50,7 @@ class TextChatCapture(BaseCaptureComponent):
         if not messages:
             return
 
-        now = datetime.datetime.now()
+        now = tz_now()
         # 将消息列表序列化为字符串存储
         chat_content_str = json.dumps(messages, ensure_ascii=False)
 

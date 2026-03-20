@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from opencontext.context_capture.base import BaseCaptureComponent
+from opencontext.utils.time_utils import now as tz_now
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContentFormat, ContextSource
 from opencontext.utils.logging_utils import get_logger
@@ -231,7 +232,7 @@ class WebLinkCapture(BaseCaptureComponent):
                             content_format=ContentFormat.FILE,
                             content_path=file_path,
                             content_text="",
-                            create_time=datetime.now(),
+                            create_time=tz_now(),
                             filter_path=url,  # Use URL for deduplication
                             additional_info={"url": url, f"{self._mode}_path": file_path},
                             enable_merge=False,
@@ -239,7 +240,7 @@ class WebLinkCapture(BaseCaptureComponent):
                         results.append(raw_context)
                         with self._stats_lock:
                             self._total_converted += 1
-                            self._last_activity_time = datetime.now()
+                            self._last_activity_time = tz_now()
                 except Exception as exc:
                     logger.error(f"URL '{url}' generated an exception during conversion: {exc}")
 

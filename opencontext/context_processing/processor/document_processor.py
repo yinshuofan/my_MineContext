@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from PIL import Image
+from opencontext.utils.time_utils import now as tz_now
 
 from opencontext.context_processing.chunker import (
     ChunkingConfig,
@@ -228,7 +229,7 @@ class DocumentProcessor(BaseContextProcessor):
     ) -> List[ProcessedContext]:
         """Create ProcessedContext from Chunk list"""
         contexts = []
-        now = datetime.datetime.now()
+        now = tz_now()
         knowledge_metadata = KnowledgeContextMetadata(
             knowledge_source=raw_context.source,
             knowledge_file_path=raw_context.content_path,

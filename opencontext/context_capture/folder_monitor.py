@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from opencontext.context_capture.base import BaseCaptureComponent
+from opencontext.utils.time_utils import now as tz_now
 from opencontext.context_processing.processor.document_processor import DocumentProcessor
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContentFormat, ContextSource, ContextType
@@ -74,7 +75,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             self._supported_formats = set(DocumentProcessor.get_supported_formats())
 
             self._file_info_cache.clear()
-            self._last_scan_time = datetime.now()
+            self._last_scan_time = tz_now()
 
             logger.info(
                 f"Watching folders: {self._watch_folder_paths}, recursive: {self._recursive}, max file size: {self._max_file_size} bytes"
@@ -169,7 +170,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
     def _scan_folder_file_changes(self):
         """Scan configured folders for file changes."""
         try:
-            current_time = datetime.now()
+            current_time = tz_now()
             current_files = set()
             for folder_path in self._watch_folder_paths:
                 folder_files = self._scan_folder_files(folder_path, self._recursive)

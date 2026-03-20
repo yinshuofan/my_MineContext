@@ -3,6 +3,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from opencontext.config.global_config import get_prompt_group
+from opencontext.utils.time_utils import now as tz_now
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import (
@@ -78,7 +79,7 @@ class TextChatProcessor(BaseContextProcessor):
                     "role": "user",
                     "content": prompt_group.get("user", "").format(
                         chat_history=chat_history_str,
-                        current_time=datetime.datetime.now().isoformat(),
+                        current_time=tz_now().isoformat(),
                     ),
                 },
             ]
@@ -180,7 +181,7 @@ class TextChatProcessor(BaseContextProcessor):
         # Append the analysis instruction
         user_prompt = prompt_group.get("user", "").format(
             chat_history="[Messages included above]",
-            current_time=datetime.datetime.now().isoformat(),
+            current_time=tz_now().isoformat(),
         )
         llm_messages.append({"role": "user", "content": user_prompt})
 
@@ -351,7 +352,7 @@ class TextChatProcessor(BaseContextProcessor):
             properties=ContextProperties(
                 raw_properties=[raw_context],
                 create_time=raw_context.create_time,
-                update_time=datetime.datetime.now(),
+                update_time=tz_now(),
                 event_time_start=event_time_start,
                 is_processed=True,
                 enable_merge=enable_merge,

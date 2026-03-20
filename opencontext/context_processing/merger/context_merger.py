@@ -19,6 +19,8 @@ import math
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from opencontext.utils.time_utils import now as tz_now, get_timezone
+
 from opencontext.config import GlobalConfig
 from opencontext.context_processing.merger.merge_strategies import (
     ContextTypeAwareStrategy,
@@ -340,7 +342,7 @@ class ContextMerger(BaseContextProcessor):
                         confidence=int(response_data["confidence"]),
                         importance=int(response_data["importance"]),
                     )
-                    now = datetime.datetime.now()
+                    now = tz_now()
                     properties = ContextProperties(
                         raw_properties=target.properties.raw_properties,
                         create_time=target.properties.create_time,
@@ -361,15 +363,15 @@ class ContextMerger(BaseContextProcessor):
                         try:
                             event_time_str = response_data.get("event_time")
                             if len(event_time_str) == 8 and ":" in event_time_str:
-                                today = datetime.date.today().isoformat()
+                                today = tz_now().date().isoformat()
                                 full_event_time_str = f"{today}T{event_time_str}"
                                 properties.event_time_start = datetime.datetime.fromisoformat(
                                     full_event_time_str
-                                )
+                                ).replace(tzinfo=get_timezone())
                             else:
                                 properties.event_time_start = datetime.datetime.fromisoformat(
                                     event_time_str
-                                )
+                                ).replace(tzinfo=get_timezone())
                             properties.event_time_end = properties.event_time_start
                         except ValueError:
                             logger.warning(f"Cannot parse event_time format: {event_time_str}")
@@ -416,12 +418,12 @@ class ContextMerger(BaseContextProcessor):
                 "update_time_ts": {
                     "$gte": int(
                         (
-                            datetime.datetime.now()
+                            tz_now()
                             - timedelta(seconds=interval_seconds)
                             - timedelta(minutes=5)
                         ).timestamp()
                     ),
-                    "$lte": int((datetime.datetime.now() - timedelta(minutes=5)).timestamp()),
+                    "$lte": int((tz_now() - timedelta(minutes=5)).timestamp()),
                 },
                 "has_compression": False,
                 "enable_merge": True,
@@ -508,12 +510,12 @@ class ContextMerger(BaseContextProcessor):
                 "update_time_ts": {
                     "$gte": int(
                         (
-                            datetime.datetime.now()
+                            tz_now()
                             - timedelta(seconds=interval_seconds)
                             - timedelta(minutes=5)
                         ).timestamp()
                     ),
-                    "$lte": int((datetime.datetime.now() - timedelta(minutes=5)).timestamp()),
+                    "$lte": int((tz_now() - timedelta(minutes=5)).timestamp()),
                 },
                 "enable_merge": True,
                 "user_id": user_id,

@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as _tz_now
 
 logger = get_logger(__name__)
 
@@ -417,12 +418,8 @@ class ProfileData(BaseModel):
     entities: List[str] = Field(default_factory=list)
     importance: int = 0
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
-    )
+    created_at: datetime.datetime = Field(default_factory=_tz_now)
+    updated_at: datetime.datetime = Field(default_factory=_tz_now)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
