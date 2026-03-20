@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -431,14 +432,14 @@ class RedisTaskScheduler(ITaskScheduler):
         await self.init_task_types()
 
         self._running = True
-        self._started_at = datetime.now(tz=timezone.utc).isoformat()
+        self._started_at = tz_now().isoformat()
         logger.info(f"Starting task scheduler, check interval: {self._check_interval}s")
 
         self._executor_task = asyncio.create_task(self._executor_loop())
 
     async def _write_heartbeat(self) -> None:
         """Write scheduler heartbeat to Redis with TTL."""
-        now_iso = datetime.now(tz=timezone.utc).isoformat()
+        now_iso = tz_now().isoformat()
         heartbeat_data = {
             "running": "true",
             "started_at": self._started_at or now_iso,

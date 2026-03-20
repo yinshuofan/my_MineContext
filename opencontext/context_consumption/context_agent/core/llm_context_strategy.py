@@ -11,6 +11,8 @@ import json
 import uuid
 from datetime import datetime
 from math import log
+
+from opencontext.utils.time_utils import now as tz_now
 from typing import Any, Dict, List, Optional, Set
 
 from opencontext.config.global_config import get_prompt_group
@@ -61,8 +63,8 @@ class LLMContextStrategy:
             enhanced_query=intent.enhanced_query or "None",
             query_type=intent.query_type.value if intent.query_type else "Unknown",
             context_summary=context_summary,
-            current_date=datetime.now().strftime("%Y-%m-%d"),
-            current_timestamp=int(datetime.now().timestamp()),
+            current_date=tz_now().strftime("%Y-%m-%d"),
+            current_timestamp=int(tz_now().timestamp()),
         )
 
         messages = [
@@ -310,7 +312,7 @@ class LLMContextStrategy:
                 id=item_dict.get("id") or str(uuid.uuid4()),
                 title=title,
                 relevance_score=relevance_score,
-                timestamp=datetime.now(),
+                timestamp=tz_now(),
                 metadata={"tool_name": tool_name, "original_data": item_dict},
             )
 

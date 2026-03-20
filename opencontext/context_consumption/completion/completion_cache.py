@@ -20,6 +20,7 @@ from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -181,7 +182,7 @@ class CompletionCache:
 
             # Check TTL expiration
             created_at = datetime.fromisoformat(entry.created_at)
-            if datetime.now() - created_at > self.ttl:
+            if tz_now() - created_at > self.ttl:
                 await self._redis_cache.delete(cache_key)
                 await self._redis_cache.zrem(self.ACCESS_ORDER_KEY, key)
                 await self._increment_stat("misses")
@@ -193,7 +194,7 @@ class CompletionCache:
                 return None
 
             # Update access info
-            now = datetime.now()
+            now = tz_now()
             entry.last_accessed = now.isoformat()
             entry.access_count += 1
             await self._redis_cache.set_json(cache_key, entry.to_dict(), ttl=self.ttl_seconds)
@@ -227,7 +228,7 @@ class CompletionCache:
 
             # Check TTL expiration
             created_at = datetime.fromisoformat(entry.created_at)
-            if datetime.now() - created_at > self.ttl:
+            if tz_now() - created_at > self.ttl:
                 self._evict_local(key)
                 self._stats["misses"] += 1
                 return None
@@ -238,7 +239,7 @@ class CompletionCache:
                 return None
 
             # Update access info
-            entry.last_accessed = datetime.now().isoformat()
+            entry.last_accessed = tz_now().isoformat()
             entry.access_count += 1
 
             # Update LRU order
@@ -276,7 +277,7 @@ class CompletionCache:
     ):
         """Add to Redis cache"""
         try:
-            now = datetime.now()
+            now = tz_now()
 
             # Check cache size and evict if needed (O(1) via zcard)
             cache_size = await self._redis_cache.zcard(self.ACCESS_ORDER_KEY)
@@ -317,7 +318,7 @@ class CompletionCache:
     ):
         """Add to local memory cache"""
         with self._lock:
-            now = datetime.now()
+            now = tz_now()
 
             # Evict if cache is full
             if len(self._local_cache) >= self.max_size:
@@ -489,7 +490,7 @@ class CompletionCache:
             precomputed = {
                 "hash": context_hash,
                 "patterns": patterns,
-                "computed_at": datetime.now().isoformat(),
+                "computed_at": tz_now().isoformat(),
             }
 
             if self._redis_configured:
@@ -532,7 +533,7 @@ class CompletionCache:
     async def _optimize_redis(self):
         """Optimize Redis cache"""
         try:
-            now = datetime.now()
+            now = tz_now()
 
             # Clean up expired entries
             keys = await self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*")
@@ -562,7 +563,7 @@ class CompletionCache:
     def _optimize_local(self):
         """Optimize local cache"""
         with self._lock:
-            now = datetime.now()
+            now = tz_now()
 
             # Clean up expired entries
             expired_keys = []

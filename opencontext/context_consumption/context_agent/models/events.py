@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from opencontext.utils.time_utils import now as tz_now
+
 from .enums import EventType, NodeType, WorkflowStage
 
 
@@ -22,7 +24,7 @@ class StreamEvent:
     stage: Optional[WorkflowStage] = None  # Workflow stage
     node: Optional[NodeType] = None  # Node type (if it's a node event)
     progress: float = 0.0  # Progress (0.0-1.0)
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=tz_now)
     metadata: Dict[str, Any] = field(default_factory=dict)  # Additional data
 
     @classmethod

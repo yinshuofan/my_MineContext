@@ -33,6 +33,7 @@ from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskRe
 from opencontext.scheduler.base import TriggerMode
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now, get_timezone
 
 logger = get_logger(__name__)
 
@@ -213,7 +214,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         user_id = context.user_id
         device_id = context.device_id
         agent_id = context.agent_id
-        today = datetime.date.today()
+        today = tz_now().date()
 
         logger.info(
             f"Starting hierarchy summary generation for user={user_id}, "
@@ -765,10 +766,10 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Compute timestamp range for the backfill window
         backfill_start_ts = datetime.datetime.combine(
-            backfill_start, datetime.time.min, tzinfo=datetime.timezone.utc
+            backfill_start, datetime.time.min, tzinfo=get_timezone()
         ).timestamp()
         backfill_end_ts = datetime.datetime.combine(
-            backfill_end, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+            backfill_end, datetime.time(23, 59, 59), tzinfo=get_timezone()
         ).timestamp()
 
         # Batch query existing L1 summaries in the window (1 query vs N)
@@ -867,12 +868,12 @@ class HierarchySummaryTask(BasePeriodicTask):
         day_start = datetime.datetime.combine(
             datetime.date.fromisoformat(date_str),
             datetime.time.min,
-            tzinfo=datetime.timezone.utc,
+            tzinfo=get_timezone(),
         )
         day_end = datetime.datetime.combine(
             datetime.date.fromisoformat(date_str),
             datetime.time(23, 59, 59),
-            tzinfo=datetime.timezone.utc,
+            tzinfo=get_timezone(),
         )
 
         # Check if daily summary already exists for this date (old + new format)
@@ -986,10 +987,10 @@ class HierarchySummaryTask(BasePeriodicTask):
         week_start_date = datetime.date.fromisocalendar(int(year), int(week_num), 1)
         week_end_date = week_start_date + datetime.timedelta(days=6)
         week_start = datetime.datetime.combine(
-            week_start_date, datetime.time.min, tzinfo=datetime.timezone.utc
+            week_start_date, datetime.time.min, tzinfo=get_timezone()
         )
         week_end = datetime.datetime.combine(
-            week_end_date, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+            week_end_date, datetime.time(23, 59, 59), tzinfo=get_timezone()
         )
 
         # Check if weekly summary already exists (old + new format)
@@ -1117,10 +1118,10 @@ class HierarchySummaryTask(BasePeriodicTask):
         last_day_num = calendar.monthrange(year, month_num)[1]
         month_end_date = datetime.date(year, month_num, last_day_num)
         month_start = datetime.datetime.combine(
-            month_start_date, datetime.time.min, tzinfo=datetime.timezone.utc
+            month_start_date, datetime.time.min, tzinfo=get_timezone()
         )
         month_end = datetime.datetime.combine(
-            month_end_date, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+            month_end_date, datetime.time(23, 59, 59), tzinfo=get_timezone()
         )
 
         # Check if monthly summary already exists (old + new format)
@@ -1174,10 +1175,10 @@ class HierarchySummaryTask(BasePeriodicTask):
             wk_start_date = datetime.date.fromisocalendar(int(wk_year), int(wk_num), 1)
             wk_end_date = wk_start_date + datetime.timedelta(days=6)
             wk_start_dt = datetime.datetime.combine(
-                wk_start_date, datetime.time.min, tzinfo=datetime.timezone.utc
+                wk_start_date, datetime.time.min, tzinfo=get_timezone()
             )
             wk_end_dt = datetime.datetime.combine(
-                wk_end_date, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+                wk_end_date, datetime.time(23, 59, 59), tzinfo=get_timezone()
             )
 
             # Fetch L2 weekly summary (old + new format)
@@ -1460,7 +1461,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             return None
 
         level_name = _LEVEL_NAMES.get(level, "unknown")
-        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        now = tz_now()
         summary_id = str(uuid.uuid4())
 
         # Build a human-readable period label for title/keywords

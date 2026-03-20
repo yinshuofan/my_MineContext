@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
+from opencontext.utils.time_utils import now as tz_now
+
 from .enums import ActionType, ContextSufficiency, DataSource, QueryType, ReflectionType, TaskStatus
 
 
@@ -20,7 +22,7 @@ class ChatMessage:
 
     role: str  # user, assistant, system
     content: str
-    # timestamp: datetime = field(default_factory=datetime.now)
+    # timestamp: datetime = field(default_factory=tz_now)
     # metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -67,7 +69,7 @@ class ContextItem:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     title: Optional[str] = None
     relevance_score: float = 1.0
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=tz_now)
     metadata: Dict[str, Any] = field(default_factory=dict)
     is_relevant: bool = True
     relevance_reason: Optional[str] = None

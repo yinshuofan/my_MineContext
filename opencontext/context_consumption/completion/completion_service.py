@@ -21,6 +21,7 @@ from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.enums import CompletionType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -39,7 +40,7 @@ class CompletionSuggestion:
         self.completion_type = completion_type
         self.confidence = confidence  # 0.0 - 1.0
         self.context_used = context_used or []
-        self.timestamp = datetime.now()
+        self.timestamp = tz_now()
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format"""

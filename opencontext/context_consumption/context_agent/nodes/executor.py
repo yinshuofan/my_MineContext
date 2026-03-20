@@ -9,6 +9,8 @@ Executes specific tasks
 from datetime import datetime
 from typing import Any, Dict
 
+from opencontext.utils.time_utils import now as tz_now
+
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_vlm_client import generate_stream_for_agent
 from opencontext.storage.global_storage import get_storage
@@ -69,14 +71,14 @@ class ExecutorNode(BaseNode):
             outputs.append(step_result["output"])
             step.status = TaskStatus.SUCCESS
             step.result = step_result["output"]
-            step.end_time = datetime.now()
+            step.end_time = tz_now()
         state.execution_result = ExecutionResult(
             success=len(errors) == 0,
             plan=plan,
             outputs=outputs,
             errors=errors,
             execution_time=(
-                (datetime.now() - plan.steps[0].start_time).total_seconds() if plan.steps else 0
+                (tz_now() - plan.steps[0].start_time).total_seconds() if plan.steps else 0
             ),
         )
         # print(f"Task execution completed, {len(outputs)} successful, {len(errors)} failed")
@@ -107,7 +109,7 @@ class ExecutorNode(BaseNode):
 
     async def _execute_step(self, step: ExecutionStep, state: WorkflowState) -> Dict[str, Any]:
         """Execute a single step"""
-        step.start_time = datetime.now()
+        step.start_time = tz_now()
         step.status = TaskStatus.RUNNING
         if step.action == ActionType.GENERATE:
             result = await self._execute_generate(state)
@@ -219,7 +221,7 @@ class ExecutorNode(BaseNode):
     #         return {"success": False, "error": "No content available to create a document"}
 
     #     # Create document
-    #     title = params.get("title", f"Document_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    #     title = params.get("title", f"Document_{tz_now().strftime('%Y%m%d_%H%M%S')}")
     #     doc_id = self.storage.insert_vaults(
     #         title=title,
     #         content=generated_content,

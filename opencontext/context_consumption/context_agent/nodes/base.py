@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from opencontext.utils.time_utils import now as tz_now
+
 from opencontext.utils.logging_utils import get_logger
 
 from ..core.state import WorkflowState
@@ -32,10 +34,10 @@ class BaseNode(ABC):
         pass
 
     async def execute(self, state: WorkflowState) -> WorkflowState:
-        start_time = datetime.now()
+        start_time = tz_now()
         try:
             state = await self.process(state)
-            duration = (datetime.now() - start_time).total_seconds()
+            duration = (tz_now() - start_time).total_seconds()
             return state
         except Exception as e:
             self.logger.exception(f"Node execution failed: {e}")

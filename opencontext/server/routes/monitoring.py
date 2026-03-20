@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from opencontext.utils.time_utils import now as tz_now
+
 from opencontext.monitoring import get_monitor
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.opencontext import OpenContext
@@ -187,7 +189,7 @@ async def monitoring_health(_auth: str = auth_dependency):
     try:
         monitor = get_monitor()
         uptime_seconds = (
-            int((datetime.now(tz=timezone.utc) - monitor._start_time).total_seconds())
+            int((tz_now() - monitor._start_time).total_seconds())
             if monitor._start_time
             else 0
         )

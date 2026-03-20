@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from opencontext.utils.time_utils import now as tz_now
+
 from ..models.enums import WorkflowStage
 from ..models.events import EventBuffer, StreamEvent
 from ..models.schemas import (
@@ -31,8 +33,8 @@ class WorkflowMetadata:
     workflow_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     session_id: Optional[str] = None
     user_id: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=tz_now)
+    updated_at: datetime = field(default_factory=tz_now)
     version: str = "1.0.0"
     tags: List[str] = field(default_factory=list)
     custom_data: Dict[str, Any] = field(default_factory=dict)
@@ -74,13 +76,13 @@ class WorkflowState:
     def update_stage(self, new_stage: WorkflowStage):
         """Update the workflow stage."""
         self.stage = new_stage
-        self.metadata.updated_at = datetime.now()
+        self.metadata.updated_at = tz_now()
 
     def add_tool_history_entry(self, entry: Dict[str, Any]):
         """Add a tool history entry."""
-        entry["timestamp"] = datetime.now().isoformat()
+        entry["timestamp"] = tz_now().isoformat()
         self.tool_history.append(entry)
-        self.metadata.updated_at = datetime.now()
+        self.metadata.updated_at = tz_now()
 
     def get_tool_history_summary(self) -> str:
         """Get a summary of tool history for LLM context."""
@@ -116,7 +118,7 @@ class WorkflowState:
     def add_error(self, error: str):
         """Add an error message."""
         self.errors += f"{error}\n"
-        self.metadata.updated_at = datetime.now()
+        self.metadata.updated_at = tz_now()
 
     def should_retry(self) -> bool:
         """Check if a retry is needed."""
@@ -245,7 +247,7 @@ class StateManager:
             for key, value in updates.items():
                 if hasattr(state, key):
                     setattr(state, key, value)
-            state.metadata.updated_at = datetime.now()
+            state.metadata.updated_at = tz_now()
 
     def delete_state(self, workflow_id: str):
         """Delete the workflow state."""
