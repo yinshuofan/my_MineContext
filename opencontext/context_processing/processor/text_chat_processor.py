@@ -267,17 +267,7 @@ class TextChatProcessor(BaseContextProcessor):
             confidence = 0
         confidence = max(0, min(10, confidence))
 
-        # 解析 LLM 返回的 event_time，回退到 raw_context.create_time
-        event_time = raw_context.create_time
-        event_time_str = memory.get("event_time")
-        if event_time_str:
-            try:
-                parsed = datetime.datetime.fromisoformat(event_time_str)
-                if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=datetime.timezone.utc)
-                event_time = parsed
-            except (ValueError, TypeError):
-                logger.debug(f"Could not parse event_time: {event_time_str}")
+        event_time_start = raw_context.create_time
 
         # 仅 knowledge 类型启用合并
         enable_merge = context_type == ContextType.KNOWLEDGE
@@ -291,9 +281,6 @@ class TextChatProcessor(BaseContextProcessor):
             importance=importance,
             confidence=confidence,
         )
-
-        # L0 time_bucket: ISO datetime for per-event granularity
-        time_bucket = event_time.strftime("%Y-%m-%dT%H:%M:%S")
 
         # Resolve related media references from LLM output
         vectorize_images = None
@@ -365,8 +352,7 @@ class TextChatProcessor(BaseContextProcessor):
                 raw_properties=[raw_context],
                 create_time=raw_context.create_time,
                 update_time=datetime.datetime.now(),
-                event_time=event_time,
-                time_bucket=time_bucket,
+                event_time_start=event_time_start,
                 is_processed=True,
                 enable_merge=enable_merge,
                 user_id=raw_context.user_id,

@@ -208,18 +208,18 @@ class AgentMemoryProcessor(BaseContextProcessor):
         if not all_contexts:
             return ""
 
-        # Sort by time_bucket ascending
+        # Sort by event_time_start ascending
         sorted_contexts = sorted(
             all_contexts.values(),
-            key=lambda c: (c.properties.time_bucket or "") if c.properties else "",
+            key=lambda c: c.properties.event_time_start if c.properties else datetime.datetime.min,
         )
 
         lines = []
         for ctx in sorted_contexts:
             title = ctx.extracted_data.title if ctx.extracted_data else ""
             summary = ctx.extracted_data.summary if ctx.extracted_data else ""
-            time_bucket = ctx.properties.time_bucket if ctx.properties else ""
-            lines.append(f"[{time_bucket}] {title}")
+            event_time_str = ctx.properties.event_time_start.strftime("%Y-%m-%d") if ctx.properties else ""
+            lines.append(f"[{event_time_str}] {title}")
             if summary:
                 lines.append(summary)
             lines.append("")  # blank line between entries
@@ -297,20 +297,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 confidence = 7
             confidence = max(0, min(10, confidence))
 
-            # Parse event_time, fall back to raw_context.create_time
-            event_time = raw_context.create_time
-            event_time_str = memory.get("event_time")
-            if event_time_str:
-                try:
-                    parsed = datetime.datetime.fromisoformat(event_time_str)
-                    if parsed.tzinfo is None:
-                        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
-                    event_time = parsed
-                except (ValueError, TypeError):
-                    logger.debug(f"Could not parse event_time: {event_time_str}")
-
-            if event_time is None:
-                event_time = datetime.datetime.now(tz=datetime.timezone.utc)
+            event_time_start = raw_context.create_time or datetime.datetime.now(tz=datetime.timezone.utc)
 
             # Only knowledge type enables merge
             enable_merge = context_type == ContextType.KNOWLEDGE
@@ -325,15 +312,11 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 confidence=confidence,
             )
 
-            # L0 time_bucket: ISO datetime for per-event granularity
-            time_bucket = event_time.strftime("%Y-%m-%dT%H:%M:%S")
-
             properties = ContextProperties(
                 raw_properties=[raw_context],
                 create_time=raw_context.create_time or datetime.datetime.now(tz=datetime.timezone.utc),
                 update_time=datetime.datetime.now(tz=datetime.timezone.utc),
-                event_time=event_time,
-                time_bucket=time_bucket,
+                event_time_start=event_time_start,
                 is_processed=True,
                 enable_merge=enable_merge,
                 user_id=raw_context.user_id,

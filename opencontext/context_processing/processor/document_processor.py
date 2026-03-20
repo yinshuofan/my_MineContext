@@ -240,7 +240,7 @@ class DocumentProcessor(BaseContextProcessor):
                     raw_properties=[raw_context],
                     create_time=now,
                     update_time=now,
-                    event_time=now,
+                    event_time_start=now,
                     enable_merge=False,
                     raw_type=raw_context.content_type,
                     raw_id=raw_context.object_id,
