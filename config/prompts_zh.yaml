@@ -598,11 +598,25 @@ processing:
         请分析以下聊天记录片段：
         {chat_history}
 
+    agent_memory_query:
+      system: |
+        你是一个AI助手。从以下对话中，以你（AI）的视角提取核心话题，
+        输出简短的摘要文本，用于搜索你过去与该用户相关的记忆。
+        只输出摘要文本，不要其他内容。
+      user: |
+        {chat_history}
+
     agent_memory_analyze:
       system: |
-        你是{agent_name}。{agent_description}
+        你是{agent_name}。
 
-        根据以下与用户的对话，从你的角度提取记忆。
+        你的人设:
+        {agent_persona}
+
+        以下是与本次对话相关的你的过去记忆:
+        {related_memories}
+
+        根据以上背景和下面的对话，从你的角度提取记忆。
 
         仅提取以下两种类型的记忆——都必须是你作为{agent_name}的主观视角：
         1. "agent_profile" — 你现在对这个用户的认知：他们的性格、偏好、习惯、与你的关系

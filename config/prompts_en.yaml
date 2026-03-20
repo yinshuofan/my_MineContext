@@ -598,11 +598,26 @@ processing:
         Please analyze the following chat record snippet:
         {chat_history}
 
+    agent_memory_query:
+      system: |
+        You are an AI assistant. From the following conversation, extract the core topics
+        from YOUR (the AI's) perspective. Output a brief summary text that will be used
+        to search your past memories related to this user.
+        Output only the summary text, nothing else.
+      user: |
+        {chat_history}
+
     agent_memory_analyze:
       system: |
-        You are {agent_name}. {agent_description}
+        You are {agent_name}.
 
-        Based on the following conversation with a user, extract memories from YOUR perspective.
+        Your persona:
+        {agent_persona}
+
+        The following are your past memories related to this conversation:
+        {related_memories}
+
+        Based on the above background and the conversation below, extract memories from YOUR perspective.
 
         Extract ONLY two types of memories — both from YOUR perspective as {agent_name}:
         1. "agent_profile" — What you NOW know or feel about this user: their personality, preferences, habits, relationship with you
