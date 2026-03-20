@@ -108,7 +108,7 @@ curl -X POST http://localhost:1733/api/push/chat \
       {"role": "assistant", "content": "Hi there!"}
     ],
     "user_id": "user_001",
-    "agent_id": "agent_001",
+    "agent_id": "assistant_01",
     "processors": ["user_memory", "agent_memory"]
   }'
 # -H "X-API-Key: your-api-key"
@@ -329,7 +329,7 @@ curl -X POST http://localhost:1733/api/search \
     "query": [{"type": "text", "text": "meeting notes"}],
     "memory_owner": "agent",
     "user_id": "user_001",
-    "agent_id": "agent_001"
+    "agent_id": "assistant_01"
   }'
 # -H "X-API-Key: your-api-key"
 
@@ -366,7 +366,7 @@ curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=pro
 # -H "X-API-Key: your-api-key"
 
 # Get agent memory cache
-curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=agent_001&memory_owner=agent"
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=assistant_01&memory_owner=agent"
 # -H "X-API-Key: your-api-key"
 
 # Invalidate Memory Cache

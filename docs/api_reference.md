@@ -100,6 +100,14 @@ curl -X POST http://localhost:1733/api/push/chat \
 }
 ```
 
+**Agent 未注册（400）**
+```json
+{
+  "detail": "Agent 'my_agent' is not registered. Please register the agent via POST /api/agents before using agent_memory processor."
+}
+```
+> 当 `processors` 包含 `"agent_memory"` 且 `agent_id` 指定了未注册的 agent 时返回 400。
+
 ---
 
 ## 2. Push Document — 推送文档
