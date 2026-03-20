@@ -344,7 +344,8 @@ class ContextMerger(BaseContextProcessor):
                     properties = ContextProperties(
                         raw_properties=target.properties.raw_properties,
                         create_time=target.properties.create_time,
-                        event_time=target.properties.event_time,
+                        event_time_start=target.properties.event_time_start,
+                        event_time_end=target.properties.event_time_end,
                         is_processed=True,
                         has_compression=True,
                         update_time=now,
@@ -362,13 +363,14 @@ class ContextMerger(BaseContextProcessor):
                             if len(event_time_str) == 8 and ":" in event_time_str:
                                 today = datetime.date.today().isoformat()
                                 full_event_time_str = f"{today}T{event_time_str}"
-                                properties.event_time = datetime.datetime.fromisoformat(
+                                properties.event_time_start = datetime.datetime.fromisoformat(
                                     full_event_time_str
                                 )
                             else:
-                                properties.event_time = datetime.datetime.fromisoformat(
+                                properties.event_time_start = datetime.datetime.fromisoformat(
                                     event_time_str
                                 )
+                            properties.event_time_end = properties.event_time_start
                         except ValueError:
                             logger.warning(f"Cannot parse event_time format: {event_time_str}")
 
@@ -769,7 +771,8 @@ class ContextMerger(BaseContextProcessor):
             reinforced_properties = ContextProperties(
                 raw_properties=context.properties.raw_properties,
                 create_time=context.properties.create_time,
-                event_time=context.properties.event_time,
+                event_time_start=context.properties.event_time_start,
+                event_time_end=context.properties.event_time_end,
                 is_processed=context.properties.is_processed,
                 has_compression=context.properties.has_compression,
                 update_time=dt.now(),

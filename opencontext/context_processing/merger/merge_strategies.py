@@ -234,7 +234,8 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
         properties = ContextProperties(
             raw_properties=target.properties.raw_properties,
             create_time=target.properties.create_time,
-            event_time=target.properties.event_time,
+            event_time_start=target.properties.event_time_start,
+            event_time_end=target.properties.event_time_end,
             is_processed=True,
             has_compression=True,
             update_time=datetime.now(),
