@@ -85,7 +85,8 @@ class EventSearchService:
    messages → LLM (agent_memory_query prompt) → query_text
 
 3. Search related past memories (new)
-   query_text → EventSearchService.semantic_search(
+   query_text → wrap as [{"type": "text", "text": query_text}]
+   → EventSearchService.semantic_search(
        memory_owner="agent", drill_up=True
    ) → related agent_events + hierarchy summaries
 
