@@ -247,8 +247,8 @@ function renderTodayEvents(events) {
     } else {
         content = events.map(evt => {
             let timeStr = '';
-            if (evt.event_time) {
-                const d = new Date(evt.event_time);
+            if (evt.event_time_start) {
+                const d = new Date(evt.event_time_start);
                 timeStr = `<span class="badge bg-light text-dark me-1">${d.toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'})}</span>`;
             }
             return `
@@ -273,7 +273,7 @@ function renderDailySummaries(summaries) {
         content = summaries.map(s => `
             <div class="border rounded p-2 mb-2">
                 <div class="mb-1">
-                    <span class="badge bg-success">${s.time_bucket}</span>
+                    <span class="badge bg-success">${s.event_time_start}</span>
                     ${s.title ? ` <span class="fw-semibold">${s.title}</span>` : ''}
                 </div>
                 ${s.summary ? `<small>${s.summary}</small>` : '<small class="text-muted">暂无摘要</small>'}

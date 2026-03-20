@@ -155,7 +155,8 @@ Tracking and hierarchy metadata. Fields:
 |-------|------|---------|-------|
 | `raw_properties` | `list[RawContextProperties]` | `[]` | |
 | `create_time` | `datetime` | required | |
-| `event_time` | `datetime` | required | Can be future |
+| `event_time_start` | `datetime` | required | Start of event time range. Can be future |
+| `event_time_end` | `datetime` | required | End of event time range. Equals `event_time_start` for point-in-time events |
 | `update_time` | `datetime` | required | |
 | `is_processed` | `bool` | `False` | |
 | `has_compression` | `bool` | `False` | |
@@ -169,7 +170,6 @@ Tracking and hierarchy metadata. Fields:
 | `raw_id` | `Optional[str]` | `None` | |
 | `user_id`, `device_id`, `agent_id` | `Optional[str]` | `None` | 3-key identifier |
 | `hierarchy_level` | `int` | `0` | 0=raw, 1=daily, 2=weekly, 3=monthly |
-| `time_bucket` | `Optional[str]` | `None` | e.g. `"2026-02-21"`, `"2026-W08"` |
 | `refs` | `Dict[str, List[str]]` | `{}` | Flexible bidirectional reference map. Keys are ContextType values (e.g. `"daily_summary"`, `"event"`), values are lists of context IDs. See below. |
 
 **`refs` field**: A single bidirectional reference map linking contexts across hierarchy levels. Key = the ContextType of the referenced contexts, value = list of context IDs.

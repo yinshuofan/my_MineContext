@@ -36,7 +36,8 @@
                     <li class="list-group-item"><strong>上下文类型:</strong> <span class="badge bg-primary">{{ context.context_type }}</span></li>
                     <li class="list-group-item"><strong>创建时间:</strong> <small class="text-muted">{{ context.create_time }}</small></li>
                     <li class="list-group-item"><strong>更新时间:</strong> <small class="text-muted">{{ context.update_time }}</small></li>
-                    <li class="list-group-item"><strong>事件时间:</strong> <small class="text-muted">{{ context.event_time }}</small></li>
+                    <li class="list-group-item"><strong>事件开始时间:</strong> <small class="text-muted">{{ context.event_time_start }}</small></li>
+                    <li class="list-group-item"><strong>事件结束时间:</strong> <small class="text-muted">{{ context.event_time_end }}</small></li>
                     <li class="list-group-item"><strong>调用次数:</strong> <small class="text-muted">{{ context.call_count }}</small></li>
                     <li class="list-group-item"><strong>合并次数:</strong> <small class="text-muted">{{ context.merge_count }}</small></li>
                     <li class="list-group-item"><strong>持续次数:</strong> <small class="text-muted">{{ context.duration_count }}</small></li>
@@ -136,9 +137,9 @@
             </div>
             <div class="card-body">
                 <!-- Time bucket -->
-                {% if context.time_bucket %}
+                {% if context.event_time_start %}
                 <div class="mb-3">
-                    <strong>时间桶:</strong> <span class="badge bg-secondary">{{ context.time_bucket }}</span>
+                    <strong>事件时间:</strong> <span class="badge bg-secondary">{{ context.event_time_start }}</span>
                 </div>
                 {% endif %}
 
@@ -325,7 +326,7 @@
                         <span class="badge bg-${color} me-1">L${level}</span>
                         <a href="#" onclick="viewContext('${ctx.id}', 'event')" class="text-decoration-none fw-semibold">${ctx.title || '未命名'}</a>
                         ${hasChildren ? `<span class="badge bg-secondary ms-1">${childCount}</span>` : ''}
-                        ${ctx.time_bucket ? `<small class="text-muted ms-2">${ctx.time_bucket}</small>` : ''}
+                        ${ctx.event_time_start ? `<small class="text-muted ms-2">${ctx.event_time_start}</small>` : ''}
                     </div>
                 </div>
                 ${ctx.summary ? `<div class="text-muted small mt-1 ms-4">${ctx.summary.substring(0, 120)}${ctx.summary.length > 120 ? '...' : ''}</div>` : ''}

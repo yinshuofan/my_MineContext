@@ -9,9 +9,9 @@ Hierarchical event context retrieval tool.
 Retrieves EVENT type contexts using a hierarchical time-based indexing strategy.
 Events are organized in a 4-level hierarchy:
   L0 — raw individual events (original records)
-  L1 — daily summaries (time_bucket: "YYYY-MM-DD")
-  L2 — weekly summaries (time_bucket: "YYYY-Www")
-  L3 — monthly summaries (time_bucket: "YYYY-MM")
+  L1 — daily summaries (event_time_start/end span a day)
+  L2 — weekly summaries (event_time_start/end span a week)
+  L3 — monthly summaries (event_time_start/end span a month)
 
 The retrieval algorithm first searches higher-level summaries to identify
 relevant time periods, then drills down through refs to gather
@@ -137,7 +137,7 @@ class HierarchicalEventTool(BaseTool):
                     },
                     "description": (
                         "Optional time range to narrow the search window. "
-                        "When provided, only summaries and events whose time_bucket "
+                        "When provided, only summaries and events whose event time "
                         "overlaps the given range are considered."
                     ),
                 },

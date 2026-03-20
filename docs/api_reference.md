@@ -275,11 +275,11 @@ curl -X POST http://localhost:1733/api/search \
     {
       "id": "0f9ae964-bd55-48bc-83a0-8cc8258db85d",
       "hierarchy_level": 0,
-      "time_bucket": "2026-03-08T21:50:46",
       "refs": {},
       "title": "Discussion on birthday gift for girlfriend",
       "summary": "Discussed choosing a birthday gift and decided to add matching earring.\n- Selected item priced at 580 yuan for girlfriend's next-week birthday\n- Confirmed the item fits girlfriend's style preference\n- Decided to pair with a matching earring after AI suggestion",
-      "event_time": "2026-03-08T21:50:46.393574+00:00",
+      "event_time_start": "2026-03-08T21:50:46.393574+00:00",
+      "event_time_end": "2026-03-08T21:50:46.393574+00:00",
       "create_time": "2026-03-08T21:50:46.378637",
       "is_search_hit": true,
       "children": [],
@@ -294,11 +294,11 @@ curl -X POST http://localhost:1733/api/search \
     {
       "id": "0f0c5487-561b-4950-ba7c-c244b5261adf",
       "hierarchy_level": 0,
-      "time_bucket": "2026-03-08T22:09:04",
       "refs": {},
       "title": "User Shared Photo and Received Feedback",
       "summary": "User shared a photo and got positive feedback on its quality.\n- Photo features a traditional decorated item\n- AI praised the photo's lighting and composition.",
-      "event_time": "2026-03-08T22:09:04+00:00",
+      "event_time_start": "2026-03-08T22:09:04+00:00",
+      "event_time_end": "2026-03-08T22:09:04+00:00",
       "create_time": "2026-03-08T22:09:03.996846",
       "is_search_hit": true,
       "children": [],
@@ -326,11 +326,11 @@ curl -X POST http://localhost:1733/api/search \
     {
       "id": "0f9ae964-bd55-48bc-83a0-8cc8258db85d",
       "hierarchy_level": 0,
-      "time_bucket": "2026-03-08T21:50:46",
       "refs": {},
       "title": "Discussion on birthday gift for girlfriend",
       "summary": "...",
-      "event_time": "2026-03-08T21:50:46.393574+00:00",
+      "event_time_start": "2026-03-08T21:50:46.393574+00:00",
+      "event_time_end": "2026-03-08T21:50:46.393574+00:00",
       "create_time": "2026-03-08T21:50:46.378637",
       "is_search_hit": true,
       "children": [],
@@ -450,14 +450,14 @@ curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&
       "keywords": ["birthday gift", "earring"],
       "accessed_ts": 1773220687.724764,
       "score": 1.0,
-      "event_time": "2026-03-08T21:50:46.393574+00:00",
+      "event_time_start": "2026-03-08T21:50:46.393574+00:00",
       "create_time": "2026-03-08T21:50:46.378637",
       "media_refs": []
     }
   ],
   "daily_summaries": [
     {
-      "time_bucket": "2026-03-08",
+      "event_time_start": "2026-03-08T00:00:00+00:00",
       "title": "Daily Summary",
       "summary": "Discussed birthday gift selection and shared photos from the Forbidden City."
     }
@@ -466,7 +466,7 @@ curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&
     {
       "title": "Morning standup meeting",
       "summary": "Discussed sprint progress and blockers.",
-      "event_time": "2026-03-11T09:00:00+00:00"
+      "event_time_start": "2026-03-11T09:00:00+00:00"
     }
   ]
 }
@@ -829,7 +829,8 @@ curl -X GET "http://localhost:1733/api/agents/assistant_01/base/events?limit=10&
         "keywords": ["product launch", "v2.0"],
         "entities": ["product team"],
         "importance": 8,
-        "event_time": "2026-03-15T09:00:00+00:00",
+        "event_time_start": "2026-03-15 09:00:00",
+        "event_time_end": "2026-03-15 09:00:00",
         "create_time": "2026-03-18T10:30:00+00:00"
       }
     ]

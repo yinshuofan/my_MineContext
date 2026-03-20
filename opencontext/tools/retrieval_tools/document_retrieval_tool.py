@@ -58,7 +58,7 @@ class DocumentRetrievalTool(BaseContextRetrievalTool):
    - Example: Get all documents added this week, or documents mentioning specific topics
 
 **Filter options:**
-- Time range filtering (by event_time, create_time, or update_time)
+- Time range filtering (by event_time_start, create_time, or update_time)
 - Entity filtering (find documents mentioning specific people, projects, technologies)
 - Configurable result count (top_k: 1-100, default 5)
 

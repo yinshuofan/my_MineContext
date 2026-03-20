@@ -358,7 +358,8 @@ async def trigger_task(
                         "title": result.extracted_data.title if result.extracted_data else None,
                         "summary": result.extracted_data.summary if result.extracted_data else None,
                         "hierarchy_level": result.properties.hierarchy_level,
-                        "time_bucket": result.properties.time_bucket,
+                        "event_time_start": result.properties.event_time_start.isoformat() if result.properties.event_time_start else None,
+                        "event_time_end": result.properties.event_time_end.isoformat() if result.properties.event_time_end else None,
                     },
                 }
             else:

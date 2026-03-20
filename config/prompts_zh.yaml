@@ -486,7 +486,7 @@ processing:
         - 涉及他人时明确标注人名：`同事小王推荐了 Zustand`，不写 `有人推荐了 Zustand`
 
         **时间信息**:
-        - 明确的时间节点写入要点（"计划下周三完成"），精确时间放 `event_time` 字段
+        - 明确的时间节点写入要点（"计划下周三完成"）
         - 不要在每条要点中重复"今天"
 
         **反面示例** — 不要这样写:
@@ -562,8 +562,7 @@ processing:
         5. **entities**: 该条记忆中提到的关键实体（人名、工具名、技术栈），使用结构化对象
         6. **importance**: 0-10分，技术决策、个人喜好为高分，普通寒暄为低分
         7. **confidence**: 0-10分，对提取准确性的置信度
-        8. **event_time**: ISO 时间字符串（如果该记忆有明确时间），否则为 null
-        9. **related_media**（可选）: 仅用于与特定媒体强相关的记忆。格式：`{“images”: [索引], “videos”: [索引]}`，索引指向所有消息中媒体项的从 0 开始的位置
+        8. **related_media**（可选）: 仅用于与特定媒体强相关的记忆。格式：`{“images”: [索引], “videos”: [索引]}`，索引指向所有消息中媒体项的从 0 开始的位置
 
         请以 JSON 格式输出，不要包含 Markdown 标记：
         {
@@ -576,7 +575,6 @@ processing:
               “entities”: [{“name”: “Next.js”, “type”: “framework”, “description”: “前端框架”}],
               “importance”: 8,
               “confidence”: 9,
-              “event_time”: “2026-03-08T14:30:00”,
               “related_media”: {“images”: [0]}
             },
             {
@@ -586,8 +584,7 @@ processing:
               “context_type”: “profile”,
               “entities”: [],
               “importance”: 6,
-              “confidence”: 8,
-              “event_time”: null
+              “confidence”: 8
             }
           ]
         }
@@ -631,7 +628,6 @@ processing:
               "context_type": "agent_event" | "agent_profile",
               "title": "简短标题",
               "summary": "你的主观视角描述",
-              "event_time": "YYYY-MM-DDTHH:MM:SS",
               "keywords": ["关键词1", "关键词2"],
               "entities": ["实体1", "实体2"],
               "importance": 0-10
@@ -639,7 +635,6 @@ processing:
           ]
         }
 
-        event_time使用对话发生的时间。
         对于agent_event：描述从你主观角度发生的事情——你的感受、反应、评价。
         对于agent_profile：描述你现在对用户的了解或感受——他们的性格、偏好、与你的关系。
         如果没有值得记录的内容，返回 {"memories": []}。

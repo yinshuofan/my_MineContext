@@ -354,7 +354,7 @@ function renderEventsCard(events) {
                         <i data-feather="trash-2" style="width:14px;height:14px;"></i>
                     </button>
                 </div>
-                ${evt.event_time ? `<small class="text-muted">${new Date(evt.event_time).toLocaleString('zh-CN')}</small>` : ''}
+                ${evt.event_time_start ? `<small class="text-muted">${new Date(evt.event_time_start).toLocaleString('zh-CN')}</small>` : ''}
             </div>
         `).join('');
     }

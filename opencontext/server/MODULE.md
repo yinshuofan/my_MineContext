@@ -165,7 +165,7 @@ Algorithm:
 2. **Collect ancestors** (if `drill_up=True`): Handled by `EventSearchService.collect_ancestors()` — follows `refs` upward iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent ref. Strictly stops at `max_level`.
 3. **Build node map**: Search hits become `EventNode` with is_search_hit=True (score/content/keywords populated), ancestors become lightweight `EventNode` with is_search_hit=False. Search hits are never overwritten by ancestors.
 4. **Link tree**: Parent is extracted from `refs` via `_extract_parent_id_from_refs()` — finds the first ref ID that exists in the node map. Nodes without a valid parent become roots.
-5. **Sort**: Roots and all children lists sorted by `time_bucket` ASC recursively.
+5. **Sort**: Roots and all children lists sorted by `event_time_start` ASC recursively.
 
 ### MemoryCacheManager (cache/memory_cache_manager.py)
 
@@ -518,14 +518,14 @@ search_events()
      Path B (query):     search_service.semantic_search() -> SearchResult (handles vectorization internally)
      Path C (filters):   search_service.filter_search()
   -> ancestors from SearchResult (drill_up) or search_service.collect_ancestors()
-  -> Build tree: node map → refs-based parent-child linking → recursive sort by time_bucket ASC
+  -> Build tree: node map → refs-based parent-child linking → recursive sort by event_time_start ASC
   -> Fire-and-forget _track_accessed_safe()     # Includes media_refs in tracked items
   -> Return EventSearchResponse (tree roots + search hit count)
 ```
 
 #### Response Format (`EventSearchResponse`)
 
-Response is a **tree structure**: high-level summaries are root nodes, lower-level events are nested as `children`. All nodes use the single `EventNode` model. `is_search_hit` distinguishes search hits (with score/content/keywords/entities/metadata populated) from ancestor context nodes (lightweight, only id/level/time_bucket/title/summary).
+Response is a **tree structure**: high-level summaries are root nodes, lower-level events are nested as `children`. All nodes use the single `EventNode` model. `is_search_hit` distinguishes search hits (with score/content/keywords/entities/metadata populated) from ancestor context nodes (lightweight, only id/level/event_time_start/title/summary).
 
 ```json
 {
@@ -534,22 +534,22 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
     {
       "id": "f4b61534-...",
       "hierarchy_level": 1,
-      "time_bucket": "2026-03-04",
       "refs": {},
       "title": "Daily Summary",
       "summary": "Daily summary text...",
-      "event_time": null,
+      "event_time_start": "2026-03-04T00:00:00+00:00",
+      "event_time_end": "2026-03-04T23:59:59+00:00",
       "create_time": "2026-03-04T09:29:32.894067+00:00",
       "is_search_hit": false,
       "children": [
         {
           "id": "05278626-88c4-4f85-8eec-e69ac143914c",
           "hierarchy_level": 0,
-          "time_bucket": "2026-03-04T09:17:26",
           "refs": {"daily_summary": ["f4b61534-..."]},
           "title": "Event title",
           "summary": "Event summary text",
-          "event_time": "2026-03-04T09:17:26.626423+00:00",
+          "event_time_start": "2026-03-04T09:17:26.626423+00:00",
+          "event_time_end": "2026-03-04T09:17:26.626423+00:00",
           "create_time": "2026-03-04T09:17:26.626077",
           "is_search_hit": true,
           "media_refs": [{"type": "image", "url": "https://..."}],
@@ -579,11 +579,12 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 
 **Field notes:**
 - `events`: List of root nodes (tree roots). When `drill_up=true`, ancestors become parent nodes with search hits nested as children. When `drill_up=false`, all search hits are flat root nodes.
-- `is_search_hit`: `true` for search results (content/keywords/entities/score/metadata/media_refs populated), `false` for ancestor context nodes (only id/level/time_bucket/title/summary)
+- `is_search_hit`: `true` for search results (content/keywords/entities/score/metadata/media_refs populated), `false` for ancestor context nodes (only id/level/event_time_start/title/summary)
 - `media_refs`: List of media references for L0 events, e.g. `[{"type": "image", "url": "https://..."}, {"type": "video", "url": "https://..."}]`. Empty list for L1/L2/L3 summaries. Extracted from `ProcessedContext.metadata["media_refs"]`.
-- `children`: Nested child nodes, sorted by `time_bucket` ASC. Root nodes are also sorted by `time_bucket` ASC.
+- `children`: Nested child nodes, sorted by `event_time_start` ASC. Root nodes are also sorted by `event_time_start` ASC.
 - `hierarchy_level`: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
-- `time_bucket`: `"YYYY-MM-DDTHH:MM:SS"` for L0 events; `"YYYY-MM-DD"` for L1, `"YYYY-Www"` for L2, `"YYYY-MM"` for L3
+- `event_time_start`: ISO 8601 datetime. For L0 events, the event occurrence time. For summaries, the start of the covered period.
+- `event_time_end`: ISO 8601 datetime. For L0 events, equals `event_time_start`. For summaries, the end of the covered period.
 - `refs`: Dict mapping ContextType values to lists of context IDs. E.g. `{"daily_summary": ["sum-id"]}` on an L0 event points to its parent daily summary.
 - `total_results`: Count of actual search hits (not total tree nodes)
 - `score`: Semantic similarity score for query search; `1.0` for ID lookup and filter-only search

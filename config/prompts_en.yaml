@@ -486,7 +486,7 @@ processing:
         - When others are involved, name them explicitly: `Colleague Xiao Wang recommended Zustand`, not `Someone recommended Zustand`
 
         **Time information**:
-        - Write explicit time points into bullets ("Plan to finish by next Wednesday"); put precise timestamps in the `event_time` field
+        - Write explicit time points into bullets ("Plan to finish by next Wednesday")
         - Do not repeat "today" in every bullet
 
         **Bad example** — do NOT write like this:
@@ -562,8 +562,7 @@ processing:
         5. **entities**: Key entities mentioned in this memory (person names, tool names, tech stacks) as structured objects
         6. **importance**: Score 0-10, technical decisions and personal preferences score high, casual greetings score low
         7. **confidence**: Score 0-10, how confident you are in the extraction accuracy
-        8. **event_time**: ISO time string if the memory has an explicit time, otherwise null
-        9. **related_media** (optional): Only for memories strongly tied to specific media. Format: `{"images": [indices], "videos": [indices]}` where indices refer to the 0-based position of media items across all messages
+        8. **related_media** (optional): Only for memories strongly tied to specific media. Format: `{"images": [indices], "videos": [indices]}` where indices refer to the 0-based position of media items across all messages
 
         Please output in JSON format without Markdown markers:
         {
@@ -576,7 +575,6 @@ processing:
               "entities": [{"name": "Next.js", "type": "framework", "description": "frontend framework"}],
               "importance": 8,
               "confidence": 9,
-              "event_time": "2026-03-08T14:30:00",
               "related_media": {"images": [0]}
             },
             {
@@ -586,8 +584,7 @@ processing:
               "context_type": "profile",
               "entities": [],
               "importance": 6,
-              "confidence": 8,
-              "event_time": null
+              "confidence": 8
             }
           ]
         }
@@ -632,7 +629,6 @@ processing:
               "context_type": "agent_event" | "agent_profile",
               "title": "brief title",
               "summary": "your subjective perspective",
-              "event_time": "YYYY-MM-DDTHH:MM:SS",
               "keywords": ["keyword1", "keyword2"],
               "entities": ["entity1", "entity2"],
               "importance": 0-10
@@ -640,7 +636,6 @@ processing:
           ]
         }
 
-        For event_time, use the time the conversation took place.
         For agent_event: describe what happened from your subjective point of view — your feelings, reactions, evaluations.
         For agent_profile: describe what you now know or feel about the user — their personality, preferences, relationship with you.
         If nothing noteworthy happened, return {"memories": []}.

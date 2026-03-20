@@ -573,10 +573,9 @@ function renderSearchHitCard(event) {
     const level = event.hierarchy_level || 0;
     const title = event.title || '未命名事件';
     const summary = event.summary || '';
-    const timeBucket = event.time_bucket || '';
-    const eventTime = event.event_time ? new Date(event.event_time).toLocaleString('zh-CN') : '';
+    const eventTimeStart = event.event_time_start ? new Date(event.event_time_start).toLocaleString('zh-CN') : '';
     const createTime = event.create_time ? new Date(event.create_time).toLocaleString('zh-CN') : '';
-    const displayTime = eventTime || createTime;
+    const displayTime = eventTimeStart || createTime;
     const score = event.score || 0;
     const scoreColor = score >= 0.9 ? 'success' : score >= 0.7 ? 'primary' : 'secondary';
     const cardId = 'card-' + event.id.replace(/[^a-zA-Z0-9]/g, '');
@@ -613,7 +612,7 @@ function renderSearchHitCard(event) {
                     <h6 class="mb-0">
                         <a href="#" onclick="viewContext('${event.id}', '${event.context_type || "event"}'); return false;" class="text-decoration-none">${escapeHtml(title)}</a>
                     </h6>
-                    ${timeBucket ? `<small class="text-muted">${escapeHtml(timeBucket)}</small>` : ''}
+                    ${eventTimeStart ? `<small class="text-muted">${escapeHtml(eventTimeStart)}</small>` : ''}
                     ${toggleHtml}
                 </div>
                 <span class="badge bg-${scoreColor} score-badge">${score.toFixed(4)}</span>
@@ -622,7 +621,7 @@ function renderSearchHitCard(event) {
             ${keywords ? `<div class="mt-2">${keywords}</div>` : ''}
             ${renderMediaRefs(event.media_refs)}
             <div class="d-flex justify-content-between align-items-center mt-2">
-                ${displayTime ? `<small class="text-muted">${eventTime ? '事件时间' : '创建时间'}: ${displayTime}</small>` : '<span></span>'}
+                ${displayTime ? `<small class="text-muted">${eventTimeStart ? '事件时间' : '创建时间'}: ${displayTime}</small>` : '<span></span>'}
                 <button onclick="viewContext('${event.id}', '${event.context_type || "event"}')" class="btn btn-sm btn-outline-primary">查看详情</button>
             </div>
         </div>
@@ -633,7 +632,7 @@ function renderContextCard(node) {
     const level = node.hierarchy_level || 0;
     const title = node.title || '';
     const summary = node.summary || '';
-    const timeBucket = node.time_bucket || '';
+    const eventTimeStart = node.event_time_start || '';
 
     const hasChildren = node.children && node.children.length > 0;
     const childrenId = 'children-' + node.id.replace(/[^a-zA-Z0-9]/g, '');
@@ -651,7 +650,7 @@ function renderContextCard(node) {
                 ${toggleHtml}
                 <span class="badge level-badge level-badge-${level}">${LEVEL_SHORT[level] || 'L?'}</span>
                 <span class="badge ctx-badge">上下文</span>
-                ${timeBucket ? `<small class="text-muted">${escapeHtml(timeBucket)}</small>` : ''}
+                ${eventTimeStart ? `<small class="text-muted">${escapeHtml(eventTimeStart)}</small>` : ''}
                 ${titleHtml}
             </div>
             ${summaryHtml}

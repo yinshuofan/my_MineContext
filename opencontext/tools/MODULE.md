@@ -100,7 +100,7 @@ class TimeRangeFilter:
     start: Optional[int] = None
     end: Optional[int] = None
     timezone: Optional[str] = None
-    time_type: Optional[str] = "event_time_ts"
+    time_type: Optional[str] = "event_time_start_ts"
 
 @dataclass
 class ContextRetrievalFilter:
@@ -151,7 +151,7 @@ class HierarchicalEventTool(BaseTool):
     def _ts_to_week_bucket(ts: int) -> str
     @staticmethod
     def _ts_to_month_bucket(ts: int) -> str
-    def _search_summaries(self, level: int, time_bucket_start: Optional[str], time_bucket_end: Optional[str], user_id: Optional[str], top_k: int, device_id: Optional[str] = None, agent_id: Optional[str] = None) -> List[Tuple[ProcessedContext, float]]
+    def _search_summaries(self, level: int, time_start: Optional[float], time_end: Optional[float], user_id: Optional[str], top_k: int, device_id: Optional[str] = None, agent_id: Optional[str] = None) -> List[Tuple[ProcessedContext, float]]
     def _drill_down_children(self, parent_contexts: List[Tuple[ProcessedContext, float]], user_id: Optional[str] = None) -> List[Tuple[ProcessedContext, float, int]]
     def _direct_l0_search(self, query: str, user_id: Optional[str], device_id: Optional[str], agent_id: Optional[str], filters: Dict, top_k: int) -> List[Tuple[ProcessedContext, float, int]]
     @staticmethod
@@ -252,7 +252,7 @@ execute(**kwargs)
 _execute_search(query, filters, top_k)
   │
   ├── _build_filters(filters)
-  │     └── Time range → {"event_time_ts": {"$gte": ..., "$lte": ...}}
+  │     └── Time range → {"event_time_start_ts": {"$gte": ..., "$lte": ...}}
   │
   ├── If query: Vectorize(text=query) → storage.search(query, context_types, filters, top_k, user_id, ...)
   └── If no query: storage.get_all_processed_contexts(context_types, limit, filter, user_id, ...)
