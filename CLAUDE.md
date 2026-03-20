@@ -191,8 +191,8 @@ If you add a field to `ContextProperties` and want it in API responses, you must
 ### Never cache `get_storage()` in `__init__` or sync init code
 `GlobalStorage` requires async `ensure_initialized()` (runs in lifespan). Any `self.storage = get_storage()` in `__init__` or synchronous `initialize()` caches `None` permanently. Use a non-caching `@property` instead: `return get_storage()`. This is O(1) (singleton lookup) and matches the pattern in `BaseContextRetrievalTool`, `ContextMerger`, `OpenContext`, `ContextOperations`, etc. The same rule applies to all global singletons with async init.
 
-### Use timezone-aware datetime everywhere
-`datetime.utcfromtimestamp()` and `datetime.utcnow()` are deprecated in Python 3.12+. Use `datetime.fromtimestamp(ts, tz=datetime.timezone.utc)` and `datetime.now(tz=datetime.timezone.utc)`.
+### Use `time_utils.now()` instead of `datetime.now()`
+All datetime generation must go through `opencontext.utils.time_utils`. Import as `from opencontext.utils.time_utils import now as tz_now`. This ensures all datetimes use the globally-configured timezone from `config.yaml` (`timezone` key, IANA name like `"Asia/Shanghai"`). Never use `datetime.now()`, `datetime.now(tz=timezone.utc)`, or `datetime.utcnow()` directly. For protocol-mandated UTC (e.g. AWS S3 auth), use `utc_now()`. **Important:** Do not call `now()` at module-import time — the timezone is initialized at startup, after imports.
 
 ### Context merger only handles knowledge type
 The merger (`context_merger.py`) only processes `knowledge` contexts. Do not route non-knowledge types through the merger.

@@ -6,6 +6,8 @@ Base URL: `http://{host}:{port}` (默认 `http://localhost:1733`)
 
 用户标识：所有接口通过 `(user_id, device_id, agent_id)` 三元组标识用户，`device_id` 和 `agent_id` 默认为 `"default"`。
 
+> **时区说明**: 所有 API 返回的时间字段现在包含时区信息（如 `2026-03-21T08:30:00+08:00`），而非之前的无时区格式（`2026-03-21T00:30:00`）。时区由服务端 `config.yaml` 中的 `timezone` 配置项决定。
+
 ---
 
 ## 1. Push Chat — 推送聊天消息
