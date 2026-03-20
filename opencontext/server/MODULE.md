@@ -127,7 +127,7 @@ def _build_filters(time_range, hierarchy_levels) -> Dict[str, Any]
 def _time_range_to_buckets(start_ts, end_ts) -> Tuple[Optional[str], Optional[str]]
 def _to_context_node(ctx: ProcessedContext) -> EventNode
 def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode
-async def _track_accessed_safe(user_id, results, device_id, agent_id) -> None
+async def _track_accessed_safe(user_id, results, device_id, agent_id, memory_owner="user") -> None
 ```
 
 Algorithm:
@@ -382,6 +382,7 @@ Agent base memory routes use `user_id="__base__"` as a sentinel to distinguish b
 | GET | `/contexts` | `read_contexts` | Contexts list page (card layout). Query params: `page`, `limit`, `type`, `user_id`, `device_id`, `agent_id`, `hierarchy_level` (0-3), `start_date` (datetime-local or date), `end_date` (datetime-local or date). Type filter excludes profile (relational DB only) |
 | GET | `/vector_search` | `vector_search_page` | Event search page |
 | GET | `/memory_cache` | `memory_cache_page` | Memory cache page |
+| GET | `/agents` | `agents_page` | Agent management page |
 | GET | `/chat` | `chat_page` | Redirect to `/advanced_chat` |
 | GET | `/advanced_chat` | `advanced_chat_page` | Redirect to `/vaults` |
 | GET | `/vaults` | `vaults_workspace` | Agent chat page |
