@@ -187,7 +187,7 @@ async def generate_summaries(user_id: str, dates: list[str], week: str, month: s
         ctx = await task._generate_weekly_summary(user_id, week)
         if ctx:
             results["l2"] = ctx
-            children_count = len(ctx.properties.children_ids)
+            children_count = sum(len(ids) for ids in (ctx.properties.refs or {}).values())
             print(f"OK (id={ctx.id[:8]}..., children={children_count})")
         else:
             print("SKIPPED (no data or already exists)")
@@ -201,7 +201,7 @@ async def generate_summaries(user_id: str, dates: list[str], week: str, month: s
         ctx = await task._generate_monthly_summary(user_id, month)
         if ctx:
             results["l3"] = ctx
-            children_count = len(ctx.properties.children_ids)
+            children_count = sum(len(ids) for ids in (ctx.properties.refs or {}).values())
             print(f"OK (id={ctx.id[:8]}..., children={children_count})")
         else:
             print("SKIPPED (no data or already exists)")
