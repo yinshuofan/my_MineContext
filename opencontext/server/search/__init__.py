@@ -4,6 +4,7 @@
 Event Search API
 """
 
+from opencontext.server.search.event_search_service import EventSearchService, SearchResult
 from opencontext.server.search.models import (
     EventNode,
     EventSearchRequest,
@@ -18,4 +19,6 @@ __all__ = [
     "EventSearchResponse",
     "EventNode",
     "SearchMetadata",
+    "EventSearchService",
+    "SearchResult",
 ]
