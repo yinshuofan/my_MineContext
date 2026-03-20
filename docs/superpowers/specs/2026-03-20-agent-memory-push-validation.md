@@ -47,3 +47,13 @@ HTTP status: **400 Bad Request**.
 | File | Change |
 |------|--------|
 | `opencontext/server/routes/push.py` | Add agent existence check in `push_chat()` |
+| `docs/api_reference.md` | Document new 400 error case for push/chat |
+| `docs/curls.sh` | Update push/chat section if needed |
+
+## Verification
+
+Manual verification via curl (no test suite exists):
+
+1. **400 for unregistered agent**: `POST /api/push/chat` with `processors: ["agent_memory"]`, `agent_id: "nonexistent"` → expect 400
+2. **202 for registered agent**: Register agent first via `POST /api/agents`, then push with that `agent_id` → expect 202
+3. **202 for default agent_id**: `POST /api/push/chat` with `processors: ["agent_memory"]`, `agent_id: "default"` or omitted → expect 202 (processor silently skips)
