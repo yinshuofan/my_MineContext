@@ -17,6 +17,7 @@ Generates hierarchical time-based summaries for EVENT type contexts:
 - Level 3: Monthly summaries (每月摘要)
 """
 
+import calendar
 import datetime
 import json
 import time
@@ -304,7 +305,11 @@ class HierarchySummaryTask(BasePeriodicTask):
         """
         sorted_ctxs = sorted(
             contexts,
-            key=lambda c: (c.properties.event_time.isoformat() if c.properties.event_time else ""),
+            key=lambda c: (
+                c.properties.event_time_start.isoformat()
+                if c.properties.event_time_start
+                else ""
+            ),
         )
         parts = []
         for i, ctx in enumerate(sorted_ctxs, 1):
@@ -312,8 +317,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             line_parts = [f"[{i}]"]
             if ed.title:
                 line_parts.append(f"Title: {ed.title}")
-            if ctx.properties.event_time:
-                line_parts.append(f"Time: {ctx.properties.event_time.strftime('%H:%M')}")
+            if ctx.properties.event_time_start:
+                line_parts.append(f"Time: {ctx.properties.event_time_start.strftime('%H:%M')}")
             if ed.summary:
                 line_parts.append(f"Summary: {ed.summary}")
             if ed.keywords:
@@ -340,9 +345,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         """
         l1_by_day: Dict[str, ProcessedContext] = {}
         for ctx in l1_summaries:
-            tb = ctx.properties.time_bucket
-            if tb:
-                l1_by_day[tb] = ctx
+            if ctx.properties.event_time_start:
+                day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
+                l1_by_day[day_key] = ctx
 
         parts = []
         for day_str in sorted(l1_by_day.keys()):
@@ -380,9 +385,10 @@ class HierarchySummaryTask(BasePeriodicTask):
         # Build map from week_str -> L2 summary
         l2_by_week: Dict[str, ProcessedContext] = {}
         for ctx in l2_summaries:
-            tb = ctx.properties.time_bucket
-            if tb:
-                l2_by_week[tb] = ctx
+            if ctx.properties.event_time_start:
+                iso_year, iso_week, _ = ctx.properties.event_time_start.isocalendar()
+                wk_key = f"{iso_year}-W{iso_week:02d}"
+                l2_by_week[wk_key] = ctx
 
         # Collect all week keys
         all_weeks = sorted(set(list(l2_by_week.keys()) + list(l1_summaries_by_week.keys())))
@@ -399,13 +405,21 @@ class HierarchySummaryTask(BasePeriodicTask):
 
                 if l1_list:
                     parts.append("")
-                    # Sort L1 summaries by time_bucket (date)
+                    # Sort L1 summaries by event_time_start (date)
                     sorted_l1 = sorted(
                         l1_list,
-                        key=lambda c: c.properties.time_bucket or "",
+                        key=lambda c: (
+                            c.properties.event_time_start.isoformat()
+                            if c.properties.event_time_start
+                            else ""
+                        ),
                     )
                     for l1_ctx in sorted_l1:
-                        tb = l1_ctx.properties.time_bucket or "unknown"
+                        tb = (
+                            l1_ctx.properties.event_time_start.strftime("%Y-%m-%d")
+                            if l1_ctx.properties.event_time_start
+                            else "unknown"
+                        )
                         try:
                             day_date = datetime.date.fromisoformat(tb)
                             dow = day_date.strftime("%a")
@@ -420,10 +434,18 @@ class HierarchySummaryTask(BasePeriodicTask):
                 parts.append(f"=== Unsummarized Week: {week_str} ===")
                 sorted_l1 = sorted(
                     l1_list,
-                    key=lambda c: c.properties.time_bucket or "",
+                    key=lambda c: (
+                        c.properties.event_time_start.isoformat()
+                        if c.properties.event_time_start
+                        else ""
+                    ),
                 )
                 for l1_ctx in sorted_l1:
-                    tb = l1_ctx.properties.time_bucket or "unknown"
+                    tb = (
+                        l1_ctx.properties.event_time_start.strftime("%Y-%m-%d")
+                        if l1_ctx.properties.event_time_start
+                        else "unknown"
+                    )
                     try:
                         day_date = datetime.date.fromisoformat(tb)
                         dow = day_date.strftime("%a")
@@ -588,9 +610,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         )
         l1_by_day: Dict[str, ProcessedContext] = {}
         for ctx in l1_contexts:
-            tb = ctx.properties.time_bucket
-            if tb:
-                l1_by_day[tb] = ctx
+            if ctx.properties.event_time_start:
+                day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
+                l1_by_day[day_key] = ctx
 
         all_days = sorted(l1_by_day.keys())
         # Split days into groups of 2-3
@@ -662,9 +684,10 @@ class HierarchySummaryTask(BasePeriodicTask):
         )
         l2_by_week: Dict[str, ProcessedContext] = {}
         for ctx in l2_contexts:
-            tb = ctx.properties.time_bucket
-            if tb:
-                l2_by_week[tb] = ctx
+            if ctx.properties.event_time_start:
+                iso_year, iso_week, _ = ctx.properties.event_time_start.isocalendar()
+                wk_key = f"{iso_year}-W{iso_week:02d}"
+                l2_by_week[wk_key] = ctx
 
         all_weeks = sorted(set(list(l2_by_week.keys()) + list(l1_by_week.keys())))
         week_groups: List[List[str]] = []
@@ -740,6 +763,14 @@ class HierarchySummaryTask(BasePeriodicTask):
         backfill_end = today - datetime.timedelta(days=1)  # yesterday
         backfill_start = today - datetime.timedelta(days=backfill_days)
 
+        # Compute timestamp range for the backfill window
+        backfill_start_ts = datetime.datetime.combine(
+            backfill_start, datetime.time.min, tzinfo=datetime.timezone.utc
+        ).timestamp()
+        backfill_end_ts = datetime.datetime.combine(
+            backfill_end, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+        ).timestamp()
+
         # Batch query existing L1 summaries in the window (1 query vs N)
         # Check both old format (EVENT with hierarchy_level=1) and new format (DAILY_SUMMARY)
         # 批量查询窗口内已有的 L1 摘要（1 次查询代替 N 次），同时检查新旧格式
@@ -751,33 +782,33 @@ class HierarchySummaryTask(BasePeriodicTask):
                 existing_l1_old = await storage.search_hierarchy(
                     context_type=ContextType.EVENT.value,
                     hierarchy_level=1,
-                    time_bucket_start=backfill_start.isoformat(),
-                    time_bucket_end=backfill_end.isoformat(),
+                    time_start=backfill_start_ts,
+                    time_end=backfill_end_ts,
                     user_id=user_id,
                     device_id=device_id,
                     agent_id=agent_id,
                     top_k=backfill_days,
                 )
                 existing_dates = {
-                    ctx.properties.time_bucket
+                    ctx.properties.event_time_start.strftime("%Y-%m-%d")
                     for ctx, _ in existing_l1_old
-                    if ctx.properties.time_bucket
+                    if ctx.properties.event_time_start
                 }
                 # Check new format (DAILY_SUMMARY)
                 existing_l1_new = await storage.search_hierarchy(
                     context_type=ContextType.DAILY_SUMMARY.value,
                     hierarchy_level=1,
-                    time_bucket_start=backfill_start.isoformat(),
-                    time_bucket_end=backfill_end.isoformat(),
+                    time_start=backfill_start_ts,
+                    time_end=backfill_end_ts,
                     user_id=user_id,
                     device_id=device_id,
                     agent_id=agent_id,
                     top_k=backfill_days,
                 )
                 existing_dates |= {
-                    ctx.properties.time_bucket
+                    ctx.properties.event_time_start.strftime("%Y-%m-%d")
                     for ctx, _ in existing_l1_new
-                    if ctx.properties.time_bucket
+                    if ctx.properties.event_time_start
                 }
             except Exception as e:
                 logger.warning(f"Failed to query existing L1 summaries: {e}")
@@ -832,13 +863,25 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.error("Storage not available, cannot generate daily summary")
             return None
 
+        # Compute day boundaries as datetime objects
+        day_start = datetime.datetime.combine(
+            datetime.date.fromisoformat(date_str),
+            datetime.time.min,
+            tzinfo=datetime.timezone.utc,
+        )
+        day_end = datetime.datetime.combine(
+            datetime.date.fromisoformat(date_str),
+            datetime.time(23, 59, 59),
+            tzinfo=datetime.timezone.utc,
+        )
+
         # Check if daily summary already exists for this date (old + new format)
         # 检查该日期的日摘要是否已存在（同时检查新旧格式）
         existing_old = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=1,
-            time_bucket_start=date_str,
-            time_bucket_end=date_str,
+            time_start=day_start.timestamp(),
+            time_end=day_end.timestamp(),
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -847,8 +890,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         existing_new = await storage.search_hierarchy(
             context_type=ContextType.DAILY_SUMMARY.value,
             hierarchy_level=1,
-            time_bucket_start=date_str,
-            time_bucket_end=date_str,
+            time_start=day_start.timestamp(),
+            time_end=day_end.timestamp(),
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -859,21 +902,14 @@ class HierarchySummaryTask(BasePeriodicTask):
             return None
 
         # Query Level 0 raw events for the given date using time-range filter
-        # L0 events don't have time_bucket set, so we filter by event_time_ts instead
-        # 使用 event_time_ts 时间范围过滤查询 L0 事件（L0 事件没有 time_bucket）
-        day_date = datetime.date.fromisoformat(date_str)
-        day_start_ts = int(
-            datetime.datetime(
-                day_date.year,
-                day_date.month,
-                day_date.day,
-                tzinfo=datetime.timezone.utc,
-            ).timestamp()
-        )
-        day_end_ts = day_start_ts + 86400
+        # L0 events use event_time_start_ts/event_time_end_ts (overlap pattern)
+        # 使用 event_time_start_ts/event_time_end_ts 时间范围过滤查询 L0 事件
+        day_start_ts = int(day_start.timestamp())
+        day_end_ts = int(day_end.timestamp())
 
         l0_filters = {
-            "event_time_ts": {"$gte": day_start_ts, "$lte": day_end_ts},
+            "event_time_start_ts": {"$lte": day_end_ts},
+            "event_time_end_ts": {"$gte": day_start_ts},
             "hierarchy_level": 0,
         }
         l0_dict = await storage.get_all_processed_contexts(
@@ -909,7 +945,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             user_id=user_id,
             summary_text=summary_text,
             level=1,
-            time_bucket=date_str,
+            event_time_start=day_start,
+            event_time_end=day_end,
             children_ids=children_ids,
             device_id=device_id,
             agent_id=agent_id,
@@ -943,13 +980,25 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.error("Storage not available, cannot generate weekly summary")
             return None
 
+        # Parse week string to get date range and compute datetime boundaries
+        # 解析周字符串以获取日期范围并计算日期时间边界
+        year, week_num = week_str.split("-W")
+        week_start_date = datetime.date.fromisocalendar(int(year), int(week_num), 1)
+        week_end_date = week_start_date + datetime.timedelta(days=6)
+        week_start = datetime.datetime.combine(
+            week_start_date, datetime.time.min, tzinfo=datetime.timezone.utc
+        )
+        week_end = datetime.datetime.combine(
+            week_end_date, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+        )
+
         # Check if weekly summary already exists (old + new format)
         # 检查周摘要是否已存在（同时检查新旧格式）
         existing_old = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=2,
-            time_bucket_start=week_str,
-            time_bucket_end=week_str,
+            time_start=week_start.timestamp(),
+            time_end=week_end.timestamp(),
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -958,8 +1007,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         existing_new = await storage.search_hierarchy(
             context_type=ContextType.WEEKLY_SUMMARY.value,
             hierarchy_level=2,
-            time_bucket_start=week_str,
-            time_bucket_end=week_str,
+            time_start=week_start.timestamp(),
+            time_end=week_end.timestamp(),
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -969,21 +1018,13 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.info(f"Weekly summary already exists for user={user_id}, week={week_str}")
             return None
 
-        # Parse week string to get date range
-        # 解析周字符串以获取日期范围
-        year, week_num = week_str.split("-W")
-        year = int(year)
-        week_num = int(week_num)
-        week_start = datetime.date.fromisocalendar(year, week_num, 1)
-        week_end = week_start + datetime.timedelta(days=6)
-
         # Query Level 1 daily summaries for the week (old + new format)
         # 查询该周的 Level 1 日摘要（同时查询新旧格式）
         l1_results_old = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=1,
-            time_bucket_start=week_start.isoformat(),
-            time_bucket_end=week_end.isoformat(),
+            time_start=week_start.timestamp(),
+            time_end=week_end.timestamp(),
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -992,25 +1033,25 @@ class HierarchySummaryTask(BasePeriodicTask):
         l1_results_new = await storage.search_hierarchy(
             context_type=ContextType.DAILY_SUMMARY.value,
             hierarchy_level=1,
-            time_bucket_start=week_start.isoformat(),
-            time_bucket_end=week_end.isoformat(),
+            time_start=week_start.timestamp(),
+            time_end=week_end.timestamp(),
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
             top_k=7,
         )
 
-        # Deduplicate by time_bucket (prefer new format if both exist for same day)
-        l1_by_bucket: Dict[str, ProcessedContext] = {}
+        # Deduplicate by event_time_start date (prefer new format if both exist for same day)
+        l1_by_day: Dict[str, ProcessedContext] = {}
         for ctx, _score in (l1_results_old or []):
-            tb = ctx.properties.time_bucket
-            if tb:
-                l1_by_bucket[tb] = ctx
+            if ctx.properties.event_time_start:
+                day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
+                l1_by_day[day_key] = ctx
         for ctx, _score in (l1_results_new or []):
-            tb = ctx.properties.time_bucket
-            if tb:
-                l1_by_bucket[tb] = ctx  # new format overwrites old
-        l1_contexts = list(l1_by_bucket.values())
+            if ctx.properties.event_time_start:
+                day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
+                l1_by_day[day_key] = ctx  # new format overwrites old
+        l1_contexts = list(l1_by_day.values())
 
         if not l1_contexts:
             logger.info(f"No L1 data found for user={user_id}, week={week_str}")
@@ -1032,7 +1073,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             user_id=user_id,
             summary_text=summary_text,
             level=2,
-            time_bucket=week_str,
+            event_time_start=week_start,
+            event_time_end=week_end,
             children_ids=children_ids,
             device_id=device_id,
             agent_id=agent_id,
@@ -1066,13 +1108,28 @@ class HierarchySummaryTask(BasePeriodicTask):
             logger.error("Storage not available, cannot generate monthly summary")
             return None
 
+        # Determine month boundaries
+        # 计算月的时间边界
+        year_str, month_num_str = month_str.split("-")
+        year = int(year_str)
+        month_num = int(month_num_str)
+        month_start_date = datetime.date(year, month_num, 1)
+        last_day_num = calendar.monthrange(year, month_num)[1]
+        month_end_date = datetime.date(year, month_num, last_day_num)
+        month_start = datetime.datetime.combine(
+            month_start_date, datetime.time.min, tzinfo=datetime.timezone.utc
+        )
+        month_end = datetime.datetime.combine(
+            month_end_date, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+        )
+
         # Check if monthly summary already exists (old + new format)
         # 检查月摘要是否已存在（同时检查新旧格式）
         existing_old = await storage.search_hierarchy(
             context_type=ContextType.EVENT.value,
             hierarchy_level=3,
-            time_bucket_start=month_str,
-            time_bucket_end=month_str,
+            time_start=month_start.timestamp(),
+            time_end=month_end.timestamp(),
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -1081,8 +1138,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         existing_new = await storage.search_hierarchy(
             context_type=ContextType.MONTHLY_SUMMARY.value,
             hierarchy_level=3,
-            time_bucket_start=month_str,
-            time_bucket_end=month_str,
+            time_start=month_start.timestamp(),
+            time_end=month_end.timestamp(),
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -1094,14 +1151,8 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Determine ISO weeks that fall within this month
         # 计算该月包含的 ISO 周
-        year_str, month_num_str = month_str.split("-")
-        year = int(year_str)
-        month_num = int(month_num_str)
-        first_day = datetime.date(year, month_num, 1)
-        if month_num == 12:
-            last_day = datetime.date(year + 1, 1, 1) - datetime.timedelta(days=1)
-        else:
-            last_day = datetime.date(year, month_num + 1, 1) - datetime.timedelta(days=1)
+        first_day = month_start_date
+        last_day = month_end_date
 
         # Collect all ISO week identifiers for the month
         # 收集该月所有 ISO 周标识符
@@ -1118,12 +1169,23 @@ class HierarchySummaryTask(BasePeriodicTask):
         l1_summaries_by_week: Dict[str, List[ProcessedContext]] = {}
 
         for wk in sorted(weeks_in_month):
-            # Fetch L2 weekly summary (old + new format, deduplicate by time_bucket)
+            # Compute week datetime boundaries for search
+            wk_year, wk_num = wk.split("-W")
+            wk_start_date = datetime.date.fromisocalendar(int(wk_year), int(wk_num), 1)
+            wk_end_date = wk_start_date + datetime.timedelta(days=6)
+            wk_start_dt = datetime.datetime.combine(
+                wk_start_date, datetime.time.min, tzinfo=datetime.timezone.utc
+            )
+            wk_end_dt = datetime.datetime.combine(
+                wk_end_date, datetime.time(23, 59, 59), tzinfo=datetime.timezone.utc
+            )
+
+            # Fetch L2 weekly summary (old + new format)
             wk_results_old = await storage.search_hierarchy(
                 context_type=ContextType.EVENT.value,
                 hierarchy_level=2,
-                time_bucket_start=wk,
-                time_bucket_end=wk,
+                time_start=wk_start_dt.timestamp(),
+                time_end=wk_end_dt.timestamp(),
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
@@ -1132,8 +1194,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             wk_results_new = await storage.search_hierarchy(
                 context_type=ContextType.WEEKLY_SUMMARY.value,
                 hierarchy_level=2,
-                time_bucket_start=wk,
-                time_bucket_end=wk,
+                time_start=wk_start_dt.timestamp(),
+                time_end=wk_end_dt.timestamp(),
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
@@ -1151,15 +1213,11 @@ class HierarchySummaryTask(BasePeriodicTask):
 
             # Fetch L1 daily summaries for this week to enrich the monthly summary
             # 获取本周的 L1 日摘要以丰富月摘要（同时查询新旧格式）
-            wk_year, wk_num = wk.split("-W")
-            wk_start = datetime.date.fromisocalendar(int(wk_year), int(wk_num), 1)
-            wk_end = wk_start + datetime.timedelta(days=6)
-
             l1_results_old = await storage.search_hierarchy(
                 context_type=ContextType.EVENT.value,
                 hierarchy_level=1,
-                time_bucket_start=wk_start.isoformat(),
-                time_bucket_end=wk_end.isoformat(),
+                time_start=wk_start_dt.timestamp(),
+                time_end=wk_end_dt.timestamp(),
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
@@ -1168,25 +1226,25 @@ class HierarchySummaryTask(BasePeriodicTask):
             l1_results_new = await storage.search_hierarchy(
                 context_type=ContextType.DAILY_SUMMARY.value,
                 hierarchy_level=1,
-                time_bucket_start=wk_start.isoformat(),
-                time_bucket_end=wk_end.isoformat(),
+                time_start=wk_start_dt.timestamp(),
+                time_end=wk_end_dt.timestamp(),
                 user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
                 top_k=7,
             )
-            # Deduplicate L1 by time_bucket (prefer new format)
-            l1_by_bucket: Dict[str, ProcessedContext] = {}
+            # Deduplicate L1 by event_time_start date (prefer new format)
+            l1_by_day: Dict[str, ProcessedContext] = {}
             for ctx, _score in (l1_results_old or []):
-                tb = ctx.properties.time_bucket
-                if tb:
-                    l1_by_bucket[tb] = ctx
+                if ctx.properties.event_time_start:
+                    day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
+                    l1_by_day[day_key] = ctx
             for ctx, _score in (l1_results_new or []):
-                tb = ctx.properties.time_bucket
-                if tb:
-                    l1_by_bucket[tb] = ctx  # new format overwrites old
-            if l1_by_bucket:
-                l1_summaries_by_week[wk] = list(l1_by_bucket.values())
+                if ctx.properties.event_time_start:
+                    day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
+                    l1_by_day[day_key] = ctx  # new format overwrites old
+            if l1_by_day:
+                l1_summaries_by_week[wk] = list(l1_by_day.values())
 
         if not all_weekly_contexts and not l1_summaries_by_week:
             logger.info(f"No L2/L1 data found for user={user_id}, month={month_str}")
@@ -1212,7 +1270,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             user_id=user_id,
             summary_text=summary_text,
             level=3,
-            time_bucket=month_str,
+            event_time_start=month_start,
+            event_time_end=month_end,
             children_ids=children_ids,
             device_id=device_id,
             agent_id=agent_id,
@@ -1372,7 +1431,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         user_id: str,
         summary_text: str,
         level: int,
-        time_bucket: str,
+        event_time_start: datetime.datetime,
+        event_time_end: datetime.datetime,
         children_ids: List[str],
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
@@ -1385,7 +1445,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             user_id: User identifier
             summary_text: The LLM-generated summary text
             level: Hierarchy level (1=daily, 2=weekly, 3=monthly)
-            time_bucket: Time bucket string
+            event_time_start: Start of the time period covered by this summary
+            event_time_end: End of the time period covered by this summary
             children_ids: List of child context IDs that were summarized
             device_id: Device identifier for multi-device isolation
             agent_id: Agent identifier for multi-agent isolation
@@ -1402,15 +1463,14 @@ class HierarchySummaryTask(BasePeriodicTask):
         now = datetime.datetime.now(tz=datetime.timezone.utc)
         summary_id = str(uuid.uuid4())
 
-        # Parse a representative event_time from the time_bucket
-        # 从 time_bucket 解析一个代表性的 event_time
-        event_time = self._parse_event_time_from_bucket(time_bucket)
+        # Build a human-readable period label for title/keywords
+        period_label = f"{event_time_start.strftime('%Y-%m-%d')}~{event_time_end.strftime('%Y-%m-%d')}"
 
         # Parse LLM JSON response to extract structured fields
         # LLM 返回 JSON 格式：{title, summary, keywords, entities, importance}
-        title = f"{level_name.capitalize()} Summary - {time_bucket}"
+        title = f"{level_name.capitalize()} Summary - {period_label}"
         summary_body = summary_text
-        keywords = [level_name, "summary", time_bucket]
+        keywords = [level_name, "summary", period_label]
         entities: List[str] = []
         importance = 5 + level
 
@@ -1461,7 +1521,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         child_type = LEVEL_TO_CHILD_TYPE.get(level, ContextType.EVENT)
         properties = ContextProperties(
             create_time=now,
-            event_time=event_time,
+            event_time_start=event_time_start,
+            event_time_end=event_time_end,
             update_time=now,
             is_processed=True,
             has_compression=False,
@@ -1470,7 +1531,6 @@ class HierarchySummaryTask(BasePeriodicTask):
             device_id=device_id,
             agent_id=agent_id,
             hierarchy_level=level,
-            time_bucket=time_bucket,
             refs={child_type.value: children_ids} if children_ids else {},
         )
 
@@ -1500,7 +1560,8 @@ class HierarchySummaryTask(BasePeriodicTask):
             metadata={
                 "hierarchy_type": f"{level_name}_summary",
                 "source_count": len(children_ids),
-                "time_bucket": time_bucket,
+                "period_start": event_time_start.isoformat(),
+                "period_end": event_time_end.isoformat(),
             },
         )
 
@@ -1511,7 +1572,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             if result:
                 logger.info(
                     f"Stored {level_name} summary id={summary_id}, "
-                    f"time_bucket={time_bucket}, children={len(children_ids)}"
+                    f"period={period_label}, children={len(children_ids)}"
                 )
                 # Backfill refs on child contexts (pointing to this summary)
                 if children_ids:
@@ -1537,65 +1598,6 @@ class HierarchySummaryTask(BasePeriodicTask):
         except Exception as e:
             logger.exception(f"Exception storing {level_name} summary: {e}")
             return None
-
-    @staticmethod
-    def _parse_event_time_from_bucket(time_bucket: str) -> datetime.datetime:
-        """
-        Parse a representative datetime from a time_bucket string.
-        从 time_bucket 字符串解析出一个代表性的 datetime。
-
-        Supports formats:
-        - "2026-02-21" → daily (returns that date at noon)
-        - "2026-W08"   → weekly (returns Monday of that week at noon)
-        - "2026-02"    → monthly (returns 1st of that month at noon)
-
-        Args:
-            time_bucket: Time bucket string
-
-        Returns:
-            A datetime representing the middle of the time period
-        """
-        try:
-            if "-W" in time_bucket:
-                # Weekly format: "2026-W08"
-                year_str, week_str = time_bucket.split("-W")
-                dt = datetime.date.fromisocalendar(int(year_str), int(week_str), 1)
-                return datetime.datetime(
-                    dt.year,
-                    dt.month,
-                    dt.day,
-                    12,
-                    0,
-                    0,
-                    tzinfo=datetime.timezone.utc,
-                )
-            elif len(time_bucket) == 7:
-                # Monthly format: "2026-02"
-                year, month = time_bucket.split("-")
-                return datetime.datetime(
-                    int(year),
-                    int(month),
-                    1,
-                    12,
-                    0,
-                    0,
-                    tzinfo=datetime.timezone.utc,
-                )
-            else:
-                # Daily format: "2026-02-21"
-                dt = datetime.date.fromisoformat(time_bucket)
-                return datetime.datetime(
-                    dt.year,
-                    dt.month,
-                    dt.day,
-                    12,
-                    0,
-                    0,
-                    tzinfo=datetime.timezone.utc,
-                )
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse time_bucket '{time_bucket}': {e}, using now()")
-            return datetime.datetime.now(tz=datetime.timezone.utc)
 
 
 def create_hierarchy_handler():
