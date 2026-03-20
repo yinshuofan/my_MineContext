@@ -63,8 +63,6 @@ FIELD_ENTITIES = "entities"
 FIELD_CONTEXT_TYPE = "context_type"
 FIELD_CONFIDENCE = "confidence"
 FIELD_IMPORTANCE = "importance"
-FIELD_SOURCE = "source"
-
 # Properties fields
 FIELD_IS_PROCESSED = "is_processed"
 FIELD_HAS_COMPRESSION = "has_compression"
@@ -633,7 +631,6 @@ class VikingDBBackend(IVectorStorageBackend):
             {"FieldName": FIELD_CONTEXT_TYPE, "FieldType": "string"},
             {"FieldName": FIELD_CONFIDENCE, "FieldType": "float32"},
             {"FieldName": FIELD_IMPORTANCE, "FieldType": "float32"},
-            {"FieldName": FIELD_SOURCE, "FieldType": "string"},
             {"FieldName": FIELD_IS_PROCESSED, "FieldType": "bool"},
             {"FieldName": FIELD_HAS_COMPRESSION, "FieldType": "bool"},
             {"FieldName": FIELD_ENABLE_MERGE, "FieldType": "bool"},
@@ -697,7 +694,6 @@ class VikingDBBackend(IVectorStorageBackend):
                 FIELD_USER_ID,
                 FIELD_DEVICE_ID,
                 FIELD_AGENT_ID,
-                FIELD_SOURCE,
                 FIELD_RAW_TYPE,
                 FIELD_RAW_ID,
                 FIELD_TIME_BUCKET,
