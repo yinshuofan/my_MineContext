@@ -1170,7 +1170,7 @@ class VikingDBBackend(IVectorStorageBackend):
             fields.pop("score", None)
             fields.pop(FIELD_DATA_TYPE, None)
 
-            TIME_FIELDS = {"create_time", "event_time", "update_time", "last_call_time"}
+            TIME_FIELDS = {"create_time", "event_time_start", "event_time_end", "update_time", "last_call_time"}
 
             # Fields that should always remain as strings, never JSON-parsed
             STRING_ONLY_FIELDS = {"title", "summary", "document", "text"}

@@ -205,8 +205,6 @@ curl -X POST http://localhost:1733/api/search \
 #     {
 #       "id": "f4b61534-...",
 #       "hierarchy_level": 1,
-#       "event_time_start": "2026-03-04T00:00:00+00:00",
-#       "event_time_end": "2026-03-04T23:59:59+00:00",
 #       "refs": {},
 #       "title": "Daily Summary",
 #       "summary": "Daily summary text...",
@@ -218,8 +216,6 @@ curl -X POST http://localhost:1733/api/search \
 #         {
 #           "id": "05278626-88c4-4f85-8eec-e69ac143914c",
 #           "hierarchy_level": 0,
-#           "event_time_start": "2026-03-04T09:17:26+00:00",
-#           "event_time_end": "2026-03-04T09:17:26+00:00",
 #           "refs": {"daily_summary": ["f4b61534-..."]},
 #           "title": "Event title",
 #           "summary": "Event summary text",
