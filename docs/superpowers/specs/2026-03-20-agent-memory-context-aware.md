@@ -78,13 +78,13 @@ class EventSearchService:
 **New processing flow** (was: steps 4-5 only):
 
 ```
-1. Get agent persona
-   storage.get_profile(context_type="agent_profile") → factual_profile
+1. Parallel: gather context (asyncio.gather)
+   ├─ 1a. Get agent persona
+   │      storage.get_profile(context_type="agent_profile") → factual_profile
+   └─ 1b. Extract query from chat (new LLM call)
+          messages → LLM (agent_memory_query prompt) → query_text
 
-2. Extract query from chat (new LLM call)
-   messages → LLM (agent_memory_query prompt) → query_text
-
-3. Search related past memories (new)
+2. Search related past memories (new, depends on 1b)
    query_text → wrap as [{"type": "text", "text": query_text}]
    → EventSearchService.semantic_search(
        memory_owner="agent", drill_up=True
@@ -163,21 +163,21 @@ POST /api/push/chat (processors=["agent_memory"])
   ▼
 AgentMemoryProcessor._process_async()
   │
-  ├─ 1. get_profile(context_type="agent_profile") → factual_profile
+  ├─ 1. asyncio.gather:
+  │   ├─ 1a. get_profile(context_type="agent_profile") → factual_profile
+  │   └─ 1b. LLM(agent_memory_query + messages) → query_text
   │
-  ├─ 2. LLM(agent_memory_query + messages) → query_text
-  │
-  ├─ 3. EventSearchService.semantic_search(
+  ├─ 2. EventSearchService.semantic_search(
   │       query=query_text, memory_owner="agent", drill_up=True
   │   ) → related_memories
   │
-  ├─ 4. Format related_memories → text
+  ├─ 3. Format related_memories → text
   │
-  ├─ 5. LLM(agent_memory_analyze
+  ├─ 4. LLM(agent_memory_analyze
   │       + agent_persona + related_memories + messages
   │   ) → memories JSON
   │
-  └─ 6. Build ProcessedContext list (unchanged)
+  └─ 5. Build ProcessedContext list (unchanged)
          → agent_profile → relational DB
          → agent_event → vector DB
 ```
