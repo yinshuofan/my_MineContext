@@ -162,7 +162,7 @@ class OpenContext:
             if db_contexts:
                 for ctx in db_contexts:
                     ctx_type = ctx.extracted_data.context_type
-                    if ctx_type in (ContextType.PROFILE, ContextType.AGENT_PROFILE):
+                    if ctx_type in (ContextType.PROFILE, ContextType.AGENT_PROFILE, ContextType.AGENT_BASE_PROFILE):
                         await self._store_profile(ctx)
                     uid = ctx.properties.user_id
                     if uid:
@@ -195,7 +195,7 @@ class OpenContext:
         agent_id = props.agent_id or "default"
 
         # context_type comes directly from extracted_data — no inference needed
-        context_type = ed.context_type.value  # "profile" or "agent_profile"
+        context_type = ed.context_type.value  # "profile", "agent_profile", or "agent_base_profile"
 
         await refresh_profile(
             new_factual_profile=ed.summary or "",

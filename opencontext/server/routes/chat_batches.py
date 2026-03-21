@@ -84,7 +84,7 @@ async def get_batch_contexts(batch_id: str, _auth: str = auth_dependency):
     # Exclude profile types (stored in relational DB, not vector DB)
     all_context_types = [
         ct.value for ct in ContextType
-        if ct not in (ContextType.PROFILE, ContextType.AGENT_PROFILE)
+        if ct not in (ContextType.PROFILE, ContextType.AGENT_PROFILE, ContextType.AGENT_BASE_PROFILE)
     ]
 
     filter_dict = {"raw_type": {"$eq": "chat_batch"}, "raw_id": {"$eq": batch_id}}

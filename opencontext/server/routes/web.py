@@ -102,7 +102,7 @@ async def read_contexts(
                 except ValueError:
                     continue
 
-        context_types = [ct for ct in storage.get_available_context_types() if ct not in ("profile", "agent_profile")]
+        context_types = [ct for ct in storage.get_available_context_types() if ct not in ("profile", "agent_profile", "agent_base_profile")]
         types_for_query = list(types) if types else context_types
 
         # Get total count for pagination
