@@ -149,6 +149,7 @@
 </style>
 <script>
 let selectedAgentId = null;
+let _eventTreeMap = {};  // id -> tree node (with _children), built by buildEventTree
 
 document.addEventListener('DOMContentLoaded', function() {
     loadAgentList();
@@ -431,15 +432,36 @@ async function addBaseEvent() {
     }
 }
 
-async function deleteEvent(eventId) {
-    if (!confirm('确定删除此事件？')) return;
-    try {
-        const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/events/${encodeURIComponent(eventId)}`, {method: 'DELETE'});
-        if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Delete failed'); }
-        loadAgentDetail(selectedAgentId);
-    } catch (e) {
-        alert('删除失败: ' + e.message);
+function _collectDescendantIds(node) {
+    const ids = [];
+    if (node._children) {
+        for (const child of node._children) {
+            ids.push(child.id);
+            ids.push(..._collectDescendantIds(child));
+        }
     }
+    return ids;
+}
+
+async function deleteEvent(eventId) {
+    const node = _eventTreeMap[eventId];
+    const descendantIds = node ? _collectDescendantIds(node) : [];
+    const allIds = [eventId, ...descendantIds];
+
+    const msg = allIds.length > 1
+        ? `确定删除此事件及其 ${descendantIds.length} 个子级事件？（共 ${allIds.length} 条）`
+        : '确定删除此事件？';
+    if (!confirm(msg)) return;
+
+    let failed = 0;
+    for (const id of allIds) {
+        try {
+            const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/events/${encodeURIComponent(id)}`, {method: 'DELETE'});
+            if (!resp.ok) failed++;
+        } catch { failed++; }
+    }
+    if (failed > 0) alert(`${allIds.length - failed} 条删除成功，${failed} 条删除失败`);
+    loadAgentDetail(selectedAgentId);
 }
 
 // ========== Event Tree ==========
@@ -472,6 +494,8 @@ function buildEventTree(events) {
     for (const evt of Object.values(map)) {
         evt._children.sort((a, b) => (a.event_time_start || '').localeCompare(b.event_time_start || ''));
     }
+    // Store map globally for cascade delete
+    _eventTreeMap = map;
     // Roots are events that are not children of any other event
     const roots = events.filter(e => !childIds.has(e.id)).map(e => map[e.id]);
     // Sort roots: higher level first, then by event_time_start desc
