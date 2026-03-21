@@ -33,12 +33,13 @@ The user must provide:
 | Stage | Name | Checkpoint |
 |-------|------|------------|
 | 1 | Text Ingestion & Segmentation | User confirms segmentation strategy |
-| 2 | Character Research | User confirms character understanding |
-| 3 | L0 Event Extraction | User reviews event completeness |
-| 4 | Timeline Construction | User confirms timeline |
-| 5 | Hierarchy Organization | User confirms hierarchy grouping |
-| 6 | Field Completion & Validation | User spot-checks quality |
-| 7 | JSON Generation | User confirms output |
+| 2 | Narrative Comprehension | User confirms narrative summary accuracy |
+| 3 | Character Research | User confirms character understanding |
+| 4 | L0 Event Extraction | User reviews event completeness |
+| 5 | Timeline Construction | User confirms timeline |
+| 6 | Hierarchy Organization | User confirms hierarchy grouping |
+| 7 | Field Completion & Validation | User spot-checks quality |
+| 8 | JSON Generation | User confirms output |
 
 ## Hierarchy Levels
 
@@ -76,7 +77,35 @@ Present the segmentation strategy (or confirm "no segmentation needed" for short
 
 ---
 
-## Stage 2: Character Research
+## Stage 2: Narrative Comprehension
+
+**Purpose**: Read and understand the full narrative before any extraction begins. This builds the foundational understanding of plot, themes, characters, and narrative structure that informs all subsequent stages — without it, extraction is blind pattern-matching.
+
+### Process
+
+**Short text**: Read the entire text end-to-end.
+
+**Long text**: Read each segment from Stage 1 sequentially, building a cumulative understanding. After each segment, note key plot developments, characters introduced, and time/setting shifts.
+
+After reading, produce a **narrative summary** containing:
+
+- **Plot overview**: The story's main conflict, major plot beats, and resolution (5-10 sentences)
+- **Key characters**: All significant characters and their roles (protagonist, antagonist, mentor, ally, etc.)
+- **Setting & time period**: Where and when the story takes place, any major setting changes
+- **Narrative structure**: Is the story linear, non-linear (flashbacks/flash-forwards), multi-POV, episodic?
+- **Themes**: 3-5 core themes (e.g., redemption, betrayal, coming-of-age)
+
+This summary serves two purposes:
+1. It grounds Stage 3 (Character Research) — internet research becomes verification and enrichment rather than the primary source of understanding
+2. It prevents hallucination in later stages — extraction and summarization stay anchored to what the text actually says
+
+### Checkpoint
+
+Present the narrative summary to the user. Proceed only after user confirms it accurately reflects the source material.
+
+---
+
+## Stage 3: Character Research
 
 **Purpose**: Build a character reference card that serves as the anchor for all subsequent extraction. This prevents character drift — misidentifying events, misreading motivations, or losing track of the character's arc across long or segmented texts.
 
@@ -112,7 +141,7 @@ Present the reference card. Proceed only after user confirms accuracy.
 
 ---
 
-## Stage 3: L0 Event Extraction
+## Stage 4: L0 Event Extraction
 
 **Purpose**: Extract every concrete, meaningful event in which the target character directly participates — this is the raw material for all higher-level structure.
 
@@ -125,7 +154,7 @@ L0 granularity is a **concrete, meaningful action, decision, or encounter**. It 
 - **Direct participation only**: the character must be present, act, speak, or be directly affected. Do not include events the character only hears about secondhand.
 - **Fields to fill at this stage**: `title` (a short verb phrase) and `summary` (1–2 sentences).
 - **Fields to leave empty**: time, keywords, entities, importance — these are filled in later stages.
-- **Output order**: narrative order (the order events appear in the text). Chronological reordering happens in Stage 4, not here.
+- **Output order**: narrative order (the order events appear in the text). Chronological reordering happens in Stage 5, not here.
 
 ### Long Text Processing
 
@@ -141,7 +170,7 @@ Present the complete L0 list (title + summary only, no other fields). User confi
 
 ---
 
-## Stage 4: Timeline Construction
+## Stage 5: Timeline Construction
 
 **Purpose**: Assign concrete timestamps to every L0 event, enabling the hierarchical time-bucketing that MineContext requires.
 
@@ -179,7 +208,7 @@ User confirms the timeline before proceeding.
 
 ---
 
-## Stage 5: Hierarchy Organization
+## Stage 6: Hierarchy Organization
 
 **Purpose**: Organise the confirmed L0 events into a three-level summary hierarchy (L1 → L2 → L3) that reflects the character's development arc.
 
@@ -219,7 +248,7 @@ User confirms the grouping and titles before proceeding.
 
 ---
 
-## Stage 6: Field Completion & Validation
+## Stage 7: Field Completion & Validation
 
 **Purpose**: Complete all remaining fields on every node (L0 through L3) and validate the full tree for consistency and correctness.
 
@@ -243,7 +272,7 @@ Use narrative text and internet research only. Do NOT invent information not tra
 
 Before presenting the checkpoint, verify all of the following:
 
-- Every summary is consistent with the Stage 2 character reference card (no character drift).
+- Every summary is consistent with the Stage 3 character reference card (no character drift).
 - Timeline is monotonically increasing with no contradictions.
 - Hierarchy coverage is complete: every L0 belongs to an L1, every L1 to an L2, every L2 to an L3.
 - `event_time_start` / `event_time_end` constraints are satisfied at every parent-child boundary: `parent.event_time_start` ≤ `min(children[*].event_time_start)` and `parent.event_time_end` ≥ `max(children[*].effective_end_time)`.
@@ -254,7 +283,7 @@ Present a sample of completed nodes — a few from each level — for spot-check
 
 ---
 
-## Stage 7: JSON Generation
+## Stage 8: JSON Generation
 
 **Purpose**: Assemble the validated hierarchy into a `BaseEventsRequest`-format JSON file and write it to the output path.
 
