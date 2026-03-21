@@ -150,6 +150,7 @@
 <script>
 let selectedAgentId = null;
 let _eventTreeMap = {};  // id -> tree node (with _children), built by buildEventTree
+let _currentEvents = [];  // flat event list from API, used for optimistic UI updates
 
 document.addEventListener('DOMContentLoaded', function() {
     loadAgentList();
@@ -374,6 +375,7 @@ async function saveProfile() {
 // ---- Card 3: Base Events ----
 
 function renderEventsCard(events) {
+    _currentEvents = events;  // Store for optimistic updates
     let content;
     if (events.length === 0) {
         content = '<p class="text-muted">暂无 Base Events</p>';
@@ -456,14 +458,33 @@ async function deleteEvent(eventId) {
     if (!confirm(msg)) return;
 
     let failed = 0;
+    const deletedIds = new Set();
     for (const id of allIds) {
         try {
             const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/events/${encodeURIComponent(id)}`, {method: 'DELETE'});
             if (!resp.ok) { console.error('Delete failed for event:', id); failed++; }
+            else { deletedIds.add(id); }
         } catch (e) { console.error('Delete failed for event:', id, e); failed++; }
     }
     if (failed > 0) alert(`${allIds.length - failed} 条删除成功，${failed} 条删除失败`);
-    loadAgentDetail(selectedAgentId);
+
+    // Optimistic UI: remove deleted events from local list and re-render card
+    // Avoids VikingDB indexing delay causing deleted events to reappear
+    const remaining = _currentEvents.filter(e => !deletedIds.has(e.id));
+    const container = document.getElementById('eventsContent');
+    if (container) {
+        _currentEvents = remaining;
+        if (remaining.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无 Base Events</p>';
+        } else {
+            const tree = buildEventTree(remaining);
+            container.innerHTML = tree.map(node => renderEventNode(node)).join('');
+        }
+        // Update count badge
+        const badge = document.querySelector('#eventsCardBody')?.closest('.card')?.querySelector('.badge.bg-secondary');
+        if (badge) badge.textContent = remaining.length;
+        feather.replace();
+    }
 }
 
 // ========== Event Tree ==========
