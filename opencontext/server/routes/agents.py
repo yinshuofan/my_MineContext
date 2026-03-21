@@ -8,10 +8,10 @@
 
 import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import (
@@ -55,17 +55,164 @@ class BaseProfileRequest(BaseModel):
     importance: int = 0
 
 
+# Mapping from hierarchy_level to context type for base events
+_BASE_HIERARCHY_LEVEL_TO_TYPE = {
+    0: ContextType.AGENT_BASE_EVENT,
+    1: ContextType.AGENT_BASE_L1_SUMMARY,
+    2: ContextType.AGENT_BASE_L2_SUMMARY,
+    3: ContextType.AGENT_BASE_L3_SUMMARY,
+}
+
+# All AGENT_BASE_* context types (for queries)
+_ALL_AGENT_BASE_TYPES = [ct.value for ct in _BASE_HIERARCHY_LEVEL_TO_TYPE.values()]
+
+
 class BaseEventItem(BaseModel):
     title: str
     summary: str
-    event_time: Optional[str] = None
+    event_time: Optional[str] = None  # Alias for event_time_start (backward compat)
+    event_time_start: Optional[str] = None  # ISO 8601, defaults to current time
+    event_time_end: Optional[str] = None  # Required for hierarchy_level > 0
     keywords: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
     importance: int = 5
+    hierarchy_level: int = 0  # 0/1/2/3, pure hierarchy depth
+    children: Optional[List["BaseEventItem"]] = None  # Nested child events
+
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_event_time_alias(cls, data):
+        """Allow 'event_time' as alias for 'event_time_start' (backward compat)."""
+        if isinstance(data, dict):
+            if data.get("event_time_start") is None and data.get("event_time") is not None:
+                data["event_time_start"] = data["event_time"]
+        return data
 
 
 class BaseEventsRequest(BaseModel):
     events: List[BaseEventItem] = Field(..., min_length=1)
+
+
+def _validate_base_event_tree(
+    events: List[BaseEventItem],
+    path: str = "events",
+) -> int:
+    """Validate a list of base events (potentially with nested children).
+
+    Returns the total count of events across all levels.
+    Raises HTTPException(400) on validation failure with path-based error message.
+    """
+    total_count = 0
+
+    for i, event in enumerate(events):
+        node_path = f"{path}[{i}]"
+        level = event.hierarchy_level
+
+        # Validate hierarchy_level range
+        if level not in _BASE_HIERARCHY_LEVEL_TO_TYPE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{node_path}: hierarchy_level must be 0-3, got {level}",
+            )
+
+        # Parse event times for this node
+        ets = _parse_event_time(event.event_time_start, node_path, "event_time_start")
+
+        if level > 0:
+            # Summary node validations
+            if not event.event_time_end:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{node_path}: event_time_end is required for hierarchy_level > 0",
+                )
+            if not event.children:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{node_path}: children is required for hierarchy_level > 0",
+                )
+
+            ete = _parse_event_time(event.event_time_end, node_path, "event_time_end")
+
+            if ets and ete and ets > ete:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{node_path}: event_time_start must be <= event_time_end",
+                )
+
+            # Validate children hierarchy_level
+            for j, child in enumerate(event.children):
+                if child.hierarchy_level != level - 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"{node_path}.children[{j}]: hierarchy_level must be "
+                            f"{level - 1} (parent is {level}), got {child.hierarchy_level}"
+                        ),
+                    )
+
+            # Time range coverage: parent must cover all direct children
+            child_starts = []
+            child_ends = []
+            for j, child in enumerate(event.children):
+                child_path = f"{node_path}.children[{j}]"
+                cs = _parse_event_time(child.event_time_start, child_path, "event_time_start")
+                if cs:
+                    child_starts.append(cs)
+                if child.event_time_end:
+                    ce = _parse_event_time(child.event_time_end, child_path, "event_time_end")
+                    if ce:
+                        child_ends.append(ce)
+                elif cs:
+                    child_ends.append(cs)  # L0: event_time_end defaults to event_time_start
+
+            if ets and child_starts and ets > min(child_starts):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{node_path}: event_time_start ({ets.isoformat()}) must be <= "
+                        f"min child event_time_start ({min(child_starts).isoformat()})"
+                    ),
+                )
+            if ete and child_ends and ete < max(child_ends):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{node_path}: event_time_end ({ete.isoformat()}) must be >= "
+                        f"max child event_time_end ({max(child_ends).isoformat()})"
+                    ),
+                )
+
+            # Recurse into children
+            total_count += _validate_base_event_tree(event.children, f"{node_path}.children")
+        else:
+            # L0 node validations
+            if event.children:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{node_path}: hierarchy_level 0 cannot have children",
+                )
+
+        total_count += 1
+
+    return total_count
+
+
+def _parse_event_time(
+    value: Optional[str], node_path: str, field_name: str
+) -> Optional[datetime.datetime]:
+    """Parse an ISO 8601 string to datetime. Returns None if value is None."""
+    if value is None:
+        return None
+    try:
+        dt = datetime.datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=get_timezone())
+        return dt
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{node_path}: invalid ISO 8601 format for {field_name}: '{value}'",
+        )
 
 
 # ============================================================================
