@@ -93,7 +93,7 @@ Stage 5–8: Main agent handles
 
 Each subagent receives a precisely crafted prompt containing only what it needs:
 
-- **Comprehension subagent**: the segment text, segment number, total segments
+- **Comprehension subagent**: the segment text, segment number, total segments, target character name
 - **Extraction subagent**: the segment text, character reference card, narrative summary, extraction rules (from Stage 4), segment number
 - **Revision subagent**: the full merged L0 list, narrative summary, character reference card
 
@@ -110,7 +110,7 @@ Subagents do NOT receive the full pipeline context or conversation history.
 **Threshold**: approximately half the available context window (~50,000 characters or ~60–80 pages).
 
 - **Short text path** (below threshold): read the full text in one pass, proceed directly to Stage 2 with no segmentation step.
-- **Long text path** (above threshold): segment by natural boundaries — chapters, acts, or episodes. Produce a segmentation plan table and present it to the user before proceeding.
+- **Long text path** (above threshold): segment by natural boundaries — chapters, acts, or episodes. Cut at clean scene/chapter breaks with no deliberate overlap. If a scene spans a chapter boundary, include the full scene in the later segment and note this in the plan. Produce a segmentation plan table and present it to the user before proceeding.
 
 **Segmentation plan table format:**
 
@@ -136,10 +136,11 @@ Read the entire text end-to-end. Produce the narrative summary directly.
 
 ### Long Text — Subagent Dispatch
 
-Dispatch one **comprehension subagent** per segment. Each subagent receives:
+Dispatch one **comprehension subagent** per segment in parallel (subagents are independent and do not need outputs from other segments). Each subagent receives:
 - The segment text
 - Segment number and total segment count
-- Instruction: "Read this segment and produce a segment summary covering: key plot developments, characters involved, setting/time clues, and where the segment ends narratively."
+- Target character name
+- Instruction: "Read this segment and produce a segment summary covering: key plot developments, characters involved, setting/time clues, and where the segment ends narratively. Pay particular attention to {target_character_name}'s actions, decisions, and the events affecting them."
 
 After all subagents return, the main agent **synthesizes** the segment summaries into a unified narrative summary.
 
@@ -220,7 +221,7 @@ Main agent extracts L0 events directly from the full text.
 
 ### Long Text — Subagent Dispatch
 
-Dispatch one **extraction subagent** per segment. Each subagent receives:
+Dispatch one **extraction subagent** per segment in parallel (subagents are independent; deduplication happens post-merge). Each subagent receives:
 - The segment text
 - The **character reference card** (from Stage 3)
 - The **narrative summary** (from Stage 2) — so the subagent understands the full story context, not just its segment
@@ -234,7 +235,7 @@ Each subagent returns a list of L0 events (title + summary) found in its segment
 After all extraction subagents return, the main agent merges their outputs:
 
 - Concatenate all segment event lists in segment order
-- **Deduplicate**: if the same character action in the same scene appears across segment boundaries (due to overlap), merge into one event. Recurring themes (e.g., multiple separate battles) are distinct events — keep them separate.
+- **Deduplicate at segment boundaries**: compare the last 2-3 events of segment N against the first 2-3 events of segment N+1. If the same character action in the same scene appears in both (due to boundary overlap), merge into one event. Recurring themes (e.g., multiple separate battles) are distinct events — keep them separate.
 
 ### Revision Subagent
 
@@ -246,6 +247,7 @@ After merging, dispatch a **revision subagent** that receives:
 The revision subagent checks for:
 - **Completeness**: any significant character events from the narrative summary that are missing from the L0 list?
 - **Consistency**: any events that contradict the narrative summary or character reference card?
+- **Duplicates**: any events near segment boundaries that describe the same action and should be merged?
 - **Granularity**: any events that should be split (too coarse) or merged (too fine)?
 - **Scope**: any events included where the character didn't directly participate?
 
@@ -315,6 +317,13 @@ Build bottom-up, grouping by character development arc:
 - `event_time_start` = minimum `event_time_start` of all direct children.
 - `event_time_end` = for each direct child, take its `event_time_end` if present, otherwise its `event_time_start`; the parent's `event_time_end` is the maximum of these values.
 - Every L0 must belong to exactly one L1; every L1 to exactly one L2; every L2 to exactly one L3.
+
+### Quality Check
+
+Before presenting to the user, verify the hierarchy against the Stage 3 character reference card:
+- Each L3 node should correspond to a coherent phase from the character's arc overview (not just a chronological bucket)
+- L2 nodes should represent complete narrative arcs, not arbitrary groupings of scenes
+- Thematically unrelated events should not be grouped under the same L1/L2
 
 ### Checkpoint
 
