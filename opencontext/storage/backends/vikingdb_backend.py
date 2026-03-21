@@ -28,7 +28,7 @@ from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
 from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.time_utils import now as tz_now, utc_now
+from opencontext.utils.time_utils import utc_now
 
 logger = get_logger(__name__)
 
