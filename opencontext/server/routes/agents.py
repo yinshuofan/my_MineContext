@@ -287,9 +287,13 @@ def _flatten_base_event_tree(
                 parent_context_type=context_type,
             )
 
-            # Build downward refs: group child IDs by their context_type
+            # Build downward refs: only direct children (not grandchildren)
             child_type_value = _BASE_HIERARCHY_LEVEL_TO_TYPE[level - 1].value
-            ctx.properties.refs[child_type_value] = [c.id for c in child_contexts]
+            direct_child_ids = [
+                c.id for c in child_contexts
+                if c.properties.hierarchy_level == level - 1
+            ]
+            ctx.properties.refs[child_type_value] = direct_child_ids
 
             result.extend(child_contexts)
 
