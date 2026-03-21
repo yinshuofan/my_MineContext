@@ -473,13 +473,13 @@ class MemoryCacheManager:
             "recent_days": days,
         }
 
-        # Profile — with __base__ fallback for agent memory owner
+        # Profile — with agent_base_profile fallback for agent memory owner
         profile_data = results_map.get("profile")
         if isinstance(profile_data, Exception):
             profile_data = None
         if not profile_data and memory_owner == "agent":
             profile_data = await storage.get_profile(
-                "__base__", device_id, agent_id, context_type=profile_context_type
+                "__base__", device_id, agent_id, context_type="agent_base_profile"
             )
             if profile_data:
                 logger.debug(
