@@ -450,15 +450,17 @@ function buildEventTree(events) {
     for (const evt of events) {
         map[evt.id] = { ...evt, _children: [] };
     }
-    // Use downward refs to build parent-child relationships
-    // Downward refs: parent.refs[child_type] = [child_ids]
+    // Use downward refs only to build parent-child relationships
+    // Downward: parent (higher level) refs child (lower level)
+    // Upward refs (child → parent) must be excluded to avoid inverted hierarchy
     const childIds = new Set();
     for (const evt of events) {
         if (evt.refs) {
+            const evtLevel = evt.hierarchy_level || 0;
             for (const [, ids] of Object.entries(evt.refs)) {
                 if (!Array.isArray(ids)) continue;
                 for (const cid of ids) {
-                    if (map[cid]) {
+                    if (map[cid] && (map[cid].hierarchy_level || 0) < evtLevel) {
                         map[evt.id]._children.push(map[cid]);
                         childIds.add(cid);
                     }
@@ -481,7 +483,7 @@ function renderEventNode(node) {
     const level = node.hierarchy_level || 0;
     const levelClass = level > 0 ? ` event-item-${level}` : '';
     const hasChildren = node._children && node._children.length > 0;
-    const nodeId = 'evt-' + node.id.replace(/[^a-zA-Z0-9]/g, '');
+    const nodeId = 'evt-' + node.id.replace(/[^a-zA-Z0-9]/g, '_');
 
     const toggleHtml = hasChildren ? `
         <span class="tree-toggle me-1" onclick="event.stopPropagation(); toggleEvtChildren('${nodeId}', this)">
