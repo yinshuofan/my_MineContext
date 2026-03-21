@@ -904,6 +904,7 @@ curl -X DELETE http://localhost:1733/api/agents/assistant_01
 # ============================================================================
 # Base memory is pre-configured agent knowledge, separate from conversation-extracted memory.
 # Both base profile and base events use user_id="__base__" internally to distinguish from per-user data.
+# Base profiles use context_type="agent_base_profile" (distinct from per-user "agent_profile").
 
 # Set Base Profile
 curl -X POST http://localhost:1733/api/agents/assistant_01/base/profile \

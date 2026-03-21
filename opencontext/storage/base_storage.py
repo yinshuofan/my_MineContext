@@ -402,7 +402,7 @@ class IDocumentStorageBackend(IStorageBackend):
             importance: Importance score
             metadata: Additional metadata
             refs: Reference links (e.g. source context IDs)
-            context_type: Context type ('profile' or 'agent_profile')
+            context_type: Context type ('profile', 'agent_profile', or 'agent_base_profile')
 
         Returns:
             True if successful, False otherwise
@@ -422,7 +422,7 @@ class IDocumentStorageBackend(IStorageBackend):
             user_id: User identifier
             device_id: Device identifier
             agent_id: Agent identifier
-            context_type: Context type ('profile' or 'agent_profile')
+            context_type: Context type ('profile', 'agent_profile', or 'agent_base_profile')
 
         Returns:
             Profile dict or None if not found
@@ -442,7 +442,7 @@ class IDocumentStorageBackend(IStorageBackend):
             user_id: User identifier
             device_id: Device identifier
             agent_id: Agent identifier
-            context_type: Context type ('profile' or 'agent_profile')
+            context_type: Context type ('profile', 'agent_profile', or 'agent_base_profile')
 
         Returns:
             True if successful, False otherwise

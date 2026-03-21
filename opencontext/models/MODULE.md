@@ -38,12 +38,14 @@ DAILY_SUMMARY = "daily_summary"  |  WEEKLY_SUMMARY = "weekly_summary"  |  MONTHL
 AGENT_EVENT = "agent_event"
 AGENT_DAILY_SUMMARY = "agent_daily_summary"  |  AGENT_WEEKLY_SUMMARY = "agent_weekly_summary"  |  AGENT_MONTHLY_SUMMARY = "agent_monthly_summary"
 AGENT_PROFILE = "agent_profile"
+AGENT_BASE_PROFILE = "agent_base_profile"
 ```
 
 - `DAILY_SUMMARY`, `WEEKLY_SUMMARY`, `MONTHLY_SUMMARY`: User-side hierarchy summaries (L1/L2/L3). Formerly stored as `EVENT` with `hierarchy_level > 0`; now have their own types.
 - `AGENT_EVENT`: Agent-observed events (same role as `EVENT` but for agent memory owner).
 - `AGENT_DAILY_SUMMARY`, `AGENT_WEEKLY_SUMMARY`, `AGENT_MONTHLY_SUMMARY`: Agent-side hierarchy summaries.
 - `AGENT_PROFILE`: Agent's perception and knowledge about a specific user. Stored in relational DB (same as `PROFILE`) with `context_type="agent_profile"`. Extracted by `AgentMemoryProcessor` and routed to `_store_profile()` alongside `PROFILE`.
+- `AGENT_BASE_PROFILE`: Agent's pre-configured base profile, set via the `/api/agents/{agent_id}/base/profile` endpoint. Stored in relational DB with `user_id="__base__"` and `context_type="agent_base_profile"`. Distinguished from per-user `AGENT_PROFILE` by both the sentinel `user_id` and the dedicated context type.
 
 ### UpdateStrategy(str, Enum)
 ```
@@ -71,6 +73,7 @@ CONTEXT_UPDATE_STRATEGIES = {
     AGENT_EVENT: APPEND,
     AGENT_DAILY_SUMMARY: APPEND, AGENT_WEEKLY_SUMMARY: APPEND, AGENT_MONTHLY_SUMMARY: APPEND,
     AGENT_PROFILE: OVERWRITE,
+    AGENT_BASE_PROFILE: OVERWRITE,
 }
 
 CONTEXT_STORAGE_BACKENDS = {
@@ -80,6 +83,7 @@ CONTEXT_STORAGE_BACKENDS = {
     AGENT_EVENT: "vector_db",
     AGENT_DAILY_SUMMARY: "vector_db", AGENT_WEEKLY_SUMMARY: "vector_db", AGENT_MONTHLY_SUMMARY: "vector_db",
     AGENT_PROFILE: "document_db",
+    AGENT_BASE_PROFILE: "document_db",
 }
 
 MEMORY_OWNER_TYPES = {
@@ -271,7 +275,7 @@ Fields: `knowledge_source`, `knowledge_file_path`, `knowledge_title`, `knowledge
 ## Conventions and Constraints
 
 1. **ProcessedContextModel must mirror ContextProperties**: If you add a field to `ContextProperties`, also add it to `ProcessedContextModel` and update `from_processed_context()`, or it will be silently dropped from API responses.
-2. **All types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `MEMORY_OWNER_TYPES` (if event-family), `SYSTEM_GENERATED_TYPES` (if system-generated), `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files. Profile-family types (`PROFILE`, `AGENT_PROFILE`) route to `document_db` and use `_store_profile()` in `opencontext.py`.
+2. **All types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `MEMORY_OWNER_TYPES` (if event-family), `SYSTEM_GENERATED_TYPES` (if system-generated), `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files. Profile-family types (`PROFILE`, `AGENT_PROFILE`, `AGENT_BASE_PROFILE`) route to `document_db` and use `_store_profile()` in `opencontext.py`.
 3. **3-key identifier required**: `ProfileData` always requires `(user_id, device_id, agent_id)`. Defaults are `"default"` for `device_id` and `agent_id`.
 4. **Timezone-aware datetimes**: Use `datetime.now(tz=datetime.timezone.utc)`, never `datetime.utcnow()`.
 5. **`get_context_type_for_analysis()` falls back to KNOWLEDGE**: Unrecognized type strings from LLM output default to `KNOWLEDGE`, not `EVENT`.

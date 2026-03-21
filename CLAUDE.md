@@ -97,7 +97,7 @@ Input → Processor → ProcessedContext → _handle_processed_context (routes b
    - `CHAT_LOG`, `INPUT` → `TextChatProcessor`
 
 2. **Route** (`opencontext/server/opencontext.py` → `_handle_processed_context()`): The central routing point. Routes by context type:
-   - profile / agent_profile → `_store_profile()` → `storage.upsert_profile()` → relational DB
+   - profile / agent_profile / agent_base_profile → `_store_profile()` → `storage.upsert_profile()` → relational DB
    - document/event/knowledge → `storage.batch_upsert_processed_context()` → vector DB
 
 3. **Store** (`opencontext/storage/`): `UnifiedStorage` wraps dual backends:
@@ -207,7 +207,7 @@ Both MySQL and SQLite backends use `threading.local()` for per-thread connection
 VikingDB stores `hierarchy_level` as `int64`. Use `must` filter directly: `{"op": "must", "field": "hierarchy_level", "conds": [0]}`. Do NOT use `range` format — it's unnecessary for int64 fields. `must` also supports list filtering: `"conds": [0, 1, 2]`.
 
 ### Context type routing must match CONTEXT_STORAGE_BACKENDS
-`_handle_processed_context()` routes `PROFILE` and `AGENT_PROFILE` to relational DB via `_store_profile()`, and others to vector DB. Bypassing this (e.g., calling `batch_upsert_processed_context()` for all types) makes profile data unretrievable.
+`_handle_processed_context()` routes `PROFILE`, `AGENT_PROFILE`, and `AGENT_BASE_PROFILE` to relational DB via `_store_profile()`, and others to vector DB. Bypassing this (e.g., calling `batch_upsert_processed_context()` for all types) makes profile data unretrievable.
 
 ### Use `run_coroutine_threadsafe` not `create_task` from sync blocking code
 When sync code runs via `asyncio.to_thread`, `loop.create_task()` doesn't reliably wake the event loop. Use `asyncio.run_coroutine_threadsafe(coro, loop)` instead. The `_capture_loop()` pattern stores the loop reference from async entry points.

@@ -53,7 +53,7 @@ class OpenContext:
 
     # Context processing pipeline
     def _handle_captured_context(self, contexts: List[RawContextProperties]) -> bool
-    def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool  # Routes PROFILE/AGENT_PROFILE to _store_profile, others by CONTEXT_STORAGE_BACKENDS
+    def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool  # Routes PROFILE/AGENT_PROFILE/AGENT_BASE_PROFILE to _store_profile, others by CONTEXT_STORAGE_BACKENDS
     def _store_profile(self, ctx: ProcessedContext) -> None     # -> storage.upsert_profile()
     def _invalidate_user_cache(self, user_id, device_id, agent_id) -> None  # Fire-and-forget
 
@@ -354,13 +354,13 @@ Push endpoints that schedule hierarchy summary: `push_chat`.
 | GET | `/api/agents/{agent_id}` | `get_agent` | Get a single agent by ID |
 | PUT | `/api/agents/{agent_id}` | `update_agent` | Update agent name and/or description |
 | DELETE | `/api/agents/{agent_id}` | `delete_agent` | Soft-delete an agent |
-| POST | `/api/agents/{agent_id}/base/profile` | `set_base_profile` | Set or overwrite the agent's base profile (stored with `user_id="__base__"`, `context_type="agent_profile"`) |
+| POST | `/api/agents/{agent_id}/base/profile` | `set_base_profile` | Set or overwrite the agent's base profile (stored with `user_id="__base__"`, `context_type="agent_base_profile"`) |
 | GET | `/api/agents/{agent_id}/base/profile` | `get_base_profile` | Retrieve the agent's base profile |
-| POST | `/api/agents/{agent_id}/base/events` | `push_base_events` | Push structured base events (no LLM extraction; generates embeddings and stores as `AGENT_EVENT` with `user_id="__base__"`) |
-| GET | `/api/agents/{agent_id}/base/events` | `list_base_events` | List base events for an agent (filtered by `user_id="__base__"`) |
-| DELETE | `/api/agents/{agent_id}/base/events/{event_id}` | `delete_base_event` | Delete a single base event by ID |
+| POST | `/api/agents/{agent_id}/base/events` | `push_base_events` | Push structured base events with optional hierarchy (L0-L3). Supports nested `children` for tree structure. Stores as `AGENT_BASE_EVENT` / `AGENT_BASE_L1/L2/L3_SUMMARY` with `user_id="__base__"` |
+| GET | `/api/agents/{agent_id}/base/events` | `list_base_events` | List base events for an agent. Supports `hierarchy_level` query param to filter by level (0-3) |
+| DELETE | `/api/agents/{agent_id}/base/events/{event_id}` | `delete_base_event` | Delete a single base event or summary by ID |
 
-Agent base memory routes use `user_id="__base__"` as a sentinel to distinguish both base profiles and base events from per-user data generated during conversations.
+Agent base memory routes use `user_id="__base__"` as a sentinel. Base profiles are distinguished by `context_type="agent_base_profile"`. Base events are distinguished by dedicated context types (`AGENT_BASE_EVENT`, `AGENT_BASE_L1/L2/L3_SUMMARY`), not by `user_id` alone.
 
 ### Chat Batches Routes (`routes/chat_batches.py`)
 
@@ -496,7 +496,7 @@ ProcessorManager.process_batch(raw_context, ["user_memory"])
   -> Merge all results, invoke callback:
      -> OpenContext._handle_processed_context()
         -> Routes by context_type:
-           PROFILE / AGENT_PROFILE -> _store_profile() -> storage.upsert_profile(context_type=...)
+           PROFILE / AGENT_PROFILE / AGENT_BASE_PROFILE -> _store_profile() -> storage.upsert_profile(context_type=...)
            document/event/knowledge -> storage.batch_upsert_processed_context() -> vector DB
         -> _invalidate_user_cache() for affected users
 ```

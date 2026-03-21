@@ -734,7 +734,7 @@ curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
       "user_id": "__base__",
       "device_id": "default",
       "agent_id": "assistant_01",
-      "context_type": "agent_profile",
+      "context_type": "agent_base_profile",
       "factual_profile": "I am a personal assistant specialized in scheduling and task management.",
       "behavioral_profile": "Responds in a friendly, professional tone.",
       "keywords": [],
