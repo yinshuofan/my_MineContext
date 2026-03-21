@@ -62,7 +62,7 @@ async def refresh_profile(
         # Fallback: first interaction profile for an agent inherits from base profile
         if existing is None and context_type == "agent_profile" and user_id != "__base__":
             existing = await storage.get_profile(
-                "__base__", device_id, agent_id, context_type="agent_profile"
+                "__base__", device_id, agent_id, context_type="agent_base_profile"
             )
 
         if existing:
