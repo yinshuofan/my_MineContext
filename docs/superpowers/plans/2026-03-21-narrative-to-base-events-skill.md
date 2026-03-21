@@ -8,6 +8,8 @@
 
 **Tech Stack:** Markdown (Claude Code Skill format)
 
+**Spec:** `docs/superpowers/specs/2026-03-21-narrative-to-base-events-skill-design.md`
+
 ---
 
 ## File Structure
@@ -35,12 +37,19 @@ mkdir -p .claude/skills/narrative-to-base-events/references
 - [ ] **Step 2: Write base-event-schema.md**
 
 The file must contain:
-1. The `BaseEventItem` field table (name, type, required, description) derived from `opencontext/server/routes/agents.py:69-78`
-2. The `BaseEventsRequest` wrapper structure
-3. Validation rules summary (from the server-side `_validate_base_event_tree`)
-4. A complete nested JSON example showing all 4 levels (L0-L3) with all fields populated — a realistic character example (not placeholder values)
+1. The `BaseEventItem` field table (name, type, required/optional, default value, description) derived from `opencontext/server/routes/agents.py:69-78`. Include defaults: `event_time_start` defaults to current time when omitted, `event_time_end` defaults to `event_time_start` for L0 nodes, `importance` defaults to 5, `hierarchy_level` defaults to 0
+2. The `BaseEventsRequest` wrapper structure: `events: List[BaseEventItem]` (min 1 item), this is the top-level request body for `POST /api/agents/{agent_id}/base/events`
+3. Validation rules summary (from the server-side `_validate_base_event_tree`), explicitly enumerating:
+   - `hierarchy_level > 0` requires `event_time_end` and non-empty `children`
+   - `hierarchy_level == 0` cannot have `children`
+   - Each child's `hierarchy_level` must equal `parent.hierarchy_level - 1` (no skipping levels)
+   - `event_time_start <= event_time_end` on the same node
+   - Parent's time range must cover all direct children's time ranges
+   - Maximum `hierarchy_level` is 3; maximum nesting depth is 4 levels
+   - Total event count across all levels must not exceed 500
+4. A complete nested JSON example showing all 4 levels (L0-L3) with all fields populated — use a well-known fictional character (e.g., a classic literary or film character) so the example is immediately recognizable and illustrative
 5. A minimal L0-only example (flat list, no hierarchy)
-6. Notes on server-side behavior: `refs` auto-constructed, `event_time_end` defaults for L0, 500-event limit
+6. Notes on server-side behavior: `refs` auto-constructed by server (do not include in JSON), `event_time_end` defaults to `event_time_start` for L0 nodes, 500-event limit per request
 
 Source material:
 - Field definitions: `opencontext/server/routes/agents.py:69-82`
@@ -138,7 +147,7 @@ Content:
 
 Content:
 - L0 granularity definition: concrete, meaningful action/decision/encounter
-- Extraction rules: direct participation only, title (verb phrase) + summary (1-2 sentences), no time/keywords yet, maintain narrative order
+- Extraction rules: direct participation only, title (verb phrase) + summary (1-2 sentences), no time/keywords yet, output in narrative order (the order events appear in the text; chronological reordering happens in Stage 4)
 - Long text: process segments sequentially, deduplicate across segments (same action in same scene = merge; recurring themes = keep separate)
 - Checkpoint: present complete L0 list (title + summary), user confirms completeness
 
@@ -198,7 +207,7 @@ Content:
 
 Content:
 - Assemble nested JSON per `BaseEventsRequest` format
-- Reference `references/base-event-schema.md` for full schema details (don't duplicate the schema here)
+- Include a brief structural JSON snippet showing the nesting pattern (L3 → L2 → L1 → L0), but reference `references/base-event-schema.md` for full field-level schema details
 - Key format rules: L3 at top level, `children` + `event_time_end` required for L1+, `refs` omitted (server auto-constructs), ISO 8601 with timezone
 - Write to file, report path and event counts per level
 - 500-event limit: if exceeded, split into complete sub-trees per file
@@ -218,15 +227,23 @@ A table of common mistakes and corrections:
 | Splitting hierarchy trees across multiple JSON files | Each file must contain complete sub-trees (own L3 + full children) |
 | Using `event_time` instead of `event_time_start` | The field is `event_time_start` (ISO 8601 with timezone) |
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 5: Verify SKILL.md**
 
 Read the complete SKILL.md. Confirm:
 - All 7 stages are present with checkpoints
-- Stage 7 references `references/base-event-schema.md` instead of duplicating schema
+- Stage 7 includes a brief structural JSON snippet and references `references/base-event-schema.md`
 - Common mistakes table covers key pitfalls from the spec
 - Total file length is reasonable (aim for < 500 lines)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Cross-file consistency check**
+
+Verify SKILL.md and `references/base-event-schema.md` together:
+- Stage 7 in SKILL.md correctly references `references/base-event-schema.md`
+- Hierarchy level definitions in SKILL.md (L0-L3) match the examples in the schema file
+- Field names used throughout SKILL.md match the schema (e.g., `event_time_start` not `event_time`)
+- The structural JSON snippet in Stage 7 is consistent with the full example in the schema file
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add .claude/skills/narrative-to-base-events/SKILL.md
