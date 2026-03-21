@@ -448,22 +448,43 @@ async def list_base_events(
     agent_id: str,
     limit: int = 50,
     offset: int = 0,
+    hierarchy_level: Optional[int] = None,
     _auth: str = auth_dependency,
 ):
     """List base events for an agent.
 
-    Base events use ``user_id="__base__"`` as a sentinel to distinguish
-    them from per-user events generated during conversations.
+    Returns all hierarchy levels by default. Use ``hierarchy_level`` query param
+    to filter (0=events, 1/2/3=summaries).
     """
     storage = get_storage()
+
+    # Determine which context types to query
+    if hierarchy_level is not None:
+        if hierarchy_level not in _BASE_HIERARCHY_LEVEL_TO_TYPE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"hierarchy_level must be 0-3, got {hierarchy_level}",
+            )
+        query_types = [_BASE_HIERARCHY_LEVEL_TO_TYPE[hierarchy_level].value]
+    else:
+        query_types = _ALL_AGENT_BASE_TYPES
+
     result = await storage.get_all_processed_contexts(
-        context_types=[ContextType.AGENT_EVENT.value],
+        context_types=query_types,
         user_id="__base__",
         agent_id=agent_id,
         limit=limit + offset,
     )
-    contexts = result.get(ContextType.AGENT_EVENT.value, [])
-    page = contexts[offset : offset + limit]
+
+    # Merge results from all queried types
+    all_contexts = []
+    for ct_value in query_types:
+        all_contexts.extend(result.get(ct_value, []))
+
+    # Sort by event_time_start descending (most recent first)
+    all_contexts.sort(key=lambda c: c.properties.event_time_start, reverse=True)
+    page = all_contexts[offset : offset + limit]
+
     return convert_resp(
         data={
             "events": [
@@ -478,9 +499,11 @@ async def list_base_events(
 async def delete_base_event(
     agent_id: str, event_id: str, _auth: str = auth_dependency
 ):
-    """Delete a single base event by ID."""
+    """Delete a single base event or summary by ID."""
     storage = get_storage()
-    success = await storage.delete_processed_context(event_id, ContextType.AGENT_EVENT.value)
-    if not success:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return convert_resp(message="Event deleted")
+    # Try deleting from each AGENT_BASE_* type (we don't know which type it is)
+    for ct_value in _ALL_AGENT_BASE_TYPES:
+        success = await storage.delete_processed_context(event_id, ct_value)
+        if success:
+            return convert_resp(message="Event deleted")
+    raise HTTPException(status_code=404, detail="Event not found")
