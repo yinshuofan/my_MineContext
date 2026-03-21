@@ -94,6 +94,7 @@ class ContextType(str, Enum):
     AGENT_BASE_L1_SUMMARY = "agent_base_l1_summary"
     AGENT_BASE_L2_SUMMARY = "agent_base_l2_summary"
     AGENT_BASE_L3_SUMMARY = "agent_base_l3_summary"
+    AGENT_BASE_PROFILE = "agent_base_profile"
 
 
 class UpdateStrategy(str, Enum):
@@ -122,6 +123,7 @@ CONTEXT_UPDATE_STRATEGIES = {
     ContextType.AGENT_BASE_L1_SUMMARY: UpdateStrategy.APPEND,
     ContextType.AGENT_BASE_L2_SUMMARY: UpdateStrategy.APPEND,
     ContextType.AGENT_BASE_L3_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.AGENT_BASE_PROFILE: UpdateStrategy.OVERWRITE,
 }
 
 # Type → storage backend mapping (for routing decisions)
@@ -142,6 +144,7 @@ CONTEXT_STORAGE_BACKENDS = {
     ContextType.AGENT_BASE_L1_SUMMARY: "vector_db",  # Vector DB
     ContextType.AGENT_BASE_L2_SUMMARY: "vector_db",  # Vector DB
     ContextType.AGENT_BASE_L3_SUMMARY: "vector_db",  # Vector DB
+    ContextType.AGENT_BASE_PROFILE: "document_db",  # Relational DB
 }
 
 MEMORY_OWNER_TYPES = {
@@ -255,6 +258,11 @@ ContextSimpleDescriptions = {
         "name": "Agent Base L3 Summary",
         "description": "Level 3 summary of agent base L2 summaries.",
         "purpose": "Top-level aggregation of base event knowledge for broad context.",
+    },
+    ContextType.AGENT_BASE_PROFILE: {
+        "name": "Agent Base Profile",
+        "description": "Pre-configured base profile for an agent, not tied to any specific user.",
+        "purpose": "Provides the agent's foundational personality, knowledge, and behavioral traits that apply across all user interactions.",
     },
 }
 
