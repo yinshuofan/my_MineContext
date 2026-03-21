@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from opencontext.models.context import (
     ContextProperties,
@@ -69,7 +69,6 @@ _ALL_AGENT_BASE_TYPES = [ct.value for ct in _BASE_HIERARCHY_LEVEL_TO_TYPE.values
 class BaseEventItem(BaseModel):
     title: str
     summary: str
-    event_time: Optional[str] = None  # Alias for event_time_start (backward compat)
     event_time_start: Optional[str] = None  # ISO 8601, defaults to current time
     event_time_end: Optional[str] = None  # Required for hierarchy_level > 0
     keywords: List[str] = Field(default_factory=list)
@@ -77,15 +76,6 @@ class BaseEventItem(BaseModel):
     importance: int = 5
     hierarchy_level: int = 0  # 0/1/2/3, pure hierarchy depth
     children: Optional[List["BaseEventItem"]] = None  # Nested child events
-
-    @model_validator(mode="before")
-    @classmethod
-    def _resolve_event_time_alias(cls, data):
-        """Allow 'event_time' as alias for 'event_time_start' (backward compat)."""
-        if isinstance(data, dict):
-            if data.get("event_time_start") is None and data.get("event_time") is not None:
-                data["event_time_start"] = data["event_time"]
-        return data
 
 
 class BaseEventsRequest(BaseModel):
@@ -369,8 +359,7 @@ async def set_base_profile(
 ):
     """Set or overwrite the agent's base profile.
 
-    The base profile uses ``user_id="__base__"`` as a sentinel to distinguish
-    it from per-user profiles that are generated during conversations.
+    The base profile is stored with ``context_type="agent_base_profile"`` to distinguish it from per-user profiles.
     """
     storage = get_storage()
     agent = await storage.get_agent(agent_id)
@@ -381,7 +370,7 @@ async def set_base_profile(
         user_id="__base__",
         device_id="default",
         agent_id=agent_id,
-        context_type="agent_profile",
+        context_type="agent_base_profile",
         factual_profile=request.factual_profile,
         behavioral_profile=request.behavioral_profile,
         entities=request.entities,
@@ -400,7 +389,7 @@ async def get_base_profile(agent_id: str, _auth: str = auth_dependency):
         user_id="__base__",
         device_id="default",
         agent_id=agent_id,
-        context_type="agent_profile",
+        context_type="agent_base_profile",
     )
     if not profile:
         raise HTTPException(status_code=404, detail="Base profile not found")
