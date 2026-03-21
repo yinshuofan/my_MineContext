@@ -90,6 +90,10 @@ class ContextType(str, Enum):
     AGENT_WEEKLY_SUMMARY = "agent_weekly_summary"
     AGENT_MONTHLY_SUMMARY = "agent_monthly_summary"
     AGENT_PROFILE = "agent_profile"
+    AGENT_BASE_EVENT = "agent_base_event"
+    AGENT_BASE_L1_SUMMARY = "agent_base_l1_summary"
+    AGENT_BASE_L2_SUMMARY = "agent_base_l2_summary"
+    AGENT_BASE_L3_SUMMARY = "agent_base_l3_summary"
 
 
 class UpdateStrategy(str, Enum):
@@ -114,6 +118,10 @@ CONTEXT_UPDATE_STRATEGIES = {
     ContextType.AGENT_WEEKLY_SUMMARY: UpdateStrategy.APPEND,
     ContextType.AGENT_MONTHLY_SUMMARY: UpdateStrategy.APPEND,
     ContextType.AGENT_PROFILE: UpdateStrategy.OVERWRITE,
+    ContextType.AGENT_BASE_EVENT: UpdateStrategy.APPEND,
+    ContextType.AGENT_BASE_L1_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.AGENT_BASE_L2_SUMMARY: UpdateStrategy.APPEND,
+    ContextType.AGENT_BASE_L3_SUMMARY: UpdateStrategy.APPEND,
 }
 
 # Type → storage backend mapping (for routing decisions)
@@ -130,6 +138,10 @@ CONTEXT_STORAGE_BACKENDS = {
     ContextType.AGENT_WEEKLY_SUMMARY: "vector_db",  # Vector DB
     ContextType.AGENT_MONTHLY_SUMMARY: "vector_db",  # Vector DB
     ContextType.AGENT_PROFILE: "document_db",  # Relational DB
+    ContextType.AGENT_BASE_EVENT: "vector_db",  # Vector DB
+    ContextType.AGENT_BASE_L1_SUMMARY: "vector_db",  # Vector DB
+    ContextType.AGENT_BASE_L2_SUMMARY: "vector_db",  # Vector DB
+    ContextType.AGENT_BASE_L3_SUMMARY: "vector_db",  # Vector DB
 }
 
 MEMORY_OWNER_TYPES = {
@@ -144,6 +156,12 @@ MEMORY_OWNER_TYPES = {
         ContextType.AGENT_DAILY_SUMMARY,
         ContextType.AGENT_WEEKLY_SUMMARY,
         ContextType.AGENT_MONTHLY_SUMMARY,
+    ],
+    "agent_base": [
+        ContextType.AGENT_BASE_EVENT,
+        ContextType.AGENT_BASE_L1_SUMMARY,
+        ContextType.AGENT_BASE_L2_SUMMARY,
+        ContextType.AGENT_BASE_L3_SUMMARY,
     ],
 }
 # index 0=L0, 1=L1, 2=L2, 3=L3
@@ -217,6 +235,26 @@ ContextSimpleDescriptions = {
         "name": "Agent Profile",
         "description": "Agent's perception and knowledge about a specific user",
         "purpose": "Stores the agent's subjective understanding of user personality, preferences, and relationship",
+    },
+    ContextType.AGENT_BASE_EVENT: {
+        "name": "Agent Base Event",
+        "description": "Pre-configured base event for an agent, not tied to any specific user.",
+        "purpose": "Provides foundational event knowledge that the agent can reference across all user interactions.",
+    },
+    ContextType.AGENT_BASE_L1_SUMMARY: {
+        "name": "Agent Base L1 Summary",
+        "description": "Level 1 summary of agent base events.",
+        "purpose": "Groups related base events into a higher-level summary for efficient retrieval.",
+    },
+    ContextType.AGENT_BASE_L2_SUMMARY: {
+        "name": "Agent Base L2 Summary",
+        "description": "Level 2 summary of agent base L1 summaries.",
+        "purpose": "Provides mid-level aggregation of base event knowledge.",
+    },
+    ContextType.AGENT_BASE_L3_SUMMARY: {
+        "name": "Agent Base L3 Summary",
+        "description": "Level 3 summary of agent base L2 summaries.",
+        "purpose": "Top-level aggregation of base event knowledge for broad context.",
     },
 }
 
