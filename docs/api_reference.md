@@ -757,18 +757,35 @@ curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
 
 `POST /api/agents/{agent_id}/base/events`
 
-推送结构化的基础事件，不经过 LLM 提取。系统会为每个事件生成 embedding 并存储为 `AGENT_EVENT`。
+推送结构化的基础事件，不经过 LLM 提取。系统会为每个事件生成 embedding，并根据 `hierarchy_level` 存储为对应的 context type：L0 → `agent_base_event`，L1 → `agent_base_l1_summary`，L2 → `agent_base_l2_summary`，L3 → `agent_base_l3_summary`。
+
+支持嵌套层级结构（L3→L2→L1→L0），父节点时间范围必须覆盖所有子节点。
+
+**请求体字段：**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `events` | `List[Object]` | **是** | 事件列表（至少 1 项） |
+| `events` | `List[Object]` | **是** | 顶层事件列表（至少 1 项，总数含子节点不超过 500） |
 | `events[].title` | `string` | **是** | 事件标题 |
 | `events[].summary` | `string` | **是** | 事件摘要 |
-| `events[].event_time` | `string` | 否 | ISO 8601 时间（默认当前时间） |
+| `events[].event_time_start` | `string` | 否 | ISO 8601 开始时间（默认当前时间）；`event_time` 为向后兼容别名 |
+| `events[].event_time_end` | `string` | 条件必填 | ISO 8601 结束时间；`hierarchy_level > 0` 时必填 |
+| `events[].hierarchy_level` | `int` | 否 | 层级深度 0/1/2/3（默认 0）；0 = 原始事件，1 = 日摘要，2 = 周摘要，3 = 月摘要 |
+| `events[].children` | `List[Object]` | 条件必填 | 嵌套子事件；`hierarchy_level > 0` 时必填，`hierarchy_level == 0` 时不可填 |
 | `events[].keywords` | `List[string]` | 否 | 关键词列表 |
 | `events[].entities` | `List[string]` | 否 | 实体列表 |
 | `events[].importance` | `int` | 否 | 重要性 0-10（默认 5） |
 
+**验证规则：**
+
+- `hierarchy_level > 0` 必须同时提供 `event_time_end` 和 `children`
+- `hierarchy_level == 0` 不可包含 `children`
+- 子节点的 `hierarchy_level` 必须等于父节点 `hierarchy_level - 1`
+- 父节点时间范围必须覆盖所有子节点（`event_time_start` ≤ 子节点最小开始时间，`event_time_end` ≥ 子节点最大结束时间）
+- 单次请求总事件数（含所有层级子节点）不超过 500
+- `hierarchy_level` 最大为 3（支持 L3→L2→L1→L0 四级树）
+
+**扁平事件示例：**
 ```bash
 curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
   -H "Content-Type: application/json" \
@@ -777,7 +794,7 @@ curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
       {
         "title": "Product launch v2.0",
         "summary": "The product team launched version 2.0 with new scheduling features and improved UI.",
-        "event_time": "2026-03-15T09:00:00+00:00",
+        "event_time_start": "2026-03-15T09:00:00+08:00",
         "keywords": ["product launch", "v2.0", "scheduling"],
         "entities": ["product team"],
         "importance": 8
@@ -792,15 +809,56 @@ curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
   }'
 ```
 
+**嵌套层级结构示例：**
+```bash
+curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "title": "Standalone event",
+        "summary": "A simple L0 event",
+        "event_time_start": "2026-03-15T10:00:00+08:00",
+        "importance": 5
+      },
+      {
+        "title": "Daily Summary",
+        "summary": "Summary of the day...",
+        "event_time_start": "2026-03-15T00:00:00+08:00",
+        "event_time_end": "2026-03-15T23:59:59+08:00",
+        "hierarchy_level": 1,
+        "children": [
+          {
+            "title": "Morning standup",
+            "summary": "Discussed sprint progress",
+            "event_time_start": "2026-03-15T09:00:00+08:00",
+            "keywords": ["standup", "sprint"],
+            "importance": 6
+          },
+          {
+            "title": "Code review",
+            "summary": "Reviewed auth module PR",
+            "event_time_start": "2026-03-15T14:00:00+08:00",
+            "keywords": ["code review", "auth"],
+            "importance": 5
+          }
+        ]
+      }
+    ]
+  }'
+```
+
 **成功**
 ```json
 {
   "code": 0,
   "status": 200,
   "message": "Base events saved",
-  "data": {"count": 2}
+  "data": {"count": 3}
 }
 ```
+
+> `count` 为实际存储的事件总数（含所有层级子节点）。
 
 ### 6.4 列出基础事件
 
@@ -810,9 +868,17 @@ curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
 |------|------|------|--------|------|
 | `limit` | `int` | 否 | `50` | 每页数量 |
 | `offset` | `int` | 否 | `0` | 偏移量 |
+| `hierarchy_level` | `int` | 否 | — | 按层级过滤：`0`=原始事件（`agent_base_event`），`1`=日摘要，`2`=周摘要，`3`=月摘要；不传则返回所有层级 |
 
 ```bash
+# 返回所有层级
 curl -X GET "http://localhost:1733/api/agents/assistant_01/base/events?limit=10&offset=0"
+
+# 仅返回 L0 原始事件
+curl "http://localhost:1733/api/agents/assistant_01/base/events?hierarchy_level=0"
+
+# 仅返回 L1 日摘要
+curl "http://localhost:1733/api/agents/assistant_01/base/events?hierarchy_level=1"
 ```
 
 **成功**
@@ -825,20 +891,23 @@ curl -X GET "http://localhost:1733/api/agents/assistant_01/base/events?limit=10&
     "events": [
       {
         "id": "a1b2c3d4-...",
-        "context_type": "agent_event",
+        "context_type": "agent_base_event",
+        "hierarchy_level": 0,
         "title": "Product launch v2.0",
         "summary": "The product team launched version 2.0...",
         "keywords": ["product launch", "v2.0"],
         "entities": ["product team"],
         "importance": 8,
-        "event_time_start": "2026-03-15 09:00:00",
-        "event_time_end": "2026-03-15 09:00:00",
+        "event_time_start": "2026-03-15T09:00:00+08:00",
+        "event_time_end": "2026-03-15T09:00:00+08:00",
         "create_time": "2026-03-18T10:30:00+00:00"
       }
     ]
   }
 }
 ```
+
+> `context_type` 依 `hierarchy_level` 不同而变化：`agent_base_event`（L0）、`agent_base_l1_summary`（L1）、`agent_base_l2_summary`（L2）、`agent_base_l3_summary`（L3）。
 
 ### 6.5 删除基础事件
 

@@ -920,7 +920,7 @@ curl -X POST http://localhost:1733/api/agents/assistant_01/base/profile \
 curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
 # -H "X-API-Key: your-api-key"
 
-# Push Base Events (structured, no LLM extraction; generates embeddings directly)
+# Push Base Events (flat L0 events, no LLM extraction; generates embeddings directly)
 curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
   -H "Content-Type: application/json" \
   -d '{
@@ -928,7 +928,7 @@ curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
       {
         "title": "Product launch v2.0",
         "summary": "The product team launched version 2.0 with new scheduling features.",
-        "event_time": "2026-03-15T09:00:00+00:00",
+        "event_time_start": "2026-03-15T09:00:00+08:00",
         "keywords": ["product launch", "v2.0", "scheduling"],
         "entities": ["product team"],
         "importance": 8
@@ -943,8 +943,58 @@ curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
   }'
 # -H "X-API-Key: your-api-key"
 
-# List Base Events
-curl -X GET "http://localhost:1733/api/agents/assistant_01/base/events?limit=50&offset=0"
+# Push Base Events with hierarchy tree (L1 daily summary containing L0 children)
+# hierarchy_level: 0=raw event, 1=daily summary, 2=weekly summary, 3=monthly summary
+# Validation: hierarchy_level > 0 requires event_time_end + children;
+#             children must have hierarchy_level == parent - 1;
+#             parent time range must cover all children; max 500 total events.
+curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "title": "Standalone event",
+        "summary": "A simple L0 event",
+        "event_time_start": "2026-03-15T10:00:00+08:00",
+        "importance": 5
+      },
+      {
+        "title": "Daily Summary",
+        "summary": "Summary of the day...",
+        "event_time_start": "2026-03-15T00:00:00+08:00",
+        "event_time_end": "2026-03-15T23:59:59+08:00",
+        "hierarchy_level": 1,
+        "children": [
+          {
+            "title": "Morning standup",
+            "summary": "Discussed sprint progress",
+            "event_time_start": "2026-03-15T09:00:00+08:00",
+            "keywords": ["standup", "sprint"],
+            "importance": 6
+          },
+          {
+            "title": "Code review",
+            "summary": "Reviewed auth module PR",
+            "event_time_start": "2026-03-15T14:00:00+08:00",
+            "keywords": ["code review", "auth"],
+            "importance": 5
+          }
+        ]
+      }
+    ]
+  }'
+# -H "X-API-Key: your-api-key"
+
+# List Base Events (all levels)
+curl http://localhost:1733/api/agents/assistant_01/base/events
+# -H "X-API-Key: your-api-key"
+
+# List Base Events (L0 raw events only)
+curl "http://localhost:1733/api/agents/assistant_01/base/events?hierarchy_level=0"
+# -H "X-API-Key: your-api-key"
+
+# List Base Events (L1 daily summaries only)
+curl "http://localhost:1733/api/agents/assistant_01/base/events?hierarchy_level=1"
 # -H "X-API-Key: your-api-key"
 
 # Delete Base Event
