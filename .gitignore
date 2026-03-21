@@ -23,6 +23,7 @@ uv.toml
 .trae
 # claude code
 .claude/
+!.claude/skills/
 # gemini cli
 GEMINI.md
 .gemini/
