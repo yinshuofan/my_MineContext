@@ -39,6 +39,8 @@ AGENT_EVENT = "agent_event"
 AGENT_DAILY_SUMMARY = "agent_daily_summary"  |  AGENT_WEEKLY_SUMMARY = "agent_weekly_summary"  |  AGENT_MONTHLY_SUMMARY = "agent_monthly_summary"
 AGENT_PROFILE = "agent_profile"
 AGENT_BASE_PROFILE = "agent_base_profile"
+AGENT_BASE_EVENT = "agent_base_event"
+AGENT_BASE_L1_SUMMARY = "agent_base_l1_summary"  |  AGENT_BASE_L2_SUMMARY = "agent_base_l2_summary"  |  AGENT_BASE_L3_SUMMARY = "agent_base_l3_summary"
 ```
 
 - `DAILY_SUMMARY`, `WEEKLY_SUMMARY`, `MONTHLY_SUMMARY`: User-side hierarchy summaries (L1/L2/L3). Formerly stored as `EVENT` with `hierarchy_level > 0`; now have their own types.
@@ -46,6 +48,8 @@ AGENT_BASE_PROFILE = "agent_base_profile"
 - `AGENT_DAILY_SUMMARY`, `AGENT_WEEKLY_SUMMARY`, `AGENT_MONTHLY_SUMMARY`: Agent-side hierarchy summaries.
 - `AGENT_PROFILE`: Agent's perception and knowledge about a specific user. Stored in relational DB (same as `PROFILE`) with `context_type="agent_profile"`. Extracted by `AgentMemoryProcessor` and routed to `_store_profile()` alongside `PROFILE`.
 - `AGENT_BASE_PROFILE`: Agent's pre-configured base profile, set via the `/api/agents/{agent_id}/base/profile` endpoint. Stored in relational DB with `user_id="__base__"` and `context_type="agent_base_profile"`. Distinguished from per-user `AGENT_PROFILE` by both the sentinel `user_id` and the dedicated context type.
+- `AGENT_BASE_EVENT`: Agent's pre-configured base events (L0), uploaded via `/api/agents/{agent_id}/base/events`. Uses `user_id="__base__"`. Separates base data from per-user agent events at the type level.
+- `AGENT_BASE_L1_SUMMARY`, `AGENT_BASE_L2_SUMMARY`, `AGENT_BASE_L3_SUMMARY`: Hierarchy summaries (L1/L2/L3) for agent base events. `hierarchy_level` is a pure depth indicator — not bound to daily/weekly/monthly semantics. Caller uploads pre-built hierarchies; no auto-generation.
 
 ### UpdateStrategy(str, Enum)
 ```
@@ -74,6 +78,8 @@ CONTEXT_UPDATE_STRATEGIES = {
     AGENT_DAILY_SUMMARY: APPEND, AGENT_WEEKLY_SUMMARY: APPEND, AGENT_MONTHLY_SUMMARY: APPEND,
     AGENT_PROFILE: OVERWRITE,
     AGENT_BASE_PROFILE: OVERWRITE,
+    AGENT_BASE_EVENT: APPEND,
+    AGENT_BASE_L1_SUMMARY: APPEND, AGENT_BASE_L2_SUMMARY: APPEND, AGENT_BASE_L3_SUMMARY: APPEND,
 }
 
 CONTEXT_STORAGE_BACKENDS = {
@@ -84,11 +90,14 @@ CONTEXT_STORAGE_BACKENDS = {
     AGENT_DAILY_SUMMARY: "vector_db", AGENT_WEEKLY_SUMMARY: "vector_db", AGENT_MONTHLY_SUMMARY: "vector_db",
     AGENT_PROFILE: "document_db",
     AGENT_BASE_PROFILE: "document_db",
+    AGENT_BASE_EVENT: "vector_db",
+    AGENT_BASE_L1_SUMMARY: "vector_db", AGENT_BASE_L2_SUMMARY: "vector_db", AGENT_BASE_L3_SUMMARY: "vector_db",
 }
 
 MEMORY_OWNER_TYPES = {
-    "user":  [EVENT, DAILY_SUMMARY, WEEKLY_SUMMARY, MONTHLY_SUMMARY],        # index 0=L0, 1=L1, 2=L2, 3=L3
-    "agent": [AGENT_EVENT, AGENT_DAILY_SUMMARY, AGENT_WEEKLY_SUMMARY, AGENT_MONTHLY_SUMMARY],
+    "user":       [EVENT, DAILY_SUMMARY, WEEKLY_SUMMARY, MONTHLY_SUMMARY],                                          # index 0=L0, 1=L1, 2=L2, 3=L3
+    "agent":      [AGENT_EVENT, AGENT_DAILY_SUMMARY, AGENT_WEEKLY_SUMMARY, AGENT_MONTHLY_SUMMARY],
+    "agent_base": [AGENT_BASE_EVENT, AGENT_BASE_L1_SUMMARY, AGENT_BASE_L2_SUMMARY, AGENT_BASE_L3_SUMMARY],
 }
 
 SYSTEM_GENERATED_TYPES = {
@@ -104,7 +113,7 @@ STRUCTURED_FILE_TYPES = {XLSX, XLS, CSV, JSONL, PARQUET, FAQ_XLSX}
 `SYSTEM_GENERATED_TYPES` is a guard set. `get_context_type_for_analysis()` falls back to `KNOWLEDGE` if the LLM output matches a system-generated type, preventing LLM from classifying user input as a summary type.
 
 ### ContextDescriptions / ContextSimpleDescriptions
-Both are `Dict[ContextType, dict]`. `ContextDescriptions` includes `key_indicators`, `examples`, `classification_priority` (used in LLM prompts). `ContextSimpleDescriptions` has `name`, `description`, `purpose`. Both now include entries for all 12 context types (including `AGENT_PROFILE`).
+Both are `Dict[ContextType, dict]`. `ContextDescriptions` includes `key_indicators`, `examples`, `classification_priority` (used in LLM prompts). `ContextSimpleDescriptions` has `name`, `description`, `purpose`. Both now include entries for all 17 context types (including `AGENT_PROFILE` and the 4 `AGENT_BASE_*` types).
 
 ## Helper Functions (enums.py)
 
@@ -275,7 +284,7 @@ Fields: `knowledge_source`, `knowledge_file_path`, `knowledge_title`, `knowledge
 ## Conventions and Constraints
 
 1. **ProcessedContextModel must mirror ContextProperties**: If you add a field to `ContextProperties`, also add it to `ProcessedContextModel` and update `from_processed_context()`, or it will be silently dropped from API responses.
-2. **All types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `MEMORY_OWNER_TYPES` (if event-family), `SYSTEM_GENERATED_TYPES` (if system-generated), `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files. Profile-family types (`PROFILE`, `AGENT_PROFILE`, `AGENT_BASE_PROFILE`) route to `document_db` and use `_store_profile()` in `opencontext.py`.
+2. **All types must stay in sync**: Adding/removing a `ContextType` value requires updating `CONTEXT_UPDATE_STRATEGIES`, `CONTEXT_STORAGE_BACKENDS`, `MEMORY_OWNER_TYPES` (if event-family), `SYSTEM_GENERATED_TYPES` (if system-generated), `ContextDescriptions`, `ContextSimpleDescriptions`, and both prompt YAML files. Profile-family types (`PROFILE`, `AGENT_PROFILE`, `AGENT_BASE_PROFILE`) route to `document_db` and use `_store_profile()` in `opencontext.py`. Base event types (`AGENT_BASE_EVENT`, `AGENT_BASE_L1/L2/L3_SUMMARY`) route to `vector_db` and must NOT be added to `SYSTEM_GENERATED_TYPES`.
 3. **3-key identifier required**: `ProfileData` always requires `(user_id, device_id, agent_id)`. Defaults are `"default"` for `device_id` and `agent_id`.
 4. **Timezone-aware datetimes**: Use `datetime.now(tz=datetime.timezone.utc)`, never `datetime.utcnow()`.
 5. **`get_context_type_for_analysis()` falls back to KNOWLEDGE**: Unrecognized type strings from LLM output default to `KNOWLEDGE`, not `EVENT`.

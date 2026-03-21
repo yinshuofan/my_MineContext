@@ -768,7 +768,7 @@ curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
 | `events` | `List[Object]` | **是** | 顶层事件列表（至少 1 项，总数含子节点不超过 500） |
 | `events[].title` | `string` | **是** | 事件标题 |
 | `events[].summary` | `string` | **是** | 事件摘要 |
-| `events[].event_time_start` | `string` | 否 | ISO 8601 开始时间（默认当前时间）；`event_time` 为向后兼容别名 |
+| `events[].event_time_start` | `string` | 否 | ISO 8601 开始时间（默认当前时间） |
 | `events[].event_time_end` | `string` | 条件必填 | ISO 8601 结束时间；`hierarchy_level > 0` 时必填 |
 | `events[].hierarchy_level` | `int` | 否 | 层级深度 0/1/2/3（默认 0）；0 = 原始事件，1 = 日摘要，2 = 周摘要，3 = 月摘要 |
 | `events[].children` | `List[Object]` | 条件必填 | 嵌套子事件；`hierarchy_level > 0` 时必填，`hierarchy_level == 0` 时不可填 |
