@@ -176,3 +176,149 @@ Present a timeline overview table:
 | … | … | … |
 
 User confirms the timeline before proceeding.
+
+---
+
+## Stage 5: Hierarchy Organization
+
+**Purpose**: Organise the confirmed L0 events into a three-level summary hierarchy (L1 → L2 → L3) that reflects the character's development arc.
+
+### Construction Process
+
+Build bottom-up, grouping by character development arc:
+
+- **L0 → L1 (Plot Segments)**: group related L0 events into continuous plot segments. Typical L1 contains 3–8 L0 events.
+- **L1 → L2 (Plot Units)**: group L1 segments into complete narrative arcs (conflict → resolution). Typical L2 contains 2–5 L1 segments.
+- **L2 → L3 (Character Stages)**: group plot units into major phases of character development. Typical L3 contains 2–5 L2 units. A work typically produces 2–5 L3 nodes.
+
+### Construction Rules
+
+- **Bottom-up only** — never create a summary level without its constituent lower-level events already defined.
+- Each summary node's `title` captures the theme of that group.
+- Each summary node's `summary` synthesises what happens across its children (2–4 sentences).
+- `event_time_start` = minimum `event_time_start` of all direct children.
+- `event_time_end` = for each direct child, take its `event_time_end` if present, otherwise its `event_time_start`; the parent's `event_time_end` is the maximum of these values.
+- Every L0 must belong to exactly one L1; every L1 to exactly one L2; every L2 to exactly one L3.
+
+### Checkpoint
+
+Present a tree outline showing titles only at each level, for example:
+
+```
+L3: Innocent Youth
+  L2: Discovery and Arrival
+    L1: Hagrid Delivers the Truth
+      L0: Hagrid arrives at the hut on the rock
+      L0: Harry learns his parents were killed by Voldemort
+    L1: Diagon Alley and First Supplies
+      L0: ...
+  L2: ...
+```
+
+User confirms the grouping and titles before proceeding.
+
+---
+
+## Stage 6: Field Completion & Validation
+
+**Purpose**: Complete all remaining fields on every node (L0 through L3) and validate the full tree for consistency and correctness.
+
+### Fields to Complete
+
+For all nodes:
+
+- **`keywords`**: 3–5 keywords drawn from the summary, capturing themes, actions, and concepts.
+- **`entities`**: character names, place names, organizations, and artifacts referenced in the event.
+- **`importance`**: 1–10 scale:
+  - 1–3: Routine, low-impact
+  - 4–6: Notable, contributes to story
+  - 7–9: Major turning points, critical decisions
+  - 10: Life-defining moments
+
+### Information Sources
+
+Use narrative text and internet research only. Do NOT invent information not traceable to these sources.
+
+### Validation Checks
+
+Before presenting the checkpoint, verify all of the following:
+
+- Every summary is consistent with the Stage 2 character reference card (no character drift).
+- Timeline is monotonically increasing with no contradictions.
+- Hierarchy coverage is complete: every L0 belongs to an L1, every L1 to an L2, every L2 to an L3.
+- `event_time_start` / `event_time_end` constraints are satisfied at every parent-child boundary: `parent.event_time_start` ≤ `min(children[*].event_time_start)` and `parent.event_time_end` ≥ `max(children[*].effective_end_time)`.
+
+### Checkpoint
+
+Present a sample of completed nodes — a few from each level — for spot-check. User confirms quality before proceeding.
+
+---
+
+## Stage 7: JSON Generation
+
+**Purpose**: Assemble the validated hierarchy into a `BaseEventsRequest`-format JSON file and write it to the output path.
+
+### Structure
+
+Assemble as a nested JSON with L3 nodes at the top level, each containing its full child tree. The nesting pattern is:
+
+```json
+{
+  "events": [
+    {
+      "title": "Character Stage Title",
+      "hierarchy_level": 3,
+      "event_time_start": "...", "event_time_end": "...",
+      "children": [
+        {
+          "hierarchy_level": 2,
+          "children": [
+            {
+              "hierarchy_level": 1,
+              "children": [
+                { "hierarchy_level": 0 }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+For the full field-level schema and all validation rules, see `references/base-event-schema.md`.
+
+### Key Format Rules
+
+- L3 nodes appear at the top level of the `events` array.
+- `children` and `event_time_end` are required for all L1, L2, and L3 nodes.
+- L0 nodes have no `children` field.
+- The `refs` field must be omitted — the server constructs parent-child reference links automatically.
+- All times must be ISO 8601 with timezone offset (e.g., `+08:00`).
+
+### 500-Event Limit
+
+If the total node count across all levels exceeds 500, split into multiple output files. Each file must contain complete sub-trees: own L3 nodes with their full L2 → L1 → L0 descendants. Do not split a tree in the middle of a hierarchy.
+
+### Output
+
+Write to the output file path specified by the user (or the default `{character_name}_base_events.json`). Report the output file path and the event count per level (L0, L1, L2, L3).
+
+### Checkpoint
+
+Present the output file path and event counts. User confirms the output is acceptable.
+
+---
+
+## Common Mistakes
+
+| Mistake | Correction |
+|---------|------------|
+| Including events the character didn't directly participate in | Only extract events where the character is present, acts, or speaks |
+| Fabricating details not in the text or verifiable sources | All content must be traceable to source text or internet research |
+| Arranging flashback events in narrative order instead of chronological | Always use story-chronological order |
+| Skipping the character research stage | The reference card prevents drift — never skip it |
+| Creating hierarchy levels without constituent events | Always build bottom-up: L0 first, then aggregate upward |
+| Splitting hierarchy trees across multiple JSON files | Each file must contain complete sub-trees (own L3 + full children) |
+| Using `event_time` instead of `event_time_start` | The field is `event_time_start` (ISO 8601 with timezone) |
