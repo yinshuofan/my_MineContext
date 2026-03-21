@@ -135,6 +135,17 @@
     .detail-card .card-header { cursor: pointer; }
     .profile-display { white-space: pre-wrap; background: #f8f9fa; border-radius: 6px; padding: 12px; min-height: 60px; }
     .event-item { border-left: 3px solid #198754; padding-left: 12px; margin-bottom: 8px; }
+    .event-item-1 { border-left-color: #0d6efd; }
+    .event-item-2 { border-left-color: #6f42c1; }
+    .event-item-3 { border-left-color: #dc3545; }
+    .tree-children { padding-left: 20px; border-left: 2px solid #dee2e6; margin-left: 8px; margin-top: 4px; }
+    .tree-toggle { cursor: pointer; user-select: none; }
+    .tree-toggle:hover { opacity: 0.7; }
+    .level-badge { font-size: 0.7rem; font-weight: 600; }
+    .level-badge-0 { background-color: #198754; }
+    .level-badge-1 { background-color: #0d6efd; }
+    .level-badge-2 { background-color: #6f42c1; }
+    .level-badge-3 { background-color: #dc3545; }
 </style>
 <script>
 let selectedAgentId = null;
@@ -366,30 +377,8 @@ function renderEventsCard(events) {
     if (events.length === 0) {
         content = '<p class="text-muted">暂无 Base Events</p>';
     } else {
-        content = events.map(evt => {
-            const level = evt.hierarchy_level || 0;
-            const levelBadge = level > 0 ? `<span class="badge bg-warning text-dark me-1">L${level}</span>` : '';
-            const refCount = evt.refs ? Object.values(evt.refs).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0) : 0;
-            const refBadge = refCount > 0 ? `<span class="badge bg-secondary me-1" title="${escAttr(JSON.stringify(evt.refs))}">refs: ${refCount}</span>` : '';
-            const borderColor = level === 0 ? '#198754' : level === 1 ? '#0d6efd' : level === 2 ? '#6f42c1' : '#dc3545';
-            return `
-            <div class="event-item" style="border-left-color: ${borderColor};">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <div class="fw-semibold">${levelBadge}${esc(evt.title || '未命名')}</div>
-                        ${evt.summary ? `<small class="text-muted">${esc(evt.summary)}</small>` : ''}
-                        <div class="mt-1">
-                            ${refBadge}
-                            ${evt.keywords && evt.keywords.length ? evt.keywords.map(k => `<span class="badge bg-info bg-opacity-75 me-1">${esc(k)}</span>`).join('') : ''}
-                        </div>
-                    </div>
-                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteEvent('${escAttr(evt.id)}')" title="删除">
-                        <i data-feather="trash-2" style="width:14px;height:14px;"></i>
-                    </button>
-                </div>
-                ${evt.event_time_start ? `<small class="text-muted">${new Date(evt.event_time_start).toLocaleString('zh-CN')}</small>` : ''}
-            </div>`;
-        }).join('');
+        const tree = buildEventTree(events);
+        content = tree.map(node => renderEventNode(node)).join('');
     }
     return `
     <div class="card detail-card">
@@ -451,6 +440,91 @@ async function deleteEvent(eventId) {
     } catch (e) {
         alert('删除失败: ' + e.message);
     }
+}
+
+// ========== Event Tree ==========
+
+function buildEventTree(events) {
+    // Build a map of id -> event (with a children array)
+    const map = {};
+    for (const evt of events) {
+        map[evt.id] = { ...evt, _children: [] };
+    }
+    // Use downward refs to build parent-child relationships
+    // Downward refs: parent.refs[child_type] = [child_ids]
+    const childIds = new Set();
+    for (const evt of events) {
+        if (evt.refs) {
+            for (const [, ids] of Object.entries(evt.refs)) {
+                if (!Array.isArray(ids)) continue;
+                for (const cid of ids) {
+                    if (map[cid]) {
+                        map[evt.id]._children.push(map[cid]);
+                        childIds.add(cid);
+                    }
+                }
+            }
+        }
+    }
+    // Sort children by event_time_start
+    for (const evt of Object.values(map)) {
+        evt._children.sort((a, b) => (a.event_time_start || '').localeCompare(b.event_time_start || ''));
+    }
+    // Roots are events that are not children of any other event
+    const roots = events.filter(e => !childIds.has(e.id)).map(e => map[e.id]);
+    // Sort roots: higher level first, then by event_time_start desc
+    roots.sort((a, b) => (b.hierarchy_level || 0) - (a.hierarchy_level || 0) || (b.event_time_start || '').localeCompare(a.event_time_start || ''));
+    return roots;
+}
+
+function renderEventNode(node) {
+    const level = node.hierarchy_level || 0;
+    const levelClass = level > 0 ? ` event-item-${level}` : '';
+    const hasChildren = node._children && node._children.length > 0;
+    const nodeId = 'evt-' + node.id.replace(/[^a-zA-Z0-9]/g, '');
+
+    const toggleHtml = hasChildren ? `
+        <span class="tree-toggle me-1" onclick="event.stopPropagation(); toggleEvtChildren('${nodeId}', this)">
+            <i data-feather="chevron-down" style="width:14px;height:14px;"></i>
+        </span>` : '';
+
+    const timeDisplay = node.event_time_start
+        ? (node.event_time_end && node.event_time_end !== node.event_time_start
+            ? `${new Date(node.event_time_start).toLocaleString('zh-CN')} ~ ${new Date(node.event_time_end).toLocaleString('zh-CN')}`
+            : new Date(node.event_time_start).toLocaleString('zh-CN'))
+        : '';
+
+    const childrenHtml = hasChildren
+        ? `<div class="tree-children" id="${nodeId}">${node._children.map(c => renderEventNode(c)).join('')}</div>`
+        : '';
+
+    return `
+        <div class="event-item${levelClass}">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="d-flex align-items-center">
+                        ${toggleHtml}
+                        <span class="badge level-badge level-badge-${level} me-1">L${level}</span>
+                        <span class="fw-semibold">${esc(node.title || '未命名')}</span>
+                    </div>
+                    ${node.summary ? `<small class="text-muted">${esc(node.summary)}</small>` : ''}
+                    ${node.keywords && node.keywords.length ? `<div class="mt-1">${node.keywords.map(k => `<span class="badge bg-info bg-opacity-75 me-1">${esc(k)}</span>`).join('')}</div>` : ''}
+                </div>
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteEvent('${escAttr(node.id)}')" title="删除">
+                    <i data-feather="trash-2" style="width:14px;height:14px;"></i>
+                </button>
+            </div>
+            ${timeDisplay ? `<small class="text-muted">${timeDisplay}</small>` : ''}
+        </div>
+        ${childrenHtml}`;
+}
+
+function toggleEvtChildren(id, el) {
+    const container = document.getElementById(id);
+    if (!container) return;
+    container.classList.toggle('d-none');
+    const icon = el.querySelector('svg');
+    if (icon) icon.style.transform = container.classList.contains('d-none') ? 'rotate(-90deg)' : '';
 }
 
 // ========== Batch Import ==========
