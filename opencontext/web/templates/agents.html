@@ -369,8 +369,8 @@ function renderEventsCard(events) {
         content = events.map(evt => {
             const level = evt.hierarchy_level || 0;
             const levelBadge = level > 0 ? `<span class="badge bg-warning text-dark me-1">L${level}</span>` : '';
-            const refCount = evt.refs ? Object.values(evt.refs).reduce((s, arr) => s + arr.length, 0) : 0;
-            const refBadge = refCount > 0 ? `<span class="badge bg-secondary me-1" title="${esc(JSON.stringify(evt.refs))}">refs: ${refCount}</span>` : '';
+            const refCount = evt.refs ? Object.values(evt.refs).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0) : 0;
+            const refBadge = refCount > 0 ? `<span class="badge bg-secondary me-1" title="${escAttr(JSON.stringify(evt.refs))}">refs: ${refCount}</span>` : '';
             const borderColor = level === 0 ? '#198754' : level === 1 ? '#0d6efd' : level === 2 ? '#6f42c1' : '#dc3545';
             return `
             <div class="event-item" style="border-left-color: ${borderColor};">
@@ -522,12 +522,14 @@ async function submitBatchImport() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
-        const data = await resp.json();
         if (!resp.ok) {
-            throw new Error(data.detail || data.message || 'Import failed');
+            let detail = `HTTP ${resp.status}`;
+            try { const errData = await resp.json(); detail = errData.detail || errData.message || detail; } catch {}
+            throw new Error(detail);
         }
+        const data = await resp.json();
         bootstrap.Modal.getInstance(document.getElementById('batchImportModal')).hide();
-        alert(`导入成功: ${data.data.count} 条事件`);
+        alert(`导入成功: ${data.data?.count ?? '?'} 条事件`);
         loadAgentDetail(selectedAgentId);
     } catch (e) {
         errorEl.textContent = '导入失败: ' + e.message;
