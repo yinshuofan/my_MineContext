@@ -100,6 +100,30 @@
         </div>
     </div>
 </div>
+
+<!-- Batch Import Modal -->
+<div class="modal fade" id="batchImportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">批量导入 Base Events (JSON)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">
+                    粘贴符合 API 格式的 JSON。支持嵌套层级结构（hierarchy_level + children）。
+                    <a href="#" onclick="fillBatchExample(); return false;">填充示例</a>
+                </p>
+                <textarea class="form-control font-monospace" id="batchJsonInput" rows="16" placeholder='{"events": [...]}'></textarea>
+                <div id="batchError" class="text-danger small mt-2 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" id="batchSubmitBtn" onclick="submitBatchImport()">导入</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -342,27 +366,39 @@ function renderEventsCard(events) {
     if (events.length === 0) {
         content = '<p class="text-muted">暂无 Base Events</p>';
     } else {
-        content = events.map(evt => `
-            <div class="event-item">
+        content = events.map(evt => {
+            const level = evt.hierarchy_level || 0;
+            const levelBadge = level > 0 ? `<span class="badge bg-warning text-dark me-1">L${level}</span>` : '';
+            const refCount = evt.refs ? Object.values(evt.refs).reduce((s, arr) => s + arr.length, 0) : 0;
+            const refBadge = refCount > 0 ? `<span class="badge bg-secondary me-1" title="${esc(JSON.stringify(evt.refs))}">refs: ${refCount}</span>` : '';
+            const borderColor = level === 0 ? '#198754' : level === 1 ? '#0d6efd' : level === 2 ? '#6f42c1' : '#dc3545';
+            return `
+            <div class="event-item" style="border-left-color: ${borderColor};">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <div class="fw-semibold">${esc(evt.title || '未命名')}</div>
+                        <div class="fw-semibold">${levelBadge}${esc(evt.title || '未命名')}</div>
                         ${evt.summary ? `<small class="text-muted">${esc(evt.summary)}</small>` : ''}
-                        ${evt.keywords && evt.keywords.length ? `<div class="mt-1">${evt.keywords.map(k => `<span class="badge bg-info bg-opacity-75 me-1">${esc(k)}</span>`).join('')}</div>` : ''}
+                        <div class="mt-1">
+                            ${refBadge}
+                            ${evt.keywords && evt.keywords.length ? evt.keywords.map(k => `<span class="badge bg-info bg-opacity-75 me-1">${esc(k)}</span>`).join('') : ''}
+                        </div>
                     </div>
                     <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteEvent('${escAttr(evt.id)}')" title="删除">
                         <i data-feather="trash-2" style="width:14px;height:14px;"></i>
                     </button>
                 </div>
                 ${evt.event_time_start ? `<small class="text-muted">${new Date(evt.event_time_start).toLocaleString('zh-CN')}</small>` : ''}
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
     }
     return `
     <div class="card detail-card">
         <div class="card-header d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#eventsCardBody">
             <h6 class="mb-0"><i data-feather="zap" style="width:16px;height:16px;" class="me-2"></i>Base Events <span class="badge bg-secondary">${events.length}</span></h6>
-            <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); showAddEventModal()">+ 添加</button>
+            <div>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="event.stopPropagation(); showBatchImportModal()">批量导入</button>
+                <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); showAddEventModal()">+ 添加</button>
+            </div>
         </div>
         <div class="collapse show" id="eventsCardBody">
             <div class="card-body" id="eventsContent">${content}</div>
@@ -386,7 +422,7 @@ async function addBaseEvent() {
 
     const eventObj = {title, summary};
     const eventTime = document.getElementById('newEventTime').value;
-    if (eventTime) eventObj.event_time = new Date(eventTime).toISOString();
+    if (eventTime) eventObj.event_time_start = new Date(eventTime).toISOString();
     const kw = document.getElementById('newEventKeywords').value.trim();
     if (kw) eventObj.keywords = kw.split(',').map(s => s.trim()).filter(Boolean);
     const imp = parseInt(document.getElementById('newEventImportance').value);
@@ -414,6 +450,91 @@ async function deleteEvent(eventId) {
         loadAgentDetail(selectedAgentId);
     } catch (e) {
         alert('删除失败: ' + e.message);
+    }
+}
+
+// ========== Batch Import ==========
+
+function showBatchImportModal() {
+    document.getElementById('batchJsonInput').value = '';
+    document.getElementById('batchError').classList.add('d-none');
+    document.getElementById('batchSubmitBtn').disabled = false;
+    new bootstrap.Modal(document.getElementById('batchImportModal')).show();
+}
+
+function fillBatchExample() {
+    document.getElementById('batchJsonInput').value = JSON.stringify({
+        "events": [
+            {
+                "title": "Standalone event",
+                "summary": "A simple L0 event",
+                "event_time_start": "2026-03-15T10:00:00+08:00",
+                "importance": 5
+            },
+            {
+                "title": "Daily Summary",
+                "summary": "Summary of the day",
+                "event_time_start": "2026-03-15T00:00:00+08:00",
+                "event_time_end": "2026-03-15T23:59:59+08:00",
+                "hierarchy_level": 1,
+                "children": [
+                    {
+                        "title": "Morning standup",
+                        "summary": "Discussed sprint progress",
+                        "event_time_start": "2026-03-15T09:00:00+08:00",
+                        "keywords": ["standup", "sprint"],
+                        "importance": 6
+                    }
+                ]
+            }
+        ]
+    }, null, 2);
+}
+
+async function submitBatchImport() {
+    const errorEl = document.getElementById('batchError');
+    const btn = document.getElementById('batchSubmitBtn');
+    errorEl.classList.add('d-none');
+
+    const raw = document.getElementById('batchJsonInput').value.trim();
+    if (!raw) { errorEl.textContent = 'JSON 不能为空'; errorEl.classList.remove('d-none'); return; }
+
+    let payload;
+    try {
+        payload = JSON.parse(raw);
+    } catch (e) {
+        errorEl.textContent = 'JSON 解析失败: ' + e.message;
+        errorEl.classList.remove('d-none');
+        return;
+    }
+
+    if (!payload.events || !Array.isArray(payload.events) || payload.events.length === 0) {
+        errorEl.textContent = '请求体必须包含非空的 events 数组';
+        errorEl.classList.remove('d-none');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '导入中...';
+    try {
+        const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/events`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            throw new Error(data.detail || data.message || 'Import failed');
+        }
+        bootstrap.Modal.getInstance(document.getElementById('batchImportModal')).hide();
+        alert(`导入成功: ${data.data.count} 条事件`);
+        loadAgentDetail(selectedAgentId);
+    } catch (e) {
+        errorEl.textContent = '导入失败: ' + e.message;
+        errorEl.classList.remove('d-none');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '导入';
     }
 }
 
