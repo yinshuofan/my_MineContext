@@ -75,13 +75,13 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         profile_result, query_text = await asyncio.gather(profile_task, query_task)
 
-        # Fallback to __base__ profile if per-user profile doesn't exist
+        # Fallback to base profile (agent_base_profile) if per-user profile doesn't exist
         if not profile_result:
             profile_result = await storage.get_profile(
                 user_id="__base__",
                 device_id=raw_context.device_id or "default",
                 agent_id=raw_context.agent_id,
-                context_type="agent_profile",
+                context_type="agent_base_profile",
             )
 
         if not profile_result:
