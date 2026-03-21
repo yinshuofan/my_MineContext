@@ -132,7 +132,7 @@
     .agent-item:hover { background-color: #f0f4f8; }
     .agent-item.active { background-color: #e8f4fd; border-left: 3px solid #0d6efd; }
     .detail-card { margin-bottom: 16px; }
-    .detail-card .card-header { cursor: pointer; }
+    .detail-card .card-header h6[data-bs-toggle] { cursor: pointer; }
     .profile-display { white-space: pre-wrap; background: #f8f9fa; border-radius: 6px; padding: 12px; min-height: 60px; }
     .event-item { border-left: 3px solid #198754; padding-left: 12px; margin-bottom: 8px; }
     .event-item-1 { border-left-color: #0d6efd; }
@@ -248,7 +248,7 @@ function renderInfoCard(agent) {
     return `
     <div class="card detail-card">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h6 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#infoCardBody"><i data-feather="info" style="width:16px;height:16px;" class="me-2"></i>基本信息</h6>
+            <h6 class="mb-0" role="button" tabindex="0" data-bs-toggle="collapse" data-bs-target="#infoCardBody"><i data-feather="info" style="width:16px;height:16px;" class="me-2"></i>基本信息</h6>
             <div>
                 <button class="btn btn-sm btn-outline-primary me-1" onclick="startEditInfo()">编辑</button>
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteAgent()">删除</button>
@@ -334,7 +334,7 @@ function renderProfileCard(profile) {
     return `
     <div class="card detail-card">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h6 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#profileCardBody"><i data-feather="user" style="width:16px;height:16px;" class="me-2"></i>Base Profile</h6>
+            <h6 class="mb-0" role="button" tabindex="0" data-bs-toggle="collapse" data-bs-target="#profileCardBody"><i data-feather="user" style="width:16px;height:16px;" class="me-2"></i>Base Profile</h6>
             <button class="btn btn-sm btn-outline-primary" onclick="startEditProfile()">编辑</button>
         </div>
         <div class="collapse show" id="profileCardBody">
@@ -386,7 +386,7 @@ function renderEventsCard(events) {
     return `
     <div class="card detail-card">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h6 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#eventsCardBody"><i data-feather="zap" style="width:16px;height:16px;" class="me-2"></i>Base Events <span class="badge bg-secondary">${events.length}</span></h6>
+            <h6 class="mb-0" role="button" tabindex="0" data-bs-toggle="collapse" data-bs-target="#eventsCardBody"><i data-feather="zap" style="width:16px;height:16px;" class="me-2"></i>Base Events <span class="badge bg-secondary">${events.length}</span></h6>
             <div>
                 <button class="btn btn-sm btn-outline-primary me-1" onclick="showBatchImportModal()">批量导入</button>
                 <button class="btn btn-sm btn-outline-success" onclick="showAddEventModal()">+ 添加</button>
