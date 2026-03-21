@@ -13,7 +13,6 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
-from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import (
     ContextProperties,
     ExtractedData,
@@ -215,6 +214,88 @@ def _parse_event_time(
         )
 
 
+def _flatten_base_event_tree(
+    events: List[BaseEventItem],
+    agent_id: str,
+    parent_id: Optional[str] = None,
+    parent_context_type: Optional[ContextType] = None,
+) -> List[ProcessedContext]:
+    """Flatten a nested event tree into a list of ProcessedContext objects.
+
+    Builds bidirectional refs in-memory:
+    - Downward: parent.refs[child_type] = [child_ids]
+    - Upward: child.refs[parent_type] = [parent_id]
+    """
+    result: List[ProcessedContext] = []
+
+    for event in events:
+        now = tz_now()
+        level = event.hierarchy_level
+        context_type = _BASE_HIERARCHY_LEVEL_TO_TYPE[level]
+
+        # Parse times
+        event_time_start = _parse_event_time(event.event_time_start, "", "event_time_start") or now
+        event_time_end = (
+            _parse_event_time(event.event_time_end, "", "event_time_end")
+            or event_time_start
+        )
+
+        # Build text for embedding
+        text_for_embedding = f"{event.title}\n{event.summary}\n{', '.join(event.keywords)}"
+        vectorize = Vectorize(
+            input=[{"type": "text", "text": text_for_embedding}],
+            content_format=ContentFormat.TEXT,
+        )
+
+        # Build refs (upward ref to parent, if any)
+        refs: Dict[str, List[str]] = {}
+        if parent_id and parent_context_type:
+            refs[parent_context_type.value] = [parent_id]
+
+        ctx = ProcessedContext(
+            properties=ContextProperties(
+                raw_properties=[],
+                create_time=now,
+                update_time=now,
+                event_time_start=event_time_start,
+                event_time_end=event_time_end,
+                is_processed=True,
+                user_id="__base__",
+                agent_id=agent_id,
+                hierarchy_level=level,
+                refs=refs,
+            ),
+            extracted_data=ExtractedData(
+                title=event.title,
+                summary=event.summary,
+                keywords=event.keywords,
+                entities=event.entities,
+                context_type=context_type,
+                importance=event.importance,
+                confidence=10,
+            ),
+            vectorize=vectorize,
+        )
+        result.append(ctx)
+
+        # Recurse into children and build downward refs
+        if event.children:
+            child_contexts = _flatten_base_event_tree(
+                event.children,
+                agent_id,
+                parent_id=ctx.id,
+                parent_context_type=context_type,
+            )
+
+            # Build downward refs: group child IDs by their context_type
+            child_type_value = _BASE_HIERARCHY_LEVEL_TO_TYPE[level - 1].value
+            ctx.properties.refs[child_type_value] = [c.id for c in child_contexts]
+
+            result.extend(child_contexts)
+
+    return result
+
+
 # ============================================================================
 # Agent CRUD Endpoints
 # ============================================================================
@@ -333,54 +414,27 @@ async def push_base_events(
 ):
     """Push structured base events for an agent (no LLM extraction).
 
-    Generates embeddings from ``title + summary + keywords`` and stores directly
-    into the vector DB as ``AGENT_EVENT`` contexts.
+    Supports flat L0 events and nested hierarchy trees (L0-L3).
+    Generates embeddings from ``title + summary + keywords``, builds
+    bidirectional refs, and batch-writes to vector DB.
     """
     storage = get_storage()
     agent = await storage.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    contexts: List[ProcessedContext] = []
-    for event in request.events:
-        now = tz_now()
-        if event.event_time:
-            event_time = datetime.datetime.fromisoformat(event.event_time)
-            if event_time.tzinfo is None:
-                event_time = event_time.replace(tzinfo=get_timezone())
-        else:
-            event_time = now
-
-        text_for_embedding = f"{event.title}\n{event.summary}\n{', '.join(event.keywords)}"
-        vectorize = Vectorize(
-            input=[{"type": "text", "text": text_for_embedding}],
-            content_format=ContentFormat.TEXT,
+    # Validate tree structure, time ranges, hierarchy consistency
+    total_count = _validate_base_event_tree(request.events)
+    if total_count > 500:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total event count {total_count} exceeds maximum of 500",
         )
-        await do_vectorize(vectorize)
 
-        ctx = ProcessedContext(
-            properties=ContextProperties(
-                raw_properties=[],
-                create_time=now,
-                update_time=now,
-                event_time_start=event_time,
-                is_processed=True,
-                user_id="__base__",
-                agent_id=agent_id,
-            ),
-            extracted_data=ExtractedData(
-                title=event.title,
-                summary=event.summary,
-                keywords=event.keywords,
-                entities=event.entities,
-                context_type=ContextType.AGENT_EVENT,
-                importance=event.importance,
-                confidence=10,
-            ),
-            vectorize=vectorize,
-        )
-        contexts.append(ctx)
+    # Flatten tree into ProcessedContext list with bidirectional refs
+    contexts = _flatten_base_event_tree(request.events, agent_id)
 
+    # Batch write (vectorization happens inside batch_upsert via do_vectorize_batch)
     result = await storage.batch_upsert_processed_context(contexts)
     success = result is not None
     return convert_resp(
