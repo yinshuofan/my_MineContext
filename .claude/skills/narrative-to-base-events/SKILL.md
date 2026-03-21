@@ -7,7 +7,9 @@ description: Use when extracting a character's experiences from narrative text (
 
 ## Overview
 
-This skill is a structured multi-stage methodology for extracting a fictional character's experiences from narrative text and encoding them as hierarchical Base Events for MineContext agent memory. The core principle: treat the character as the sole first-person subject, extracting only events they directly participated in, then organize those events across four time-granularity levels (L0–L3).
+This skill is a structured multi-stage methodology for extracting a fictional character's experiences from narrative text and encoding them as hierarchical Base Events for MineContext agent memory. The core principle: treat the character as the sole first-person subject, extracting only events they directly participated in, then organize those events across four hierarchy levels (L0–L3).
+
+For long texts, the skill uses a **subagent architecture** — the main agent coordinates the process while subagents handle segment-level work in parallel, overcoming context window limitations.
 
 ## When to Use
 
@@ -50,6 +52,53 @@ The user must provide:
 | L2 | Plot unit | A complete narrative arc (conflict → resolution) | "Unraveling the mystery of the Stone" |
 | L3 | Character stage | A major phase of character development | "Innocent Youth", "Awakening" |
 
+## Coordination Model
+
+The main agent acts as **controller** — it coordinates the pipeline, dispatches subagents, synthesizes their outputs, and handles all user checkpoints. Subagents are used for segment-level work that would exceed a single context window.
+
+### Role Assignment
+
+| Role | Responsibility | When Used |
+|------|---------------|-----------|
+| **Main Agent** | Pipeline coordination, segmentation, character research, synthesis, hierarchy, validation, JSON generation, all user checkpoints | Always |
+| **Comprehension Subagent** | Read one segment, produce segment summary | Long text: one per segment (Stage 2) |
+| **Extraction Subagent** | Read one segment, extract L0 events for the target character | Long text: one per segment (Stage 4) |
+| **Revision Subagent** | Review the full merged L0 list against the narrative summary for completeness and consistency | After Stage 4 merge |
+
+### Short Text Path
+
+When the text fits in a single context window, the main agent performs all stages directly. No subagents are dispatched.
+
+### Long Text Path
+
+```
+Main Agent                          Subagents
+──────────                          ─────────
+Stage 1: Segment text
+Stage 2: Dispatch comprehension ──→ [Subagent per segment: read & summarize]
+         Synthesize summaries   ←── [Return segment summaries]
+         → User checkpoint
+Stage 3: Character research
+         → User checkpoint
+Stage 4: Dispatch extraction   ──→ [Subagent per segment: extract L0 events]
+         Merge & deduplicate    ←── [Return L0 event lists]
+         Dispatch revision     ──→ [Revision subagent: review merged list]
+         Apply corrections      ←── [Return corrections]
+         → User checkpoint
+Stage 5–8: Main agent handles
+         (timeline, hierarchy, fields, JSON)
+```
+
+### Subagent Context
+
+Each subagent receives a precisely crafted prompt containing only what it needs:
+
+- **Comprehension subagent**: the segment text, segment number, total segments
+- **Extraction subagent**: the segment text, character reference card, narrative summary, extraction rules (from Stage 4), segment number
+- **Revision subagent**: the full merged L0 list, narrative summary, character reference card
+
+Subagents do NOT receive the full pipeline context or conversation history.
+
 ---
 
 ## Stage 1: Text Ingestion & Segmentation
@@ -81,13 +130,22 @@ Present the segmentation strategy (or confirm "no segmentation needed" for short
 
 **Purpose**: Read and understand the full narrative before any extraction begins. This builds the foundational understanding of plot, themes, characters, and narrative structure that informs all subsequent stages — without it, extraction is blind pattern-matching.
 
-### Process
+### Short Text
 
-**Short text**: Read the entire text end-to-end.
+Read the entire text end-to-end. Produce the narrative summary directly.
 
-**Long text**: Read each segment from Stage 1 sequentially, building a cumulative understanding. After each segment, note key plot developments, characters introduced, and time/setting shifts.
+### Long Text — Subagent Dispatch
 
-After reading, produce a **narrative summary** containing:
+Dispatch one **comprehension subagent** per segment. Each subagent receives:
+- The segment text
+- Segment number and total segment count
+- Instruction: "Read this segment and produce a segment summary covering: key plot developments, characters involved, setting/time clues, and where the segment ends narratively."
+
+After all subagents return, the main agent **synthesizes** the segment summaries into a unified narrative summary.
+
+### Narrative Summary
+
+Whether produced directly (short text) or synthesized from subagent outputs (long text), the narrative summary must contain:
 
 - **Plot overview**: The story's main conflict, major plot beats, and resolution (5-10 sentences)
 - **Key characters**: All significant characters and their roles (protagonist, antagonist, mentor, ally, etc.)
@@ -97,7 +155,7 @@ After reading, produce a **narrative summary** containing:
 
 This summary serves two purposes:
 1. It grounds Stage 3 (Character Research) — internet research becomes verification and enrichment rather than the primary source of understanding
-2. It prevents hallucination in later stages — extraction and summarization stay anchored to what the text actually says
+2. It is passed to extraction subagents in Stage 4 as global context, so each subagent understands where its segment fits in the overall story
 
 ### Checkpoint
 
@@ -156,13 +214,42 @@ L0 granularity is a **concrete, meaningful action, decision, or encounter**. It 
 - **Fields to leave empty**: time, keywords, entities, importance — these are filled in later stages.
 - **Output order**: narrative order (the order events appear in the text). Chronological reordering happens in Stage 5, not here.
 
-### Long Text Processing
+### Short Text
 
-For segmented texts, process segments sequentially:
+Main agent extracts L0 events directly from the full text.
 
-- After each segment, append new L0 events to the global list
-- **Deduplication rule**: if the same character action in the same scene appears across segment boundaries (due to overlap), merge into one event. Recurring themes (e.g., multiple separate battles) are distinct events — keep them separate.
-- After all segments are processed, present the merged global L0 list in narrative order.
+### Long Text — Subagent Dispatch
+
+Dispatch one **extraction subagent** per segment. Each subagent receives:
+- The segment text
+- The **character reference card** (from Stage 3)
+- The **narrative summary** (from Stage 2) — so the subagent understands the full story context, not just its segment
+- The extraction rules above (granularity rule, direct participation, fields to fill)
+- Segment number and total segment count
+
+Each subagent returns a list of L0 events (title + summary) found in its segment.
+
+### Merge & Deduplication
+
+After all extraction subagents return, the main agent merges their outputs:
+
+- Concatenate all segment event lists in segment order
+- **Deduplicate**: if the same character action in the same scene appears across segment boundaries (due to overlap), merge into one event. Recurring themes (e.g., multiple separate battles) are distinct events — keep them separate.
+
+### Revision Subagent
+
+After merging, dispatch a **revision subagent** that receives:
+- The full merged L0 event list
+- The narrative summary
+- The character reference card
+
+The revision subagent checks for:
+- **Completeness**: any significant character events from the narrative summary that are missing from the L0 list?
+- **Consistency**: any events that contradict the narrative summary or character reference card?
+- **Granularity**: any events that should be split (too coarse) or merged (too fine)?
+- **Scope**: any events included where the character didn't directly participate?
+
+The revision subagent returns a list of corrections (additions, removals, edits). The main agent applies corrections to produce the final L0 list.
 
 ### Checkpoint
 
@@ -351,3 +438,5 @@ Present the output file path and event counts. User confirms the output is accep
 | Creating hierarchy levels without constituent events | Always build bottom-up: L0 first, then aggregate upward |
 | Splitting hierarchy trees across multiple JSON files | Each file must contain complete sub-trees (own L3 + full children) |
 | Using `event_time` instead of `event_time_start` | The field is `event_time_start` (ISO 8601 with timezone) |
+| Giving extraction subagents only segment text without narrative summary | Subagents need the full narrative summary to understand context beyond their segment |
+| Skipping the revision subagent after merging | Revision catches gaps and inconsistencies that segment-level extraction misses |
