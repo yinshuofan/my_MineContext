@@ -247,11 +247,11 @@ function renderAgentDetail(agent, profile, events) {
 function renderInfoCard(agent) {
     return `
     <div class="card detail-card">
-        <div class="card-header d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#infoCardBody">
-            <h6 class="mb-0"><i data-feather="info" style="width:16px;height:16px;" class="me-2"></i>基本信息</h6>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#infoCardBody"><i data-feather="info" style="width:16px;height:16px;" class="me-2"></i>基本信息</h6>
             <div>
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="event.stopPropagation(); startEditInfo()">编辑</button>
-                <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteAgent()">删除</button>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="startEditInfo()">编辑</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteAgent()">删除</button>
             </div>
         </div>
         <div class="collapse show" id="infoCardBody">
@@ -333,9 +333,9 @@ function renderProfileCard(profile) {
         : '<p class="text-muted" id="profileText">暂无 Base Profile，点击编辑添加</p>';
     return `
     <div class="card detail-card">
-        <div class="card-header d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#profileCardBody">
-            <h6 class="mb-0"><i data-feather="user" style="width:16px;height:16px;" class="me-2"></i>Base Profile</h6>
-            <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); startEditProfile()">编辑</button>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#profileCardBody"><i data-feather="user" style="width:16px;height:16px;" class="me-2"></i>Base Profile</h6>
+            <button class="btn btn-sm btn-outline-primary" onclick="startEditProfile()">编辑</button>
         </div>
         <div class="collapse show" id="profileCardBody">
             <div class="card-body" id="profileContent">${content}</div>
@@ -385,11 +385,11 @@ function renderEventsCard(events) {
     }
     return `
     <div class="card detail-card">
-        <div class="card-header d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#eventsCardBody">
-            <h6 class="mb-0"><i data-feather="zap" style="width:16px;height:16px;" class="me-2"></i>Base Events <span class="badge bg-secondary">${events.length}</span></h6>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#eventsCardBody"><i data-feather="zap" style="width:16px;height:16px;" class="me-2"></i>Base Events <span class="badge bg-secondary">${events.length}</span></h6>
             <div>
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="event.stopPropagation(); showBatchImportModal()">批量导入</button>
-                <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); showAddEventModal()">+ 添加</button>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="showBatchImportModal()">批量导入</button>
+                <button class="btn btn-sm btn-outline-success" onclick="showAddEventModal()">+ 添加</button>
             </div>
         </div>
         <div class="collapse show" id="eventsCardBody">
