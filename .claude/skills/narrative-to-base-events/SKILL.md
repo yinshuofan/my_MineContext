@@ -99,7 +99,7 @@ Each subagent receives a precisely crafted prompt containing only what it needs:
 - **Comprehension subagent**: the segment text, segment number, total segments, target character name
 - **Extraction subagent**: the segment text, character reference card (including naming conventions), summary style guide, narrative summary, extraction rules (from Stage 4), segment number
 - **Revision subagent**: the full merged L0 list, narrative summary, character reference card
-- **Normalization subagent**: the full L0 list (post-revision), character reference card (including naming conventions), summary style guide
+- **Normalization subagent**: the full L0 list (post-revision), character reference card (including naming conventions), summary style guide, narrative summary
 
 Subagents do NOT receive the full pipeline context or conversation history.
 
@@ -200,10 +200,11 @@ Example naming conventions table:
 | He-Who-Must-Not-Be-Named, the Dark Lord, Tom Riddle | Voldemort |
 ```
 
-Additionally, produce a **summary style guide** with 2 example L0 event summaries that define the expected output style. All extraction subagents must match this style. The style guide should specify:
-- **Person**: third person (e.g., "Harry discovers..." not "I discover...")
+Additionally, produce a **summary style guide** with 2 example L0 events (title + summary) that define the expected output style. All extraction subagents must match this style. The style guide should specify:
+- **Titles**: short verb phrase, past tense, starting with the subject's canonical name (e.g., "Harry Potter accepted Dumbledore's mission" not "Accepting the mission" or "The mission was accepted")
+- **Person**: third person (e.g., "Harry Potter discovers..." not "I discover...")
 - **Tense**: past tense (e.g., "accepted the mission" not "accepts the mission")
-- **Tone**: factual and concise, no literary embellishment
+- **Tone**: factual and concise, neutral vocabulary — avoid overly dramatic or casual word choices, no literary embellishment
 - **Length**: 1-2 sentences per L0 summary, 2-4 sentences per L1+ summary
 
 This card and style guide are referenced in every subsequent stage. Do not skip or abbreviate them.
@@ -212,7 +213,7 @@ This card and style guide are referenced in every subsequent stage. Do not skip 
 
 If WebSearch yields insufficient results (fan fiction, unpublished works, niche titles):
 
-1. Build the card from source text only
+1. Build the card from source text only. For the naming conventions table, scan the text for epithets, nicknames, titles, and surname-only references used for major characters.
 2. Explicitly inform the user: "Limited external information found. Reference card is built from source text alone — it may be incomplete."
 3. User must explicitly confirm before proceeding
 
@@ -282,13 +283,15 @@ After revision, dispatch a **normalization subagent** that receives:
 - The full L0 list (post-revision)
 - The character reference card (including naming conventions)
 - The summary style guide
+- The narrative summary (for context when rewriting ambiguous references)
 
-The normalization subagent rewrites all summaries to ensure:
+The normalization subagent rewrites all titles and summaries to ensure:
 - **Naming consistency**: all character, place, and organization names use canonical forms from the naming conventions table
+- **Title consistency**: all titles follow the style guide format (verb phrase, past tense, subject-first)
 - **Style consistency**: all summaries match the style guide (person, tense, tone, length)
-- **Voice consistency**: uniform level of detail and sentence structure across all events — summaries produced by different extraction subagents should read as if written by a single author
+- **Voice consistency**: uniform level of detail, vocabulary register, and sentence structure across all events — output from different extraction subagents should read as if written by a single author
 
-The normalization subagent returns the full L0 list with normalized summaries. The main agent replaces the summaries.
+The normalization subagent returns the full L0 list with normalized titles and summaries.
 
 ### Checkpoint
 
