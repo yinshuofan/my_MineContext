@@ -260,12 +260,27 @@ Dispatch one **extraction subagent** per segment in parallel (subagents are inde
 
 Each subagent returns a list of L0 events (title + summary) found in its segment.
 
+### Dialogue Collection (for Roleplay Prompt)
+
+While extracting L0 events (during the same pass over the text), simultaneously collect **15–25 representative dialogue lines** spoken by the target character directly from the source text. These will be used in Stage 8 to generate the roleplay prompt.
+
+Select lines that showcase:
+- **Characteristic speech patterns**: verbal tics, self-reference habits, catchphrases
+- **Emotional range**: anger, vulnerability, humor, determination, affection, defiance
+- **Relationship dynamics**: how the character addresses different people (parents, friends, enemies, strangers)
+- **Memorable quotes**: lines that define the character's worldview or arc
+
+For each line, note the **situation context** in 1–3 words (e.g., "being challenged", "showing affection", "facing death").
+
+**Long text path**: each extraction subagent collects dialogue from its segment alongside events. Add to the subagent instruction: "Also collect 5-10 characteristic dialogue lines from {target_character_name} with situation context." The main agent merges, deduplicates, and curates to the final 15-25 after all subagents return.
+
 ### Merge & Deduplication
 
 After all extraction subagents return, the main agent merges their outputs:
 
 - Concatenate all segment event lists in segment order
 - **Deduplicate at segment boundaries**: compare the last 2-3 events of segment N against the first 2-3 events of segment N+1. If the same character action in the same scene appears in both (due to boundary overlap), merge into one event. Recurring themes (e.g., multiple separate battles) are distinct events — keep them separate.
+- Merge dialogue collections from all subagents, deduplicate, and curate to the final 15-25 lines
 
 ### Revision Subagent
 
@@ -298,20 +313,6 @@ The normalization subagent rewrites all titles and summaries to ensure:
 - **Voice consistency**: uniform level of detail, vocabulary register, and sentence structure across all events — output from different extraction subagents should read as if written by a single author
 
 The normalization subagent returns the full L0 list with normalized titles and summaries.
-
-### Dialogue Collection (for Roleplay Prompt)
-
-While extracting L0 events, simultaneously collect **15–25 representative dialogue lines** spoken by the target character directly from the source text. These will be used in Stage 8 to generate the roleplay prompt.
-
-Select lines that showcase:
-- **Characteristic speech patterns**: verbal tics, self-reference habits, catchphrases
-- **Emotional range**: anger, vulnerability, humor, determination, affection, defiance
-- **Relationship dynamics**: how the character addresses different people (parents, friends, enemies, strangers)
-- **Memorable quotes**: lines that define the character's worldview or arc
-
-For each line, note the **situation context** in 1–3 words (e.g., "being challenged", "showing affection", "facing death").
-
-**Long text path**: each extraction subagent collects dialogue from its segment alongside events. Add to the subagent instruction: "Also collect 5-10 characteristic dialogue lines from {target_character_name} with situation context." The main agent merges, deduplicates, and curates to the final 15-25 after all subagents return.
 
 ### Checkpoint
 

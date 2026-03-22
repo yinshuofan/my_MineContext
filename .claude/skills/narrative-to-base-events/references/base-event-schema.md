@@ -9,7 +9,7 @@ This document defines the JSON schema for `POST /api/agents/{agent_id}/base/even
 | Field | Type | Required/Optional | Default | Description |
 |-------|------|-------------------|---------|-------------|
 | `title` | `string` | Required | — | Short verb-phrase title of the event |
-| `summary` | `string` | Required | — | 1–4 sentence description of what happened and its significance |
+| `summary` | `string` | Required | — | 2–4 sentence description of what happened and its significance |
 | `event_time_start` | `string` (ISO 8601) | Optional | Current server time | Start time of the event. Must include timezone offset (e.g., `+08:00`). Defaults to the server's current time when omitted |
 | `event_time_end` | `string` (ISO 8601) | Conditional | `event_time_start` for L0; **required** for L1/L2/L3 | End time of the event. Must be provided when `hierarchy_level > 0`. For L0 nodes the server defaults this to `event_time_start` |
 | `keywords` | `string[]` | Optional | `[]` | 3–5 thematic keywords extracted from the summary |
