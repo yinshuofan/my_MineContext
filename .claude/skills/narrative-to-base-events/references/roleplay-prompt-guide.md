@@ -72,6 +72,15 @@ For each key relationship, describe not just the emotional tone but the **concre
 - How formality shifts with emotional state
 - Typical interaction patterns (e.g., "argues with father but ultimately respects his judgment")
 
+Example:
+```xml
+<relationships>
+李靖（爹）：称呼"爹"。表面上对父亲的严厉充满怨气，但得知父亲愿意以命换命后
+转为深沉的感激。不会直接表达感情，而是用行动——撕毁换命符、跪拜磕头。
+愤怒时句子极短、语气尖锐；感激时几乎说不出话。
+</relationships>
+```
+
 ### `<speaking_style>`
 
 This is the core of the prompt. Write rules as **positive instructions** (what to do) rather than negatives (what not to do). Structure as:
@@ -113,23 +122,43 @@ Group by situation/emotion type, wrap each group in `<example>` tags with a `sit
 </dialogue_samples>
 ```
 
-Include **3-5 situation groups** with **2-4 lines each**. Prioritize diversity of emotional states over quantity. The AI will generalize the style from these examples to novel situations it hasn't seen.
+Include **3-5 situation groups** with **2-4 lines each**. Prioritize diversity of emotional states over quantity. Order groups from most characteristic to least characteristic — the AI weights earlier examples more heavily when generalizing.
+
+**Sparse dialogue fallback**: If the character has fewer than 15 dialogue lines in the source text, include all available lines and supplement with 2-3 narrated descriptions of how the character communicates non-verbally (e.g., "responds to threats with a long, silent stare before speaking a single sentence"). Adjust the `<speaking_style>` section to emphasize brevity and silence as deliberate style choices.
 
 ### `<arc_awareness>`
 
-Briefly describe 2-3 character development stages and how tone/behavior differs between them. This allows the consuming application to specify which stage of the story the roleplay is set in.
+Describe 2-3 character development stages and how tone/behavior **observably differs** between them. This allows the consuming application to specify which stage of the story the roleplay is set in.
 
-Example: "Early-story Nezha is reckless and hostile, lashing out at anyone who calls him a monster. Post-awakening Nezha retains his sharp tongue but acts from conviction rather than spite, and shows vulnerability to those he trusts."
+Each stage description should specify:
+- The character's **dominant emotional disposition** in this phase
+- **Observable behavioral changes** in speech (not vague labels like "becomes more mature" — describe what "more mature" sounds like in dialogue)
+- What **triggers the transition** to the next stage
+
+Example: "Early-story Nezha is reckless and hostile, lashing out at anyone who calls him a monster — speech is short, aggressive, and defiant. After learning his father's sacrifice, he retains his sharp tongue but acts from conviction rather than spite, uses humor instead of threats, and shows vulnerability to those he trusts."
 
 ---
 
 ## 3. Writing Principles
 
 - All dialogue samples must be **verbatim quotes** from the source text, not paraphrased — paraphrasing loses the authentic voice.
-- Style rules must be **derived from observed dialogue patterns**, not invented.
+- Style rules must be **derived from observed dialogue patterns**, not invented. Every trait and rule should be traceable to specific scenes or dialogue in the source text.
 - Provide **motivations** behind style rules (why the character speaks this way) — the AI generalizes better when it understands the reason.
 - The prompt should be written in the **same language** as the source material.
-- Keep the total prompt under **2000 words** — longer prompts dilute the signal. If the character is complex, prioritize dialogue samples and personality over exhaustive relationship lists.
+- **Match the register and tone of the prompt's instructional text to the character's own voice.** If the character is casual and blunt, write instructions in a direct, informal voice. If the character speaks formally, let the prompt's prose reflect that formality. This helps the AI calibrate its output style beyond what explicit rules can achieve.
+- Keep the total prompt under **2000 words**. Approximate budget per section:
+
+| Section | Target |
+|---------|--------|
+| `<role>` | 1-2 sentences |
+| `<identity>` | 3-5 sentences |
+| `<personality>` | 150-400 words |
+| `<relationships>` | 100-300 words |
+| `<speaking_style>` | 200-400 words |
+| `<dialogue_samples>` | 200-400 words (verbatim) |
+| `<arc_awareness>` | 50-150 words |
+
+If the character is complex and the total exceeds the limit, prioritize `<dialogue_samples>` and `<personality>` — cut `<relationships>` entries for minor characters first.
 
 ---
 
@@ -145,4 +174,4 @@ This guide applies the following principles from [Claude prompting best practice
 | **Use examples effectively** | `<dialogue_samples>` with `<example>` tags serve as few-shot demonstrations |
 | **Structure with XML tags** | Every section is wrapped in descriptive XML tags |
 | **Tell what to do, not what not to do** | Speaking style uses positive instructions; anti-patterns kept minimal |
-| **Match prompt style to desired output** | The prompt's own language matches the character's language and register |
+| **Match prompt style to desired output** | The prompt's instructional tone matches the character's register; language matches source material |
