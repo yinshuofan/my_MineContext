@@ -36,7 +36,7 @@ The user must provide:
 |-------|------|------------|
 | 1 | Text Ingestion & Segmentation | User confirms segmentation strategy |
 | 2 | Narrative Comprehension | User confirms narrative summary accuracy |
-| 3 | Character Research | User confirms character understanding |
+| 3 | Character Research | User confirms character understanding (may combine with Stage 2 for well-known works) |
 | 4 | L0 Event Extraction | User reviews event completeness |
 | 5 | Timeline Construction | User confirms timeline |
 | 6 | Hierarchy Organization | User confirms hierarchy grouping |
@@ -205,9 +205,15 @@ Additionally, produce a **summary style guide** with 2 example L0 events (title 
 - **Person**: third person (e.g., "Harry Potter discovers..." not "I discover...")
 - **Tense**: past tense (e.g., "accepted the mission" not "accepts the mission")
 - **Tone**: factual and concise, neutral vocabulary — avoid overly dramatic or casual word choices, no literary embellishment
-- **Length**: 1-2 sentences per L0 summary, 2-4 sentences per L1+ summary
+- **Length**: 2-4 sentences per L0 summary, 2-4 sentences per L1+ summary
 
 This card and style guide are referenced in every subsequent stage. Do not skip or abbreviate them.
+
+### Well-Known Works — Streamlined Path
+
+If the work is well-known (WebSearch returns rich, detailed results about the character), the character reference card should be built **primarily from the Stage 2 narrative summary**, with WebSearch used for **supplementary verification and enrichment** (e.g., confirming arc details, filling in relationship nuances, discovering name variants). Do not repeat research that Stage 2 already established.
+
+In this case, the Stage 2 and Stage 3 checkpoints may be **combined into a single checkpoint** — present the narrative summary and character reference card together for user confirmation.
 
 ### Fallback for Obscure or Original Works
 
@@ -234,7 +240,7 @@ L0 granularity is a **concrete, meaningful action, decision, or encounter**. It 
 ### Extraction Rules
 
 - **Direct participation only**: the character must be present, act, speak, or be directly affected. Do not include events the character only hears about secondhand.
-- **Fields to fill at this stage**: `title` (a short verb phrase) and `summary` (1–2 sentences).
+- **Fields to fill at this stage**: `title` (a short verb phrase) and `summary` (2–4 sentences).
 - **Fields to leave empty**: time, keywords, entities, importance — these are filled in later stages.
 - **Output order**: narrative order (the order events appear in the text). Chronological reordering happens in Stage 5, not here.
 
@@ -343,11 +349,13 @@ User confirms the timeline before proceeding.
 
 ### Construction Process
 
-Build bottom-up, grouping by character development arc:
+Build bottom-up, grouping by character development arc. The grouping criterion is **semantic coherence** — events belong together when they form a thematically unified sequence, not because a target count needs to be met. Let the story's own structure dictate group sizes.
 
-- **L0 → L1 (Plot Segments)**: group related L0 events into continuous plot segments. Typical L1 contains 3–8 L0 events.
-- **L1 → L2 (Plot Units)**: group L1 segments into complete narrative arcs (conflict → resolution). Typical L2 contains 2–5 L1 segments.
-- **L2 → L3 (Character Stages)**: group plot units into major phases of character development. Typical L3 contains 2–5 L2 units. A work typically produces 2–5 L3 nodes.
+- **L0 → L1 (Plot Segments)**: group related L0 events into continuous plot segments. An L1 should capture a coherent sequence of connected actions — an encounter, a chase, a series of decisions with a shared dramatic thread. A tightly focused scene may produce an L1 with 2 events; a sprawling battle sequence may produce one with 8+. Both are valid if the events genuinely belong together.
+- **L1 → L2 (Plot Units)**: group L1 segments into complete narrative arcs (conflict → resolution). An L2 should represent a self-contained storyline with a beginning, escalation, and outcome (e.g., a mystery subplot from discovery through investigation to reveal, or a rivalry arc from first clash through escalation to reconciliation).
+- **L2 → L3 (Character Stages)**: group plot units into major phases of character development. Each L3 represents a distinct stage of who the character is — their beliefs, relationships, and role in the story should be meaningfully different between L3 stages. A work typically produces 2–5 L3 nodes.
+
+**Anti-pattern**: Do not pad a group with unrelated events just to reach a minimum count, and do not split a thematically coherent sequence just because it exceeds some maximum. If a group feels too small, ask whether it truly represents a distinct unit — if yes, keep it; if not, merge it with a neighboring group that shares its dramatic thread.
 
 ### Construction Rules
 
@@ -461,6 +469,7 @@ For the full field-level schema and all validation rules, see `references/base-e
 - L0 nodes have no `children` field.
 - The `refs` field must be omitted — the server constructs parent-child reference links automatically.
 - All times must be ISO 8601 with timezone offset (e.g., `+08:00`).
+- **Quotation marks in text fields**: All quotation marks inside `title` and `summary` values must use curly/typographic quotation marks (`\u201c\u201d`) — never ASCII double quotes `"`, which break JSON string delimiters. After writing the file, always read it back and verify with `json.load()` to catch encoding errors before reporting success.
 
 ### 500-Event Limit
 
@@ -490,3 +499,5 @@ Present the output file path and event counts. User confirms the output is accep
 | Giving extraction subagents only segment text without narrative summary | Subagents need the full narrative summary to understand context beyond their segment |
 | Skipping the revision subagent after merging | Revision catches gaps and inconsistencies that segment-level extraction misses |
 | Skipping normalization after revision | Without normalization, summaries from different subagents use inconsistent naming, tense, and style |
+| Padding groups with unrelated events to hit a target count | Group by semantic coherence — let the story structure dictate group sizes, not arbitrary numbers |
+| Using ASCII double quotes in title/summary fields | Use locale-appropriate quotation marks (e.g., `\u201c\u201d`) to avoid breaking JSON string delimiters |
