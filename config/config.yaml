@@ -287,7 +287,7 @@ prompts:
 # 控制所有时间的生成和显示时区
 # 使用 IANA 时区名称，如 "Asia/Shanghai"、"UTC"、"America/New_York"
 # ============================================================
-timezone: "${TIMEZONE:UTC}"
+timezone: "${TIMEZONE:Asia/Shanghai}"
 
 # ============================================================
 # 工具配置
