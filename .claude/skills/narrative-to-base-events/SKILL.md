@@ -64,6 +64,7 @@ The main agent acts as **controller** — it coordinates the pipeline, dispatche
 | **Comprehension Subagent** | Read one segment, produce segment summary | Long text: one per segment (Stage 2) |
 | **Extraction Subagent** | Read one segment, extract L0 events for the target character | Long text: one per segment (Stage 4) |
 | **Revision Subagent** | Review the full merged L0 list against the narrative summary for completeness and consistency | After Stage 4 merge |
+| **Normalization Subagent** | Rewrite all L0 summaries for uniform naming, style, and voice | After Stage 4 revision |
 
 ### Short Text Path
 
@@ -84,6 +85,8 @@ Stage 4: Dispatch extraction   ──→ [Subagent per segment: extract L0 event
          Merge & deduplicate    ←── [Return L0 event lists]
          Dispatch revision     ──→ [Revision subagent: review merged list]
          Apply corrections      ←── [Return corrections]
+         Dispatch normalization──→ [Normalization subagent: unify style & naming]
+         Replace summaries      ←── [Return normalized list]
          → User checkpoint
 Stage 5–8: Main agent handles
          (timeline, hierarchy, fields, JSON)
@@ -94,8 +97,9 @@ Stage 5–8: Main agent handles
 Each subagent receives a precisely crafted prompt containing only what it needs:
 
 - **Comprehension subagent**: the segment text, segment number, total segments, target character name
-- **Extraction subagent**: the segment text, character reference card, narrative summary, extraction rules (from Stage 4), segment number
+- **Extraction subagent**: the segment text, character reference card (including naming conventions), summary style guide, narrative summary, extraction rules (from Stage 4), segment number
 - **Revision subagent**: the full merged L0 list, narrative summary, character reference card
+- **Normalization subagent**: the full L0 list (post-revision), character reference card (including naming conventions), summary style guide
 
 Subagents do NOT receive the full pipeline context or conversation history.
 
@@ -185,8 +189,24 @@ Produce a **character reference card** with these sections:
 - **Core personality traits**: 3–5 adjectives with brief evidence
 - **Key relationships**: character name, role, nature of relationship
 - **Arc overview**: starting state → key turning points → ending state
+- **Naming conventions**: a table mapping all name variants to their canonical form. All subagents must use canonical names only.
 
-This card is referenced in every subsequent stage. Do not skip or abbreviate it.
+Example naming conventions table:
+```
+| Variant | Canonical |
+|---------|-----------|
+| Harry, Potter, the Boy Who Lived | Harry Potter |
+| Dumbledore, the Headmaster | Albus Dumbledore |
+| He-Who-Must-Not-Be-Named, the Dark Lord, Tom Riddle | Voldemort |
+```
+
+Additionally, produce a **summary style guide** with 2 example L0 event summaries that define the expected output style. All extraction subagents must match this style. The style guide should specify:
+- **Person**: third person (e.g., "Harry discovers..." not "I discover...")
+- **Tense**: past tense (e.g., "accepted the mission" not "accepts the mission")
+- **Tone**: factual and concise, no literary embellishment
+- **Length**: 1-2 sentences per L0 summary, 2-4 sentences per L1+ summary
+
+This card and style guide are referenced in every subsequent stage. Do not skip or abbreviate them.
 
 ### Fallback for Obscure or Original Works
 
@@ -225,7 +245,8 @@ Main agent extracts L0 events directly from the full text.
 
 Dispatch one **extraction subagent** per segment in parallel (subagents are independent; deduplication happens post-merge). Each subagent receives:
 - The segment text
-- The **character reference card** (from Stage 3)
+- The **character reference card** including naming conventions (from Stage 3)
+- The **summary style guide** (from Stage 3) — subagent must match the example summaries in person, tense, tone, and length
 - The **narrative summary** (from Stage 2) — so the subagent understands the full story context, not just its segment
 - The extraction rules above (granularity rule, direct participation, fields to fill)
 - Segment number and total segment count
@@ -253,11 +274,25 @@ The revision subagent checks for:
 - **Granularity**: any events that should be split (too coarse) or merged (too fine)?
 - **Scope**: any events included where the character didn't directly participate?
 
-The revision subagent returns a list of corrections (additions, removals, edits). The main agent applies corrections to produce the final L0 list.
+The revision subagent returns a list of corrections (additions, removals, edits). The main agent applies corrections to produce the revised L0 list.
+
+### Normalization Subagent
+
+After revision, dispatch a **normalization subagent** that receives:
+- The full L0 list (post-revision)
+- The character reference card (including naming conventions)
+- The summary style guide
+
+The normalization subagent rewrites all summaries to ensure:
+- **Naming consistency**: all character, place, and organization names use canonical forms from the naming conventions table
+- **Style consistency**: all summaries match the style guide (person, tense, tone, length)
+- **Voice consistency**: uniform level of detail and sentence structure across all events — summaries produced by different extraction subagents should read as if written by a single author
+
+The normalization subagent returns the full L0 list with normalized summaries. The main agent replaces the summaries.
 
 ### Checkpoint
 
-Present the complete L0 list (title + summary only, no other fields). User confirms completeness — are there missing events, events to remove, or events to split/merge?
+Present the complete L0 list (title + summary only, no other fields). User confirms completeness and consistency — are there missing events, events to remove, events to split/merge, or inconsistent descriptions?
 
 ---
 
@@ -451,3 +486,4 @@ Present the output file path and event counts. User confirms the output is accep
 | Using `event_time` instead of `event_time_start` | The field is `event_time_start` (ISO 8601 with timezone) |
 | Giving extraction subagents only segment text without narrative summary | Subagents need the full narrative summary to understand context beyond their segment |
 | Skipping the revision subagent after merging | Revision catches gaps and inconsistencies that segment-level extraction misses |
+| Skipping normalization after revision | Without normalization, summaries from different subagents use inconsistent naming, tense, and style |
