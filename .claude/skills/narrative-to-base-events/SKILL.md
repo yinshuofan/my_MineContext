@@ -497,24 +497,85 @@ Write to the output file path specified by the user (or the default `{character_
 
 Generate a character roleplay prompt at `{character_name}_roleplay_prompt.md` (or user-specified path). This prompt is designed to be used as a system prompt or `agent_base_profile` for AI persona applications.
 
-The roleplay prompt must contain these sections:
+The prompt must use **XML tags** to structure each section — this allows the consuming AI to parse sections unambiguously and prevents instructions from bleeding into each other. The overall structure:
 
-1. **Identity** — name, background, role, and the world they inhabit. Sourced from the Stage 3 reference card.
-2. **Core Personality** — key traits, values, and beliefs that drive the character's behavior. Include contradictions (e.g., "acts tough but craves acceptance").
-3. **Key Relationships** — how the character relates to and addresses important people. For each relationship, note the forms of address, emotional tone, and typical interaction patterns.
-4. **Speaking Style Rules** — synthesized from the collected dialogue (Stage 4):
-   - Self-reference patterns (how they refer to themselves)
-   - Tone and register (formal/casual/crude, humor style)
-   - Verbal tics and catchphrases
-   - Emotional expression patterns: how they show anger vs. vulnerability vs. affection vs. determination
-   - What they would **never** say (anti-patterns that break character)
-5. **Dialogue Samples** — the collected lines from Stage 4, grouped by situation/emotion type. Each group has a label (e.g., "being challenged", "masking emotions") followed by 2-5 representative lines. These serve as few-shot demonstrations for the AI.
-6. **Arc Awareness** — a brief note on the character's development arc, so the AI can adjust tone depending on which stage of the story the roleplay is set in (e.g., early-story Nezha is more reckless than post-awakening Nezha).
+```xml
+<role>
+You are {character_name}, {one-sentence identity}.
+</role>
 
-**Writing principles**:
-- All dialogue samples must be **verbatim quotes** from the source text, not paraphrased.
-- Style rules must be derived from observed dialogue patterns, not invented.
+<identity>
+{Name, background, role, and the world they inhabit.}
+</identity>
+
+<personality>
+{Key traits, values, beliefs, and internal contradictions.
+Be specific and provide motivations — not just "rebellious"
+but "rebellious because the world rejected you before you
+had a chance to prove yourself."}
+</personality>
+
+<relationships>
+{For each key relationship: the person's name, how the character
+addresses them, emotional tone, and typical interaction patterns.}
+</relationships>
+
+<speaking_style>
+{Synthesized rules from collected dialogue — see below.}
+</speaking_style>
+
+<dialogue_samples>
+{Verbatim quotes grouped by situation — see below.}
+</dialogue_samples>
+
+<arc_awareness>
+{Character development stages and how tone shifts between them.}
+</arc_awareness>
+```
+
+#### Section Writing Guidelines
+
+Follow [Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) when writing each section:
+
+**`<role>`** — Start with a single clear role-setting sentence. This is the most impactful line in the entire prompt. It should be immediately recognizable: "You are Nezha, the demon-pill-born child of Chentangguan who defies fate."
+
+**`<personality>`** — Be specific and include **motivations** (the "why" behind each trait). An AI follows "acts tough to mask loneliness because no one ever accepted you" far better than "acts tough." Include internal contradictions — these are what make a character feel real rather than one-dimensional.
+
+**`<relationships>`** — For each relationship, describe not just the emotional tone but the **concrete speech behaviors**: forms of address, topics they'd bring up, topics they'd avoid, how formality shifts with emotional state.
+
+**`<speaking_style>`** — This is the core of the prompt. Write rules as **positive instructions** (what to do) rather than negatives (what not to do). Structure as:
+- Self-reference patterns (e.g., "refer to yourself as 小爷 when boasting, 我 in serious moments")
+- Tone and register (formal/casual/crude, humor style)
+- Verbal tics and catchphrases (with usage context)
+- Emotional expression patterns: describe HOW each emotion manifests in speech (anger → aggressive challenges; vulnerability → deflection with humor; determination → declarative short sentences)
+- Anti-patterns: a short list of what would **break** character (e.g., "never speak politely to strangers", "never use formal literary language"). Keep this list short — positive rules are more effective than long prohibition lists.
+
+**`<dialogue_samples>`** — These are **few-shot demonstrations** and are the single most effective part of the prompt. Group by situation/emotion type, wrap each group in `<example>` tags with a `situation` attribute:
+
+```xml
+<dialogue_samples>
+<example situation="being challenged">
+"你刚才叫我什么？再说一遍试试。"
+"在我面前，就没人帅的起来。"
+</example>
+<example situation="masking vulnerability">
+"没事没事，沙子里面进眼睛了。"
+"又不是因为你...我早就习惯了。"
+</example>
+</dialogue_samples>
+```
+
+Include **3-5 situation groups** with **2-4 lines each**. Prioritize diversity of emotional states over quantity. The AI will generalize the style from these examples to novel situations.
+
+**`<arc_awareness>`** — Briefly describe 2-3 character development stages and how tone/behavior differs between them. This allows the consuming application to specify which stage the roleplay is set in. Example: "Early-story Nezha is reckless and hostile; post-awakening Nezha retains his sharp tongue but acts from conviction rather than spite."
+
+#### Writing Principles
+
+- All dialogue samples must be **verbatim quotes** from the source text, not paraphrased — paraphrasing loses the authentic voice.
+- Style rules must be **derived from observed dialogue patterns**, not invented.
+- Provide **motivations** behind style rules (why the character speaks this way) — the AI generalizes better when it understands the reason.
 - The prompt should be written in the **same language** as the source material.
+- Keep the total prompt under **2000 words** — longer prompts dilute the signal. If the character is complex, prioritize dialogue samples and personality over exhaustive relationship lists.
 
 ### Checkpoint
 
