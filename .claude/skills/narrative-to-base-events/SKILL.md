@@ -205,7 +205,7 @@ Additionally, produce a **summary style guide** with 2 example L0 events (title 
 - **Person**: third person (e.g., "Harry Potter discovers..." not "I discover...")
 - **Tense**: past tense (e.g., "accepted the mission" not "accepts the mission")
 - **Tone**: factual and concise, neutral vocabulary — avoid overly dramatic or casual word choices, no literary embellishment
-- **Length**: 2-4 sentences per L0 summary, 2-4 sentences per L1+ summary
+- **Length**: summary length should match the event's complexity — a simple action may need only 1-2 sentences, a multi-beat event may need 3-5. L1+ summaries synthesize children and are typically 2-4 sentences. Aim for enough detail to reconstruct the event without re-reading the source, but no more.
 
 This card and style guide are referenced in every subsequent stage. Do not skip or abbreviate them.
 
@@ -240,7 +240,7 @@ L0 granularity is a **concrete, meaningful action, decision, or encounter**. It 
 ### Extraction Rules
 
 - **Direct participation only**: the character must be present, act, speak, or be directly affected. Do not include events the character only hears about secondhand.
-- **Fields to fill at this stage**: `title` (a short verb phrase) and `summary` (2–4 sentences).
+- **Fields to fill at this stage**: `title` (a short verb phrase) and `summary` (length proportional to the event's complexity).
 - **Fields to leave empty**: time, keywords, entities, importance — these are filled in later stages.
 - **Output order**: narrative order (the order events appear in the text). Chronological reordering happens in Stage 5, not here.
 
@@ -376,7 +376,7 @@ Build bottom-up, grouping by character development arc. The grouping criterion i
 
 - **Bottom-up only** — never create a summary level without its constituent lower-level events already defined.
 - Each summary node's `title` captures the theme of that group.
-- Each summary node's `summary` synthesises what happens across its children (2–4 sentences).
+- Each summary node's `summary` synthesises what happens across its children — length should reflect the scope of the group, typically a few sentences.
 - `event_time_start` = minimum `event_time_start` of all direct children.
 - `event_time_end` = for each direct child, take its `event_time_end` if present, otherwise its `event_time_start`; the parent's `event_time_end` is the maximum of these values.
 - Every L0 must belong to exactly one L1; every L1 to exactly one L2; every L2 to exactly one L3.
