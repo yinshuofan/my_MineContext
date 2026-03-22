@@ -112,6 +112,8 @@ Subagents do NOT receive the full pipeline context or conversation history.
 - **Short text path** (below threshold): read the full text in one pass, proceed directly to Stage 2 with no segmentation step.
 - **Long text path** (above threshold): segment by natural boundaries — chapters, acts, or episodes. Cut at clean scene/chapter breaks with no deliberate overlap. If a scene spans a chapter boundary, include the full scene in the later segment and note this in the plan. Produce a segmentation plan table and present it to the user before proceeding.
 
+**Multi-volume works** (book series, multi-season shows): recommend processing one volume/season per skill invocation, each producing its own complete L3 hierarchy and output file. This avoids exceeding the 500-event limit and keeps each hierarchy self-contained. If the user explicitly wants a cross-volume hierarchy, treat the series as one long text and segment accordingly — but warn about the 500-event limit early.
+
 **Segmentation plan table format:**
 
 | Segment | Chapters / Sections Covered |
