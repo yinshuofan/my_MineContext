@@ -1,13 +1,13 @@
 ---
 name: narrative-to-base-events
-description: Use when extracting a character's experiences from narrative text (novels, scripts, stories) to generate structured hierarchical Base Events JSON for MineContext agent memory.
+description: Use when extracting a character's experiences from narrative text (novels, scripts, stories) to generate structured hierarchical Base Events JSON and a character roleplay prompt for MineContext agent memory.
 ---
 
 # Narrative to Base Events
 
 ## Overview
 
-This skill is a structured multi-stage methodology for extracting a fictional character's experiences from narrative text and encoding them as hierarchical Base Events for MineContext agent memory. The core principle: treat the character as the sole first-person subject, extracting only events they directly participated in, then organize those events across four hierarchy levels (L0–L3).
+This skill is a structured multi-stage methodology for extracting a fictional character's experiences from narrative text and producing two deliverables: (1) hierarchical Base Events JSON for MineContext agent memory, and (2) a character roleplay prompt that captures the character's speaking style for AI persona use. The core principle: treat the character as the sole first-person subject, extracting only events they directly participated in, then organize those events across four hierarchy levels (L0–L3).
 
 For long texts, the skill uses a **subagent architecture** — the main agent coordinates the process while subagents handle segment-level work in parallel, overcoming context window limitations.
 
@@ -28,7 +28,7 @@ The user must provide:
 
 - **Narrative text** — file path or pasted directly into the conversation
 - **Target character name** — the character whose perspective anchors all extraction
-- **Output file path** — optional; defaults to `{character_name}_base_events.json`
+- **Output file path** — optional; defaults to `{character_name}_base_events.json` (roleplay prompt defaults to `{character_name}_roleplay_prompt.md`)
 
 ## Pipeline Overview
 
@@ -41,7 +41,7 @@ The user must provide:
 | 5 | Timeline Construction | User confirms timeline |
 | 6 | Hierarchy Organization | User confirms hierarchy grouping |
 | 7 | Field Completion & Validation | User spot-checks quality |
-| 8 | JSON Generation | User confirms output |
+| 8 | JSON & Roleplay Prompt Generation | User confirms output |
 
 ## Hierarchy Levels
 
@@ -299,6 +299,20 @@ The normalization subagent rewrites all titles and summaries to ensure:
 
 The normalization subagent returns the full L0 list with normalized titles and summaries.
 
+### Dialogue Collection (for Roleplay Prompt)
+
+While extracting L0 events, simultaneously collect **15–25 representative dialogue lines** spoken by the target character directly from the source text. These will be used in Stage 8 to generate the roleplay prompt.
+
+Select lines that showcase:
+- **Characteristic speech patterns**: verbal tics, self-reference habits, catchphrases
+- **Emotional range**: anger, vulnerability, humor, determination, affection, defiance
+- **Relationship dynamics**: how the character addresses different people (parents, friends, enemies, strangers)
+- **Memorable quotes**: lines that define the character's worldview or arc
+
+For each line, note the **situation context** in 1–3 words (e.g., "being challenged", "showing affection", "facing death").
+
+**Long text path**: each extraction subagent collects dialogue from its segment alongside events. Add to the subagent instruction: "Also collect 5-10 characteristic dialogue lines from {target_character_name} with situation context." The main agent merges, deduplicates, and curates to the final 15-25 after all subagents return.
+
 ### Checkpoint
 
 Present the complete L0 list (title + summary only, no other fields). User confirms completeness and consistency — are there missing events, events to remove, events to split/merge, or inconsistent descriptions?
@@ -427,9 +441,9 @@ Present a sample of completed nodes — a few from each level — for spot-check
 
 ---
 
-## Stage 8: JSON Generation
+## Stage 8: JSON & Roleplay Prompt Generation
 
-**Purpose**: Assemble the validated hierarchy into a `BaseEventsRequest`-format JSON file and write it to the output path.
+**Purpose**: Assemble the validated hierarchy into a `BaseEventsRequest`-format JSON file and generate a character roleplay prompt from the collected dialogue and reference card.
 
 ### Structure
 
@@ -475,13 +489,36 @@ For the full field-level schema and all validation rules, see `references/base-e
 
 If the total node count across all levels exceeds 500, split into multiple output files. Each file must contain complete sub-trees: own L3 nodes with their full L2 → L1 → L0 descendants. Do not split a tree in the middle of a hierarchy.
 
-### Output
+### Output — Base Events JSON
 
 Write to the output file path specified by the user (or the default `{character_name}_base_events.json`). Report the output file path and the event count per level (L0, L1, L2, L3).
 
+### Output — Roleplay Prompt
+
+Generate a character roleplay prompt at `{character_name}_roleplay_prompt.md` (or user-specified path). This prompt is designed to be used as a system prompt or `agent_base_profile` for AI persona applications.
+
+The roleplay prompt must contain these sections:
+
+1. **Identity** — name, background, role, and the world they inhabit. Sourced from the Stage 3 reference card.
+2. **Core Personality** — key traits, values, and beliefs that drive the character's behavior. Include contradictions (e.g., "acts tough but craves acceptance").
+3. **Key Relationships** — how the character relates to and addresses important people. For each relationship, note the forms of address, emotional tone, and typical interaction patterns.
+4. **Speaking Style Rules** — synthesized from the collected dialogue (Stage 4):
+   - Self-reference patterns (how they refer to themselves)
+   - Tone and register (formal/casual/crude, humor style)
+   - Verbal tics and catchphrases
+   - Emotional expression patterns: how they show anger vs. vulnerability vs. affection vs. determination
+   - What they would **never** say (anti-patterns that break character)
+5. **Dialogue Samples** — the collected lines from Stage 4, grouped by situation/emotion type. Each group has a label (e.g., "being challenged", "masking emotions") followed by 2-5 representative lines. These serve as few-shot demonstrations for the AI.
+6. **Arc Awareness** — a brief note on the character's development arc, so the AI can adjust tone depending on which stage of the story the roleplay is set in (e.g., early-story Nezha is more reckless than post-awakening Nezha).
+
+**Writing principles**:
+- All dialogue samples must be **verbatim quotes** from the source text, not paraphrased.
+- Style rules must be derived from observed dialogue patterns, not invented.
+- The prompt should be written in the **same language** as the source material.
+
 ### Checkpoint
 
-Present the output file path and event counts. User confirms the output is acceptable.
+Present both output file paths and the Base Events count per level. User confirms the output is acceptable.
 
 ---
 
@@ -501,3 +538,5 @@ Present the output file path and event counts. User confirms the output is accep
 | Skipping normalization after revision | Without normalization, summaries from different subagents use inconsistent naming, tense, and style |
 | Padding groups with unrelated events to hit a target count | Group by semantic coherence — let the story structure dictate group sizes, not arbitrary numbers |
 | Using ASCII double quotes in title/summary fields | Use locale-appropriate quotation marks (e.g., `\u201c\u201d`) to avoid breaking JSON string delimiters |
+| Paraphrasing dialogue in the roleplay prompt instead of quoting verbatim | Dialogue samples must be exact quotes from the source text — paraphrasing loses the character's authentic voice |
+| Writing style rules from imagination rather than observed patterns | All speaking style rules must be derived from actual dialogue in the text, not invented |
