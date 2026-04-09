@@ -83,7 +83,7 @@ Transform from an independent extractor to a post-processor that annotates event
 1. Validate `agent_id` (skip if missing or "default")
 2. Verify agent is registered via `storage.get_agent(agent_id)`
 3. Fetch agent persona: `get_profile(context_type="agent_profile")`, fallback to `agent_base_profile`
-4. Fetch related past memories via `EventSearchService.semantic_search(memory_owner="agent")`
+4. Fetch related past memories via `EventSearchService.semantic_search()` (searches EVENT + agent base types automatically after memory_owner removal)
 5. Build LLM prompt with: agent persona, related memories, event list (titles + summaries), chat content
 6. LLM returns commentary for each event (keyed by event index or title)
 7. Fill `agent_commentary` field on each matched event

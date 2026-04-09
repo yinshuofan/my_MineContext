@@ -1021,6 +1021,8 @@ In `config/prompts_en.yaml`, find the classification section (around line 429-43
 
 Remove this entire line. Keep the other types (`event`, `profile`, `knowledge`, `document`).
 
+Note: After this change, if the LLM still returns `"agent_event"` as a context_type, `get_context_type_for_analysis()` in `enums.py` will fail `validate_context_type()` (since the enum value no longer exists after Task 6) and fall back to `KNOWLEDGE`. This is acceptable — the prompt no longer instructs the LLM to use this type, and the fallback is safe.
+
 - [ ] **Step 2: Remove `agent_event` from classification in Chinese prompt**
 
 In `config/prompts_zh.yaml`, find the same classification section and remove the `agent_event` line (the Chinese equivalent).
@@ -1103,31 +1105,24 @@ Remove these three entries (lines 379-381):
     ContextType.AGENT_MONTHLY_SUMMARY,
 ```
 
-- [ ] **Step 8: Compile-check**
+- [ ] **Step 8: Compile-check enums only (search/cache will be fixed in the same task below)**
 
 Run:
 ```bash
 python -m py_compile opencontext/models/enums.py
 ```
-Expected: No errors.
+Expected: No errors. Note: search and cache code will break until we fix them in the next steps.
 
-- [ ] **Step 9: Commit**
+**IMPORTANT: Do NOT commit yet. Removing AGENT_EVENT types from MEMORY_OWNER_TYPES breaks the search and cache layers that still reference `memory_owner="agent"`. The following steps (originally Task 7) must be completed in the same commit to avoid an intermediate broken state.**
 
-```bash
-git add opencontext/models/enums.py
-git commit -m "refactor: remove AGENT_EVENT and related summary types from enums"
-```
-
----
-
-### Task 7: Remove `memory_owner` from Search API
+#### Part B: Remove `memory_owner` from Search API
 
 **Files:**
 - Modify: `opencontext/server/search/models.py:73-77`
 - Modify: `opencontext/server/search/event_search_service.py`
 - Modify: `opencontext/server/routes/search.py`
 
-- [ ] **Step 1: Remove `memory_owner` field from `EventSearchRequest`**
+- [ ] **Step 9: Remove `memory_owner` field from `EventSearchRequest`**
 
 In `opencontext/server/search/models.py`, remove lines 73-77:
 
@@ -1139,7 +1134,7 @@ In `opencontext/server/search/models.py`, remove lines 73-77:
     )
 ```
 
-- [ ] **Step 2: Update `EventSearchService` — remove `memory_owner` parameter**
+- [ ] **Step 10: Update `EventSearchService` — remove `memory_owner` parameter**
 
 In `opencontext/server/search/event_search_service.py`:
 
@@ -1211,7 +1206,7 @@ async def collect_ancestors(
     # ... rest of method uses summary_type_values unchanged
 ```
 
-- [ ] **Step 3: Update `search.py` route — remove `memory_owner` references**
+- [ ] **Step 11: Update `search.py` route — remove `memory_owner` references**
 
 In `opencontext/server/routes/search.py`:
 
@@ -1235,32 +1230,9 @@ In `opencontext/server/routes/search.py`:
 
 - Update `_track_accessed_safe()` — remove `memory_owner` param, update `get_l0_type()` call.
 
-- [ ] **Step 4: Compile-check**
+#### Part C: Remove `memory_owner` from Memory Cache
 
-Run:
-```bash
-python -m py_compile opencontext/server/search/models.py
-python -m py_compile opencontext/server/search/event_search_service.py
-python -m py_compile opencontext/server/routes/search.py
-```
-Expected: No errors.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add opencontext/server/search/models.py opencontext/server/search/event_search_service.py opencontext/server/routes/search.py
-git commit -m "refactor: remove memory_owner from search API, include base memory automatically"
-```
-
----
-
-### Task 8: Remove `memory_owner` from Memory Cache
-
-**Files:**
-- Modify: `opencontext/server/cache/memory_cache_manager.py`
-- Modify: `opencontext/server/routes/memory_cache.py`
-
-- [ ] **Step 1: Update `memory_cache_manager.py` — remove `memory_owner` from all methods**
+- [ ] **Step 12: Update `memory_cache_manager.py` — remove `memory_owner` from all methods**
 
 In `opencontext/server/cache/memory_cache_manager.py`:
 
@@ -1322,7 +1294,7 @@ if not profile_data and agent_id and agent_id != "default":
     )
 ```
 
-- [ ] **Step 2: Update `memory_cache.py` route — remove `memory_owner` parameter**
+- [ ] **Step 13: Update `memory_cache.py` route — remove `memory_owner` parameter**
 
 In `opencontext/server/routes/memory_cache.py`:
 
@@ -1333,33 +1305,60 @@ In `opencontext/server/routes/memory_cache.py`:
 - Remove `memory_owner=memory_owner` from `invalidate_snapshot()` call (line 119)
 - Update response messages to remove `owner=` references
 
-- [ ] **Step 3: Update internal callers of `invalidate_snapshot` and `refresh_snapshot`**
+- [ ] **Step 14: Update internal callers of `invalidate_snapshot` and `refresh_snapshot`**
 
 Search for any other callers that pass `memory_owner` to these methods. In `opencontext/server/opencontext.py`, the `_invalidate_user_cache()` method likely calls `invalidate_snapshot()` — remove `memory_owner` argument from that call.
 
-- [ ] **Step 4: Compile-check**
+#### Part D: Snapshot assembly for base events
+
+- [ ] **Step 15: Merge base events into snapshot response**
+
+In `_build_snapshot()`, after results are gathered, merge `base_events` into the snapshot's `recent_memories` section. Add base events to `today_events` list (they are always included regardless of date since they are background knowledge):
+
+```python
+# After results_map is built
+base_events_result = results_map.get("base_events")
+if isinstance(base_events_result, Exception):
+    base_events_result = []
+base_events_result = base_events_result or []
+
+# Add base events as a separate section in recent_memories
+```
+
+In the snapshot dict assembly, add:
+
+```python
+"base_memories": [self._ctx_to_recent_item(ctx) for ctx in base_events_result],
+```
+
+- [ ] **Step 16: Compile-check all files in this task**
 
 Run:
 ```bash
+python -m py_compile opencontext/models/enums.py
+python -m py_compile opencontext/server/search/models.py
+python -m py_compile opencontext/server/search/event_search_service.py
+python -m py_compile opencontext/server/routes/search.py
 python -m py_compile opencontext/server/cache/memory_cache_manager.py
 python -m py_compile opencontext/server/routes/memory_cache.py
 python -m py_compile opencontext/server/opencontext.py
 ```
-Expected: No errors.
+Expected: All pass with no errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 17: Commit**
 
 ```bash
-git add opencontext/server/cache/memory_cache_manager.py opencontext/server/routes/memory_cache.py opencontext/server/opencontext.py
-git commit -m "refactor: remove memory_owner from memory cache, include base memory automatically"
+git add opencontext/models/enums.py opencontext/server/search/models.py opencontext/server/search/event_search_service.py opencontext/server/routes/search.py opencontext/server/cache/memory_cache_manager.py opencontext/server/routes/memory_cache.py opencontext/server/opencontext.py
+git commit -m "refactor: remove AGENT_EVENT types, memory_owner param; include base memory automatically"
 ```
 
 ---
 
-### Task 9: Fix Remaining References and Update Docs
+### Task 7: Fix Remaining References and Update Docs
 
 **Files:**
-- Modify: `opencontext/server/opencontext.py` (if any `memory_owner` references remain)
+- Modify: `opencontext/web/templates/chat_batches.html`
+- Modify: `opencontext/web/templates/contexts.html`
 - Modify: `opencontext/context_processing/MODULE.md`
 - Modify: `opencontext/models/MODULE.md`
 - Modify: `opencontext/periodic_task/MODULE.md`
@@ -1374,13 +1373,19 @@ Run:
 cd /d/尹硕范/repositories/my_MineContext
 grep -rn "AGENT_EVENT\|AGENT_DAILY_SUMMARY\|AGENT_WEEKLY_SUMMARY\|AGENT_MONTHLY_SUMMARY" opencontext/ --include="*.py" | grep -v __pycache__
 grep -rn "memory_owner" opencontext/ --include="*.py" | grep -v __pycache__
+grep -rn "agent_event\|AGENT_EVENT\|memory_owner" opencontext/web/templates/ --include="*.html"
 ```
 
-Fix any remaining references found. Common locations:
-- Template files in `opencontext/web/templates/` (chat_batches.html, contexts.html) — update any type filters or display logic
-- Any tools that reference the removed types
+Fix any remaining references found.
 
-- [ ] **Step 2: Update MODULE.md files**
+- [ ] **Step 2: Update web templates**
+
+In `opencontext/web/templates/chat_batches.html` and `opencontext/web/templates/contexts.html`:
+- Remove `agent_event`, `agent_daily_summary`, `agent_weekly_summary`, `agent_monthly_summary` from any type filter dropdowns or display logic
+- Remove `memory_owner` from any query parameter handling
+- Add `agent_commentary` to event display if applicable
+
+- [ ] **Step 3: Update MODULE.md files**
 
 Update these MODULE.md files to reflect the changes:
 
@@ -1389,7 +1394,7 @@ Update these MODULE.md files to reflect the changes:
 - `opencontext/periodic_task/MODULE.md` — document `AgentProfileUpdateTask`
 - `opencontext/server/MODULE.md` — document removal of `memory_owner` from search and cache APIs
 
-- [ ] **Step 3: Update API docs**
+- [ ] **Step 4: Update API docs**
 
 In `docs/api_reference.md`:
 - Remove `memory_owner` parameter from search and memory-cache endpoint docs
@@ -1398,7 +1403,7 @@ In `docs/api_reference.md`:
 In `docs/curls.sh`:
 - Remove `memory_owner` from search and memory-cache curl examples
 
-- [ ] **Step 4: Compile-check all Python files that were changed**
+- [ ] **Step 5: Compile-check all Python files that were changed**
 
 Run:
 ```bash
@@ -1406,16 +1411,16 @@ python -m py_compile opencontext/server/opencontext.py
 ```
 Plus any other files modified in step 1.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "docs: update MODULE.md and API docs for agent memory redesign"
+git commit -m "docs: update MODULE.md, templates, and API docs for agent memory redesign"
 ```
 
 ---
 
-### Task 10: Full Integration Verification
+### Task 8: Full Integration Verification
 
 - [ ] **Step 1: Run full compile check on all modified modules**
 
