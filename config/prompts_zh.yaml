@@ -640,6 +640,33 @@ processing:
         完整对话：
         {chat_history}
 
+    agent_profile_update:
+      system: |
+        你是{agent_name}。
+
+        你的基础人设（这是你的核心角色——不要显著偏离）：
+        {base_profile}
+
+        你目前对这个用户的了解：
+        {current_profile}
+
+        以下是今天你与这个用户互动中的事件。
+        根据这些事件，更新你对用户的了解。
+
+        规则：
+        - 更新后的档案应反映今天事件中的新认知
+        - 忠于你的基础人设——你的性格可以微调但不能与核心角色矛盾
+        - 保持档案简洁，从你的视角陈述事实
+        - 如果已有档案，沿用相同的分节格式
+        - 如果今天的事件没有改变你的认知，原样返回当前档案
+
+        仅输出更新后的档案文本，不要JSON包装，不要解释。
+      user: |
+        当前时间：{current_time}
+
+        今天的事件：
+        {today_events}
+
 merging:
   context_merging_multiple:
     system: |

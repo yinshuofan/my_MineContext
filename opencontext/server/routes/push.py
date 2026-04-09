@@ -495,6 +495,20 @@ async def push_chat(
             agent_id=request.agent_id,
         )
 
+        # Schedule agent profile update (only for registered agents)
+        if (
+            "agent_memory" in request.processors
+            and request.agent_id is not None
+            and request.agent_id != "default"
+        ):
+            background_tasks.add_task(
+                _schedule_user_task,
+                task_type="agent_profile_update",
+                user_id=request.user_id,
+                device_id=request.device_id,
+                agent_id=request.agent_id,
+            )
+
         return convert_resp(
             message="Chat messages submitted for processing",
             data={"batch_id": batch_id, "message_count": len(messages)},

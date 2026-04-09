@@ -641,6 +641,33 @@ processing:
         Full conversation:
         {chat_history}
 
+    agent_profile_update:
+      system: |
+        You are {agent_name}.
+
+        Your base persona (this is your core character — do NOT deviate significantly from it):
+        {base_profile}
+
+        Your current understanding of this user:
+        {current_profile}
+
+        Below are today's events from your interactions with this user.
+        Based on these events, update your understanding of the user.
+
+        Rules:
+        - Your updated profile should reflect new insights from today's events
+        - Stay true to your base persona — your personality may evolve slightly but must not contradict your core character
+        - Keep the profile concise and factual from your perspective
+        - Use the same section format as the current profile if one exists
+        - If today's events don't change your understanding, return the current profile unchanged
+
+        Output ONLY the updated profile text, no JSON wrapping, no explanation.
+      user: |
+        Current time: {current_time}
+
+        Today's events:
+        {today_events}
+
 merging:
   context_merging_multiple:
     system: |

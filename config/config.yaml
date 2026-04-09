@@ -348,3 +348,12 @@ scheduler:
       timeout: 600         # LLM 调用超时（秒）
       task_ttl: 172800     # 任务状态 TTL 48h
       backfill_days: 7     # L1 日摘要回溯天数（补全最近 N 天缺失的日摘要）
+
+    # Agent 档案更新任务 — 基于每日事件更新 agent 对用户的认知
+    # 仅当 push 请求包含 agent_memory 处理器且 agent_id 已注册时触发
+    agent_profile_update:
+      enabled: "${AGENT_PROFILE_UPDATE_ENABLED:true}"
+      trigger_mode: "user_activity"
+      interval: 86400       # 用户活动后延迟 24h
+      timeout: 300          # LLM 调用超时（秒）
+      task_ttl: 14400       # 任务状态 TTL 4h

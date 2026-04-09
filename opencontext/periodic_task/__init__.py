@@ -19,6 +19,10 @@ from opencontext.periodic_task.hierarchy_summary import (
     HierarchySummaryTask,
     create_hierarchy_handler,
 )
+from opencontext.periodic_task.agent_profile_update import (
+    AgentProfileUpdateTask,
+    create_agent_profile_update_handler,
+)
 from opencontext.periodic_task.memory_compression import (
     MemoryCompressionTask,
     create_compression_handler,
@@ -33,10 +37,12 @@ __all__ = [
     "TaskContext",
     "TaskResult",
     # Task implementations
+    "AgentProfileUpdateTask",
     "MemoryCompressionTask",
     "DataCleanupTask",
     "HierarchySummaryTask",
     # Handler factories
+    "create_agent_profile_update_handler",
     "create_compression_handler",
     "create_cleanup_handler",
     "create_hierarchy_handler",

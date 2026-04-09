@@ -258,6 +258,14 @@ class ComponentInitializer:
                 scheduler.register_handler("hierarchy_summary", hierarchy_handler)
                 logger.info("Registered hierarchy_summary task handler")
 
+            # Agent profile update handler
+            if tasks_config.get("agent_profile_update", {}).get("enabled", False):
+                from opencontext.periodic_task import create_agent_profile_update_handler
+
+                agent_profile_handler = create_agent_profile_update_handler()
+                scheduler.register_handler("agent_profile_update", agent_profile_handler)
+                logger.info("Registered agent_profile_update task handler")
+
             logger.info("Task scheduler initialized successfully")
 
         except Exception as e:
