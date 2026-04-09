@@ -75,6 +75,7 @@ class ExtractedData(BaseModel):
     context_type: ContextType  # context type
     confidence: int = Field(default=0)  # confidence (0-10)
     importance: int = Field(default=0)  # importance (0-10)
+    agent_commentary: Optional[str] = None  # agent's subjective commentary on this event
 
     @field_validator("confidence", "importance", mode="before")
     @classmethod
@@ -327,6 +328,7 @@ class ProcessedContextModel(BaseModel):
     context_type: str
     confidence: int
     importance: int
+    agent_commentary: Optional[str] = None
     is_processed: bool
     call_count: int
     enable_merge: bool = False
@@ -373,6 +375,7 @@ class ProcessedContextModel(BaseModel):
             context_type=pc.extracted_data.context_type.value,
             confidence=pc.extracted_data.confidence,
             importance=pc.extracted_data.importance,
+            agent_commentary=pc.extracted_data.agent_commentary,
             is_processed=pc.properties.is_processed,
             call_count=pc.properties.call_count,
             enable_merge=pc.properties.enable_merge,  # set enable merge
