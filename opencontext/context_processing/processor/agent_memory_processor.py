@@ -40,7 +40,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
             return False
         return context.source == ContextSource.CHAT_LOG
 
-    async def process(self, context: RawContextProperties) -> List[ProcessedContext]:
+    async def process(self, context: RawContextProperties, prior_results=None) -> List[ProcessedContext]:
         """Process chat context from the agent's perspective."""
         try:
             return await self._process_async(context)

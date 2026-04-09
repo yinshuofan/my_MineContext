@@ -22,6 +22,12 @@ BATCH_PROCESSOR_MAP = {
     "agent_memory": "agent_memory_processor",
 }
 
+# DAG dependency configuration: processor_name -> list of processor_names it depends on.
+# Processors not listed here have no dependencies and run in the first layer.
+PROCESSOR_DEPENDENCIES = {
+    "agent_memory": ["user_memory"],
+}
+
 
 class ContextProcessorManager:
     """
@@ -140,51 +146,118 @@ class ContextProcessorManager:
     async def process_batch(
         self, raw_context: RawContextProperties, processor_names: List[str]
     ) -> List[ProcessedContext]:
-        """Run multiple processors in parallel on the same input, merge outputs."""
-        # Resolve processor names to instances
-        tasks = []
-        resolved_names = []
-        for name in processor_names:
-            internal_name = BATCH_PROCESSOR_MAP.get(name)
-            if not internal_name:
-                logger.warning(f"Unknown processor name: {name}, skipping")
-                continue
-            processor = self._processors.get(internal_name)
-            if not processor:
-                logger.warning(f"Processor not registered: {internal_name}, skipping")
-                continue
-            if not processor.can_process(raw_context):
-                logger.debug(f"Processor {internal_name} cannot process this input, skipping")
-                continue
-            tasks.append(processor.process(raw_context))
-            resolved_names.append(internal_name)
+        """
+        Process a raw context through multiple processors with DAG-based ordering.
 
-        if not tasks:
-            logger.warning("No processors available for batch processing")
+        Processors are grouped into layers via topological sort on PROCESSOR_DEPENDENCIES.
+        Each layer runs in parallel; layers execute sequentially.
+        Later layers receive accumulated results from all prior layers via `prior_results`.
+        If a returned context has the same ID as an existing one, it replaces it.
+        """
+        if not processor_names:
             return []
 
-        # Run in parallel, tolerant of individual failures
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        all_contexts = []
-        for name, result in zip(resolved_names, results):
-            if isinstance(result, Exception):
-                logger.error(f"Processor {name} failed: {result}")
+        # Resolve external names to (external_name, processor_instance) pairs
+        resolved = []
+        for ext_name in processor_names:
+            internal_name = BATCH_PROCESSOR_MAP.get(ext_name, ext_name)
+            processor = self._processors.get(internal_name)
+            if not processor:
+                logger.warning(f"Processor '{internal_name}' not found, skipping")
                 continue
-            if result:
-                all_contexts.extend(result)
-                logger.info(f"process_batch: {name} → {len(result)} contexts")
+            if not processor.can_process(raw_context):
+                logger.debug(
+                    f"Processor '{internal_name}' cannot process this context, skipping"
+                )
+                continue
+            resolved.append((ext_name, processor))
 
-        logger.info(
-            f"process_batch: {len(processor_names)} processors → "
-            f"{len(all_contexts)} contexts total"
-        )
+        if not resolved:
+            return []
 
-        # Invoke callback to route to storage
+        # Build layers via topological sort
+        layers = self._topological_sort([name for name, _ in resolved])
+        proc_map = {name: proc for name, proc in resolved}
+
+        # Execute layer by layer
+        accumulated: Dict[str, ProcessedContext] = {}  # id -> context
+
+        for layer in layers:
+            layer_processors = [(name, proc_map[name]) for name in layer if name in proc_map]
+            if not layer_processors:
+                continue
+
+            prior = list(accumulated.values()) if accumulated else None
+
+            tasks = []
+            task_names = []
+            for name, proc in layer_processors:
+                tasks.append(proc.process(raw_context, prior_results=prior))
+                task_names.append(name)
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for name, result in zip(task_names, results):
+                if isinstance(result, Exception):
+                    logger.error(f"Processor '{name}' failed: {result}")
+                    continue
+                if not result:
+                    continue
+                logger.debug(f"Processor '{name}' produced {len(result)} contexts")
+                for ctx in result:
+                    accumulated[ctx.id] = ctx  # replace if same ID, append if new
+
+        all_contexts = list(accumulated.values())
+
+        if all_contexts:
+            type_summary: Dict[str, int] = {}
+            for ctx in all_contexts:
+                t = ctx.extracted_data.context_type.value
+                type_summary[t] = type_summary.get(t, 0) + 1
+            logger.info(f"process_batch produced {len(all_contexts)} contexts: {type_summary}")
+
         if all_contexts and self._callback:
             await self._callback(all_contexts)
 
         return all_contexts
+
+    @staticmethod
+    def _topological_sort(processor_names: List[str]) -> List[List[str]]:
+        """
+        Sort processor names into execution layers based on PROCESSOR_DEPENDENCIES.
+
+        Returns a list of layers, where each layer is a list of processor names
+        that can run in parallel. Earlier layers complete before later ones start.
+        """
+        name_set = set(processor_names)
+        # Filter dependencies to only include processors in this batch
+        deps = {}
+        for name in processor_names:
+            raw_deps = PROCESSOR_DEPENDENCIES.get(name, [])
+            deps[name] = [d for d in raw_deps if d in name_set]
+
+        layers = []
+        placed: set = set()
+
+        while len(placed) < len(processor_names):
+            # Find all processors whose dependencies are satisfied
+            layer = [
+                name
+                for name in processor_names
+                if name not in placed and all(d in placed for d in deps[name])
+            ]
+            if not layer:
+                # Circular dependency — break by placing remaining
+                remaining = [n for n in processor_names if n not in placed]
+                logger.error(
+                    f"Circular dependency detected among: {remaining}. Running them together."
+                )
+                layers.append(remaining)
+                break
+            layers.append(layer)
+            placed.update(layer)
+
+        return layers
 
     async def batch_process(
         self, initial_inputs: List[RawContextProperties]

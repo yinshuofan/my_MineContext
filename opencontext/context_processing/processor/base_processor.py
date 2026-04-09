@@ -118,12 +118,18 @@ class BaseContextProcessor(IContextProcessor, ABC):
         pass
 
     @abstractmethod
-    async def process(self, context: Any) -> List[ProcessedContext]:
+    async def process(
+        self,
+        context: Any,
+        prior_results: Optional[List] = None,
+    ) -> List[ProcessedContext]:
         """
         Process a single context and return processed results.
 
         Args:
             context: Context data to process
+            prior_results: Results from processors that ran in earlier dependency layers.
+                           None for processors with no dependencies.
 
         Returns:
             List of processed contexts

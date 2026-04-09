@@ -172,7 +172,7 @@ class DocumentProcessor(BaseContextProcessor):
             return file_ext in self.get_supported_formats()
         return False
 
-    async def process(self, context: RawContextProperties) -> List[ProcessedContext]:
+    async def process(self, context: RawContextProperties, prior_results=None) -> List[ProcessedContext]:
         """
         Process single document context asynchronously.
         """

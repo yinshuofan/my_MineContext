@@ -42,7 +42,7 @@ class TextChatProcessor(BaseContextProcessor):
             and context.content_format in (ContentFormat.TEXT, ContentFormat.MULTIMODAL)
         )
 
-    async def process(self, context: RawContextProperties) -> List[ProcessedContext]:
+    async def process(self, context: RawContextProperties, prior_results=None) -> List[ProcessedContext]:
         """Process chat context asynchronously."""
         logger.debug(f"[text_chat_processor] Processing: user={context.user_id}, agent={context.agent_id}, source={context.source}, content_length={len(context.content_text or '')}")
         try:
