@@ -16,7 +16,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from opencontext.models.context import ProcessedContext
-from opencontext.models.enums import MEMORY_OWNER_TYPES
+from opencontext.models.enums import ContextType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.search.event_search_service import EventSearchService
 from opencontext.server.search.models import (
@@ -98,7 +98,6 @@ async def search_events(
                     search_hits,
                     device_id=request.device_id or "default",
                     agent_id=request.agent_id or "default",
-                    memory_owner=request.memory_owner,
                 )
             )
 
@@ -149,7 +148,7 @@ async def _execute_search(
     raw_results: List[Tuple[ProcessedContext, float]] = []
     all_ancestors: Dict[str, ProcessedContext] = {}
 
-    l0_type = _search_service.get_l0_type(request.memory_owner)
+    l0_type = _search_service.get_l0_type()
 
     if request.event_ids:
         # Path A: Exact ID lookup (stays in route — not a search)
@@ -159,7 +158,7 @@ async def _execute_search(
         if request.drill_up and raw_results:
             max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
             all_ancestors = await _search_service.collect_ancestors(
-                raw_results, max_level, memory_owner=request.memory_owner
+                raw_results, max_level
             )
 
     elif request.query:
@@ -169,7 +168,6 @@ async def _execute_search(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
-            memory_owner=request.memory_owner,
             top_k=request.top_k,
             score_threshold=request.score_threshold,
             time_range=request.time_range,
@@ -184,7 +182,6 @@ async def _execute_search(
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
-            memory_owner=request.memory_owner,
             hierarchy_levels=request.hierarchy_levels,
             time_range=request.time_range,
             top_k=request.top_k,
@@ -193,7 +190,7 @@ async def _execute_search(
         if request.drill_up and raw_results:
             max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
             all_ancestors = await _search_service.collect_ancestors(
-                raw_results, max_level, memory_owner=request.memory_owner
+                raw_results, max_level
             )
 
     # ── Step 2: Build node map (stays in route — EventNode is a response model) ──
@@ -209,8 +206,9 @@ async def _execute_search(
             nodes[aid] = _to_context_node(actx)
 
     # ── Step 3: Link children to parents, build tree ──
-    owner_types = MEMORY_OWNER_TYPES.get(request.memory_owner, MEMORY_OWNER_TYPES["user"])
-    summary_type_values = {t.value for t in owner_types[1:]}
+    user_summary_types = {ContextType.DAILY_SUMMARY.value, ContextType.WEEKLY_SUMMARY.value, ContextType.MONTHLY_SUMMARY.value}
+    base_summary_types = {ContextType.AGENT_BASE_L1_SUMMARY.value, ContextType.AGENT_BASE_L2_SUMMARY.value, ContextType.AGENT_BASE_L3_SUMMARY.value}
+    summary_type_values = user_summary_types | base_summary_types
 
     roots: List[EventNode] = []
     linked: set = set()
@@ -313,11 +311,10 @@ async def _track_accessed_safe(
     results: List[EventNode],
     device_id: str = "default",
     agent_id: str = "default",
-    memory_owner: str = "user",
 ) -> None:
     """Fire-and-forget: record accessed event IDs in Redis for memory cache."""
     try:
-        l0_type = _search_service.get_l0_type(memory_owner)
+        l0_type = _search_service.get_l0_type()
         items: List[dict] = []
         for er in results:
             items.append(

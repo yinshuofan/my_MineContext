@@ -11,7 +11,7 @@ import asyncio
 import time
 from typing import Optional, Set
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
@@ -42,10 +42,6 @@ async def get_user_memory_cache(
     user_id: str = Query(..., description="User identifier (required)"),
     device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
-    memory_owner: str = Query(
-        default="user",
-        description="Memory owner type: 'user' or 'agent'. Controls which context types are queried.",
-    ),
     include: Optional[str] = Query(
         default=None,
         description="Comma-separated response sections: profile,events,accessed,all. Default: profile,events,accessed",
@@ -61,13 +57,9 @@ async def get_user_memory_cache(
 
     Returns:
     - profile: User profile data
-    - entities: Known entities for this user
     - recently_accessed: Memories recently returned in search results (real-time)
     - recent_memories: Hierarchical recent memories (today L0 events + daily summaries)
     """
-    if memory_owner not in ("user", "agent"):
-        raise HTTPException(400, "memory_owner must be 'user' or 'agent'")
-
     t0 = time.monotonic()
     manager = get_memory_cache_manager()
     include_sections = _parse_include(include)
@@ -83,7 +75,6 @@ async def get_user_memory_cache(
                 max_accessed=max_accessed,
                 force_refresh=force_refresh,
                 include_sections=include_sections,
-                memory_owner=memory_owner,
             ),
             timeout=15.0,
         )
@@ -108,19 +99,15 @@ async def invalidate_user_memory_cache(
     user_id: str = Query(..., description="User identifier"),
     device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
-    memory_owner: str = Query(
-        default="user",
-        description="Memory owner type: 'user' or 'agent'.",
-    ),
     _auth: str = auth_dependency,
 ):
-    """Manually invalidate a user's (or agent's) memory cache snapshot."""
+    """Manually invalidate a user's memory cache snapshot."""
     manager = get_memory_cache_manager()
-    await manager.invalidate_snapshot(user_id, device_id, agent_id, memory_owner=memory_owner)
+    await manager.invalidate_snapshot(user_id, device_id, agent_id)
     return {
         "success": True,
         "message": (
-            f"Cache invalidated for owner={memory_owner}, user={user_id}, "
+            f"Cache invalidated for user={user_id}, "
             f"device={device_id}, agent={agent_id}"
         ),
     }

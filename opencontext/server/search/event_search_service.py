@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import ProcessedContext, Vectorize
-from opencontext.models.enums import MEMORY_OWNER_TYPES, ContentFormat
+from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
 
@@ -40,7 +40,6 @@ class EventSearchService:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        memory_owner: str = "user",
         top_k: int = 20,
         score_threshold: Optional[float] = None,
         time_range: Optional[Any] = None,
@@ -56,7 +55,7 @@ class EventSearchService:
         )
         logger.debug(
             f"[EventSearchService] semantic_search: query='{query_text[:100]}', "
-            f"user_id={user_id}, agent_id={agent_id}, memory_owner={memory_owner}, "
+            f"user_id={user_id}, agent_id={agent_id}, "
             f"top_k={top_k}, drill_up={drill_up}"
         )
 
@@ -71,7 +70,7 @@ class EventSearchService:
 
         # Search
         filters = self._build_filters(time_range, None)
-        context_types = self._get_context_types_for_levels(memory_owner, None)
+        context_types = self._get_context_types_for_levels(None)
         raw_results = await self.storage.search(
             query=vectorize,
             top_k=top_k,
@@ -86,9 +85,7 @@ class EventSearchService:
         # Drill-up
         ancestors: Dict[str, ProcessedContext] = {}
         if drill_up and raw_results:
-            ancestors = await self.collect_ancestors(
-                raw_results, max_level=3, memory_owner=memory_owner
-            )
+            ancestors = await self.collect_ancestors(raw_results, max_level=3)
 
         logger.debug(
             f"[EventSearchService] semantic_search results: "
@@ -110,7 +107,6 @@ class EventSearchService:
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        memory_owner: str = "user",
         hierarchy_levels: Optional[List[int]] = None,
         time_range: Optional[Any] = None,
         top_k: int = 20,
@@ -120,13 +116,27 @@ class EventSearchService:
             time_start = time_range.start if time_range else None
             time_end = time_range.end if time_range else None
 
-            owner_types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
+            user_types = [ContextType.EVENT, ContextType.DAILY_SUMMARY, ContextType.WEEKLY_SUMMARY, ContextType.MONTHLY_SUMMARY]
+            base_types = [ContextType.AGENT_BASE_EVENT, ContextType.AGENT_BASE_L1_SUMMARY, ContextType.AGENT_BASE_L2_SUMMARY, ContextType.AGENT_BASE_L3_SUMMARY]
             tasks = []
             for level in hierarchy_levels:
-                if level < len(owner_types):
+                if level < len(user_types):
                     tasks.append(
                         self.storage.search_hierarchy(
-                            context_type=owner_types[level].value,
+                            context_type=user_types[level].value,
+                            hierarchy_level=level,
+                            time_start=time_start,
+                            time_end=time_end,
+                            user_id=user_id,
+                            device_id=device_id,
+                            agent_id=agent_id,
+                            top_k=top_k,
+                        )
+                    )
+                if level < len(base_types):
+                    tasks.append(
+                        self.storage.search_hierarchy(
+                            context_type=base_types[level].value,
                             hierarchy_level=level,
                             time_start=time_start,
                             time_end=time_end,
@@ -157,7 +167,7 @@ class EventSearchService:
             if time_range.end is not None:
                 filters["event_time_start_ts"] = {"$lte": time_range.end}
 
-        all_types = self._get_context_types_for_levels(memory_owner, None)
+        all_types = self._get_context_types_for_levels(None)
         result = await self.storage.get_all_processed_contexts(
             context_types=all_types,
             limit=top_k,
@@ -175,20 +185,24 @@ class EventSearchService:
     # ── Helpers (public — used by route layer) ──
 
     @staticmethod
-    def get_l0_type(memory_owner: str) -> str:
-        """Get the L0 event ContextType value for a memory owner."""
-        types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
-        return types[0].value
+    def get_l0_type() -> str:
+        """Get the L0 event ContextType value."""
+        return ContextType.EVENT.value
 
     @staticmethod
-    def _get_context_types_for_levels(
-        memory_owner: str, levels: Optional[List[int]]
-    ) -> List[str]:
-        """Map hierarchy_levels + memory_owner to ContextType values."""
-        types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
+    def _get_context_types_for_levels(levels: Optional[List[int]] = None) -> List[str]:
+        """Map hierarchy_levels to combined user + agent_base ContextType values."""
+        user_types = [ContextType.EVENT, ContextType.DAILY_SUMMARY, ContextType.WEEKLY_SUMMARY, ContextType.MONTHLY_SUMMARY]
+        base_types = [ContextType.AGENT_BASE_EVENT, ContextType.AGENT_BASE_L1_SUMMARY, ContextType.AGENT_BASE_L2_SUMMARY, ContextType.AGENT_BASE_L3_SUMMARY]
         if levels:
-            return [types[l].value for l in levels if l < len(types)]
-        return [t.value for t in types]
+            result = []
+            for l in levels:
+                if l < len(user_types):
+                    result.append(user_types[l].value)
+                if l < len(base_types):
+                    result.append(base_types[l].value)
+            return result
+        return [t.value for t in user_types + base_types]
 
     @staticmethod
     def _build_filters(
@@ -218,11 +232,11 @@ class EventSearchService:
         self,
         results: List[Tuple[ProcessedContext, float]],
         max_level: int,
-        memory_owner: str = "user",
     ) -> Dict[str, ProcessedContext]:
         """Collect ancestors by following refs upward (to summary types)."""
-        owner_types = MEMORY_OWNER_TYPES.get(memory_owner, MEMORY_OWNER_TYPES["user"])
-        summary_type_values = {t.value for t in owner_types[1:]}
+        user_summary_types = {ContextType.DAILY_SUMMARY.value, ContextType.WEEKLY_SUMMARY.value, ContextType.MONTHLY_SUMMARY.value}
+        base_summary_types = {ContextType.AGENT_BASE_L1_SUMMARY.value, ContextType.AGENT_BASE_L2_SUMMARY.value, ContextType.AGENT_BASE_L3_SUMMARY.value}
+        summary_type_values = user_summary_types | base_summary_types
 
         all_ancestors = {}
         seen = set()

@@ -218,7 +218,7 @@ class OpenContext:
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
     ) -> None:
-        """Invalidate both user and agent cache snapshots.
+        """Invalidate the cache snapshot for a user.
 
         Only deletes the cached snapshot — the next GET request will rebuild it
         on demand. This avoids rebuilding immediately after storage, when vector
@@ -232,9 +232,8 @@ class OpenContext:
             manager = get_memory_cache_manager()
             did = device_id or "default"
             aid = agent_id or "default"
-            await manager.invalidate_snapshot(user_id, did, aid, memory_owner="user")
-            await manager.invalidate_snapshot(user_id, did, aid, memory_owner="agent")
-            logger.debug(f"Cache invalidated (user + agent) for user={user_id}")
+            await manager.invalidate_snapshot(user_id, did, aid)
+            logger.debug(f"Cache invalidated for user={user_id}")
         except Exception as e:
             logger.warning(f"Cache invalidation failed for user={user_id}: {e}")
 

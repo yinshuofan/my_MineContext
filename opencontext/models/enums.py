@@ -85,10 +85,6 @@ class ContextType(str, Enum):
     DAILY_SUMMARY = "daily_summary"
     WEEKLY_SUMMARY = "weekly_summary"
     MONTHLY_SUMMARY = "monthly_summary"
-    AGENT_EVENT = "agent_event"
-    AGENT_DAILY_SUMMARY = "agent_daily_summary"
-    AGENT_WEEKLY_SUMMARY = "agent_weekly_summary"
-    AGENT_MONTHLY_SUMMARY = "agent_monthly_summary"
     AGENT_PROFILE = "agent_profile"
     AGENT_BASE_EVENT = "agent_base_event"
     AGENT_BASE_L1_SUMMARY = "agent_base_l1_summary"
@@ -114,10 +110,6 @@ CONTEXT_UPDATE_STRATEGIES = {
     ContextType.DAILY_SUMMARY: UpdateStrategy.APPEND,
     ContextType.WEEKLY_SUMMARY: UpdateStrategy.APPEND,
     ContextType.MONTHLY_SUMMARY: UpdateStrategy.APPEND,
-    ContextType.AGENT_EVENT: UpdateStrategy.APPEND,
-    ContextType.AGENT_DAILY_SUMMARY: UpdateStrategy.APPEND,
-    ContextType.AGENT_WEEKLY_SUMMARY: UpdateStrategy.APPEND,
-    ContextType.AGENT_MONTHLY_SUMMARY: UpdateStrategy.APPEND,
     ContextType.AGENT_PROFILE: UpdateStrategy.OVERWRITE,
     ContextType.AGENT_BASE_EVENT: UpdateStrategy.APPEND,
     ContextType.AGENT_BASE_L1_SUMMARY: UpdateStrategy.APPEND,
@@ -135,10 +127,6 @@ CONTEXT_STORAGE_BACKENDS = {
     ContextType.DAILY_SUMMARY: "vector_db",  # Vector DB
     ContextType.WEEKLY_SUMMARY: "vector_db",  # Vector DB
     ContextType.MONTHLY_SUMMARY: "vector_db",  # Vector DB
-    ContextType.AGENT_EVENT: "vector_db",  # Vector DB
-    ContextType.AGENT_DAILY_SUMMARY: "vector_db",  # Vector DB
-    ContextType.AGENT_WEEKLY_SUMMARY: "vector_db",  # Vector DB
-    ContextType.AGENT_MONTHLY_SUMMARY: "vector_db",  # Vector DB
     ContextType.AGENT_PROFILE: "document_db",  # Relational DB
     ContextType.AGENT_BASE_EVENT: "vector_db",  # Vector DB
     ContextType.AGENT_BASE_L1_SUMMARY: "vector_db",  # Vector DB
@@ -153,12 +141,6 @@ MEMORY_OWNER_TYPES = {
         ContextType.DAILY_SUMMARY,
         ContextType.WEEKLY_SUMMARY,
         ContextType.MONTHLY_SUMMARY,
-    ],
-    "agent": [
-        ContextType.AGENT_EVENT,
-        ContextType.AGENT_DAILY_SUMMARY,
-        ContextType.AGENT_WEEKLY_SUMMARY,
-        ContextType.AGENT_MONTHLY_SUMMARY,
     ],
     "agent_base": [
         ContextType.AGENT_BASE_EVENT,
@@ -213,26 +195,6 @@ ContextSimpleDescriptions = {
         "name": "Monthly Summary",
         "description": "Auto-generated monthly summary of user events",
         "purpose": "Provides a condensed view of monthly activity",
-    },
-    ContextType.AGENT_EVENT: {
-        "name": "Agent Event",
-        "description": "Agent's subjective experience and reactions to user events",
-        "purpose": "Records the agent's feelings, reactions, and evaluations about user events from the agent's own perspective.",
-    },
-    ContextType.AGENT_DAILY_SUMMARY: {
-        "name": "Agent Daily Summary",
-        "description": "Auto-generated daily summary of agent events",
-        "purpose": "Provides a condensed view of the agent's daily experience",
-    },
-    ContextType.AGENT_WEEKLY_SUMMARY: {
-        "name": "Agent Weekly Summary",
-        "description": "Auto-generated weekly summary of agent events",
-        "purpose": "Provides a condensed view of the agent's weekly experience",
-    },
-    ContextType.AGENT_MONTHLY_SUMMARY: {
-        "name": "Agent Monthly Summary",
-        "description": "Auto-generated monthly summary of agent events",
-        "purpose": "Provides a condensed view of the agent's monthly experience",
     },
     ContextType.AGENT_PROFILE: {
         "name": "Agent Profile",
@@ -334,20 +296,6 @@ ContextDescriptions = {
         ],
         "classification_priority": 7,
     },
-    ContextType.AGENT_EVENT: {
-        "name": "Agent Event",
-        "description": "Agent's subjective experience — Records the agent's feelings, reactions, and evaluations about user events from the agent's own perspective.",
-        "key_indicators": [
-            "Contains the agent's subjective perspective or emotional reaction",
-            "Describes what the agent observed, felt, or thought about an interaction",
-            "Records the agent's evaluation of user behavior or events",
-        ],
-        "examples": [
-            "He mentioned enjoying poetry today — I found his taste surprisingly refined",
-            "The user seemed distracted during our conversation, I wonder what's troubling him",
-        ],
-        "classification_priority": 5,
-    },
 }
 
 
@@ -376,9 +324,6 @@ SYSTEM_GENERATED_TYPES = {
     ContextType.DAILY_SUMMARY,
     ContextType.WEEKLY_SUMMARY,
     ContextType.MONTHLY_SUMMARY,
-    ContextType.AGENT_DAILY_SUMMARY,
-    ContextType.AGENT_WEEKLY_SUMMARY,
-    ContextType.AGENT_MONTHLY_SUMMARY,
 }
 
 
