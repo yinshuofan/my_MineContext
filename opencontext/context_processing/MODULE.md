@@ -141,43 +141,39 @@ The `_build_processed_context` method validates and sanitizes all LLM output fie
 
 ### AgentMemoryProcessor (`processor/agent_memory_processor.py`)
 
-Extracts memories from conversations as seen from the agent's perspective, using context-aware generation that incorporates the agent's persona and related past memories. Registered in `ProcessorFactory` as `"agent_memory_processor"` and mapped in `BATCH_PROCESSOR_MAP` as `"agent_memory"`.
+**Post-processor** that annotates events produced by `TextChatProcessor` with agent-perspective commentary. Unlike standalone processors, it operates on `prior_results` from the DAG-based processor orchestration, not on raw input alone. Registered in `ProcessorFactory` as `"agent_memory_processor"` and mapped in `BATCH_PROCESSOR_MAP` as `"agent_memory"`.
 
 ```python
 class AgentMemoryProcessor(BaseContextProcessor):
     def get_name(self) -> str             # returns "agent_memory_processor"
     def get_description(self) -> str
     def can_process(self, context: Any) -> bool
-    async def process(self, context: RawContextProperties) -> List[ProcessedContext]
-    async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]
-    async def _extract_search_query(self, chat_content: str) -> Optional[str]
-    @staticmethod def _format_related_memories(search_result: SearchResult) -> str
-    def _build_agent_context(self, memory: Dict, raw_context: RawContextProperties, batch_id: Optional[str]) -> Optional[ProcessedContext]
+    async def process(self, context: RawContextProperties, prior_results: Optional[List[ProcessedContext]] = None) -> List[ProcessedContext]
+    async def _process_async(self, raw_context: RawContextProperties, prior_results: List[ProcessedContext]) -> List[ProcessedContext]
 ```
 
-Pipeline (5-step context-aware flow):
-1. **Parallel context gathering** (`asyncio.gather`): fetches the agent's existing profile via `storage.get_profile(context_type="agent_profile")` and extracts a search query from the chat content via LLM using the `agent_memory_query` prompt
-2. **Search related past memories**: uses `EventSearchService.semantic_search(memory_owner="agent", drill_up=True)` to find semantically related past agent events and hierarchy summaries. Skipped if query extraction returned nothing.
-3. **Format related memories**: merges hits + ancestors from `SearchResult`, deduplicates by ID, sorts by `event_time_start` ascending, formats as text lines (`[event_time_start] title\nsummary`)
-4. **Generate memories** via LLM with full context: loads `agent_memory_analyze` prompt and substitutes `{agent_name}`, `{agent_persona}` (from profile's `factual_profile` field), and `{related_memories}` into the system prompt. Calls `generate_with_messages()` with chat history.
-5. **Build ProcessedContext list**: parses JSON response -> `memories` array, builds via `_build_agent_context()` per memory:
-   - Memory type `"agent_profile"` -> `ContextType.AGENT_PROFILE`; `"agent_event"` -> `ContextType.AGENT_EVENT`; unknown types are skipped
-   - Validates/sanitizes all fields (title, summary, keywords, entities, importance, confidence, event_time_start)
-   - Generates embedding via `do_vectorize()` for each context
+**DAG dependency model**: When both `user_memory` and `agent_memory` processors are requested, `ProcessorManager` runs them with dependency ordering: `user_memory` runs first, then `agent_memory` receives the user_memory results as `prior_results`. This is configured via `PROCESSOR_DEPENDENCIES` in `processor_manager.py`.
+
+Pipeline:
+1. **Filter events from prior_results**: extracts `EVENT`-type contexts from the prior processor's output
+2. **Validate agent**: checks `agent_id` is non-default and agent exists in registry; returns empty if not
+3. **Fetch agent profile**: loads existing `agent_profile` from storage for persona context
+4. **Generate commentary** via LLM: calls LLM with the `agent_memory_analyze` prompt, substituting `{agent_name}`, `{agent_persona}`, and the event summaries. The LLM returns per-event commentary as a JSON map.
+5. **Annotate events**: sets `extracted_data.agent_commentary` on each matching event context from prior_results. Returns the modified event contexts (same IDs, with commentary populated).
+
+Does NOT produce new contexts -- it modifies and returns the event contexts from `prior_results`. This means agent memory processing adds commentary to user events rather than creating separate agent-owned event types.
 
 Returns early with empty list if:
 - `agent_id` is missing or `"default"`
 - Agent not found in registry
-- Agent profile not found (error logged — agent must have a profile before memory processing)
+- No events in `prior_results`
 
-Key differences from `TextChatProcessor`:
-- Output types: `AGENT_EVENT` and `AGENT_PROFILE` (not `EVENT`/`KNOWLEDGE`)
-- Makes 2 LLM calls instead of 1 (query extraction + memory generation)
-- Depends on `EventSearchService` from `opencontext.server.search` for related memory retrieval
-- Agent persona comes from `factual_profile` field of the existing agent profile (not `agent_description` from the agent registry)
-- Requires a registered agent in the agent registry AND an existing agent profile; skips if either is not found
-- Does not support multimodal content (text-only prompt)
-- Always calls `do_vectorize()` on each result for embedding generation
+Key differences from the previous standalone design:
+- No longer produces `AGENT_EVENT` type (removed) or `AGENT_PROFILE` type (now updated by `AgentProfileUpdateTask` instead)
+- Does not create new contexts; annotates existing events with `agent_commentary` field
+- Single LLM call (commentary generation only, no query extraction or related memory search)
+- Depends on `prior_results` from DAG orchestration, not on `EventSearchService`
+- No embedding generation (`do_vectorize()` is not called since no new contexts are created)
 
 ### DocumentProcessor (`processor/document_processor.py`)
 

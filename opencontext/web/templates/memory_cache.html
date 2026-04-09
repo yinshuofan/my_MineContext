@@ -28,17 +28,6 @@
                         <input type="text" class="form-control" id="agentId" placeholder="default" value="default">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">记忆所有者</label>
-                        <div class="form-check">
-                            <input type="radio" class="form-check-input" name="memoryOwner" id="ownerUser" value="user" checked>
-                            <label class="form-check-label" for="ownerUser">用户记忆</label>
-                        </div>
-                        <div class="form-check">
-                            <input type="radio" class="form-check-input" name="memoryOwner" id="ownerAgent" value="agent">
-                            <label class="form-check-label" for="ownerAgent">Agent 记忆</label>
-                        </div>
-                    </div>
-                    <div class="mb-3">
                         <label class="form-label">返回内容</label>
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" id="includeProfile" checked>
@@ -92,8 +81,6 @@
 
 {% block scripts %}
 <script>
-let currentMemoryOwner = 'user';
-
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('memoryCacheForm').addEventListener('submit', handleQuery);
 });
@@ -110,8 +97,6 @@ async function handleQuery(event) {
     const maxTodayEvents = document.getElementById('maxTodayEvents').value || 5;
     const maxAccessed = document.getElementById('maxAccessed').value || 20;
     const forceRefresh = document.getElementById('forceRefresh').checked;
-    currentMemoryOwner = document.querySelector('input[name="memoryOwner"]:checked').value;
-
     // Build include parameter from checkboxes
     const includeSections = [];
     if (document.getElementById('includeProfile').checked) includeSections.push('profile');
@@ -128,8 +113,7 @@ async function handleQuery(event) {
             recent_days: recentDays,
             max_recent_events_today: maxTodayEvents,
             max_accessed: maxAccessed,
-            force_refresh: forceRefresh,
-            memory_owner: currentMemoryOwner
+            force_refresh: forceRefresh
         });
 
         // Only add include param if not all sections selected (backward compat)
@@ -189,9 +173,8 @@ function renderResults(data) {
 }
 
 function renderProfile(profile) {
-    const isAgent = currentMemoryOwner === 'agent';
-    const title = isAgent ? 'Agent 画像' : '用户画像';
-    const icon = isAgent ? 'cpu' : 'user';
+    const title = '用户画像';
+    const icon = 'user';
     let content;
     if (!profile) {
         content = `<p class="text-muted">暂无${title}</p>`;
@@ -238,9 +221,8 @@ function renderRecentlyAccessed(items) {
 }
 
 function renderTodayEvents(events) {
-    const isAgent = currentMemoryOwner === 'agent';
-    const title = isAgent ? '今日 Agent 事件' : '今日事件';
-    const emptyText = isAgent ? '今日暂无 Agent 事件' : '今日暂无事件';
+    const title = '今日事件';
+    const emptyText = '今日暂无事件';
     let content;
     if (events.length === 0) {
         content = `<p class="text-muted">${emptyText}</p>`;
@@ -263,9 +245,8 @@ function renderTodayEvents(events) {
 }
 
 function renderDailySummaries(summaries) {
-    const isAgent = currentMemoryOwner === 'agent';
-    const title = isAgent ? 'Agent 日摘要' : '历史日摘要';
-    const emptyText = isAgent ? '暂无 Agent 日摘要' : '暂无历史日摘要';
+    const title = '历史日摘要';
+    const emptyText = '暂无历史日摘要';
     let content;
     if (summaries.length === 0) {
         content = `<p class="text-muted">${emptyText}</p>`;

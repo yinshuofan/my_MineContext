@@ -322,17 +322,6 @@ curl -X POST http://localhost:1733/api/search \
 #   }
 # }
 
-# Search agent events
-curl -X POST http://localhost:1733/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": [{"type": "text", "text": "meeting notes"}],
-    "memory_owner": "agent",
-    "user_id": "user_001",
-    "agent_id": "assistant_01"
-  }'
-# -H "X-API-Key: your-api-key"
-
 # Direct Vector Search
 curl -X POST http://localhost:1733/api/vector_search \
   -H "Content-Type: application/json" \
@@ -363,10 +352,6 @@ curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=pro
 
 # Get profile + events (no recently accessed)
 curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=profile,events"
-# -H "X-API-Key: your-api-key"
-
-# Get agent memory cache
-curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=assistant_01&memory_owner=agent"
 # -H "X-API-Key: your-api-key"
 
 # Invalidate Memory Cache
@@ -1023,25 +1008,8 @@ curl -X POST http://localhost:1733/api/push/chat \
   }'
 # -H "X-API-Key: your-api-key"
 
-# Search agent memories (memory_owner="agent")
-curl -X POST http://localhost:1733/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": [{"type": "text", "text": "quarterly report"}],
-    "user_id": "user_001",
-    "agent_id": "assistant_01",
-    "memory_owner": "agent",
-    "top_k": 10
-  }'
-# -H "X-API-Key: your-api-key"
 
-# Get agent memory cache snapshot (memory_owner="agent")
-curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=assistant_01&memory_owner=agent&include=profile,events"
-# -H "X-API-Key: your-api-key"
 
-# Invalidate agent memory cache
-curl -X DELETE "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=assistant_01&memory_owner=agent"
-# -H "X-API-Key: your-api-key"
 
 
 # ============================================================================

@@ -31,9 +31,9 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `routes/completions.py` | Intelligent completion suggestions (`/api/completions/*`) -- **NOT registered in `api.py`; routes are inactive/dead code** |
 | **search/** | |
 | `search/event_search_service.py` | `EventSearchService` — reusable stateless search service (vectorization, storage search, ancestor collection); `SearchResult` dataclass |
-| `search/models.py` | Pydantic models: `EventSearchRequest` (multimodal content parts query, `memory_owner` field), `EventSearchResponse`, `EventNode` (with `refs` and `media_refs`), `SearchMetadata`, `TimeRange` |
+| `search/models.py` | Pydantic models: `EventSearchRequest` (multimodal content parts query), `EventSearchResponse`, `EventNode` (with `refs` and `media_refs`), `SearchMetadata`, `TimeRange` |
 | **cache/** | |
-| `cache/memory_cache_manager.py` | `MemoryCacheManager` singleton -- builds/caches per-owner memory snapshots in Redis (parameterized by `memory_owner`: `"user"` or `"agent"`) |
+| `cache/memory_cache_manager.py` | `MemoryCacheManager` singleton -- builds/caches per-user memory snapshots in Redis |
 | `cache/models.py` | Response models: `UserMemoryCacheResponse`, `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`, `RecentlyAccessedItem` (with `media_refs`); internal models: `RecentMemoryItem`, `DailySummaryItem`. `UserMemoryCacheManager` is kept as a backward-compat alias for `MemoryCacheManager`. |
 | **middleware/** | |
 | `middleware/auth.py` | API key authentication via `X-API-Key` header or `api_key` query param |
@@ -112,7 +112,7 @@ class ContextOperations:
 
 ### EventSearchService (search/event_search_service.py)
 
-Reusable, stateless search service that encapsulates vectorization, storage search, and ancestor collection. Used by both the `/api/search` route and internal consumers (e.g., `AgentMemoryProcessor`). Accesses storage via a non-caching `@property` (follows the `get_storage()` pattern).
+Reusable, stateless search service that encapsulates vectorization, storage search, and ancestor collection. Used by the `/api/search` route. Accesses storage via a non-caching `@property` (follows the `get_storage()` pattern).
 
 ```python
 @dataclass
@@ -124,21 +124,20 @@ class EventSearchService:
     @property storage                               # -> get_storage()
 
     # Public API
-    async def semantic_search(query, user_id, device_id, agent_id, memory_owner="user",
+    async def semantic_search(query, user_id, device_id, agent_id,
                               top_k=20, score_threshold=None, time_range=None,
                               drill_up=False) -> SearchResult
-    async def filter_search(user_id, device_id, agent_id, memory_owner="user",
+    async def filter_search(user_id, device_id, agent_id,
                             hierarchy_levels=None, time_range=None, top_k=20) -> List[Tuple[ProcessedContext, float]]
 
     # Helpers (public — used by route layer)
-    @staticmethod get_l0_type(memory_owner) -> str
-    @staticmethod _get_context_types_for_levels(memory_owner, levels) -> List[str]
+    @staticmethod get_l0_type() -> str
+    @staticmethod _get_context_types_for_levels(levels) -> List[str]
     @staticmethod _build_filters(time_range, hierarchy_levels) -> Dict[str, Any]
-    @staticmethod _time_range_to_buckets(start_ts, end_ts) -> Tuple[Optional[str], Optional[str]]
-    async def collect_ancestors(results, max_level, memory_owner="user") -> Dict[str, ProcessedContext]
+    async def collect_ancestors(results, max_level) -> Dict[str, ProcessedContext]
 ```
 
-`semantic_search()` handles vectorization internally — callers provide raw query content in OpenAI content parts format (`[{"type": "text", "text": "..."}]`). It vectorizes the query, searches storage with resolved context types from `MEMORY_OWNER_TYPES`, and optionally collects ancestors via `collect_ancestors()`.
+`semantic_search()` handles vectorization internally — callers provide raw query content in OpenAI content parts format (`[{"type": "text", "text": "..."}]`). It vectorizes the query, searches storage with user + agent_base context types, and optionally collects ancestors via `collect_ancestors()`. The `memory_owner` parameter was removed -- all searches now query both user events and agent base events.
 
 `filter_search()` performs filter-only search (no semantic vector): either per-level `search_hierarchy()` calls or `get_all_processed_contexts()` with time filter.
 
@@ -154,7 +153,7 @@ async def search_events(request: EventSearchRequest, _auth) -> EventSearchRespon
 async def _execute_search(search_service, request) -> Tuple[List[EventNode], List[EventNode]]
 def _to_context_node(ctx: ProcessedContext) -> EventNode
 def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode
-async def _track_accessed_safe(user_id, results, device_id, agent_id, memory_owner="user") -> None
+async def _track_accessed_safe(user_id, results, device_id, agent_id) -> None
 ```
 
 Algorithm:
@@ -169,31 +168,31 @@ Algorithm:
 
 ### MemoryCacheManager (cache/memory_cache_manager.py)
 
-Singleton via `get_memory_cache_manager()`. Manages per-owner memory snapshots in Redis. Renamed from `UserMemoryCacheManager` (kept as backward-compat alias). Parameterized by `memory_owner` (`"user"` or `"agent"`) to resolve which ContextTypes to query via `MEMORY_OWNER_TYPES`.
+Singleton via `get_memory_cache_manager()`. Manages per-user memory snapshots in Redis. Renamed from `UserMemoryCacheManager` (kept as backward-compat alias). Always queries user-side ContextTypes (EVENT, DAILY_SUMMARY, etc.) and user profile.
 
 ```python
 class MemoryCacheManager:
     def __init__(self)
     async def track_accessed(self, user_id, items: List[Dict], device_id, agent_id) -> None
-    async def invalidate_snapshot(self, user_id, device_id, agent_id, memory_owner="user") -> None
-    async def refresh_snapshot(self, user_id, device_id, agent_id, memory_owner="user") -> bool
-    async def get_user_memory_cache(self, user_id, device_id, agent_id, recent_days, max_recent_events_today, max_accessed, force_refresh, include_sections: Optional[Set[str]] = None, memory_owner="user") -> UserMemoryCacheResponse
+    async def invalidate_snapshot(self, user_id, device_id, agent_id) -> None
+    async def refresh_snapshot(self, user_id, device_id, agent_id) -> bool
+    async def get_user_memory_cache(self, user_id, device_id, agent_id, recent_days, max_recent_events_today, max_accessed, force_refresh, include_sections: Optional[Set[str]] = None) -> UserMemoryCacheResponse
 
     # Internal
     async def _get_recently_accessed(self, cache, user_id, max_items, device_id, agent_id) -> List[RecentlyAccessedItem]
-    async def _build_snapshot(self, user_id, device_id, agent_id, recent_days, max_today_events, memory_owner="user") -> Dict[str, Any]
+    async def _build_snapshot(self, user_id, device_id, agent_id, recent_days, max_today_events) -> Dict[str, Any]
     def _merge_response(self, snapshot_data, accessed, cache_hit, ttl_remaining, include_sections: Optional[Set[str]] = None) -> UserMemoryCacheResponse
     async def _trim_accessed(self, cache, key: str, max_size: int) -> None
     @staticmethod _ctx_to_recent_item(ctx: ProcessedContext) -> Dict[str, Any]
-    @staticmethod _snapshot_key(memory_owner, user_id, device_id, agent_id) -> str
+    @staticmethod _snapshot_key(user_id, device_id, agent_id) -> str
 ```
 
-**`memory_owner` parameter**: Controls which ContextTypes are used in snapshot queries. `_build_snapshot()` resolves types from `MEMORY_OWNER_TYPES[memory_owner]` (e.g., `"user"` → EVENT/DAILY_SUMMARY/..., `"agent"` → AGENT_EVENT/AGENT_DAILY_SUMMARY/...). Profile queries pass `context_type` derived from `memory_owner` (`"profile"` for user, `"agent_profile"` for agent). Agent memory owner skips document/knowledge sections.
+The `memory_owner` parameter was removed -- the cache always operates on user memory (EVENT/DAILY_SUMMARY/WEEKLY_SUMMARY/MONTHLY_SUMMARY and PROFILE). Agent profile data is maintained separately by `AgentProfileUpdateTask`.
 
 Caching architecture:
-- **Snapshot** (profile + today events + daily summaries + recent docs + recent knowledge): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{memory_owner}:{user_id}:{device_id}:{agent_id}`. Snapshot always stores full internal data; response assembly in `_merge_response()` filters by `include_sections` and simplifies to `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`.
+- **Snapshot** (profile + today events + daily summaries + recent docs + recent knowledge): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot always stores full internal data; response assembly in `_merge_response()` filters by `include_sections` and simplifies to `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`.
 - **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile excluded), always read real-time. Skipped entirely if `"accessed"` not in `include_sections`.
-- **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. Lock key includes `memory_owner`: `memory_cache:build:{memory_owner}:{user_id}:{device_id}:{agent_id}`. If lock acquisition times out, tries cache once more then builds directly without caching.
+- **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. Lock key: `memory_cache:build:{user_id}:{device_id}:{agent_id}`. If lock acquisition times out, tries cache once more then builds directly without caching.
 - **Snapshot build**: 5 parallel queries (profile, today events, daily summaries, recent docs, recent knowledge). Snapshot is always built fully for caching efficiency; `include_sections` filtering is response-level only.
 - **Section filtering**: `include_sections` controls which response fields are populated. Default: `{"profile", "events", "accessed"}`. Sections: `profile` → `profile`, `events` → `today_events` + `daily_summaries`, `accessed` → `recently_accessed`. Unrequested sections are `null` in response; requested but empty sections are `[]`.
 
@@ -252,8 +251,8 @@ Push endpoints that schedule hierarchy summary: `push_chat`.
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| GET | `/api/memory-cache` | `get_user_memory_cache` | Get memory snapshot (query param: `memory_owner`, default `"user"`) |
-| DELETE | `/api/memory-cache` | `invalidate_user_memory_cache` | Invalidate memory cache (query param: `memory_owner`, default `"user"`) |
+| GET | `/api/memory-cache` | `get_user_memory_cache` | Get user memory snapshot |
+| DELETE | `/api/memory-cache` | `invalidate_user_memory_cache` | Invalidate user memory cache |
 
 ### Health Routes
 
@@ -592,19 +591,18 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 ### Memory Cache Flow (`GET /api/memory-cache`)
 
 ```
-get_user_memory_cache(include_sections, memory_owner)
+get_user_memory_cache(include_sections)
   -> Parse include_sections (default: {profile, events, accessed})
   -> If "accessed" in sections:
        _get_recently_accessed()          # Real-time from Redis Hash
   -> If only "accessed" requested:
        return _merge_response(empty_snapshot, accessed, sections)
-  -> Check cached snapshot (Redis JSON, key includes memory_owner)
+  -> Check cached snapshot (Redis JSON)
      HIT  -> _merge_response(snapshot, accessed, sections)
      MISS -> acquire_lock()
           -> Double-check snapshot
-          -> _build_snapshot(memory_owner=memory_owner)  # Resolves types from MEMORY_OWNER_TYPES
-             profile (context_type from memory_owner: "profile" or "agent_profile"), today_events, daily_summaries,
-             recent_docs (skipped for agent), recent_knowledge (skipped for agent)
+          -> _build_snapshot()
+             profile, today_events, daily_summaries, recent_docs, recent_knowledge
           -> cache.set_json(snapshot, ttl=300s)
           -> release_lock()
           -> _merge_response(snapshot, accessed, sections)
@@ -618,11 +616,10 @@ get_user_memory_cache(include_sections, memory_owner)
 OpenContext._handle_processed_context()
   -> After successful storage writes
   -> _invalidate_user_cache(user_id, device_id, agent_id)
-     -> get_memory_cache_manager().refresh_snapshot(memory_owner="user")
-     -> get_memory_cache_manager().refresh_snapshot(memory_owner="agent")
-        -> For each: acquire distributed lock (key includes memory_owner)
+     -> get_memory_cache_manager().refresh_snapshot()
+        -> acquire distributed lock
         -> delete old snapshot
-        -> _build_snapshot(memory_owner=...) (5 parallel queries, types resolved from MEMORY_OWNER_TYPES)
+        -> _build_snapshot() (5 parallel queries)
         -> cache new snapshot with TTL
      -> Fallback (lock held by another worker): delete snapshot key only
 ```
@@ -649,4 +646,4 @@ OpenContext._handle_processed_context()
 
 10. **Adding a new route module**: Create `routes/new_module.py` with `router = APIRouter(...)`, then add `from .routes import new_module` and `router.include_router(new_module.router)` in `api.py`.
 
-11. **Search uses memory_owner for type resolution**: The `/api/search` endpoint searches event-family contexts (EVENT/DAILY_SUMMARY/WEEKLY_SUMMARY/MONTHLY_SUMMARY for `memory_owner="user"`, or AGENT_EVENT/AGENT_DAILY_SUMMARY/... for `"agent"`). Context types are resolved dynamically from `MEMORY_OWNER_TYPES`, not hardcoded. To search other types, use `/api/vector_search` in `routes/context.py`.
+11. **Search queries user + agent_base event types**: The `/api/search` endpoint searches event-family contexts (EVENT/DAILY_SUMMARY/WEEKLY_SUMMARY/MONTHLY_SUMMARY and AGENT_BASE_EVENT/AGENT_BASE_L1_SUMMARY/...). The `memory_owner` parameter was removed. To search other types, use `/api/vector_search` in `routes/context.py`.

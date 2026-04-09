@@ -140,8 +140,8 @@ Events support a 4-level time-based hierarchy: **L0** (raw events) → **L1** (d
 | `/api/push/document` | POST | Push document (file_path or base64) |
 | `/api/agents` | POST/GET/PUT/DELETE | Agent CRUD (register, list, get, update, soft-delete) |
 | `/api/agents/{id}/base/*` | POST/GET/DELETE | Agent base memory (profile + events) |
-| `/api/search` | POST | Event search with semantic query, filters, hierarchy drill-up, and `memory_owner` parameter |
-| `/api/memory-cache` | GET | User/agent memory snapshot (parameterized by `memory_owner`) |
+| `/api/search` | POST | Event search with semantic query, filters, hierarchy drill-up |
+| `/api/memory-cache` | GET | User memory snapshot |
 | `/api/chat-batches` | GET | List/get chat batches and their related vector contexts (debug) |
 
 Request body uses OpenAI message format. The 3-key identifier `(user_id, device_id, agent_id)` is optional on all push endpoints, defaulting to `"default"`.
@@ -175,7 +175,7 @@ These are real bugs encountered during development. Check for them when modifyin
 This service runs as multiple instances sharing the same Redis and MySQL. Any "read-then-write" sequence on shared state is a potential race condition. Use atomic operations: Lua scripts for Redis (see `_CONDITIONAL_ZPOPMIN_LUA` in `redis_scheduler.py` for the pattern, executed via `RedisCache.eval_lua()`), database transactions for MySQL. When adding new Redis operations that check-then-modify, ask: "What happens if two instances run this at the same time?" If the answer is "data corruption or duplicate work", make it atomic.
 
 ### All profile operations require the 4-key identifier `(user_id, device_id, agent_id, context_type)`
-Every storage method for profiles requires all four identifiers. `device_id` and `agent_id` default to `"default"`, `context_type` defaults to `"profile"`. Pass `context_type="agent_profile"` for agent profiles. Omitting them causes positional argument mismatches. The same applies to tools, cache manager, and search strategies. Redis cache keys also use the 3-key tuple: `memory_cache:snapshot:{memory_owner}:{user_id}:{device_id}:{agent_id}`.
+Every storage method for profiles requires all four identifiers. `device_id` and `agent_id` default to `"default"`, `context_type` defaults to `"profile"`. Pass `context_type="agent_profile"` for agent profiles. Omitting them causes positional argument mismatches. The same applies to tools, cache manager, and search strategies. Redis cache keys also use the 3-key tuple: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`.
 
 ### Qdrant Range filter only supports numeric/datetime
 **Resolved**: The old workaround (in-code string comparison on `time_bucket`, over-fetching with `top_k * 3`) is no longer used. `search_by_hierarchy` now uses numeric `models.Range` filters on `event_time_start_ts`/`event_time_end_ts` float fields, which Qdrant handles natively.

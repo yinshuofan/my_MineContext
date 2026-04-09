@@ -213,11 +213,8 @@ curl -X POST http://localhost:1733/api/push/document \
 | `user_id` | `string` | 否 | — | 用户标识 |
 | `device_id` | `string` | 否 | — | 设备标识 |
 | `agent_id` | `string` | 否 | — | Agent 标识 |
-| `memory_owner` | `string` | 否 | `"user"` | 记忆所有者：`"user"` 查询用户事件，`"agent"` 查询 agent 视角事件。仅接受 `"user"` 或 `"agent"` |
 
 > `query`、`event_ids`、`time_range`、`hierarchy_levels` 必须至少提供一项。
->
-> `memory_owner` 控制查询的 ContextType 集合：`"user"` → EVENT / DAILY_SUMMARY / WEEKLY_SUMMARY / MONTHLY_SUMMARY；`"agent"` → AGENT_EVENT / AGENT_DAILY_SUMMARY / AGENT_WEEKLY_SUMMARY / AGENT_MONTHLY_SUMMARY。
 
 ### 请求示例
 
@@ -291,6 +288,7 @@ curl -X POST http://localhost:1733/api/search \
       ],
       "keywords": ["birthday gift", "earring", "shopping"],
       "entities": ["earring"],
+      "agent_commentary": null,
       "score": 0.108
     },
     {
@@ -309,6 +307,7 @@ curl -X POST http://localhost:1733/api/search \
       ],
       "keywords": ["photo feedback", "historical site"],
       "entities": [],
+      "agent_commentary": "User seems enthusiastic about photography and traditional architecture. This aligns with their stated interests.",
       "score": 0.122
     }
   ],
@@ -397,7 +396,6 @@ curl -X POST http://localhost:1733/api/search \
 | `recent_days` | `int` | 否 | 配置值（默认 3） | 近期记忆时间窗口（天） |
 | `max_recent_events_today` | `int` | 否 | 配置值（默认 5） | 今日最大 L0 事件数 |
 | `max_accessed` | `int` | 否 | `5`（1-100） | 最近访问记录最大数量 |
-| `memory_owner` | `string` | 否 | `"user"` | 记忆所有者：`"user"` 查询用户记忆，`"agent"` 查询 agent 视角记忆。仅接受 `"user"` 或 `"agent"` |
 | `force_refresh` | `bool` | 否 | `false` | 是否强制重建缓存（跳过 Redis） |
 
 **`include` 参数说明：**

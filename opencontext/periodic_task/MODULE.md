@@ -10,6 +10,7 @@ Defines the `IPeriodicTask` interface, base class `BasePeriodicTask`, and three 
 | `memory_compression.py` | `MemoryCompressionTask` -- deduplicates similar knowledge contexts per user (`user_activity`) |
 | `data_cleanup.py` | `DataCleanupTask` -- retention-based data cleanup (`periodic`, global) |
 | `hierarchy_summary.py` | `HierarchySummaryTask` -- generates L1/L2/L3 event summaries (`user_activity`) |
+| `agent_profile_update.py` | `AgentProfileUpdateTask` -- updates agent_profile from daily event commentary (`user_activity`) |
 | `__init__.py` | Re-exports all public symbols including `create_*_handler` factory functions |
 
 ## Key Classes and Functions
@@ -165,6 +166,36 @@ Generates embedding via `await do_vectorize()`, calls `await storage.upsert_proc
 
 **Factory**: `create_hierarchy_handler() -> async TaskHandler`
 
+### AgentProfileUpdateTask
+
+Updates the `agent_profile` for a specific user by aggregating `agent_commentary` from today's events. Triggered via `user_activity` when `agent_memory` processor is used.
+
+| Property | Value |
+|----------|-------|
+| `name` | `"agent_profile_update"` |
+| `trigger_mode` | `USER_ACTIVITY` |
+| `interval` | `86400` (24 hours) |
+| `timeout` | `300` |
+| `task_ttl` | `14400` |
+| `max_retries` | `2` |
+
+**Constructor**: `__init__(interval=86400, timeout=300)`
+
+**Core flow in `async execute(context)`**:
+1. Validates `agent_id` is non-default and agent is registered
+2. Fetches today's EVENT-type contexts for the user via `storage.get_all_processed_contexts()`
+3. Filters for events that have non-empty `agent_commentary` on `extracted_data`
+4. Fetches existing `agent_profile` for context
+5. Calls LLM with `agent_profile_update` prompt, passing existing profile and today's commentary
+6. Merges LLM result into existing profile via `refresh_profile()` (from `profile_processor.py`)
+
+Returns early if:
+- `agent_id` is missing or `"default"`
+- Agent not found in registry
+- No events with `agent_commentary` found today
+
+**Factory**: `create_agent_profile_handler() -> async TaskHandler`
+
 ## Class Hierarchy
 
 ```
@@ -172,7 +203,8 @@ IPeriodicTask (ABC)
   └── BasePeriodicTask
         ├── MemoryCompressionTask
         ├── DataCleanupTask
-        └── HierarchySummaryTask
+        ├── HierarchySummaryTask
+        └── AgentProfileUpdateTask
 ```
 
 ## Internal Data Flow

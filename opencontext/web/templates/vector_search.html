@@ -104,14 +104,6 @@
                         <input type="text" class="form-control" id="agentId" placeholder="输入代理ID">
                     </div>
 
-                    <div class="mb-3">
-                        <label for="memoryOwner" class="form-label">记忆所有者</label>
-                        <select class="form-control" id="memoryOwner">
-                            <option value="user">用户事件</option>
-                            <option value="agent">Agent 事件</option>
-                        </select>
-                    </div>
-
                     <button type="submit" class="btn btn-primary w-100">
                         <span class="spinner-border spinner-border-sm d-none" role="status" id="loadingSpinner"></span>
                         <span id="searchButtonText">开始搜索</span>
@@ -431,8 +423,6 @@ async function handleSearch(event) {
         if (userId) requestBody.user_id = userId;
         if (deviceId) requestBody.device_id = deviceId;
         if (agentId) requestBody.agent_id = agentId;
-        requestBody.memory_owner = document.getElementById('memoryOwner').value;
-
         if (hasTimeRange) {
             requestBody.time_range = {};
             if (startTime) requestBody.time_range.start = Math.floor(new Date(startTime).getTime() / 1000);
