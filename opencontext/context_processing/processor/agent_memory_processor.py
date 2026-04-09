@@ -1,6 +1,7 @@
 """Agent Memory Processor — post-processor that annotates events with agent commentary."""
 
 import asyncio
+import datetime
 from typing import Any, List, Optional
 
 from opencontext.config.global_config import get_prompt_group
@@ -207,7 +208,6 @@ class AgentMemoryProcessor(BaseContextProcessor):
     @staticmethod
     def _format_related_memories(search_result) -> str:
         """Format search results into text for the LLM prompt."""
-        import datetime
 
         all_contexts = {}
         for ctx, score in search_result.hits:

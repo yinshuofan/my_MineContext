@@ -66,19 +66,62 @@ class EventSearchService:
         )
         await do_vectorize(vectorize, role="query")
 
-        # Search
+        # Search — user events and base events need separate queries (different user_id)
         filters = self._build_filters(time_range, None)
-        context_types = self._get_context_types_for_levels(None)
-        raw_results = await self.storage.search(
-            query=vectorize,
-            top_k=top_k,
-            context_types=context_types,
-            filters=filters,
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-            score_threshold=score_threshold,
-        )
+        user_types = [
+            t.value
+            for t in [
+                ContextType.EVENT,
+                ContextType.DAILY_SUMMARY,
+                ContextType.WEEKLY_SUMMARY,
+                ContextType.MONTHLY_SUMMARY,
+            ]
+        ]
+        base_types = [
+            t.value
+            for t in [
+                ContextType.AGENT_BASE_EVENT,
+                ContextType.AGENT_BASE_L1_SUMMARY,
+                ContextType.AGENT_BASE_L2_SUMMARY,
+                ContextType.AGENT_BASE_L3_SUMMARY,
+            ]
+        ]
+
+        search_tasks = [
+            self.storage.search(
+                query=vectorize,
+                top_k=top_k,
+                context_types=user_types,
+                filters=filters,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+                score_threshold=score_threshold,
+            ),
+            self.storage.search(
+                query=vectorize,
+                top_k=top_k,
+                context_types=base_types,
+                filters=filters,
+                user_id="__base__",
+                device_id=device_id,
+                agent_id=agent_id,
+                score_threshold=score_threshold,
+            ),
+        ]
+        user_results, base_results = await asyncio.gather(*search_tasks)
+
+        # Merge and deduplicate, keep top_k by score
+        combined = user_results + base_results
+        combined.sort(key=lambda x: x[1], reverse=True)
+        seen_ids = set()
+        raw_results = []
+        for item in combined:
+            if item[0].id not in seen_ids:
+                seen_ids.add(item[0].id)
+                raw_results.append(item)
+            if len(raw_results) >= top_k:
+                break
 
         # Drill-up
         ancestors: Dict[str, ProcessedContext] = {}
@@ -148,7 +191,7 @@ class EventSearchService:
                             hierarchy_level=level,
                             time_start=time_start,
                             time_end=time_end,
-                            user_id=user_id,
+                            user_id="__base__",
                             device_id=device_id,
                             agent_id=agent_id,
                             top_k=top_k,
@@ -168,6 +211,7 @@ class EventSearchService:
             return deduped[:top_k]
 
         # Only time_range — fetch all events (range-overlap pattern)
+        # Separate queries for user types and base types (different user_id)
         filters: Dict[str, Any] = {}
         if time_range:
             if time_range.start is not None:
@@ -175,20 +219,44 @@ class EventSearchService:
             if time_range.end is not None:
                 filters["event_time_start_ts"] = {"$lte": time_range.end}
 
-        all_types = self._get_context_types_for_levels(None)
-        result = await self.storage.get_all_processed_contexts(
-            context_types=all_types,
-            limit=top_k,
-            filter=filters,
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
+        user_type_values = [
+            ContextType.EVENT.value,
+            ContextType.DAILY_SUMMARY.value,
+            ContextType.WEEKLY_SUMMARY.value,
+            ContextType.MONTHLY_SUMMARY.value,
+        ]
+        base_type_values = [
+            ContextType.AGENT_BASE_EVENT.value,
+            ContextType.AGENT_BASE_L1_SUMMARY.value,
+            ContextType.AGENT_BASE_L2_SUMMARY.value,
+            ContextType.AGENT_BASE_L3_SUMMARY.value,
+        ]
+
+        user_result, base_result = await asyncio.gather(
+            self.storage.get_all_processed_contexts(
+                context_types=user_type_values,
+                limit=top_k,
+                filter=filters,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+            ),
+            self.storage.get_all_processed_contexts(
+                context_types=base_type_values,
+                limit=top_k,
+                filter=filters,
+                user_id="__base__",
+                device_id=device_id,
+                agent_id=agent_id,
+            ),
         )
 
         contexts: List[ProcessedContext] = []
-        for ct in all_types:
-            contexts.extend(result.get(ct, []))
-        return [(ctx, 1.0) for ctx in contexts]
+        for ct in user_type_values:
+            contexts.extend(user_result.get(ct, []))
+        for ct in base_type_values:
+            contexts.extend(base_result.get(ct, []))
+        return [(ctx, 1.0) for ctx in contexts[:top_k]]
 
     # ── Helpers (public — used by route layer) ──
 

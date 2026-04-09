@@ -142,6 +142,15 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         )
 
         if success:
+            # Invalidate memory cache so next read picks up the new profile
+            try:
+                from opencontext.server.cache.memory_cache_manager import get_memory_cache_manager
+
+                manager = get_memory_cache_manager()
+                await manager.invalidate_snapshot(user_id, device_id, agent_id)
+            except Exception as e:
+                logger.warning(f"[agent_profile_update] Cache invalidation failed: {e}")
+
             logger.info(
                 f"[agent_profile_update] Updated profile for user={user_id}, agent={agent_id}"
             )
