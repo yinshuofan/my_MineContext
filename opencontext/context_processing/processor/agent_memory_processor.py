@@ -1,31 +1,25 @@
-"""Agent Memory Processor — extracts memories from the agent's perspective."""
+"""Agent Memory Processor — post-processor that annotates events with agent commentary."""
 
 import asyncio
-import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
-from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.llm.global_vlm_client import generate_with_messages
-from opencontext.models.context import (
-    ContextProperties,
-    ExtractedData,
-    ProcessedContext,
-    RawContextProperties,
-    Vectorize,
-)
-from opencontext.models.enums import ContentFormat, ContextSource, ContextType
+from opencontext.models.context import ProcessedContext, RawContextProperties
+from opencontext.models.enums import ContextSource, ContextType
+from opencontext.server.search.event_search_service import EventSearchService
 from opencontext.storage.global_storage import get_storage
-from opencontext.server.search.event_search_service import EventSearchService, SearchResult
-from opencontext.utils.time_utils import now as tz_now
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
 
 class AgentMemoryProcessor(BaseContextProcessor):
+    """Post-processor that writes agent commentary onto events from prior_results."""
+
     def __init__(self):
         super().__init__({})
 
@@ -33,22 +27,34 @@ class AgentMemoryProcessor(BaseContextProcessor):
         return "agent_memory_processor"
 
     def get_description(self) -> str:
-        return "Extracts memories from the agent's subjective perspective."
+        return "Annotates events with agent's subjective commentary."
 
     def can_process(self, context: Any) -> bool:
         if not isinstance(context, RawContextProperties):
             return False
         return context.source == ContextSource.CHAT_LOG
 
-    async def process(self, context: RawContextProperties, prior_results=None) -> List[ProcessedContext]:
-        """Process chat context from the agent's perspective."""
+    async def process(
+        self,
+        context: RawContextProperties,
+        prior_results: Optional[List[ProcessedContext]] = None,
+    ) -> List[ProcessedContext]:
+        """Annotate events from prior_results with agent commentary.
+
+        Returns the modified event contexts (same IDs, with agent_commentary populated).
+        Does NOT produce new contexts.
+        """
         try:
-            return await self._process_async(context)
+            return await self._process_async(context, prior_results or [])
         except Exception as e:
             logger.error(f"Agent memory processing failed: {e}")
             return []
 
-    async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
+    async def _process_async(
+        self,
+        raw_context: RawContextProperties,
+        prior_results: List[ProcessedContext],
+    ) -> List[ProcessedContext]:
         # 0. Validate agent_id
         agent_id = raw_context.agent_id
         if not agent_id or agent_id == "default":
@@ -61,10 +67,19 @@ class AgentMemoryProcessor(BaseContextProcessor):
             logger.debug(f"Agent {agent_id} not registered, skipping")
             return []
 
+        # 1. Filter events from prior_results
+        events = [
+            ctx for ctx in prior_results
+            if ctx.extracted_data.context_type == ContextType.EVENT
+        ]
+        if not events:
+            logger.debug("[agent_memory_processor] No events in prior_results, skipping")
+            return []
+
         agent_name = agent.get("name", agent_id)
         chat_content = raw_context.content_text or ""
 
-        # 1. Parallel: fetch persona + extract search query
+        # 2. Parallel: fetch persona + extract search query
         profile_task = storage.get_profile(
             user_id=raw_context.user_id,
             device_id=raw_context.device_id or "default",
@@ -75,7 +90,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         profile_result, query_text = await asyncio.gather(profile_task, query_task)
 
-        # Fallback to base profile (agent_base_profile) if per-user profile doesn't exist
+        # Fallback to base profile if per-user profile doesn't exist
         if not profile_result:
             profile_result = await storage.get_profile(
                 user_id="__base__",
@@ -94,8 +109,8 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         agent_persona = profile_result.get("factual_profile", "")
 
-        # 2. Search related past agent memories
-        search_result = None
+        # 3. Search related past memories
+        related_memories_text = ""
         if query_text:
             search_service = EventSearchService()
             search_result = await search_service.semantic_search(
@@ -103,16 +118,14 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 user_id=raw_context.user_id,
                 device_id=raw_context.device_id or "default",
                 agent_id=raw_context.agent_id,
-                memory_owner="agent",
-                drill_up=True,
             )
+            if search_result:
+                related_memories_text = self._format_related_memories(search_result)
 
-        # 3. Format related memories
-        related_memories_text = ""
-        if search_result:
-            related_memories_text = self._format_related_memories(search_result)
+        # 4. Build event list for prompt
+        event_list = self._format_event_list(events)
 
-        # 4. Load prompt and build LLM messages
+        # 5. Load prompt and build LLM messages
         prompt_group = get_prompt_group("processing.extraction.agent_memory_analyze")
         if not prompt_group:
             logger.warning("agent_memory_analyze prompt not found")
@@ -120,8 +133,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         logger.debug(
             f"[agent_memory_processor] Processing: user={raw_context.user_id}, "
-            f"agent={raw_context.agent_id}, agent_name={agent_name}, "
-            f"related_memories={len(related_memories_text)} chars"
+            f"agent={raw_context.agent_id}, events={len(events)}"
         )
 
         system_prompt = prompt_group.get("system", "")
@@ -134,51 +146,52 @@ class AgentMemoryProcessor(BaseContextProcessor):
             {
                 "role": "user",
                 "content": prompt_group.get("user", "").format(
-                    chat_history=chat_content,
                     current_time=tz_now().isoformat(),
+                    event_list=event_list,
+                    chat_history=chat_content,
                 ),
             },
         ]
 
-        # 5. Call LLM
+        # 6. Call LLM
         response = await generate_with_messages(messages, enable_executor=False)
         logger.debug(f"[agent_memory_processor] LLM response: {response}")
         if not response:
             return []
 
-        # 6. Parse and build contexts (unchanged)
+        # 7. Parse and apply commentaries
         analysis = parse_json_from_response(response)
         if not analysis:
             return []
 
-        memories = analysis.get("memories", [])
-        if not memories:
-            logger.info("[agent_memory_processor] No memories extracted from chat analysis")
+        commentaries = analysis.get("commentaries", {})
+        if not commentaries:
+            logger.info("[agent_memory_processor] No commentaries from LLM")
             return []
 
-        batch_id = (raw_context.additional_info or {}).get("batch_id")
-        results = []
-        for memory in memories:
-            ctx = self._build_agent_context(memory, raw_context, batch_id)
-            if ctx:
-                await do_vectorize(ctx.vectorize)
-                results.append(ctx)
+        modified = []
+        for idx_str, commentary in commentaries.items():
+            try:
+                idx = int(idx_str)
+            except (ValueError, TypeError):
+                continue
+            if idx < 0 or idx >= len(events):
+                continue
+            if commentary and commentary != "null":
+                events[idx].extracted_data.agent_commentary = str(commentary).strip()
+                modified.append(events[idx])
 
-        type_counts = {}
-        for ctx in results:
-            t = ctx.extracted_data.context_type.value
-            type_counts[t] = type_counts.get(t, 0) + 1
-        logger.info(f"[agent_memory_processor] Extracted {len(results)} memories: {type_counts}")
-        return results
+        logger.info(
+            f"[agent_memory_processor] Annotated {len(modified)}/{len(events)} events"
+        )
+        return modified
 
     async def _extract_search_query(self, chat_content: str) -> Optional[str]:
         """Use LLM to extract a search query from chat content (from AI's perspective)."""
         try:
             prompt_group = get_prompt_group("processing.extraction.agent_memory_query")
             if not prompt_group:
-                logger.warning("agent_memory_query prompt not found")
                 return None
-
             messages = [
                 {"role": "system", "content": prompt_group.get("system", "")},
                 {
@@ -191,15 +204,15 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 return None
             return response.strip()
         except Exception as e:
-            logger.warning(f"[agent_memory_processor] Query extraction failed, skipping memory search: {e}")
+            logger.warning(f"[agent_memory_processor] Query extraction failed: {e}")
             return None
 
     @staticmethod
-    def _format_related_memories(search_result: SearchResult) -> str:
-        """Format search results (hits + ancestors) into text for the LLM prompt."""
-        all_contexts = {}
+    def _format_related_memories(search_result) -> str:
+        """Format search results into text for the LLM prompt."""
+        import datetime
 
-        # Merge hits and ancestors, deduplicate by ID
+        all_contexts = {}
         for ctx, score in search_result.hits:
             all_contexts[ctx.id] = ctx
         for ctx_id, ctx in search_result.ancestors.items():
@@ -209,7 +222,6 @@ class AgentMemoryProcessor(BaseContextProcessor):
         if not all_contexts:
             return ""
 
-        # Sort by event_time_start ascending
         sorted_contexts = sorted(
             all_contexts.values(),
             key=lambda c: c.properties.event_time_start if c.properties else datetime.datetime.min,
@@ -219,127 +231,24 @@ class AgentMemoryProcessor(BaseContextProcessor):
         for ctx in sorted_contexts:
             title = ctx.extracted_data.title if ctx.extracted_data else ""
             summary = ctx.extracted_data.summary if ctx.extracted_data else ""
-            event_time_str = ctx.properties.event_time_start.strftime("%Y-%m-%d") if ctx.properties else ""
+            event_time_str = (
+                ctx.properties.event_time_start.strftime("%Y-%m-%d") if ctx.properties else ""
+            )
             lines.append(f"[{event_time_str}] {title}")
             if summary:
                 lines.append(summary)
-            lines.append("")  # blank line between entries
-
+            lines.append("")
         return "\n".join(lines).strip()
 
-    def _build_agent_context(
-        self, memory: Dict, raw_context: RawContextProperties, batch_id: Optional[str]
-    ) -> Optional[ProcessedContext]:
-        """Build ProcessedContext for a single agent memory with input validation."""
-        # Validate memory is a dict
-        if not isinstance(memory, dict):
-            logger.warning(f"Invalid memory format: expected dict, got {type(memory).__name__}")
-            return None
-
-        try:
-            # Validate context_type — read both "type" and "context_type" fields
-            mem_type = memory.get("type") or memory.get("context_type") or "agent_event"
-            if not isinstance(mem_type, str):
-                mem_type = "agent_event"
-            mem_type = mem_type.lower().strip()
-
-            if mem_type == "agent_profile":
-                context_type = ContextType.AGENT_PROFILE
-            elif mem_type == "agent_event":
-                context_type = ContextType.AGENT_EVENT
-            else:
-                logger.warning(f"[agent_memory_processor] Unknown type: {mem_type}, skipping")
-                return None
-
-            # Validate and sanitize title
-            title = memory.get("title", "")
-            if not isinstance(title, str) or not title.strip():
-                title = "Untitled"
-            title = title.strip()[:500]
-
-            # Validate and sanitize summary
-            summary = memory.get("summary", "")
-            if not isinstance(summary, str):
-                summary = str(summary) if summary else ""
-
-            # Validate and sanitize keywords
-            keywords = memory.get("keywords", [])
-            if not isinstance(keywords, list):
-                keywords = []
-            keywords = [str(k).strip()[:100] for k in keywords if k and str(k).strip()][:20]
-
-            # Validate and sanitize entities
-            raw_entities = memory.get("entities", [])
-            entity_names = []
-            if isinstance(raw_entities, list):
-                for e in raw_entities:
-                    if isinstance(e, str):
-                        name = e.strip()[:255]
-                        if name:
-                            entity_names.append(name)
-                    elif isinstance(e, dict):
-                        name = str(e.get("name", "")).strip()[:255]
-                        if name:
-                            entity_names.append(name)
-
-            # Validate importance (0-10 range)
-            importance = memory.get("importance", 5)
-            try:
-                importance = int(importance)
-            except (ValueError, TypeError):
-                importance = 5
-            importance = max(0, min(10, importance))
-
-            # Validate confidence (0-10 range)
-            confidence = memory.get("confidence", 7)
-            try:
-                confidence = int(confidence)
-            except (ValueError, TypeError):
-                confidence = 7
-            confidence = max(0, min(10, confidence))
-
-            event_time_start = raw_context.create_time or tz_now()
-
-            # Only knowledge type enables merge
-            enable_merge = context_type == ContextType.KNOWLEDGE
-
-            extracted_data = ExtractedData(
-                title=title,
-                summary=summary,
-                keywords=keywords,
-                entities=entity_names,
-                context_type=context_type,
-                importance=importance,
-                confidence=confidence,
-            )
-
-            properties = ContextProperties(
-                raw_properties=[raw_context],
-                create_time=raw_context.create_time or tz_now(),
-                update_time=tz_now(),
-                event_time_start=event_time_start,
-                is_processed=True,
-                enable_merge=enable_merge,
-                user_id=raw_context.user_id,
-                device_id=raw_context.device_id,
-                agent_id=raw_context.agent_id,
-                raw_type="chat_batch" if batch_id else None,
-                raw_id=batch_id,
-            )
-
-            text = f"{title}\n{summary}\n{', '.join(keywords)}"
-            vectorize = Vectorize(
-                input=[{"type": "text", "text": text}],
-                content_format=ContentFormat.TEXT,
-            )
-
-            return ProcessedContext(
-                properties=properties,
-                extracted_data=extracted_data,
-                vectorize=vectorize,
-                metadata={},
-            )
-
-        except Exception as e:
-            logger.warning(f"Failed to build agent context: {e}")
-            return None
+    @staticmethod
+    def _format_event_list(events: List[ProcessedContext]) -> str:
+        """Format events into a numbered list for the LLM prompt."""
+        lines = []
+        for i, ctx in enumerate(events):
+            title = ctx.extracted_data.title or "Untitled"
+            summary = ctx.extracted_data.summary or ""
+            lines.append(f"[Event {i}] {title}")
+            if summary:
+                lines.append(summary)
+            lines.append("")
+        return "\n".join(lines).strip()
