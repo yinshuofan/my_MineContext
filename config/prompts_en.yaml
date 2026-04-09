@@ -428,7 +428,6 @@ processing:
 
         ## Classification (ContextType)
         - `event`: **Always the first memory.** A comprehensive record of ALL user activities in this conversation — what they did, discussed, decided, expressed, or experienced. This should cover the full scope of the conversation, even if specific details are also extracted as other types below. See event output rules below.
-        - `agent_event`: Agent's subjective experience — Records the agent's feelings, reactions, and evaluations about user events from the agent's own perspective. Use this when the memory captures what the agent observed, felt, or thought about an interaction, rather than the user's own activities.
         - `profile`: Information about the current user themselves. Only extract **explicitly stated** facts, no inference. See profile output rules below.
         - `knowledge`: Abstract knowledge, concepts, principles, operational procedures (e.g., "React Hooks principles", "TCP handshake process", "Steps to deploy with Docker").
         - `document`: Content from uploaded documents or files (rarely from chat, only when user explicitly shares document content).
