@@ -169,7 +169,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
             logger.info("[agent_memory_processor] No commentaries from LLM")
             return []
 
-        modified = []
+        annotated_count = 0
         for idx_str, commentary in commentaries.items():
             try:
                 idx = int(idx_str)
@@ -179,10 +179,10 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 continue
             if commentary and commentary != "null":
                 events[idx].extracted_data.agent_commentary = str(commentary).strip()
-                modified.append(events[idx])
+                annotated_count += 1
 
-        logger.info(f"[agent_memory_processor] Annotated {len(modified)}/{len(events)} events")
-        return modified
+        logger.info(f"[agent_memory_processor] Annotated {annotated_count}/{len(events)} events")
+        return events
 
     async def _extract_search_query(self, chat_content: str) -> Optional[str]:
         """Use LLM to extract a search query from chat content (from AI's perspective)."""

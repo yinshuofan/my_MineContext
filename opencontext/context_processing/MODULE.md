@@ -171,8 +171,8 @@ Returns early with empty list if:
 Key differences from the previous standalone design:
 - No longer produces `AGENT_EVENT` type (removed) or `AGENT_PROFILE` type (now updated by `AgentProfileUpdateTask` instead)
 - Does not create new contexts; annotates existing events with `agent_commentary` field
-- Single LLM call (commentary generation only, no query extraction or related memory search)
-- Depends on `prior_results` from DAG orchestration, not on `EventSearchService`
+- Two LLM calls: (1) query extraction for related memory search, (2) commentary generation
+- Uses `EventSearchService.semantic_search()` to fetch related past memories as context for commentary
 - No embedding generation (`do_vectorize()` is not called since no new contexts are created)
 
 ### DocumentProcessor (`processor/document_processor.py`)

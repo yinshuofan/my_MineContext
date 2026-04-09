@@ -186,6 +186,11 @@ class ContextProcessorManager:
             if not layer_processors:
                 continue
 
+            # NOTE: prior_results contains shared ProcessedContext references.
+            # Processors in the SAME layer must NOT mutate these objects concurrently.
+            # This is safe as long as mutating processors (post-processors) run alone
+            # in their layer via PROCESSOR_DEPENDENCIES. If a future layer has multiple
+            # processors that both mutate prior_results, use deepcopy per task.
             prior = list(accumulated.values()) if accumulated else None
 
             tasks = []
@@ -233,7 +238,14 @@ class ContextProcessorManager:
         deps = {}
         for name in processor_names:
             raw_deps = PROCESSOR_DEPENDENCIES.get(name, [])
-            deps[name] = [d for d in raw_deps if d in name_set]
+            filtered = [d for d in raw_deps if d in name_set]
+            if len(filtered) < len(raw_deps):
+                missing = set(raw_deps) - name_set
+                logger.warning(
+                    f"Processor '{name}' has unmet dependencies: {missing}. "
+                    f"It will run without prior_results from these processors."
+                )
+            deps[name] = filtered
 
         layers = []
         placed: set = set()

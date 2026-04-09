@@ -88,7 +88,7 @@ processing:
   # 文本聊天处理器（从对话中提取 profile/event/knowledge）
   text_chat_processor:
     enabled: "${TEXT_CHAT_PROCESSOR_ENABLED:true}"
-  # Agent 记忆处理器（从 agent 视角提取 agent_event/agent_profile）
+  # Agent 记忆处理器（为事件添加 agent 视角的评论注释）
   agent_memory_processor:
     enabled: "${AGENT_MEMORY_PROCESSOR_ENABLED:true}"
   # 文档处理器（处理上传文件和网页链接）
