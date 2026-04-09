@@ -99,7 +99,9 @@ async def create_conversation(
             metadata = {"document_id": request.document_id}
 
         # user_id is optional in the backend and can be added later
-        conversation = await storage.create_conversation(page_name=request.page_name, metadata=metadata)
+        conversation = await storage.create_conversation(
+            page_name=request.page_name, metadata=metadata
+        )
 
         if not conversation:
             raise HTTPException(status_code=500, detail="Failed to create conversation in database")

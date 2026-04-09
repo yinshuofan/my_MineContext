@@ -11,8 +11,6 @@ import json
 import uuid
 from datetime import datetime
 from math import log
-
-from opencontext.utils.time_utils import now as tz_now
 from typing import Any, Dict, List, Optional, Set
 
 from opencontext.config.global_config import get_prompt_group
@@ -25,6 +23,7 @@ from opencontext.tools.tool_definitions import (
 from opencontext.tools.tools_executor import ToolsExecutor
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 from ..models.enums import ContextSufficiency, DataSource
 from ..models.schemas import ContextCollection, ContextItem, Intent

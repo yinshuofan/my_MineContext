@@ -13,13 +13,12 @@ After the type system refactor:
 - event: immutable append (no merging needed)
 - knowledge: similarity-based merge (this module)
 """
+
 import datetime
 import json
 import math
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
-
-from opencontext.utils.time_utils import now as tz_now, get_timezone
 
 from opencontext.config import GlobalConfig
 from opencontext.context_processing.merger.merge_strategies import (
@@ -34,6 +33,8 @@ from opencontext.models.enums import ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import get_timezone
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -419,9 +420,7 @@ class ContextMerger(BaseContextProcessor):
                 "update_time_ts": {
                     "$gte": int(
                         (
-                            tz_now()
-                            - timedelta(seconds=interval_seconds)
-                            - timedelta(minutes=5)
+                            tz_now() - timedelta(seconds=interval_seconds) - timedelta(minutes=5)
                         ).timestamp()
                     ),
                     "$lte": int((tz_now() - timedelta(minutes=5)).timestamp()),
@@ -511,9 +510,7 @@ class ContextMerger(BaseContextProcessor):
                 "update_time_ts": {
                     "$gte": int(
                         (
-                            tz_now()
-                            - timedelta(seconds=interval_seconds)
-                            - timedelta(minutes=5)
+                            tz_now() - timedelta(seconds=interval_seconds) - timedelta(minutes=5)
                         ).timestamp()
                     ),
                     "$lte": int((tz_now() - timedelta(minutes=5)).timestamp()),

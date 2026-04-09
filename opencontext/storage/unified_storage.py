@@ -918,7 +918,6 @@ class UnifiedStorage:
             user_id, device_id, agent_id, context_type=context_type
         )
 
-
     # ── Hierarchy routing (→ vector DB) ──
 
     @_require_backend("_vector_backend", default=[])
@@ -1007,7 +1006,9 @@ class UnifiedStorage:
         self, agent_id: str, name: Optional[str] = None, description: Optional[str] = None
     ) -> bool:
         """Update agent info."""
-        return await self._document_backend.update_agent(agent_id, name=name, description=description)
+        return await self._document_backend.update_agent(
+            agent_id, name=name, description=description
+        )
 
     @_require_backend("_document_backend", default=False)
     async def delete_agent(self, agent_id: str) -> bool:

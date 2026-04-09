@@ -27,9 +27,7 @@ _DEFAULT_DIMENSIONS = 2048
 _DEFAULT_MAX_CONCURRENCY = 15
 _DEFAULT_SEARCH_INSTRUCTION = "根据这个查询，找到最相关的记忆内容"
 _DEFAULT_TARGET_MODALITY = "text/image/video"
-_DEFAULT_ARK_BASE_URL = (
-    "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
-)
+_DEFAULT_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
 
 
 class GlobalEmbeddingClient:
@@ -92,9 +90,7 @@ class GlobalEmbeddingClient:
             self._embedding_client = LLMClient(llm_type=LLMType.EMBEDDING, config=embedding_config)
 
             # Read multimodal-specific config
-            self._dimensions = int(
-                embedding_config.get("dimensions", _DEFAULT_DIMENSIONS)
-            )
+            self._dimensions = int(embedding_config.get("dimensions", _DEFAULT_DIMENSIONS))
             self._max_concurrency = int(
                 embedding_config.get("max_concurrency", _DEFAULT_MAX_CONCURRENCY)
             )
@@ -133,9 +129,7 @@ class GlobalEmbeddingClient:
                 self._embedding_client = new_client
 
                 # Update multimodal config
-                self._dimensions = int(
-                    embedding_config.get("dimensions", _DEFAULT_DIMENSIONS)
-                )
+                self._dimensions = int(embedding_config.get("dimensions", _DEFAULT_DIMENSIONS))
                 self._max_concurrency = int(
                     embedding_config.get("max_concurrency", _DEFAULT_MAX_CONCURRENCY)
                 )
@@ -231,8 +225,7 @@ class GlobalEmbeddingClient:
             **kwargs: Reserved for forward compatibility.
         """
         pending = [
-            (i, v) for i, v in enumerate(vectorizes)
-            if v.vector is None and v.build_ark_input()
+            (i, v) for i, v in enumerate(vectorizes) if v.vector is None and v.build_ark_input()
         ]
 
         if not pending:
@@ -267,6 +260,4 @@ async def do_vectorize(vectorize_obj: Vectorize, **kwargs):
 
 
 async def do_vectorize_batch(vectorize_objs: Sequence[Vectorize], **kwargs):
-    return await GlobalEmbeddingClient.get_instance().do_vectorize_batch(
-        vectorize_objs, **kwargs
-    )
+    return await GlobalEmbeddingClient.get_instance().do_vectorize_batch(vectorize_objs, **kwargs)

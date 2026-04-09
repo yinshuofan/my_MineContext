@@ -18,11 +18,11 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List
 
 from opencontext.interfaces.capture_interface import ICaptureComponent
-from opencontext.utils.time_utils import now as tz_now
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContextSource
 from opencontext.utils.async_utils import fire_and_forget
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 

@@ -99,7 +99,9 @@ class MemoryCompressionTask(BasePeriodicTask):
                 )
             elif hasattr(self._context_merger, "periodic_memory_compression"):
                 # Fallback to old method signature
-                await self._context_merger.periodic_memory_compression(interval_seconds=self._interval)
+                await self._context_merger.periodic_memory_compression(
+                    interval_seconds=self._interval
+                )
             else:
                 return TaskResult.fail(
                     error="No compression method found",

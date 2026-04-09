@@ -253,4 +253,3 @@ class StateManager:
         """Delete the workflow state."""
         if workflow_id in self.states:
             del self.states[workflow_id]
-

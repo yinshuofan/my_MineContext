@@ -17,7 +17,8 @@ from typing import Any, Dict, List, Optional
 from opencontext.models.enums import ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.time_utils import now as tz_now, get_timezone
+from opencontext.utils.time_utils import get_timezone
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -341,7 +342,9 @@ class Monitor:
     ):
         """Record processing stage timing"""
         try:
-            await get_storage().save_monitoring_stage_timing(stage_name, duration_ms, status, metadata)
+            await get_storage().save_monitoring_stage_timing(
+                stage_name, duration_ms, status, metadata
+            )
         except Exception as e:
             logger.error(f"Failed to record processing stage: {e}")
 
@@ -444,7 +447,9 @@ class Monitor:
 
         return summary
 
-    async def get_data_stats_by_range(self, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
+    async def get_data_stats_by_range(
+        self, start_time: datetime, end_time: datetime
+    ) -> Dict[str, Any]:
         """Get data statistics by custom time range"""
         summary = {
             "by_data_type": {},

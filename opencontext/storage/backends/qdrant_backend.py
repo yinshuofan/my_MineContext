@@ -132,7 +132,9 @@ class QdrantBackend(IVectorStorageBackend):
 
         # Explicit refs serialization — always present for backward compatibility
         payload["refs"] = (
-            json.dumps(context.properties.refs) if context.properties and context.properties.refs else "{}"
+            json.dumps(context.properties.refs)
+            if context.properties and context.properties.refs
+            else "{}"
         )
 
         def default_json_serializer(obj):
@@ -416,9 +418,7 @@ class QdrantBackend(IVectorStorageBackend):
                 else:
                     logger.warning(f"Collection not found: {context_type}")
         else:
-            target_collections = {
-                k: v for k, v in self._collections.items()
-            }
+            target_collections = {k: v for k, v in self._collections.items()}
 
         query_vector = None
         if query.vector and len(query.vector) > 0:
@@ -769,9 +769,7 @@ class QdrantBackend(IVectorStorageBackend):
         if context_type and context_type in self._collections:
             target_collections[context_type] = self._collections[context_type]
         else:
-            target_collections = {
-                k: v for k, v in self._collections.items()
-            }
+            target_collections = {k: v for k, v in self._collections.items()}
 
         results = []
 

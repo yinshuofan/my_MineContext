@@ -75,9 +75,7 @@ class ConfigReloadManager:
                 logger.debug(f"Subscribed to config reload channel: {channel}")
 
                 while True:
-                    msg = await pubsub.get_message(
-                        ignore_subscribe_messages=True, timeout=1.0
-                    )
+                    msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                     if msg is None:
                         continue
                     if msg["type"] == "message" and self._reload_fn:

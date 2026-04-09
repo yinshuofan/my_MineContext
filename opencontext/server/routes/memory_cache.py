@@ -107,7 +107,6 @@ async def invalidate_user_memory_cache(
     return {
         "success": True,
         "message": (
-            f"Cache invalidated for user={user_id}, "
-            f"device={device_id}, agent={agent_id}"
+            f"Cache invalidated for user={user_id}, " f"device={device_id}, agent={agent_id}"
         ),
     }

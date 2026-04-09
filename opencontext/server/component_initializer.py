@@ -181,11 +181,14 @@ class ComponentInitializer:
                               If provided and merger is set, it will be reused.
         """
         scheduler_config = self.config.get("scheduler", {})
-        logger.debug(f"initialize_task_scheduler: scheduler.enabled={scheduler_config.get('enabled')}, type={type(scheduler_config.get('enabled')).__name__}")
+        logger.debug(
+            f"initialize_task_scheduler: scheduler.enabled={scheduler_config.get('enabled')}, type={type(scheduler_config.get('enabled')).__name__}"
+        )
         if not scheduler_config.get("enabled", False):
             logger.info("Task scheduler not enabled in configuration")
             # Clear stale singleton so start_task_scheduler() won't restart it
             from opencontext.scheduler import set_scheduler
+
             set_scheduler(None)
             return
 

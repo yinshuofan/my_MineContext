@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from PIL import Image
-from opencontext.utils.time_utils import now as tz_now
 
 from opencontext.context_processing.chunker import (
     ChunkingConfig,
@@ -33,6 +32,7 @@ from opencontext.models.enums import *
 from opencontext.monitoring.monitor import record_processing_error
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -172,7 +172,9 @@ class DocumentProcessor(BaseContextProcessor):
             return file_ext in self.get_supported_formats()
         return False
 
-    async def process(self, context: RawContextProperties, prior_results=None) -> List[ProcessedContext]:
+    async def process(
+        self, context: RawContextProperties, prior_results=None
+    ) -> List[ProcessedContext]:
         """
         Process single document context asynchronously.
         """

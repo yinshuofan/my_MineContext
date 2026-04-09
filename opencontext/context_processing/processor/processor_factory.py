@@ -129,9 +129,7 @@ class ProcessorFactory:
             logger.exception(f"Error creating processor '{type_name}': {e}")
             return None
 
-    def create_processor_with_validation(
-        self, type_name: str
-    ) -> Optional[IContextProcessor]:
+    def create_processor_with_validation(self, type_name: str) -> Optional[IContextProcessor]:
         """
         Create processor with configuration validation.
 

@@ -178,9 +178,7 @@ class GlobalVLMClient:
         Returns:
             Raw LLM response object, including possible tool_calls
         """
-        response = await self._vlm_client.generate_with_messages(
-            messages, tools=tools, **kwargs
-        )
+        response = await self._vlm_client.generate_with_messages(messages, tools=tools, **kwargs)
         return response
 
     async def generate_stream_for_agent(self, messages: list, tools: list = None, **kwargs):

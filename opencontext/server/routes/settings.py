@@ -6,8 +6,8 @@
 
 """Settings API routes — model settings, general settings, prompts"""
 
-import io
 import asyncio
+import io
 
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import StreamingResponse
@@ -306,7 +306,9 @@ async def validate_llm_config(request: ValidateModelRequest, _auth: str = auth_d
                     timeout=15,
                     output_dim=cfg.output_dim or 2048,
                 )
-                valid, msg = await LLMClient(llm_type=LLMType.EMBEDDING, config=emb_config).validate()
+                valid, msg = await LLMClient(
+                    llm_type=LLMType.EMBEDDING, config=emb_config
+                ).validate()
                 if not valid:
                     errors.append(f"Embedding: {msg}")
 
@@ -567,9 +569,7 @@ async def reset_settings(_auth: str = auth_dependency):
 
         except Exception as e:
             logger.exception(f"Failed to reset settings: {e}")
-            return convert_resp(
-                code=500, status=500, message=f"Failed to reset settings: {str(e)}"
-            )
+            return convert_resp(code=500, status=500, message=f"Failed to reset settings: {str(e)}")
 
 
 # ==================== Apply Settings ====================

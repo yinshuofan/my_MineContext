@@ -25,7 +25,8 @@ from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.utils import convert_resp
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.time_utils import now as tz_now, get_timezone
+from opencontext.utils.time_utils import get_timezone
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -226,8 +227,7 @@ def _flatten_base_event_tree(
         # Parse times
         event_time_start = _parse_event_time(event.event_time_start, "", "event_time_start") or now
         event_time_end = (
-            _parse_event_time(event.event_time_end, "", "event_time_end")
-            or event_time_start
+            _parse_event_time(event.event_time_end, "", "event_time_end") or event_time_start
         )
 
         # Build text for embedding
@@ -280,8 +280,7 @@ def _flatten_base_event_tree(
             # Build downward refs: only direct children (not grandchildren)
             child_type_value = _BASE_HIERARCHY_LEVEL_TO_TYPE[level - 1].value
             direct_child_ids = [
-                c.id for c in child_contexts
-                if c.properties.hierarchy_level == level - 1
+                c.id for c in child_contexts if c.properties.hierarchy_level == level - 1
             ]
             ctx.properties.refs[child_type_value] = direct_child_ids
 
@@ -299,7 +298,9 @@ def _flatten_base_event_tree(
 async def create_agent(request: CreateAgentRequest, _auth: str = auth_dependency):
     """Register a new agent."""
     if request.agent_id == "__base__":
-        raise HTTPException(status_code=400, detail="agent_id '__base__' is reserved for system use")
+        raise HTTPException(
+            status_code=400, detail="agent_id '__base__' is reserved for system use"
+        )
 
     storage = get_storage()
     success = await storage.create_agent(request.agent_id, request.name, request.description)
@@ -327,12 +328,12 @@ async def get_agent(agent_id: str, _auth: str = auth_dependency):
 
 
 @router.put("/{agent_id}")
-async def update_agent(
-    agent_id: str, request: UpdateAgentRequest, _auth: str = auth_dependency
-):
+async def update_agent(agent_id: str, request: UpdateAgentRequest, _auth: str = auth_dependency):
     """Update agent name and/or description."""
     storage = get_storage()
-    success = await storage.update_agent(agent_id, name=request.name, description=request.description)
+    success = await storage.update_agent(
+        agent_id, name=request.name, description=request.description
+    )
     if not success:
         raise HTTPException(status_code=404, detail="Agent not found or update failed")
     return convert_resp(message="Agent updated")
@@ -402,9 +403,7 @@ async def get_base_profile(agent_id: str, _auth: str = auth_dependency):
 
 
 @router.post("/{agent_id}/base/events")
-async def push_base_events(
-    agent_id: str, request: BaseEventsRequest, _auth: str = auth_dependency
-):
+async def push_base_events(agent_id: str, request: BaseEventsRequest, _auth: str = auth_dependency):
     """Push structured base events for an agent (no LLM extraction).
 
     Supports flat L0 events and nested hierarchy trees (L0-L3).
@@ -489,9 +488,7 @@ async def list_base_events(
 
 
 @router.delete("/{agent_id}/base/events/{event_id}")
-async def delete_base_event(
-    agent_id: str, event_id: str, _auth: str = auth_dependency
-):
+async def delete_base_event(agent_id: str, event_id: str, _auth: str = auth_dependency):
     """Delete a single base event or summary by ID."""
     storage = get_storage()
     # Try deleting from each AGENT_BASE_* type (we don't know which type it is)

@@ -26,8 +26,8 @@ from opencontext.server.search.models import (
     SearchMetadata,
 )
 from opencontext.storage.global_storage import get_storage
-from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.media_refs import normalize_media_refs
 
 logger = get_logger(__name__)
 
@@ -157,9 +157,7 @@ async def _execute_search(
 
         if request.drill_up and raw_results:
             max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
-            all_ancestors = await _search_service.collect_ancestors(
-                raw_results, max_level
-            )
+            all_ancestors = await _search_service.collect_ancestors(raw_results, max_level)
 
     elif request.query:
         # Path B: Semantic search → delegate to service
@@ -189,9 +187,7 @@ async def _execute_search(
 
         if request.drill_up and raw_results:
             max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
-            all_ancestors = await _search_service.collect_ancestors(
-                raw_results, max_level
-            )
+            all_ancestors = await _search_service.collect_ancestors(raw_results, max_level)
 
     # ── Step 2: Build node map (stays in route — EventNode is a response model) ──
     nodes: Dict[str, EventNode] = {}
@@ -206,8 +202,16 @@ async def _execute_search(
             nodes[aid] = _to_context_node(actx)
 
     # ── Step 3: Link children to parents, build tree ──
-    user_summary_types = {ContextType.DAILY_SUMMARY.value, ContextType.WEEKLY_SUMMARY.value, ContextType.MONTHLY_SUMMARY.value}
-    base_summary_types = {ContextType.AGENT_BASE_L1_SUMMARY.value, ContextType.AGENT_BASE_L2_SUMMARY.value, ContextType.AGENT_BASE_L3_SUMMARY.value}
+    user_summary_types = {
+        ContextType.DAILY_SUMMARY.value,
+        ContextType.WEEKLY_SUMMARY.value,
+        ContextType.MONTHLY_SUMMARY.value,
+    }
+    base_summary_types = {
+        ContextType.AGENT_BASE_L1_SUMMARY.value,
+        ContextType.AGENT_BASE_L2_SUMMARY.value,
+        ContextType.AGENT_BASE_L3_SUMMARY.value,
+    }
     summary_type_values = user_summary_types | base_summary_types
 
     roots: List[EventNode] = []

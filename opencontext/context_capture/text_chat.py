@@ -3,10 +3,10 @@ import json
 from typing import Any, Dict, List, Optional
 
 from opencontext.context_capture.base import BaseCaptureComponent
-from opencontext.utils.time_utils import now as tz_now
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContentFormat, ContextSource
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 

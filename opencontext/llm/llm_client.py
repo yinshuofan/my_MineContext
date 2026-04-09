@@ -348,9 +348,7 @@ class LLMClient:
             try:
                 async with self._sem:
                     request_start = _time.time()
-                    async with session.post(
-                        self.base_url, json=payload, headers=headers
-                    ) as resp:
+                    async with session.post(self.base_url, json=payload, headers=headers) as resp:
                         body = await resp.json()
                         if resp.status != 200:
                             error_msg = (

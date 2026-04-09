@@ -33,7 +33,8 @@ from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskRe
 from opencontext.scheduler.base import TriggerMode
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.time_utils import now as tz_now, get_timezone
+from opencontext.utils.time_utils import get_timezone
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -307,9 +308,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         sorted_ctxs = sorted(
             contexts,
             key=lambda c: (
-                c.properties.event_time_start.isoformat()
-                if c.properties.event_time_start
-                else ""
+                c.properties.event_time_start.isoformat() if c.properties.event_time_start else ""
             ),
         )
         parts = []
@@ -829,9 +828,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                 )
                 if result:
                     generated.append(f"daily:{target_str}")
-                    logger.info(
-                        f"Backfilled daily summary for user={user_id}, date={target_str}"
-                    )
+                    logger.info(f"Backfilled daily summary for user={user_id}, date={target_str}")
             except Exception as e:
                 error_msg = f"Failed to generate daily summary for {target_str}: {e}"
                 logger.exception(error_msg)
@@ -1044,11 +1041,11 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Deduplicate by event_time_start date (prefer new format if both exist for same day)
         l1_by_day: Dict[str, ProcessedContext] = {}
-        for ctx, _score in (l1_results_old or []):
+        for ctx, _score in l1_results_old or []:
             if ctx.properties.event_time_start:
                 day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
                 l1_by_day[day_key] = ctx
-        for ctx, _score in (l1_results_new or []):
+        for ctx, _score in l1_results_new or []:
             if ctx.properties.event_time_start:
                 day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
                 l1_by_day[day_key] = ctx  # new format overwrites old
@@ -1204,10 +1201,10 @@ class HierarchySummaryTask(BasePeriodicTask):
             )
             # Prefer new format if both exist for same week
             wk_ctx = None
-            for ctx, _score in (wk_results_new or []):
+            for ctx, _score in wk_results_new or []:
                 wk_ctx = ctx
             if wk_ctx is None:
-                for ctx, _score in (wk_results_old or []):
+                for ctx, _score in wk_results_old or []:
                     wk_ctx = ctx
             if wk_ctx:
                 all_weekly_contexts.append(wk_ctx)
@@ -1236,11 +1233,11 @@ class HierarchySummaryTask(BasePeriodicTask):
             )
             # Deduplicate L1 by event_time_start date (prefer new format)
             l1_by_day: Dict[str, ProcessedContext] = {}
-            for ctx, _score in (l1_results_old or []):
+            for ctx, _score in l1_results_old or []:
                 if ctx.properties.event_time_start:
                     day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
                     l1_by_day[day_key] = ctx
-            for ctx, _score in (l1_results_new or []):
+            for ctx, _score in l1_results_new or []:
                 if ctx.properties.event_time_start:
                     day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
                     l1_by_day[day_key] = ctx  # new format overwrites old
@@ -1465,7 +1462,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         summary_id = str(uuid.uuid4())
 
         # Build a human-readable period label for title/keywords
-        period_label = f"{event_time_start.strftime('%Y-%m-%d')}~{event_time_end.strftime('%Y-%m-%d')}"
+        period_label = (
+            f"{event_time_start.strftime('%Y-%m-%d')}~{event_time_end.strftime('%Y-%m-%d')}"
+        )
 
         # Parse LLM JSON response to extract structured fields
         # LLM 返回 JSON 格式：{title, summary, keywords, entities, importance}
@@ -1589,9 +1588,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                             f"→ {summary_context_type.value}:{summary_id}"
                         )
                     except Exception as e:
-                        logger.warning(
-                            f"Failed to backfill refs for {level_name} summary: {e}"
-                        )
+                        logger.warning(f"Failed to backfill refs for {level_name} summary: {e}")
                 return context
             else:
                 logger.error(f"Failed to upsert {level_name} summary to storage")

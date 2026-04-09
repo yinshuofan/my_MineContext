@@ -19,11 +19,10 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from opencontext.utils.time_utils import now as tz_now
-
 from opencontext.models.context import ExtractedData, ProcessedContext
 from opencontext.models.enums import ContextType
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -251,7 +250,9 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
             extracted_data=extracted_data,
             properties=properties,
             vectorize=Vectorize(
-                input=[{"type": "text", "text": extracted_data.title + " " + extracted_data.summary}],
+                input=[
+                    {"type": "text", "text": extracted_data.title + " " + extracted_data.summary}
+                ],
             ),
         )
 

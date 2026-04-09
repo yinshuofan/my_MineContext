@@ -512,9 +512,7 @@ class RedisTaskScheduler(ITaskScheduler):
         while self._running:
             # --- runtime guard: skip drain if task type disabled in Redis ---
             try:
-                enabled = await self._redis.hget(
-                    f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled"
-                )
+                enabled = await self._redis.hget(f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled")
                 if enabled == "false":
                     logger.debug(f"Task type {task_type} is disabled, skipping drain cycle")
                     if self._running:
@@ -674,9 +672,7 @@ class RedisTaskScheduler(ITaskScheduler):
 
             # Runtime guard: check if task type is still enabled in Redis
             try:
-                enabled = await self._redis.hget(
-                    f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled"
-                )
+                enabled = await self._redis.hget(f"{self.TASK_TYPE_PREFIX}{task_type}", "enabled")
                 if enabled == "false":
                     logger.debug(f"Periodic task {task_type} is disabled, skipping")
                     continue
@@ -822,7 +818,9 @@ class RedisTaskScheduler(ITaskScheduler):
         try:
             async with self._redis.pipeline() as pipe:
                 pipe.hset(self.HEARTBEAT_KEY, "running", "false")
-                pipe.expire(self.HEARTBEAT_KEY, self._check_interval * self.HEARTBEAT_TTL_MULTIPLIER)
+                pipe.expire(
+                    self.HEARTBEAT_KEY, self._check_interval * self.HEARTBEAT_TTL_MULTIPLIER
+                )
                 await pipe.execute()
         except Exception as e:
             logger.warning(f"Failed to update scheduler heartbeat on stop: {e}")

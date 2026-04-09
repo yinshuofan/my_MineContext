@@ -50,9 +50,7 @@ class EventSearchService:
         Handles vectorization internally — caller provides raw query content
         in OpenAI content parts format.
         """
-        query_text = " ".join(
-            item.get("text", "") for item in query if item.get("type") == "text"
-        )
+        query_text = " ".join(item.get("text", "") for item in query if item.get("type") == "text")
         logger.debug(
             f"[EventSearchService] semantic_search: query='{query_text[:100]}', "
             f"user_id={user_id}, agent_id={agent_id}, "
@@ -116,8 +114,18 @@ class EventSearchService:
             time_start = time_range.start if time_range else None
             time_end = time_range.end if time_range else None
 
-            user_types = [ContextType.EVENT, ContextType.DAILY_SUMMARY, ContextType.WEEKLY_SUMMARY, ContextType.MONTHLY_SUMMARY]
-            base_types = [ContextType.AGENT_BASE_EVENT, ContextType.AGENT_BASE_L1_SUMMARY, ContextType.AGENT_BASE_L2_SUMMARY, ContextType.AGENT_BASE_L3_SUMMARY]
+            user_types = [
+                ContextType.EVENT,
+                ContextType.DAILY_SUMMARY,
+                ContextType.WEEKLY_SUMMARY,
+                ContextType.MONTHLY_SUMMARY,
+            ]
+            base_types = [
+                ContextType.AGENT_BASE_EVENT,
+                ContextType.AGENT_BASE_L1_SUMMARY,
+                ContextType.AGENT_BASE_L2_SUMMARY,
+                ContextType.AGENT_BASE_L3_SUMMARY,
+            ]
             tasks = []
             for level in hierarchy_levels:
                 if level < len(user_types):
@@ -192,8 +200,18 @@ class EventSearchService:
     @staticmethod
     def _get_context_types_for_levels(levels: Optional[List[int]] = None) -> List[str]:
         """Map hierarchy_levels to combined user + agent_base ContextType values."""
-        user_types = [ContextType.EVENT, ContextType.DAILY_SUMMARY, ContextType.WEEKLY_SUMMARY, ContextType.MONTHLY_SUMMARY]
-        base_types = [ContextType.AGENT_BASE_EVENT, ContextType.AGENT_BASE_L1_SUMMARY, ContextType.AGENT_BASE_L2_SUMMARY, ContextType.AGENT_BASE_L3_SUMMARY]
+        user_types = [
+            ContextType.EVENT,
+            ContextType.DAILY_SUMMARY,
+            ContextType.WEEKLY_SUMMARY,
+            ContextType.MONTHLY_SUMMARY,
+        ]
+        base_types = [
+            ContextType.AGENT_BASE_EVENT,
+            ContextType.AGENT_BASE_L1_SUMMARY,
+            ContextType.AGENT_BASE_L2_SUMMARY,
+            ContextType.AGENT_BASE_L3_SUMMARY,
+        ]
         if levels:
             result = []
             for l in levels:
@@ -234,8 +252,16 @@ class EventSearchService:
         max_level: int,
     ) -> Dict[str, ProcessedContext]:
         """Collect ancestors by following refs upward (to summary types)."""
-        user_summary_types = {ContextType.DAILY_SUMMARY.value, ContextType.WEEKLY_SUMMARY.value, ContextType.MONTHLY_SUMMARY.value}
-        base_summary_types = {ContextType.AGENT_BASE_L1_SUMMARY.value, ContextType.AGENT_BASE_L2_SUMMARY.value, ContextType.AGENT_BASE_L3_SUMMARY.value}
+        user_summary_types = {
+            ContextType.DAILY_SUMMARY.value,
+            ContextType.WEEKLY_SUMMARY.value,
+            ContextType.MONTHLY_SUMMARY.value,
+        }
+        base_summary_types = {
+            ContextType.AGENT_BASE_L1_SUMMARY.value,
+            ContextType.AGENT_BASE_L2_SUMMARY.value,
+            ContextType.AGENT_BASE_L3_SUMMARY.value,
+        }
         summary_type_values = user_summary_types | base_summary_types
 
         all_ancestors = {}

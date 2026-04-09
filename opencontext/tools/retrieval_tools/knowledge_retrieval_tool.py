@@ -131,9 +131,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
                 ark_input.append({"type": "video_url", "video_url": {"url": video_url}})
             vectorize = Vectorize(
                 input=ark_input,
-                content_format=(
-                    ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
-                ),
+                content_format=(ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT),
             )
             await do_vectorize(vectorize, role="query")
             return await self.storage.search(
@@ -201,16 +199,22 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
         try:
             # Step 1: Search KNOWLEDGE contexts (standard base-class search)
             knowledge_results: List[Tuple[ProcessedContext, float]] = await self._execute_search(
-                query=query, filters=filters, top_k=top_k,
-                image_url=image_url, video_url=video_url,
+                query=query,
+                filters=filters,
+                top_k=top_k,
+                image_url=image_url,
+                video_url=video_url,
             )
 
             # Step 2: Search L0 EVENT contexts (only when a query is provided)
             event_results: List[Tuple[ProcessedContext, float]] = []
             if query or image_url or video_url:
                 event_results = await self._search_l0_events(
-                    query=query, filters=filters, top_k=top_k,
-                    image_url=image_url, video_url=video_url,
+                    query=query,
+                    filters=filters,
+                    top_k=top_k,
+                    image_url=image_url,
+                    video_url=video_url,
                 )
 
             # Step 3: Merge and deduplicate by context ID, keeping higher scores

@@ -108,9 +108,7 @@ class StreamInterruptManager:
                 logger.debug(f"Subscribed to pattern: {pattern}")
 
                 while True:
-                    msg = await pubsub.get_message(
-                        ignore_subscribe_messages=True, timeout=1.0
-                    )
+                    msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                     if msg is None:
                         continue
 
@@ -124,9 +122,7 @@ class StreamInterruptManager:
 
                             if msg_id in self._local_flags:
                                 self._local_flags[msg_id] = True
-                                logger.info(
-                                    f"Received cross-worker interrupt for message {msg_id}"
-                                )
+                                logger.info(f"Received cross-worker interrupt for message {msg_id}")
                         except (ValueError, IndexError) as e:
                             logger.warning(f"Failed to parse interrupt channel: {e}")
 

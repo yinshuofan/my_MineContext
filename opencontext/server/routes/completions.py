@@ -271,9 +271,7 @@ async def get_cache_stats(_auth: str = auth_dependency):
         completion_service = get_completion_service()
         stats = await completion_service.get_cache_stats()
 
-        return JSONResponse(
-            {"success": True, "data": stats, "timestamp": tz_now().isoformat()}
-        )
+        return JSONResponse({"success": True, "data": stats, "timestamp": tz_now().isoformat()})
 
     except Exception as e:
         logger.error(f"Failed to get cache statistics: {e}")

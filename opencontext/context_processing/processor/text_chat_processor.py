@@ -3,7 +3,6 @@ import json
 from typing import Any, Dict, List, Optional
 
 from opencontext.config.global_config import get_prompt_group
-from opencontext.utils.time_utils import now as tz_now
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import (
@@ -21,6 +20,7 @@ from opencontext.models.enums import (
 )
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -42,9 +42,13 @@ class TextChatProcessor(BaseContextProcessor):
             and context.content_format in (ContentFormat.TEXT, ContentFormat.MULTIMODAL)
         )
 
-    async def process(self, context: RawContextProperties, prior_results=None) -> List[ProcessedContext]:
+    async def process(
+        self, context: RawContextProperties, prior_results=None
+    ) -> List[ProcessedContext]:
         """Process chat context asynchronously."""
-        logger.debug(f"[text_chat_processor] Processing: user={context.user_id}, agent={context.agent_id}, source={context.source}, content_length={len(context.content_text or '')}")
+        logger.debug(
+            f"[text_chat_processor] Processing: user={context.user_id}, agent={context.agent_id}, source={context.source}, content_length={len(context.content_text or '')}"
+        )
         try:
             processed_list = await self._process_async(context)
             return processed_list or []
@@ -106,7 +110,9 @@ class TextChatProcessor(BaseContextProcessor):
 
         for memory in memories:
             try:
-                pc = self._build_processed_context(memory, raw_context, media_index=media_index, batch_id=batch_id)
+                pc = self._build_processed_context(
+                    memory, raw_context, media_index=media_index, batch_id=batch_id
+                )
                 if pc:
                     processed_list.append(pc)
             except Exception as e:
@@ -344,9 +350,7 @@ class TextChatProcessor(BaseContextProcessor):
                 ark_input.append({"type": "image_url", "image_url": {"url": img_url}})
         if vectorize_videos:
             for vid_url in vectorize_videos:
-                ark_input.append(
-                    {"type": "video_url", "video_url": {"url": vid_url, "fps": 1.0}}
-                )
+                ark_input.append({"type": "video_url", "video_url": {"url": vid_url, "fps": 1.0}})
 
         return ProcessedContext(
             properties=ContextProperties(

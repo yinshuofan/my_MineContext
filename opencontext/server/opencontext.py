@@ -162,7 +162,11 @@ class OpenContext:
             if db_contexts:
                 for ctx in db_contexts:
                     ctx_type = ctx.extracted_data.context_type
-                    if ctx_type in (ContextType.PROFILE, ContextType.AGENT_PROFILE, ContextType.AGENT_BASE_PROFILE):
+                    if ctx_type in (
+                        ContextType.PROFILE,
+                        ContextType.AGENT_PROFILE,
+                        ContextType.AGENT_BASE_PROFILE,
+                    ):
                         await self._store_profile(ctx)
                     uid = ctx.properties.user_id
                     if uid:
@@ -488,15 +492,11 @@ class OpenContext:
                     if redis_cache:
                         heartbeat = await read_scheduler_heartbeat(redis_cache)
                         if heartbeat:
-                            handlers = _json.loads(
-                                heartbeat.get("registered_handlers", "[]")
-                            )
+                            handlers = _json.loads(heartbeat.get("registered_handlers", "[]"))
                             health["scheduler"] = {
                                 "initialized": True,
                                 "running": heartbeat.get("running") == "true",
-                                "in_flight_tasks": int(
-                                    heartbeat.get("in_flight_tasks", 0)
-                                ),
+                                "in_flight_tasks": int(heartbeat.get("in_flight_tasks", 0)),
                                 "registered_handlers": handlers,
                                 "remote": True,
                                 "last_heartbeat": heartbeat.get("last_heartbeat"),

@@ -69,8 +69,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         # 1. Filter events from prior_results
         events = [
-            ctx for ctx in prior_results
-            if ctx.extracted_data.context_type == ContextType.EVENT
+            ctx for ctx in prior_results if ctx.extracted_data.context_type == ContextType.EVENT
         ]
         if not events:
             logger.debug("[agent_memory_processor] No events in prior_results, skipping")
@@ -181,9 +180,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
                 events[idx].extracted_data.agent_commentary = str(commentary).strip()
                 modified.append(events[idx])
 
-        logger.info(
-            f"[agent_memory_processor] Annotated {len(modified)}/{len(events)} events"
-        )
+        logger.info(f"[agent_memory_processor] Annotated {len(modified)}/{len(events)} events")
         return modified
 
     async def _extract_search_query(self, chat_content: str) -> Optional[str]:

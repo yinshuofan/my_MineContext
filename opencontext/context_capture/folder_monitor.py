@@ -18,12 +18,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from opencontext.context_capture.base import BaseCaptureComponent
-from opencontext.utils.time_utils import now as tz_now
 from opencontext.context_processing.processor.document_processor import DocumentProcessor
 from opencontext.models.context import RawContextProperties
 from opencontext.models.enums import ContentFormat, ContextSource, ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 logger = get_logger(__name__)
 
@@ -259,9 +259,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
         """Sync wrapper to call async cleanup from thread context."""
         try:
             loop = asyncio.get_running_loop()
-            future = asyncio.run_coroutine_threadsafe(
-                self._cleanup_file_context(file_path), loop
-            )
+            future = asyncio.run_coroutine_threadsafe(self._cleanup_file_context(file_path), loop)
             return future.result(timeout=30)
         except RuntimeError:
             # No running event loop — fall back to asyncio.run

@@ -6,6 +6,7 @@
 """
 Define core data models used in OpenContext
 """
+
 import base64
 import datetime
 import json
@@ -114,9 +115,9 @@ class ContextProperties(BaseModel):
     merge_count: int = 0  # merge count
     duration_count: int = 1  # context duration count
     enable_merge: bool = False
-    last_call_time: Optional[
-        datetime.datetime
-    ] = None  # last call time, updated during online service calls
+    last_call_time: Optional[datetime.datetime] = (
+        None  # last call time, updated during online service calls
+    )
     # position: Optional[Dict[str, Any]] = None # context position in original data
 
     # Document tracking fields

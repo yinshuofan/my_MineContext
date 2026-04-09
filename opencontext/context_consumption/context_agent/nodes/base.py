@@ -11,9 +11,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from opencontext.utils.time_utils import now as tz_now
-
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
 
 from ..core.state import WorkflowState
 from ..core.streaming import StreamingManager

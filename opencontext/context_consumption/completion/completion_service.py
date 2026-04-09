@@ -237,7 +237,9 @@ class CompletionService:
             "line_number": current_line_idx + 1,
         }
 
-    async def _get_semantic_continuations(self, context: Dict[str, Any]) -> List[CompletionSuggestion]:
+    async def _get_semantic_continuations(
+        self, context: Dict[str, Any]
+    ) -> List[CompletionSuggestion]:
         """Get semantic continuation suggestions"""
         suggestions = []
 

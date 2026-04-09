@@ -118,9 +118,7 @@ class BaseContextRetrievalTool(BaseTool):
                 ark_input.append({"type": "video_url", "video_url": {"url": video_url}})
             vectorize = Vectorize(
                 input=ark_input,
-                content_format=(
-                    ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT
-                ),
+                content_format=(ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT),
             )
             await do_vectorize(vectorize, role="query")
             return await self.storage.search(
@@ -167,7 +165,9 @@ class BaseContextRetrievalTool(BaseTool):
             "keywords": ed.keywords or [],
             "entities": ed.entities or [],
             "create_time": props.create_time.isoformat() if props.create_time else None,
-            "event_time_start": props.event_time_start.isoformat() if props.event_time_start else None,
+            "event_time_start": (
+                props.event_time_start.isoformat() if props.event_time_start else None
+            ),
             "event_time_end": props.event_time_end.isoformat() if props.event_time_end else None,
             "hierarchy_level": props.hierarchy_level,
             "metadata": context.metadata or {},

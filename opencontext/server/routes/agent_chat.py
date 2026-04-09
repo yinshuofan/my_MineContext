@@ -221,9 +221,11 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                         event_metadata[event_type_key].append(
                             {
                                 "content": event.content,
-                                "timestamp": event.timestamp.isoformat()
-                                if hasattr(event, "timestamp")
-                                else None,
+                                "timestamp": (
+                                    event.timestamp.isoformat()
+                                    if hasattr(event, "timestamp")
+                                    else None
+                                ),
                                 "stage": event.stage.value if event.stage else None,
                                 "progress": event.progress if hasattr(event, "progress") else None,
                             }
@@ -250,9 +252,9 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                         await storage.mark_message_finished(
                             message_id=assistant_message_id,
                             status=status,
-                            error_message=event.metadata.get("error")
-                            if status == "failed"
-                            else None,
+                            error_message=(
+                                event.metadata.get("error") if status == "failed" else None
+                            ),
                         )
                         logger.info(f"Marked assistant message {assistant_message_id} as {status}")
                     break

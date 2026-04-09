@@ -11,12 +11,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from opencontext.utils.time_utils import now as tz_now
-
 from opencontext.monitoring import get_monitor
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.opencontext import OpenContext
 from opencontext.server.utils import get_context_lab
+from opencontext.utils.time_utils import now as tz_now
 
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 
@@ -189,9 +188,7 @@ async def monitoring_health(_auth: str = auth_dependency):
     try:
         monitor = get_monitor()
         uptime_seconds = (
-            int((tz_now() - monitor._start_time).total_seconds())
-            if monitor._start_time
-            else 0
+            int((tz_now() - monitor._start_time).total_seconds()) if monitor._start_time else 0
         )
         return {"success": True, "data": {"monitor_active": True, "uptime_seconds": uptime_seconds}}
     except Exception as e:
@@ -360,8 +357,16 @@ async def trigger_task(
                         "title": result.extracted_data.title if result.extracted_data else None,
                         "summary": result.extracted_data.summary if result.extracted_data else None,
                         "hierarchy_level": result.properties.hierarchy_level,
-                        "event_time_start": result.properties.event_time_start.isoformat() if result.properties.event_time_start else None,
-                        "event_time_end": result.properties.event_time_end.isoformat() if result.properties.event_time_end else None,
+                        "event_time_start": (
+                            result.properties.event_time_start.isoformat()
+                            if result.properties.event_time_start
+                            else None
+                        ),
+                        "event_time_end": (
+                            result.properties.event_time_end.isoformat()
+                            if result.properties.event_time_end
+                            else None
+                        ),
                     },
                 }
             else:

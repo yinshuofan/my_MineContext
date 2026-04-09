@@ -142,4 +142,3 @@ class IntentNode(BaseNode):
         state.final_content = full_content
         state.update_stage(WorkflowStage.COMPLETED)
         return state
-

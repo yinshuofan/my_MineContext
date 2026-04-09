@@ -8,6 +8,7 @@
 """
 Context processing manager for managing and coordinating context processing components
 """
+
 import asyncio
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
@@ -166,9 +167,7 @@ class ContextProcessorManager:
                 logger.warning(f"Processor '{internal_name}' not found, skipping")
                 continue
             if not processor.can_process(raw_context):
-                logger.debug(
-                    f"Processor '{internal_name}' cannot process this context, skipping"
-                )
+                logger.debug(f"Processor '{internal_name}' cannot process this context, skipping")
                 continue
             resolved.append((ext_name, processor))
 
@@ -259,9 +258,7 @@ class ContextProcessorManager:
 
         return layers
 
-    async def batch_process(
-        self, initial_inputs: List[RawContextProperties]
-    ) -> Dict[str, bool]:
+    async def batch_process(self, initial_inputs: List[RawContextProperties]) -> Dict[str, bool]:
         """Batch process raw context data"""
         tasks = [self.process(initial_input) for initial_input in initial_inputs]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)

@@ -33,9 +33,10 @@ from opencontext.server.cache.models import (
 )
 from opencontext.storage.global_storage import get_storage
 from opencontext.storage.redis_cache import get_cache
-from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.time_utils import now as tz_now, today_start as tz_today_start
+from opencontext.utils.media_refs import normalize_media_refs
+from opencontext.utils.time_utils import now as tz_now
+from opencontext.utils.time_utils import today_start as tz_today_start
 
 logger = get_logger(__name__)
 
@@ -182,9 +183,7 @@ class MemoryCacheManager:
         if lock_token:
             try:
                 await cache.delete(snapshot_key)
-                snapshot_data = await self._build_snapshot(
-                    user_id, device_id, agent_id, None, None
-                )
+                snapshot_data = await self._build_snapshot(user_id, device_id, agent_id, None, None)
                 ttl = self._config["snapshot_ttl"]
                 await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
                 logger.info(
@@ -238,9 +237,16 @@ class MemoryCacheManager:
         need_snapshot = bool(sections - {"accessed"})
         if not need_snapshot:
             return self._merge_response(
-                {"user_id": user_id, "device_id": device_id, "agent_id": agent_id,
-                 "recent_memories": {}},
-                accessed, cache_hit=False, ttl_remaining=0, include_sections=sections,
+                {
+                    "user_id": user_id,
+                    "device_id": device_id,
+                    "agent_id": agent_id,
+                    "recent_memories": {},
+                },
+                accessed,
+                cache_hit=False,
+                ttl_remaining=0,
+                include_sections=sections,
             )
 
         snapshot_key = self._snapshot_key(user_id, device_id, agent_id)
@@ -251,7 +257,9 @@ class MemoryCacheManager:
             if snapshot:
                 remaining_ttl = await cache.ttl(snapshot_key)
                 return self._merge_response(
-                    snapshot, accessed, cache_hit=True,
+                    snapshot,
+                    accessed,
+                    cache_hit=True,
                     ttl_remaining=max(remaining_ttl, 0),
                     include_sections=sections,
                 )
@@ -268,20 +276,28 @@ class MemoryCacheManager:
                 snapshot = await cache.get_json(snapshot_key)
                 if snapshot and not force_refresh:
                     return self._merge_response(
-                        snapshot, accessed, cache_hit=True,
+                        snapshot,
+                        accessed,
+                        cache_hit=True,
                         ttl_remaining=await cache.ttl(snapshot_key),
                         include_sections=sections,
                     )
 
                 # Actually build snapshot (always full, for caching)
                 snapshot_data = await self._build_snapshot(
-                    user_id, device_id, agent_id, recent_days,
+                    user_id,
+                    device_id,
+                    agent_id,
+                    recent_days,
                     max_recent_events_today,
                 )
                 ttl = self._config["snapshot_ttl"]
                 await cache.set_json(snapshot_key, snapshot_data, ttl=ttl)
                 return self._merge_response(
-                    snapshot_data, accessed, cache_hit=False, ttl_remaining=ttl,
+                    snapshot_data,
+                    accessed,
+                    cache_hit=False,
+                    ttl_remaining=ttl,
                     include_sections=sections,
                 )
             finally:
@@ -291,17 +307,25 @@ class MemoryCacheManager:
             snapshot = await cache.get_json(snapshot_key)
             if snapshot:
                 return self._merge_response(
-                    snapshot, accessed, cache_hit=True,
+                    snapshot,
+                    accessed,
+                    cache_hit=True,
                     ttl_remaining=await cache.ttl(snapshot_key),
                     include_sections=sections,
                 )
             # Another instance likely holds the lock and is building; build uncached
             snapshot_data = await self._build_snapshot(
-                user_id, device_id, agent_id, recent_days,
+                user_id,
+                device_id,
+                agent_id,
+                recent_days,
                 max_recent_events_today,
             )
             return self._merge_response(
-                snapshot_data, accessed, cache_hit=False, ttl_remaining=0,
+                snapshot_data,
+                accessed,
+                cache_hit=False,
+                ttl_remaining=0,
                 include_sections=sections,
             )
 
@@ -371,7 +395,11 @@ class MemoryCacheManager:
         # Resolve context types — always user events
         l0_type = ContextType.EVENT.value
         l1_type = ContextType.DAILY_SUMMARY.value
-        summary_type_values = {ContextType.DAILY_SUMMARY.value, ContextType.WEEKLY_SUMMARY.value, ContextType.MONTHLY_SUMMARY.value}
+        summary_type_values = {
+            ContextType.DAILY_SUMMARY.value,
+            ContextType.WEEKLY_SUMMARY.value,
+            ContextType.MONTHLY_SUMMARY.value,
+        }
 
         # Profile — use agent_profile if agent_id is not default
         if agent_id and agent_id != "default":

@@ -78,9 +78,7 @@ async def _ensure_storage_ready(max_retries: int = 3, delays: tuple[int, ...] = 
 
         if attempt < max_retries - 1:
             delay = delays[min(attempt, len(delays) - 1)]
-            logger.warning(
-                f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})"
-            )
+            logger.warning(f"Storage init failed, retry in {delay}s ({attempt + 1}/{max_retries})")
             await asyncio.sleep(delay)
 
     raise StartupDependencyError("storage", "storage initialization failed after retries")
@@ -436,6 +434,7 @@ def _setup_logging(config_path: Optional[str]) -> None:
     setup_logging(GlobalConfig.get_instance().get_config("logging"))
 
     from opencontext.utils.time_utils import init_timezone
+
     tz_name = GlobalConfig.get_instance().get_config("timezone")
     init_timezone(tz_name)
 

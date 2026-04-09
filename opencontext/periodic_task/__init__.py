@@ -8,6 +8,10 @@ Provides base classes and implementations for periodic tasks
 such as memory compression, data cleanup, etc.
 """
 
+from opencontext.periodic_task.agent_profile_update import (
+    AgentProfileUpdateTask,
+    create_agent_profile_update_handler,
+)
 from opencontext.periodic_task.base import (
     BasePeriodicTask,
     IPeriodicTask,
@@ -18,10 +22,6 @@ from opencontext.periodic_task.data_cleanup import DataCleanupTask, create_clean
 from opencontext.periodic_task.hierarchy_summary import (
     HierarchySummaryTask,
     create_hierarchy_handler,
-)
-from opencontext.periodic_task.agent_profile_update import (
-    AgentProfileUpdateTask,
-    create_agent_profile_update_handler,
 )
 from opencontext.periodic_task.memory_compression import (
     MemoryCompressionTask,

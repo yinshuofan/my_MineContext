@@ -90,8 +90,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
 
         # vaults table - reports
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS vaults (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT,
@@ -107,12 +106,10 @@ class SQLiteBackend(IDocumentStorageBackend):
                 sort_order INTEGER DEFAULT 0,
                 FOREIGN KEY (parent_id) REFERENCES vaults (id)
             )
-        """
-        )
+        """)
 
         # Todo table - todo items
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS todo (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 content TEXT,
@@ -123,43 +120,33 @@ class SQLiteBackend(IDocumentStorageBackend):
                 urgency INTEGER DEFAULT 0,
                 assignee TEXT
             )
-        """
-        )
+        """)
 
-        cursor = await conn.execute(
-            """
+        cursor = await conn.execute("""
             PRAGMA table_info(todo)
-        """
-        )
+        """)
         rows = await cursor.fetchall()
         columns = [column[1] for column in rows]
         if "assignee" not in columns:
-            await conn.execute(
-                """
+            await conn.execute("""
                 ALTER TABLE todo ADD COLUMN assignee TEXT
-            """
-            )
+            """)
         if "reason" not in columns:
-            await conn.execute(
-                """
+            await conn.execute("""
                 ALTER TABLE todo ADD COLUMN reason TEXT
-            """
-            )
+            """)
 
         # Tips table - tips
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS tips (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 content TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
+        """)
 
         # Profiles table - user profiles (composite key: user_id + device_id + agent_id + context_type)
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id TEXT NOT NULL,
                 device_id TEXT NOT NULL DEFAULT 'default',
@@ -175,16 +162,14 @@ class SQLiteBackend(IDocumentStorageBackend):
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, device_id, agent_id, context_type)
             )
-        """
-        )
+        """)
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_profiles_context_type ON profiles(context_type)"
         )
 
         # Monitoring tables
         # Token usage tracking - keep 7 days of data
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS monitoring_token_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 time_bucket TEXT NOT NULL,
@@ -195,12 +180,10 @@ class SQLiteBackend(IDocumentStorageBackend):
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(time_bucket, model)
             )
-        """
-        )
+        """)
 
         # Stage timing tracking - LLM API calls and processing stages
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS monitoring_stage_timing (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 time_bucket TEXT NOT NULL,
@@ -216,12 +199,10 @@ class SQLiteBackend(IDocumentStorageBackend):
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(time_bucket, stage_name)
             )
-        """
-        )
+        """)
 
         # Data statistics tracking - contexts and documents
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS monitoring_data_stats (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 time_bucket TEXT NOT NULL,
@@ -232,12 +213,10 @@ class SQLiteBackend(IDocumentStorageBackend):
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(time_bucket, data_type, context_type)
             )
-        """
-        )
+        """)
 
         # Conversation tables
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS conversations (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               title TEXT,
@@ -248,11 +227,9 @@ class SQLiteBackend(IDocumentStorageBackend):
               created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
               updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
+        """)
 
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS messages (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               conversation_id INTEGER NOT NULL,
@@ -269,8 +246,7 @@ class SQLiteBackend(IDocumentStorageBackend):
               updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
             )
-        """
-        )
+        """)
 
         # New table indexes
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_vaults_created ON vaults (created_at)")
@@ -321,8 +297,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # Message thinking table (stores thinking process for messages)
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS message_thinking (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id INTEGER NOT NULL,
@@ -334,8 +309,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE
             )
-            """
-        )
+            """)
 
         # Message thinking indexes
         await conn.execute(
@@ -349,19 +323,16 @@ class SQLiteBackend(IDocumentStorageBackend):
         )
 
         # System settings table (key-value, for user config overrides)
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS system_settings (
                 setting_key TEXT NOT NULL PRIMARY KEY,
                 setting_value TEXT NOT NULL,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
+        """)
 
         # Chat batches table - stores raw chat messages for processor reference
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS chat_batches (
                 batch_id TEXT PRIMARY KEY,
                 messages TEXT NOT NULL,
@@ -371,15 +342,13 @@ class SQLiteBackend(IDocumentStorageBackend):
                 message_count INTEGER NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
+        """)
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_chat_batches_created_at ON chat_batches(created_at)"
         )
 
         # Agent registry table - registered agents with soft delete
-        await conn.execute(
-            """
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS agent_registry (
                 agent_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -388,8 +357,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
+        """)
 
         await conn.commit()
 
@@ -1063,8 +1031,18 @@ class SQLiteBackend(IDocumentStorageBackend):
                     error_count = error_count + excluded.error_count,
                     avg_duration_ms = (total_duration_ms + excluded.total_duration_ms) / (count + 1)
                 """,
-                (time_bucket, stage_name, duration_ms, duration_ms, duration_ms, duration_ms,
-                 success_inc, error_inc, metadata, now),
+                (
+                    time_bucket,
+                    stage_name,
+                    duration_ms,
+                    duration_ms,
+                    duration_ms,
+                    duration_ms,
+                    success_inc,
+                    error_inc,
+                    metadata,
+                    now,
+                ),
             )
             await conn.commit()
             return True
@@ -2100,9 +2078,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
         conn = self._connection
         try:
-            await conn.execute(
-                "DELETE FROM system_settings WHERE SUBSTR(setting_key, 1, 1) != '_'"
-            )
+            await conn.execute("DELETE FROM system_settings WHERE SUBSTR(setting_key, 1, 1) != '_'")
             await conn.commit()
             logger.info("All settings deleted from DB")
             return True
@@ -2341,14 +2317,10 @@ class SQLiteBackend(IDocumentStorageBackend):
                 FROM documents d
                 LEFT JOIN document_tags dt ON d.id = dt.document_id
                 WHERE """
-            sql = (
-                base_sql
-                + where_clause
-                + """
+            sql = base_sql + where_clause + """
                 ORDER BY d.updated_at DESC
                 LIMIT ?
             """
-            )
             params.append(limit)
 
             cursor = await conn.execute(sql, params)

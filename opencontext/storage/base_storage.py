@@ -516,4 +516,3 @@ class IDocumentStorageBackend(IStorageBackend):
     async def get_chat_batch(self, batch_id: str) -> Optional[Dict]:
         """Get single chat batch with messages."""
         raise NotImplementedError
-

@@ -89,7 +89,12 @@ class GlobalConfig:
             # Initialize timezone for subprocess workers
             try:
                 from opencontext.utils.time_utils import init_timezone
-                tz_name = self._config_manager.get_config().get("timezone") if self._config_manager else None
+
+                tz_name = (
+                    self._config_manager.get_config().get("timezone")
+                    if self._config_manager
+                    else None
+                )
                 init_timezone(tz_name)
             except Exception as e:
                 logger.warning(f"Failed to init timezone in auto-initialize: {e}")

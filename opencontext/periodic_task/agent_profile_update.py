@@ -10,7 +10,8 @@ from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskRe
 from opencontext.scheduler.base import TriggerMode
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.time_utils import now as tz_now, today_start
+from opencontext.utils.time_utils import now as tz_now
+from opencontext.utils.time_utils import today_start
 
 logger = get_logger(__name__)
 

@@ -66,11 +66,14 @@ async def refresh_profile(
             )
 
         if existing:
-            merged = await _merge_profile_with_llm(existing, {
-                "factual_profile": new_factual_profile,
-                "entities": new_entities or [],
-                "importance": new_importance,
-            })
+            merged = await _merge_profile_with_llm(
+                existing,
+                {
+                    "factual_profile": new_factual_profile,
+                    "entities": new_entities or [],
+                    "importance": new_importance,
+                },
+            )
 
             if merged:
                 return await storage.upsert_profile(

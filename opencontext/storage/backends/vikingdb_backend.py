@@ -26,8 +26,8 @@ from opencontext.llm.global_embedding_client import do_vectorize, do_vectorize_b
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
 from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
-from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.media_refs import normalize_media_refs
 from opencontext.utils.time_utils import utc_now
 
 logger = get_logger(__name__)
@@ -1171,7 +1171,13 @@ class VikingDBBackend(IVectorStorageBackend):
             fields.pop("score", None)
             fields.pop(FIELD_DATA_TYPE, None)
 
-            TIME_FIELDS = {"create_time", "event_time_start", "event_time_end", "update_time", "last_call_time"}
+            TIME_FIELDS = {
+                "create_time",
+                "event_time_start",
+                "event_time_end",
+                "update_time",
+                "last_call_time",
+            }
 
             # Fields that should always remain as strings, never JSON-parsed
             STRING_ONLY_FIELDS = {"title", "summary", "document", "text"}
@@ -1616,10 +1622,12 @@ class VikingDBBackend(IVectorStorageBackend):
                     existing_refs[ref_key] = []
                 if ref_value not in existing_refs[ref_key]:
                     existing_refs[ref_key].append(ref_value)
-                data_list.append({
-                    "id": item.get("id"),
-                    FIELD_REFS: json.dumps(existing_refs),
-                })
+                data_list.append(
+                    {
+                        "id": item.get("id"),
+                        FIELD_REFS: json.dumps(existing_refs),
+                    }
+                )
             except Exception as e:
                 logger.warning(f"batch_update_refs parse failed for {item.get('id')}: {e}")
 
@@ -1641,9 +1649,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 if result.get("code") == "Success":
                     updated += len(batch)
                 else:
-                    logger.warning(
-                        f"batch_update_refs update failed: {result.get('message')}"
-                    )
+                    logger.warning(f"batch_update_refs update failed: {result.get('message')}")
             except Exception as e:
                 logger.warning(f"batch_update_refs failed for batch: {e}")
         return updated

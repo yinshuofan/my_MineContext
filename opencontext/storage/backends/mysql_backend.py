@@ -102,9 +102,7 @@ class MySQLBackend(IDocumentStorageBackend):
                         pass  # Column already exists
 
                     try:
-                        await cursor.execute(
-                            "ALTER TABLE profiles ADD COLUMN refs JSON"
-                        )
+                        await cursor.execute("ALTER TABLE profiles ADD COLUMN refs JSON")
                     except Exception:
                         pass  # Column already exists
 
@@ -132,9 +130,7 @@ class MySQLBackend(IDocumentStorageBackend):
                         pass  # Index already exists
 
             self._initialized = True
-            logger.info(
-                f"MySQL backend initialized successfully, database: {self.db_config['db']}"
-            )
+            logger.info(f"MySQL backend initialized successfully, database: {self.db_config['db']}")
             return True
 
         except Exception as e:
@@ -172,8 +168,7 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor() as cursor:
                 # vaults table
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS vaults (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         title TEXT,
@@ -193,12 +188,10 @@ class MySQLBackend(IDocumentStorageBackend):
                         INDEX idx_vaults_deleted (is_deleted),
                         FOREIGN KEY (parent_id) REFERENCES vaults (id) ON DELETE SET NULL
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 # Todo table
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS todo (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         content TEXT,
@@ -213,24 +206,20 @@ class MySQLBackend(IDocumentStorageBackend):
                         INDEX idx_todo_urgency (urgency),
                         INDEX idx_todo_created (created_at)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 # Tips table
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS tips (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         content TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         INDEX idx_tips_time (created_at)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 # Profiles table
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS profiles (
                         user_id VARCHAR(255) NOT NULL,
                         device_id VARCHAR(100) NOT NULL DEFAULT 'default',
@@ -247,12 +236,10 @@ class MySQLBackend(IDocumentStorageBackend):
                         PRIMARY KEY (user_id, device_id, agent_id, context_type),
                         INDEX idx_profiles_context_type (context_type)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 # Monitoring tables
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS monitoring_token_usage (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         time_bucket VARCHAR(20) NOT NULL,
@@ -265,11 +252,9 @@ class MySQLBackend(IDocumentStorageBackend):
                         INDEX idx_monitoring_token_created (created_at),
                         INDEX idx_monitoring_token_model (model)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS monitoring_stage_timing (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         time_bucket VARCHAR(20) NOT NULL,
@@ -287,11 +272,9 @@ class MySQLBackend(IDocumentStorageBackend):
                         INDEX idx_monitoring_stage_created (created_at),
                         INDEX idx_monitoring_stage_name (stage_name)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS monitoring_data_stats (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         time_bucket VARCHAR(20) NOT NULL,
@@ -304,12 +287,10 @@ class MySQLBackend(IDocumentStorageBackend):
                         INDEX idx_monitoring_data_created (created_at),
                         INDEX idx_monitoring_data_type (data_type)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 # Conversation tables
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS conversations (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         title VARCHAR(500),
@@ -322,11 +303,9 @@ class MySQLBackend(IDocumentStorageBackend):
                         INDEX idx_conversations_updated_at (updated_at DESC),
                         INDEX idx_conversations_user_page (user_id, page_name)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS messages (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         conversation_id BIGINT NOT NULL,
@@ -345,11 +324,9 @@ class MySQLBackend(IDocumentStorageBackend):
                         INDEX idx_messages_conversation_id (conversation_id),
                         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS message_thinking (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         message_id BIGINT NOT NULL,
@@ -364,24 +341,20 @@ class MySQLBackend(IDocumentStorageBackend):
                         INDEX idx_message_thinking_sequence (message_id, sequence),
                         FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 # System settings table (key-value, for multi-instance config consistency)
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS system_settings (
                         setting_key VARCHAR(128) NOT NULL,
                         setting_value JSON NOT NULL,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                         PRIMARY KEY (setting_key)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 # Chat batches table - stores raw chat messages for processor reference
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS chat_batches (
                         batch_id VARCHAR(36) PRIMARY KEY,
                         messages JSON NOT NULL,
@@ -392,12 +365,10 @@ class MySQLBackend(IDocumentStorageBackend):
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         INDEX idx_chat_batches_created_at (created_at)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 # Agent registry table - registered agents with soft delete
-                await cursor.execute(
-                    """
+                await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS agent_registry (
                         agent_id VARCHAR(100) PRIMARY KEY,
                         name VARCHAR(255) NOT NULL,
@@ -406,8 +377,7 @@ class MySQLBackend(IDocumentStorageBackend):
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """
-                )
+                """)
 
                 await conn.commit()
 
@@ -434,8 +404,15 @@ class MySQLBackend(IDocumentStorageBackend):
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                         (
-                            title, summary, content, tags, parent_id, is_folder,
-                            document_type, tz_now(), tz_now(),
+                            title,
+                            summary,
+                            content,
+                            tags,
+                            parent_id,
+                            is_folder,
+                            document_type,
+                            tz_now(),
+                            tz_now(),
                         ),
                     )
                     vault_id = cursor.lastrowid
@@ -537,7 +514,15 @@ class MySQLBackend(IDocumentStorageBackend):
                     set_clauses = []
                     params = []
                     for key, value in kwargs.items():
-                        if key in ["title", "summary", "content", "tags", "parent_id", "is_folder", "is_deleted"]:
+                        if key in [
+                            "title",
+                            "summary",
+                            "content",
+                            "tags",
+                            "parent_id",
+                            "is_folder",
+                            "is_deleted",
+                        ]:
                             set_clauses.append(f"{key} = %s")
                             params.append(value)
                     if not set_clauses:
@@ -574,7 +559,16 @@ class MySQLBackend(IDocumentStorageBackend):
                         INSERT INTO todo (content, start_time, end_time, status, urgency, assignee, reason, created_at)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                        (content, start_time or tz_now(), end_time, status, urgency, assignee, reason, tz_now()),
+                        (
+                            content,
+                            start_time or tz_now(),
+                            end_time,
+                            status,
+                            urgency,
+                            assignee,
+                            reason,
+                            tz_now(),
+                        ),
                     )
                     todo_id = cursor.lastrowid
                     await conn.commit()
@@ -626,7 +620,9 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.exception(f"Failed to get todo item list: {e}")
                     return []
 
-    async def update_todo_status(self, todo_id: int, status: int, end_time: datetime = None) -> bool:
+    async def update_todo_status(
+        self, todo_id: int, status: int, end_time: datetime = None
+    ) -> bool:
         if not self._initialized:
             return False
 
@@ -746,12 +742,25 @@ class MySQLBackend(IDocumentStorageBackend):
                             refs = new_val.refs,
                             updated_at = new_val.updated_at
                         """,
-                        (user_id, device_id, agent_id, context_type, factual_profile,
-                         behavioral_profile, entities_json, importance, metadata_json,
-                         refs_json, now, now),
+                        (
+                            user_id,
+                            device_id,
+                            agent_id,
+                            context_type,
+                            factual_profile,
+                            behavioral_profile,
+                            entities_json,
+                            importance,
+                            metadata_json,
+                            refs_json,
+                            now,
+                            now,
+                        ),
                     )
                     await conn.commit()
-                    logger.info(f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}")
+                    logger.info(
+                        f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}"
+                    )
                     return True
                 except Exception as e:
                     logger.exception(f"Failed to upsert profile: {e}")
@@ -856,7 +865,11 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
     async def save_monitoring_stage_timing(
-        self, stage_name: str, duration_ms: int, status: str = "success", metadata: Optional[str] = None,
+        self,
+        stage_name: str,
+        duration_ms: int,
+        status: str = "success",
+        metadata: Optional[str] = None,
     ) -> bool:
         if not self._initialized:
             return False
@@ -884,8 +897,18 @@ class MySQLBackend(IDocumentStorageBackend):
                             error_count = monitoring_stage_timing.error_count + new_val.error_count,
                             avg_duration_ms = monitoring_stage_timing.total_duration_ms DIV monitoring_stage_timing.count
                         """,
-                        (time_bucket, stage_name, duration_ms, duration_ms, duration_ms, duration_ms,
-                         success_inc, error_inc, metadata, now),
+                        (
+                            time_bucket,
+                            stage_name,
+                            duration_ms,
+                            duration_ms,
+                            duration_ms,
+                            duration_ms,
+                            success_inc,
+                            error_inc,
+                            metadata,
+                            now,
+                        ),
                     )
                     await conn.commit()
                     return True
@@ -894,7 +917,11 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
     async def save_monitoring_data_stats(
-        self, data_type: str, count: int = 1, context_type: Optional[str] = None, metadata: Optional[str] = None,
+        self,
+        data_type: str,
+        count: int = 1,
+        context_type: Optional[str] = None,
+        metadata: Optional[str] = None,
     ) -> bool:
         if not self._initialized:
             return False
@@ -959,14 +986,20 @@ class MySQLBackend(IDocumentStorageBackend):
                     rows = await cursor.fetchall()
                     result = []
                     for row in rows:
-                        result.append({
-                            "stage_name": row["stage_name"], "count": row["count"],
-                            "total_duration": row["total_duration_ms"], "min_duration": row["min_duration_ms"],
-                            "max_duration": row["max_duration_ms"], "duration_ms": row["avg_duration_ms"],
-                            "success_count": row["success_count"], "error_count": row["error_count"],
-                            "status": "success" if row["success_count"] > 0 else "error",
-                            "time_bucket": row["time_bucket"],
-                        })
+                        result.append(
+                            {
+                                "stage_name": row["stage_name"],
+                                "count": row["count"],
+                                "total_duration": row["total_duration_ms"],
+                                "min_duration": row["min_duration_ms"],
+                                "max_duration": row["max_duration_ms"],
+                                "duration_ms": row["avg_duration_ms"],
+                                "success_count": row["success_count"],
+                                "error_count": row["error_count"],
+                                "status": "success" if row["success_count"] > 0 else "error",
+                                "time_bucket": row["time_bucket"],
+                            }
+                        )
                     return result
         except Exception as e:
             logger.error(f"Failed to query stage timing: {e}")
@@ -989,7 +1022,14 @@ class MySQLBackend(IDocumentStorageBackend):
                         (cutoff_bucket,),
                     )
                     rows = await cursor.fetchall()
-                    return [{"data_type": r["data_type"], "count": r["total_count"], "context_type": r["context_type"]} for r in rows]
+                    return [
+                        {
+                            "data_type": r["data_type"],
+                            "count": r["total_count"],
+                            "context_type": r["context_type"],
+                        }
+                        for r in rows
+                    ]
         except Exception as e:
             logger.error(f"Failed to query data stats: {e}")
             return []
@@ -1013,7 +1053,14 @@ class MySQLBackend(IDocumentStorageBackend):
                         (start_bucket, end_bucket),
                     )
                     rows = await cursor.fetchall()
-                    return [{"data_type": r["data_type"], "count": r["total_count"], "context_type": r["context_type"]} for r in rows]
+                    return [
+                        {
+                            "data_type": r["data_type"],
+                            "count": r["total_count"],
+                            "context_type": r["context_type"],
+                        }
+                        for r in rows
+                    ]
         except Exception as e:
             logger.error(f"Failed to query data stats by range: {e}")
             return []
@@ -1038,7 +1085,15 @@ class MySQLBackend(IDocumentStorageBackend):
                         (cutoff_bucket,),
                     )
                     rows = await cursor.fetchall()
-                    return [{"timestamp": r["time_bucket"], "data_type": r["data_type"], "count": r["total_count"], "context_type": r["context_type"]} for r in rows]
+                    return [
+                        {
+                            "timestamp": r["time_bucket"],
+                            "data_type": r["data_type"],
+                            "count": r["total_count"],
+                            "context_type": r["context_type"],
+                        }
+                        for r in rows
+                    ]
         except Exception as e:
             logger.error(f"Failed to query data stats trend: {e}")
             return []
@@ -1052,9 +1107,17 @@ class MySQLBackend(IDocumentStorageBackend):
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
             async with self._get_connection() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute("DELETE FROM monitoring_token_usage WHERE time_bucket < %s", (cutoff_bucket,))
-                    await cursor.execute("DELETE FROM monitoring_stage_timing WHERE time_bucket < %s", (cutoff_bucket,))
-                    await cursor.execute("DELETE FROM monitoring_data_stats WHERE time_bucket < %s", (cutoff_bucket,))
+                    await cursor.execute(
+                        "DELETE FROM monitoring_token_usage WHERE time_bucket < %s",
+                        (cutoff_bucket,),
+                    )
+                    await cursor.execute(
+                        "DELETE FROM monitoring_stage_timing WHERE time_bucket < %s",
+                        (cutoff_bucket,),
+                    )
+                    await cursor.execute(
+                        "DELETE FROM monitoring_data_stats WHERE time_bucket < %s", (cutoff_bucket,)
+                    )
                     await conn.commit()
                     logger.info(f"Cleaned up monitoring data older than {days} days")
                     return True
@@ -1064,7 +1127,11 @@ class MySQLBackend(IDocumentStorageBackend):
 
     # Conversation/Message operations
     async def create_conversation(
-        self, page_name: str, user_id: Optional[str] = None, title: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
+        self,
+        page_name: str,
+        user_id: Optional[str] = None,
+        title: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
@@ -1107,8 +1174,12 @@ class MySQLBackend(IDocumentStorageBackend):
                     return None
 
     async def get_conversation_list(
-        self, limit: int = 20, offset: int = 0, page_name: Optional[str] = None,
-        user_id: Optional[str] = None, status: str = "active",
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        page_name: Optional[str] = None,
+        user_id: Optional[str] = None,
+        status: str = "active",
     ) -> Dict[str, Any]:
         if not self._initialized:
             return {"items": [], "total": 0}
@@ -1130,7 +1201,9 @@ class MySQLBackend(IDocumentStorageBackend):
                     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
                     count_params = params[:]
-                    await cursor.execute(f"SELECT COUNT(*) as cnt FROM conversations WHERE {where_sql}", count_params)
+                    await cursor.execute(
+                        f"SELECT COUNT(*) as cnt FROM conversations WHERE {where_sql}", count_params
+                    )
                     result = await cursor.fetchone()
                     total = result["cnt"] if result else 0
 
@@ -1149,7 +1222,10 @@ class MySQLBackend(IDocumentStorageBackend):
                     return {"items": [], "total": 0}
 
     async def update_conversation(
-        self, conversation_id: int, title: Optional[str] = None, status: Optional[str] = None,
+        self,
+        conversation_id: int,
+        title: Optional[str] = None,
+        status: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         if not self._initialized:
             return None
@@ -1175,18 +1251,24 @@ class MySQLBackend(IDocumentStorageBackend):
                         logger.info(f"Conversation {conversation_id} updated.")
                         return await self.get_conversation(conversation_id)
                     else:
-                        logger.warning(f"Failed to update conversation {conversation_id}, row not found or no change.")
+                        logger.warning(
+                            f"Failed to update conversation {conversation_id}, row not found or no change."
+                        )
                         return None
                 except Exception as e:
                     logger.exception(f"Failed to update conversation: {e}")
                     return None
 
     async def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
-        updated_convo = await self.update_conversation(conversation_id=conversation_id, status="deleted")
+        updated_convo = await self.update_conversation(
+            conversation_id=conversation_id, status="deleted"
+        )
         success = updated_convo is not None
         return {"success": success, "id": conversation_id}
 
-    async def get_message(self, message_id: int, include_thinking: bool = True) -> Optional[Dict[str, Any]]:
+    async def get_message(
+        self, message_id: int, include_thinking: bool = True
+    ) -> Optional[Dict[str, Any]]:
         if not self._initialized:
             return None
 
@@ -1206,8 +1288,14 @@ class MySQLBackend(IDocumentStorageBackend):
                     return None
 
     async def create_message(
-        self, conversation_id: int, role: str, content: str, is_complete: bool = True,
-        token_count: int = 0, parent_message_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
+        self,
+        conversation_id: int,
+        role: str,
+        content: str,
+        is_complete: bool = True,
+        token_count: int = 0,
+        parent_message_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
@@ -1225,10 +1313,24 @@ class MySQLBackend(IDocumentStorageBackend):
                                               parent_message_id, metadata, completed_at, created_at, updated_at)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
-                        (conversation_id, role, content, status, token_count, parent_message_id, meta_str, completed_at, now, now),
+                        (
+                            conversation_id,
+                            role,
+                            content,
+                            status,
+                            token_count,
+                            parent_message_id,
+                            meta_str,
+                            completed_at,
+                            now,
+                            now,
+                        ),
                     )
                     message_id = cursor.lastrowid
-                    await cursor.execute("UPDATE conversations SET updated_at = %s WHERE id = %s", (now, conversation_id))
+                    await cursor.execute(
+                        "UPDATE conversations SET updated_at = %s WHERE id = %s",
+                        (now, conversation_id),
+                    )
                     await conn.commit()
                     logger.info(f"Message created, ID: {message_id}")
                     return await self.get_message(message_id)
@@ -1237,15 +1339,28 @@ class MySQLBackend(IDocumentStorageBackend):
                     return None
 
     async def create_streaming_message(
-        self, conversation_id: int, role: str, parent_message_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
+        self,
+        conversation_id: int,
+        role: str,
+        parent_message_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         return await self.create_message(
-            conversation_id=conversation_id, role=role, content="", is_complete=False,
-            token_count=0, parent_message_id=parent_message_id, metadata=metadata,
+            conversation_id=conversation_id,
+            role=role,
+            content="",
+            is_complete=False,
+            token_count=0,
+            parent_message_id=parent_message_id,
+            metadata=metadata,
         )
 
     async def update_message(
-        self, message_id: int, new_content: str, is_complete: Optional[bool] = None, token_count: Optional[int] = None,
+        self,
+        message_id: int,
+        new_content: str,
+        is_complete: Optional[bool] = None,
+        token_count: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         if not self._initialized:
             return None
@@ -1285,7 +1400,9 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.exception(f"Failed to update message: {e}")
                     return None
 
-    async def append_message_content(self, message_id: int, content_chunk: str, token_count: int = 0) -> bool:
+    async def append_message_content(
+        self, message_id: int, content_chunk: str, token_count: int = 0
+    ) -> bool:
         if not self._initialized:
             return False
 
@@ -1323,7 +1440,10 @@ class MySQLBackend(IDocumentStorageBackend):
                 try:
                     now = tz_now()
                     meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
-                    await cursor.execute("UPDATE messages SET metadata = %s, updated_at = %s WHERE id = %s", (meta_str, now, message_id))
+                    await cursor.execute(
+                        "UPDATE messages SET metadata = %s, updated_at = %s WHERE id = %s",
+                        (meta_str, now, message_id),
+                    )
                     success = cursor.rowcount > 0
                     await conn.commit()
                     return success
@@ -1355,12 +1475,16 @@ class MySQLBackend(IDocumentStorageBackend):
                     await cursor.execute(sql, params)
                     success = cursor.rowcount > 0
                     if not success:
-                        await cursor.execute("SELECT status FROM messages WHERE id = %s", (message_id,))
+                        await cursor.execute(
+                            "SELECT status FROM messages WHERE id = %s", (message_id,)
+                        )
                         row = await cursor.fetchone()
                         if row and row["status"] == status:
                             success = True
                         else:
-                            logger.warning(f"Failed to mark message {message_id} as {status}, not found or no change.")
+                            logger.warning(
+                                f"Failed to mark message {message_id} as {status}, not found or no change."
+                            )
                     await cursor.execute(
                         "UPDATE conversations SET updated_at = %s WHERE id = (SELECT conversation_id FROM messages WHERE id = %s)",
                         (now, message_id),
@@ -1415,8 +1539,13 @@ class MySQLBackend(IDocumentStorageBackend):
 
     # Message Thinking Management Methods
     async def add_message_thinking(
-        self, message_id: int, content: str, stage: Optional[str] = None,
-        progress: float = 0.0, sequence: Optional[int] = None, metadata: Optional[Dict[str, Any]] = None,
+        self,
+        message_id: int,
+        content: str,
+        stage: Optional[str] = None,
+        progress: float = 0.0,
+        sequence: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
         if not self._initialized:
             logger.warning("Storage not initialized")
@@ -1475,7 +1604,9 @@ class MySQLBackend(IDocumentStorageBackend):
         async with self._get_connection() as conn:
             async with conn.cursor() as cursor:
                 try:
-                    await cursor.execute("DELETE FROM message_thinking WHERE message_id = %s", (message_id,))
+                    await cursor.execute(
+                        "DELETE FROM message_thinking WHERE message_id = %s", (message_id,)
+                    )
                     await conn.commit()
                     return True
                 except Exception as e:
@@ -1840,7 +1971,9 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.error(f"delete_agent failed: {e}")
                     return False
 
-    async def query(self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None) -> QueryResult:
+    async def query(
+        self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None
+    ) -> QueryResult:
         if not self._initialized:
             return QueryResult(documents=[], total_count=0)
         logger.warning("MySQL query method is not fully implemented")
