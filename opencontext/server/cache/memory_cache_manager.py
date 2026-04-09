@@ -10,8 +10,7 @@ Snapshot is cached in Redis with a short TTL (internally stores full data for al
 Response assembly (_merge_response) simplifies to: SimpleProfile, SimpleTodayEvent, SimpleDailySummary.
 Recently accessed items are stored in a separate Redis Hash and always read in real-time.
 
-Parameterized by ``memory_owner`` ("user" or "agent") so the same manager can
-build snapshots for both user-owned and agent-owned memory.
+Snapshots automatically include both user interaction events and agent base memories.
 """
 
 import asyncio
