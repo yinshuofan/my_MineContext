@@ -262,7 +262,7 @@ class EventSearchService:
                             current_batch.append(pid)
 
         rounds = 0
-        while current_batch and rounds < 3:
+        while current_batch and rounds < max_level:
             parents = await self.storage.get_contexts_by_ids(current_batch)
             next_batch = []
             for parent in parents:

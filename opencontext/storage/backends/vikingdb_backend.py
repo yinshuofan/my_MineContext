@@ -1334,6 +1334,10 @@ class VikingDBBackend(IVectorStorageBackend):
 
         # Skip user_id and device_id filters for agent_base_* types
         # (base memories are agent-level, not scoped to a specific user or device)
+        # NOTE: This only works when context_type is a single value or context_types
+        # has exactly one element. For mixed lists (e.g. ["event", "agent_base_event"]),
+        # is_base falls through to False and user_id/device_id are applied to all types.
+        # Callers with mixed types must split into separate calls (see search() above).
         _ctx = context_type or (
             context_types[0] if context_types and len(context_types) == 1 else None
         )

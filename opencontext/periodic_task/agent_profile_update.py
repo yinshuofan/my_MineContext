@@ -159,7 +159,7 @@ class AgentProfileUpdateTask(BasePeriodicTask):
                 data={"events_count": len(events)},
             )
         else:
-            return TaskResult.fail("refresh_profile returned False")
+            return TaskResult.fail("upsert_profile returned False")
 
     @staticmethod
     def _format_events(events: list) -> str:
