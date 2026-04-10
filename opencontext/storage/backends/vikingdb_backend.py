@@ -1080,17 +1080,54 @@ class VikingDBBackend(IVectorStorageBackend):
                     all_results.append((context, 1.0))
             return all_results[:top_k] if len(all_results) > top_k else all_results
 
-        filter_dict = self._build_filter_dict(
-            filters=filters,
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-            context_types=context_types,
-            data_type=DATA_TYPE_CONTEXT,
-        )
+        # Split context_types into user and base groups for separate filtering
+        # (base types skip user_id/device_id, but VikingDB does single-collection search)
+        user_types = [ct for ct in (context_types or []) if not ct.startswith("agent_base")]
+        base_types = [ct for ct in (context_types or []) if ct.startswith("agent_base")]
 
         all_results = []
 
+        # Search user types (with user_id/device_id)
+        if user_types:
+            filter_dict = self._build_filter_dict(
+                filters=filters,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+                context_types=user_types,
+                data_type=DATA_TYPE_CONTEXT,
+            )
+            results = await self._vector_search(query_vector, filter_dict, top_k, need_vector)
+            all_results.extend(results)
+
+        # Search base types (without user_id/device_id)
+        if base_types:
+            filter_dict = self._build_filter_dict(
+                filters=filters,
+                user_id=None,
+                device_id=None,
+                agent_id=agent_id,
+                context_types=base_types,
+                data_type=DATA_TYPE_CONTEXT,
+            )
+            results = await self._vector_search(query_vector, filter_dict, top_k, need_vector)
+            all_results.extend(results)
+
+        if score_threshold is not None:
+            all_results = [(ctx, s) for ctx, s in all_results if s >= score_threshold]
+
+        all_results.sort(key=lambda x: x[1], reverse=True)
+        return all_results[:top_k]
+
+    async def _vector_search(
+        self,
+        query_vector: list,
+        filter_dict: Optional[Dict],
+        top_k: int,
+        need_vector: bool,
+    ) -> List[Tuple[ProcessedContext, float]]:
+        """Execute a single vector search request against VikingDB."""
+        results = []
         try:
             data = {
                 "collection_name": self._collection_name,
@@ -1113,16 +1150,10 @@ class VikingDBBackend(IVectorStorageBackend):
                     context = self._doc_to_context(doc, need_vector)
                     if context:
                         score = item.get("score", 0.0)
-                        all_results.append((context, score))
-
+                        results.append((context, score))
         except Exception as e:
             logger.exception(f"Vector search failed: {e}")
-
-        if score_threshold is not None:
-            all_results = [(ctx, s) for ctx, s in all_results if s >= score_threshold]
-
-        all_results.sort(key=lambda x: x[1], reverse=True)
-        return all_results[:top_k]
+        return results
 
     def _doc_to_context(
         self, doc: Dict[str, Any], need_vector: bool = False
