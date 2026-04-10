@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Task Scheduler Base Module
@@ -9,9 +8,10 @@ Defines the abstract base classes and interfaces for task scheduling.
 
 import abc
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any
 
 
 class TriggerMode(str, Enum):
@@ -43,7 +43,7 @@ class TaskConfig:
     max_retries: int = 3  # Maximum retry attempts
     description: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "enabled": str(self.enabled).lower(),
@@ -56,7 +56,7 @@ class TaskConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "TaskConfig":
         return cls(
             name=data.get("name", ""),
             enabled=data.get("enabled", "true").lower() == "true",
@@ -76,16 +76,16 @@ class TaskInfo:
     task_type: str
     user_key: str
     user_id: str
-    device_id: Optional[str] = None
-    agent_id: Optional[str] = None
+    device_id: str | None = None
+    agent_id: str | None = None
     status: TaskStatus = TaskStatus.PENDING
     created_at: int = field(default_factory=lambda: int(time.time()))
     scheduled_at: int = 0
     last_activity: int = field(default_factory=lambda: int(time.time()))
     retry_count: int = 0
-    lock_token: Optional[str] = None
+    lock_token: str | None = None
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         return {
             "task_type": self.task_type,
             "user_key": self.user_key,
@@ -100,7 +100,7 @@ class TaskInfo:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, str]) -> "TaskInfo":
+    def from_dict(cls, data: dict[str, str]) -> "TaskInfo":
         return cls(
             task_type=data.get("task_type", ""),
             user_key=data.get("user_key", ""),
@@ -126,7 +126,7 @@ class UserKeyConfig:
     default_agent_id: str = "default"
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "UserKeyConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "UserKeyConfig":
         return cls(
             use_user_id=data.get("use_user_id", True),
             use_device_id=data.get("use_device_id", True),
@@ -141,7 +141,7 @@ class IUserKeyBuilder(abc.ABC):
 
     @abc.abstractmethod
     def build_key(
-        self, user_id: str, device_id: Optional[str] = None, agent_id: Optional[str] = None
+        self, user_id: str, device_id: str | None = None, agent_id: str | None = None
     ) -> str:
         """
         Build a user key from the given dimensions.
@@ -157,7 +157,7 @@ class IUserKeyBuilder(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def parse_key(self, user_key: str) -> Dict[str, Optional[str]]:
+    def parse_key(self, user_key: str) -> dict[str, str | None]:
         """
         Parse a user key back into its dimensions.
 
@@ -170,7 +170,7 @@ class IUserKeyBuilder(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_key_dimensions(self) -> List[str]:
+    def get_key_dimensions(self) -> list[str]:
         """
         Get the list of dimensions currently in use.
 
@@ -200,7 +200,7 @@ class ITaskScheduler(abc.ABC):
     def register_handler(
         self,
         task_type: str,
-        handler: Callable[[str, Optional[str], Optional[str]], Awaitable[bool]],
+        handler: Callable[[str, str | None, str | None], Awaitable[bool]],
     ) -> bool:
         """
         Register an async handler function for a task type.
@@ -219,8 +219,8 @@ class ITaskScheduler(abc.ABC):
         self,
         task_type: str,
         user_id: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> bool:
         """
         Schedule a task for a specific user (async).
@@ -240,7 +240,7 @@ class ITaskScheduler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_pending_task(self, task_type: str) -> Optional[TaskInfo]:
+    async def get_pending_task(self, task_type: str) -> TaskInfo | None:
         """
         Get a pending task ready for execution (async).
 
@@ -270,7 +270,7 @@ class ITaskScheduler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
+    async def get_task_config(self, task_type: str) -> TaskConfig | None:
         """
         Get configuration for a task type (async).
 
@@ -299,4 +299,4 @@ class ITaskScheduler(abc.ABC):
 
 
 # Type alias for async task handler function
-TaskHandler = Callable[[str, Optional[str], Optional[str]], Awaitable[bool]]
+TaskHandler = Callable[[str, str | None, str | None], Awaitable[bool]]

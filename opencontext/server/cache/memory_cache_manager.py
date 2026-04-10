@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 MemoryCacheManager
@@ -16,16 +15,14 @@ Snapshots automatically include both user interaction events and agent base memo
 import asyncio
 import json
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from datetime import timedelta
+from typing import Any
 
 from opencontext.config.global_config import get_config
 from opencontext.models.context import ProcessedContext
 from opencontext.models.enums import ContextType
 from opencontext.server.cache.models import (
-    DailySummaryItem,
     RecentlyAccessedItem,
-    RecentMemoryItem,
     SimpleDailySummary,
     SimpleProfile,
     SimpleTodayEvent,
@@ -47,7 +44,7 @@ class MemoryCacheManager:
     def __init__(self):
         self._config = self._load_config()
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         raw = get_config("memory_cache") or {}
         return {
             "snapshot_ttl": raw.get("snapshot_ttl", 3600),
@@ -78,7 +75,7 @@ class MemoryCacheManager:
     async def track_accessed(
         self,
         user_id: str,
-        items: List[Dict[str, Any]],
+        items: list[dict[str, Any]],
         device_id: str = "default",
         agent_id: str = "default",
     ) -> None:
@@ -95,7 +92,7 @@ class MemoryCacheManager:
         now = time.time()
 
         # Build mapping: {context_type}:{id} → metadata JSON
-        mapping: Dict[str, Any] = {}
+        mapping: dict[str, Any] = {}
         for item in items:
             field = f"{item.get('context_type', '')}:{item.get('id', '')}"
             mapping[field] = {
@@ -127,7 +124,7 @@ class MemoryCacheManager:
             return
 
         # Parse and sort by accessed_ts
-        items_with_ts: List[Tuple[str, float]] = []
+        items_with_ts: list[tuple[str, float]] = []
         for field, value in all_data.items():
             try:
                 parsed = json.loads(value) if isinstance(value, str) else value
@@ -209,11 +206,11 @@ class MemoryCacheManager:
         user_id: str,
         device_id: str = "default",
         agent_id: str = "default",
-        recent_days: Optional[int] = None,
-        max_recent_events_today: Optional[int] = None,
+        recent_days: int | None = None,
+        max_recent_events_today: int | None = None,
         max_accessed: int = 5,
         force_refresh: bool = False,
-        include_sections: Optional[Set[str]] = None,
+        include_sections: set[str] | None = None,
     ) -> UserMemoryCacheResponse:
         """Get the user's memory cache with stampede prevention.
 
@@ -338,14 +335,14 @@ class MemoryCacheManager:
         max_items: int,
         device_id: str = "default",
         agent_id: str = "default",
-    ) -> List[RecentlyAccessedItem]:
+    ) -> list[RecentlyAccessedItem]:
         """Read recently-accessed items from Redis hash, sorted by accessed_ts desc."""
         key = self._accessed_key(user_id, device_id, agent_id)
         all_data = await cache.hgetall(key)
         if not all_data:
             return []
 
-        items: List[RecentlyAccessedItem] = []
+        items: list[RecentlyAccessedItem] = []
         for field, value in all_data.items():
             try:
                 data = json.loads(value) if isinstance(value, str) else value
@@ -379,9 +376,9 @@ class MemoryCacheManager:
         user_id: str,
         device_id: str,
         agent_id: str,
-        recent_days: Optional[int],
-        max_today_events: Optional[int],
-    ) -> Dict[str, Any]:
+        recent_days: int | None,
+        max_today_events: int | None,
+    ) -> dict[str, Any]:
         """Build the snapshot from storage backends (profile + recent memories).
 
         Automatically includes both user events and agent base memories.
@@ -486,10 +483,10 @@ class MemoryCacheManager:
                 logger.error(f"Memory cache build error ({name}): {result}")
 
         t_queries = time.perf_counter()
-        logger.info(f"[memory-cache] parallel queries: {(t_queries - t0)*1000:.0f}ms")
+        logger.info(f"[memory-cache] parallel queries: {(t_queries - t0) * 1000:.0f}ms")
 
         # Assemble snapshot
-        snapshot: Dict[str, Any] = {
+        snapshot: dict[str, Any] = {
             "user_id": user_id,
             "device_id": device_id,
             "agent_id": agent_id,
@@ -521,7 +518,7 @@ class MemoryCacheManager:
             }
 
         # Recent memories — hierarchical
-        recent_memories: Dict[str, Any] = {}
+        recent_memories: dict[str, Any] = {}
 
         # Today's L0 events
         today_data = results_map.get("today_events")
@@ -593,7 +590,9 @@ class MemoryCacheManager:
         snapshot["recent_memories"] = recent_memories
 
         t_end = time.perf_counter()
-        logger.info(f"[memory-cache] snapshot built for user={user_id}: {(t_end - t0)*1000:.0f}ms")
+        logger.info(
+            f"[memory-cache] snapshot built for user={user_id}: {(t_end - t0) * 1000:.0f}ms"
+        )
 
         return snapshot
 
@@ -610,7 +609,7 @@ class MemoryCacheManager:
         return 0
 
     @staticmethod
-    def _ctx_to_recent_item(ctx: ProcessedContext) -> Dict[str, Any]:
+    def _ctx_to_recent_item(ctx: ProcessedContext) -> dict[str, Any]:
         """Convert a ProcessedContext to a dict for RecentMemoryItem."""
         ed = ctx.extracted_data
         props = ctx.properties
@@ -652,11 +651,11 @@ class MemoryCacheManager:
 
     def _merge_response(
         self,
-        snapshot_data: Dict[str, Any],
-        accessed: List[RecentlyAccessedItem],
+        snapshot_data: dict[str, Any],
+        accessed: list[RecentlyAccessedItem],
         cache_hit: bool,
         ttl_remaining: int = 0,
-        include_sections: Optional[Set[str]] = None,
+        include_sections: set[str] | None = None,
     ) -> UserMemoryCacheResponse:
         """Merge snapshot data with real-time accessed items into final response.
 
@@ -736,7 +735,7 @@ UserMemoryCacheManager = MemoryCacheManager
 
 # ─── Module-level singleton ───
 
-_manager: Optional[MemoryCacheManager] = None
+_manager: MemoryCacheManager | None = None
 
 
 def get_memory_cache_manager() -> MemoryCacheManager:

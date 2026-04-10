@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -7,12 +6,12 @@
 Logging utilities - Provides logging related functionality
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from opencontext.utils.logger import log, log_manager
 
 
-def setup_logging(config: Dict[str, Any]):
+def setup_logging(config: dict[str, Any]):
     """
     Setup logging
 

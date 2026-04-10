@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 User Key Builder Implementation
@@ -7,7 +6,6 @@ User Key Builder Implementation
 Builds user identification keys based on configurable dimensions.
 """
 
-from typing import Dict, List, Optional
 
 from opencontext.scheduler.base import IUserKeyBuilder, UserKeyConfig
 
@@ -24,7 +22,7 @@ class UserKeyBuilder(IUserKeyBuilder):
 
     KEY_SEPARATOR = ":"
 
-    def __init__(self, config: Optional[UserKeyConfig] = None):
+    def __init__(self, config: UserKeyConfig | None = None):
         """
         Initialize the UserKeyBuilder.
 
@@ -41,7 +39,7 @@ class UserKeyBuilder(IUserKeyBuilder):
         self._default_agent_id = config.default_agent_id
 
     @classmethod
-    def from_dict(cls, config_dict: Dict) -> "UserKeyBuilder":
+    def from_dict(cls, config_dict: dict) -> "UserKeyBuilder":
         """
         Create a UserKeyBuilder from a configuration dictionary.
 
@@ -55,7 +53,7 @@ class UserKeyBuilder(IUserKeyBuilder):
         return cls(config)
 
     def build_key(
-        self, user_id: str, device_id: Optional[str] = None, agent_id: Optional[str] = None
+        self, user_id: str, device_id: str | None = None, agent_id: str | None = None
     ) -> str:
         """
         Build a user key from the given dimensions.
@@ -91,7 +89,7 @@ class UserKeyBuilder(IUserKeyBuilder):
 
         return self.KEY_SEPARATOR.join(parts)
 
-    def parse_key(self, user_key: str) -> Dict[str, Optional[str]]:
+    def parse_key(self, user_key: str) -> dict[str, str | None]:
         """
         Parse a user key back into its dimensions.
 
@@ -114,7 +112,7 @@ class UserKeyBuilder(IUserKeyBuilder):
             return {"user_id": None, "device_id": None, "agent_id": None}
 
         parts = user_key.split(self.KEY_SEPARATOR)
-        result: Dict[str, Optional[str]] = {
+        result: dict[str, str | None] = {
             "user_id": None,
             "device_id": None,
             "agent_id": None,
@@ -138,7 +136,7 @@ class UserKeyBuilder(IUserKeyBuilder):
 
         return result
 
-    def get_key_dimensions(self) -> List[str]:
+    def get_key_dimensions(self) -> list[str]:
         """
         Get the list of dimensions currently in use.
 

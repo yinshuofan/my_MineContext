@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 
 """AWS Signature Version 4 for S3-compatible object storage."""
 
 import hashlib
 import hmac
-from datetime import datetime, timezone
 from urllib.parse import quote
 
 from opencontext.utils.time_utils import utc_now
@@ -113,7 +111,7 @@ class S3Auth:
     def _get_signing_key(self, date_stamp: str) -> bytes:
         """Derive the signing key for AWS Signature V4."""
         k_date = hmac.new(
-            f"AWS4{self.secret_access_key}".encode("utf-8"),
+            f"AWS4{self.secret_access_key}".encode(),
             date_stamp.encode("utf-8"),
             hashlib.sha256,
         ).digest()

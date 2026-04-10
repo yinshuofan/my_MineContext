@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,9 +8,8 @@ Conversation Management API Routes
 Handles CRUD operations for chat conversations.
 """
 
-from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from opencontext.server.middleware.auth import auth_dependency
@@ -32,7 +30,7 @@ class CreateConversationRequest(BaseModel):
     """Request model for 4.1.1 Create Conversation"""
 
     page_name: str = Field(..., description="Page name, e.g., 'home' or 'creation'")
-    document_id: Optional[str] = Field(
+    document_id: str | None = Field(
         None, description="Optional document ID to store in metadata"
     )
 
@@ -44,8 +42,8 @@ class ConversationResponse(BaseModel):
     """
 
     id: int
-    title: Optional[str] = None
-    user_id: Optional[str] = None
+    title: str | None = None
+    user_id: str | None = None
     created_at: str
     updated_at: str
     metadata: str
@@ -62,7 +60,7 @@ class ConversationSummary(ConversationResponse):
 class GetConversationListResponse(BaseModel):
     """Response model for 4.1.3 Get Conversation List"""
 
-    items: List[ConversationSummary]
+    items: list[ConversationSummary]
     total: int
 
 
@@ -119,8 +117,8 @@ async def create_conversation(
 async def get_conversation_list(
     limit: int = Query(default=20, description="Return limit"),
     offset: int = Query(default=0, description="Offset"),
-    page_name: Optional[str] = Query(default=None, description="Filter by page_name"),
-    user_id: Optional[str] = Query(default=None, description="Filter by user_id"),
+    page_name: str | None = Query(default=None, description="Filter by page_name"),
+    user_id: str | None = Query(default=None, description="Filter by user_id"),
     status: str = Query(default="active", description="Filter by status ('active', 'deleted')"),
     _auth: str = auth_dependency,
 ):

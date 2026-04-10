@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,9 +10,7 @@ An intelligent completion system based on vector retrieval and LLM generation
 
 import hashlib
 import re
-from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.config.global_config import get_prompt_manager
 from opencontext.context_consumption.completion.completion_cache import get_completion_cache
@@ -34,7 +31,7 @@ class CompletionSuggestion:
         text: str,
         completion_type: CompletionType,
         confidence: float,
-        context_used: List[str] = None,
+        context_used: list[str] = None,
     ):
         self.text = text
         self.completion_type = completion_type
@@ -42,7 +39,7 @@ class CompletionSuggestion:
         self.context_used = context_used or []
         self.timestamp = tz_now()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary format"""
         return {
             "text": self.text,
@@ -90,9 +87,9 @@ class CompletionService:
         self,
         current_text: str,
         cursor_position: int,
-        document_id: Optional[int] = None,
-        user_context: Dict[str, Any] = None,
-    ) -> List[CompletionSuggestion]:
+        document_id: int | None = None,
+        user_context: dict[str, Any] = None,
+    ) -> list[CompletionSuggestion]:
         """
         Get intelligent completion suggestions
 
@@ -171,7 +168,7 @@ class CompletionService:
 
         return True
 
-    def _extract_context(self, text: str, cursor_pos: int) -> Dict[str, Any]:
+    def _extract_context(self, text: str, cursor_pos: int) -> dict[str, Any]:
         """Extract context information"""
         # Get text before and after the cursor
         before_cursor = text[:cursor_pos]
@@ -210,7 +207,7 @@ class CompletionService:
             "structure": structure_info,
         }
 
-    def _analyze_document_structure(self, text: str, cursor_pos: int) -> Dict[str, Any]:
+    def _analyze_document_structure(self, text: str, cursor_pos: int) -> dict[str, Any]:
         """Analyze document structure (heading levels, lists, etc.)"""
         lines = text[:cursor_pos].split("\n")
         current_line_idx = len(lines) - 1
@@ -238,8 +235,8 @@ class CompletionService:
         }
 
     async def _get_semantic_continuations(
-        self, context: Dict[str, Any]
-    ) -> List[CompletionSuggestion]:
+        self, context: dict[str, Any]
+    ) -> list[CompletionSuggestion]:
         """Get semantic continuation suggestions"""
         suggestions = []
 
@@ -292,7 +289,7 @@ class CompletionService:
 
         return suggestions
 
-    def _get_template_completions(self, context: Dict[str, Any]) -> List[CompletionSuggestion]:
+    def _get_template_completions(self, context: dict[str, Any]) -> list[CompletionSuggestion]:
         """Get template completion suggestions"""
         suggestions = []
 
@@ -348,15 +345,15 @@ class CompletionService:
 
         return suggestions
 
-    def _get_reference_suggestions(self, context: Dict[str, Any]) -> List[CompletionSuggestion]:
+    def _get_reference_suggestions(self, context: dict[str, Any]) -> list[CompletionSuggestion]:
         """Get reference suggestions (based on vector search)"""
         # Reference suggestions require vector search which is not available
         # in the current completion service configuration
         return []
 
     def _rank_and_filter_suggestions(
-        self, suggestions: List[CompletionSuggestion]
-    ) -> List[CompletionSuggestion]:
+        self, suggestions: list[CompletionSuggestion]
+    ) -> list[CompletionSuggestion]:
         """Rank and filter suggestions"""
         if not suggestions:
             return []
@@ -397,7 +394,7 @@ class CompletionService:
         similarity = intersection / union if union > 0 else 0
         return similarity > 0.8
 
-    def _generate_cache_key(self, context: Dict[str, Any], document_id: Optional[int]) -> str:
+    def _generate_cache_key(self, context: dict[str, Any], document_id: int | None) -> str:
         """Generate a cache key"""
         key_data = {
             "context_before": context.get("context_before", "")[
@@ -415,7 +412,7 @@ class CompletionService:
         await self.cache.invalidate()
         logger.info("Completion cache cleared")
 
-    async def get_cache_stats(self) -> Dict[str, Any]:
+    async def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics"""
         return await self.cache.get_stats()
 

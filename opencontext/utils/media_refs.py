@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -10,7 +9,7 @@ logger = get_logger(__name__)
 _EMPTY_MEDIA_REFS_SENTINELS = {"", "default", "null", "none"}
 
 
-def normalize_media_refs(value: Any) -> List[Dict[str, Any]]:
+def normalize_media_refs(value: Any) -> list[dict[str, Any]]:
     """Normalize media_refs into a list of dicts."""
     if value is None:
         return []
@@ -33,7 +32,7 @@ def normalize_media_refs(value: Any) -> List[Dict[str, Any]]:
         logger.warning(f"Dropping invalid media_refs payload type: {type(parsed).__name__}")
         return []
 
-    normalized: List[Dict[str, Any]] = []
+    normalized: list[dict[str, Any]] = []
     for item in parsed:
         if isinstance(item, dict):
             normalized.append(item)

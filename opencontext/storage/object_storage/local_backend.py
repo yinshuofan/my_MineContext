@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 Local filesystem object storage backend

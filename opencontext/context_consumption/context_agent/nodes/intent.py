@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Intent Analysis Node
@@ -7,7 +6,6 @@ Analyzes user intent and enhances the query
 """
 
 import json
-from typing import Dict, List
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.context_consumption.context_agent.models.events import StreamEvent
@@ -59,7 +57,7 @@ class IntentNode(BaseNode):
         )
         return state
 
-    async def _classify_query(self, query: str, chat_history: List[Dict[str, str]]) -> QueryType:
+    async def _classify_query(self, query: str, chat_history: list[dict[str, str]]) -> QueryType:
         """Use LLM to classify query types, including confidence assessment and fallback strategies"""
         prompt_group = get_prompt_group("chat_workflow.query_classification")
         messages = [

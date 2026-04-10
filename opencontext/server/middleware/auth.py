@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -8,8 +7,6 @@ API Key Authentication Middleware
 """
 
 import fnmatch
-from math import log
-from typing import List, Optional
 
 from fastapi import Depends, Header, HTTPException, Query, Request
 
@@ -39,7 +36,7 @@ def is_auth_enabled() -> bool:
     return auth_config.get("enabled", False)
 
 
-def get_valid_api_keys() -> List[str]:
+def get_valid_api_keys() -> list[str]:
     """Get list of valid API keys."""
     auth_config = get_auth_config()
     api_keys = auth_config.get("api_keys", [])
@@ -47,7 +44,7 @@ def get_valid_api_keys() -> List[str]:
     return [key for key in api_keys if key and key.strip()]
 
 
-def get_excluded_paths() -> List[str]:
+def get_excluded_paths() -> list[str]:
     """Get list of paths excluded from authentication."""
     auth_config = get_auth_config()
     return auth_config.get("excluded_paths", ["/health", "/api/health", "/", "/static/*"])
@@ -67,8 +64,8 @@ def is_path_excluded(path: str) -> bool:
 
 def verify_api_key(
     request: Request,
-    api_key_header: Optional[str] = Header(None, alias="X-API-Key"),
-    api_key_query: Optional[str] = Query(None, alias="api_key"),
+    api_key_header: str | None = Header(None, alias="X-API-Key"),
+    api_key_query: str | None = Query(None, alias="api_key"),
 ) -> str:
     """
     Verify API key from header or query parameter.

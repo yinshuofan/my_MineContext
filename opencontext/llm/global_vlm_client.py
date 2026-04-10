@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -12,11 +11,9 @@ Provides global access to LLMManager instances
 import asyncio
 import json
 import threading
-from typing import Any, Dict, Optional
 
 from opencontext.config.global_config import get_config
 from opencontext.llm.llm_client import LLMClient, LLMType
-from opencontext.storage.unified_storage import UnifiedStorage
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 
@@ -45,7 +42,7 @@ class GlobalVLMClient:
         if not self._initialized:
             with self._lock:
                 if not self._initialized:
-                    self._vlm_client: Optional[LLMClient] = None
+                    self._vlm_client: LLMClient | None = None
                     self._auto_initialized = False
                     GlobalVLMClient._initialized = True
 

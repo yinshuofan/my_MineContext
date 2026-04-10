@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -8,9 +7,7 @@ File utilities - Provides file operation helper functions
 """
 
 import mimetypes
-import os
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -95,7 +92,7 @@ def get_file_size(file_path: str) -> int:
         return -1
 
 
-def read_text_file(file_path: str, encoding: str = "utf-8") -> Optional[str]:
+def read_text_file(file_path: str, encoding: str = "utf-8") -> str | None:
     """
     Read text file content
 
@@ -107,7 +104,7 @@ def read_text_file(file_path: str, encoding: str = "utf-8") -> Optional[str]:
         File content, None if read fails
     """
     try:
-        with open(file_path, "r", encoding=encoding) as f:
+        with open(file_path, encoding=encoding) as f:
             return f.read()
     except Exception as e:
         logger.error(f"Failed to read file: {file_path}, error: {e}")

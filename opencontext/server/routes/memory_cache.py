@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 User Memory Cache API Route
@@ -9,7 +8,6 @@ DELETE /api/memory-cache — Invalidates the cache for a user.
 
 import asyncio
 import time
-from typing import Optional, Set
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -26,7 +24,7 @@ VALID_SECTIONS = {"profile", "events", "accessed"}
 DEFAULT_SECTIONS = {"profile", "events", "accessed"}
 
 
-def _parse_include(include: Optional[str]) -> Set[str]:
+def _parse_include(include: str | None) -> set[str]:
     """Parse comma-separated include parameter into a set of valid section names."""
     if include is None:
         return DEFAULT_SECTIONS.copy()
@@ -42,7 +40,7 @@ async def get_user_memory_cache(
     user_id: str = Query(..., description="User identifier (required)"),
     device_id: str = Query(default="default", description="Device identifier"),
     agent_id: str = Query(default="default", description="Agent identifier"),
-    include: Optional[str] = Query(
+    include: str | None = Query(
         default=None,
         description="Comma-separated response sections: profile,events,accessed,all. Default: profile,events,accessed",
     ),
@@ -81,7 +79,7 @@ async def get_user_memory_cache(
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.debug(f"Memory cache response time: {elapsed_ms:.2f}ms")
         return response
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return JSONResponse(
             status_code=504,
             content={"success": False, "error": "Memory cache request timed out"},
@@ -106,7 +104,5 @@ async def invalidate_user_memory_cache(
     await manager.invalidate_snapshot(user_id, device_id, agent_id)
     return {
         "success": True,
-        "message": (
-            f"Cache invalidated for user={user_id}, " f"device={device_id}, agent={agent_id}"
-        ),
+        "message": (f"Cache invalidated for user={user_id}, device={device_id}, agent={agent_id}"),
     }

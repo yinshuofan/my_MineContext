@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -15,7 +14,6 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI
@@ -142,8 +140,8 @@ async def _close_object_storage() -> None:
 
 
 async def _shutdown_runtime(
-    context_lab: Optional[OpenContext],
-    executor: Optional[ThreadPoolExecutor] = None,
+    context_lab: OpenContext | None,
+    executor: ThreadPoolExecutor | None = None,
     graceful: bool = True,
 ) -> None:
     """Shutdown runtime components in a safe order."""
@@ -199,8 +197,8 @@ async def _shutdown_runtime(
 
 
 async def _cleanup_failed_startup(
-    context_lab: Optional[OpenContext],
-    executor: Optional[ThreadPoolExecutor] = None,
+    context_lab: OpenContext | None,
+    executor: ThreadPoolExecutor | None = None,
 ) -> None:
     """Cleanup partial startup state without masking the original failure."""
     await _shutdown_runtime(context_lab, executor=executor, graceful=False)
@@ -211,10 +209,10 @@ async def _bootstrap_runtime(
     enable_capture: bool,
     enable_scheduler: bool,
     enable_reload: bool,
-    executor: Optional[ThreadPoolExecutor] = None,
+    executor: ThreadPoolExecutor | None = None,
 ) -> OpenContext:
     """Bootstrap the runtime in a single, explicit order."""
-    context_lab: Optional[OpenContext] = None
+    context_lab: OpenContext | None = None
     try:
         logger.info("Bootstrapping OpenContext runtime")
         context_lab = _create_context_lab()
@@ -247,8 +245,8 @@ async def _bootstrap_runtime(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI."""
-    executor: Optional[ThreadPoolExecutor] = None
-    context_lab: Optional[OpenContext] = None
+    executor: ThreadPoolExecutor | None = None
+    context_lab: OpenContext | None = None
 
     try:
         # In multi-worker mode, uvicorn imports `opencontext.cli:app` in worker
@@ -421,7 +419,7 @@ def handle_start(args: argparse.Namespace) -> int:
     return 0
 
 
-def _setup_logging(config_path: Optional[str]) -> None:
+def _setup_logging(config_path: str | None) -> None:
     """Setup logging configuration."""
     # Propagate config path via env var for multi-worker subprocess inheritance
     if config_path:

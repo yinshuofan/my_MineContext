@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 
 """
 User Memory Cache — Request/Response Models
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -13,37 +12,37 @@ class SimpleProfile(BaseModel):
     """Simplified profile for cache response (no user_id/device_id/agent_id)."""
 
     factual_profile: str
-    behavioral_profile: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    behavioral_profile: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class RecentlyAccessedItem(BaseModel):
     """A memory that was recently returned in search results."""
 
     id: str
-    title: Optional[str] = None
-    summary: Optional[str] = None
+    title: str | None = None
+    summary: str | None = None
     context_type: str
-    keywords: List[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
     accessed_ts: float  # Unix timestamp of last access
-    score: Optional[float] = None  # Last search relevance score
-    event_time_start: Optional[str] = None
-    create_time: Optional[str] = None
-    media_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    score: float | None = None  # Last search relevance score
+    event_time_start: str | None = None
+    create_time: str | None = None
+    media_refs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RecentMemoryItem(BaseModel):
     """A memory created within the recent time window (internal use for snapshot building)."""
 
     id: str
-    title: Optional[str] = None
-    summary: Optional[str] = None
+    title: str | None = None
+    summary: str | None = None
     context_type: str
-    keywords: List[str] = Field(default_factory=list)
-    entities: List[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
     importance: int = 0
-    create_time: Optional[str] = None
-    event_time_start: Optional[str] = None
+    create_time: str | None = None
+    event_time_start: str | None = None
 
 
 class DailySummaryItem(BaseModel):
@@ -51,7 +50,7 @@ class DailySummaryItem(BaseModel):
 
     id: str
     event_time_start: str  # e.g. "2026-02-21T00:00:00"
-    summary: Optional[str] = None
+    summary: str | None = None
     children_count: int = 0
 
 
@@ -59,16 +58,16 @@ class SimpleDailySummary(BaseModel):
     """Simplified daily summary for cache response."""
 
     event_time_start: str
-    title: Optional[str] = None
-    summary: Optional[str] = None
+    title: str | None = None
+    summary: str | None = None
 
 
 class SimpleTodayEvent(BaseModel):
     """Simplified today event for cache response."""
 
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    event_time_start: Optional[str] = None
+    title: str | None = None
+    summary: str | None = None
+    event_time_start: str | None = None
 
 
 class UserMemoryCacheResponse(BaseModel):
@@ -78,7 +77,7 @@ class UserMemoryCacheResponse(BaseModel):
     user_id: str
     device_id: str = "default"
     agent_id: str
-    profile: Optional[SimpleProfile] = None
-    recently_accessed: Optional[List[RecentlyAccessedItem]] = None
-    daily_summaries: Optional[List[SimpleDailySummary]] = None
-    today_events: Optional[List[SimpleTodayEvent]] = None
+    profile: SimpleProfile | None = None
+    recently_accessed: list[RecentlyAccessedItem] | None = None
+    daily_summaries: list[SimpleDailySummary] | None = None
+    today_events: list[SimpleTodayEvent] | None = None

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,13 +10,13 @@ JSON parsing utility functions
 
 import json
 import re
-from typing import Any, Optional
+from typing import Any
 
 import json_repair
 from loguru import logger
 
 
-def parse_json_from_response(response: str) -> Optional[Any]:
+def parse_json_from_response(response: str) -> Any | None:
     """
     Parse JSON object from LLM text response.
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,9 +10,9 @@ Intelligent conversation routing based on Context Agent
 
 import json
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -47,17 +46,17 @@ class ChatRequest(BaseModel):
     """Chat request"""
 
     query: str = Field(..., description="User query")
-    context: Dict[str, Any] = Field(default_factory=dict, description="Context information")
-    session_id: Optional[str] = Field(None, description="Session ID")
-    user_id: Optional[str] = Field(None, description="User ID")
-    conversation_id: Optional[int] = Field(None, description="Conversation ID for message storage")
+    context: dict[str, Any] = Field(default_factory=dict, description="Context information")
+    session_id: str | None = Field(None, description="Session ID")
+    user_id: str | None = Field(None, description="User ID")
+    conversation_id: int | None = Field(None, description="Conversation ID for message storage")
 
 
 class ResumeRequest(BaseModel):
     """Resume workflow request"""
 
     workflow_id: str = Field(..., description="Workflow ID")
-    user_input: Optional[str] = Field(None, description="User input")
+    user_input: str | None = Field(None, description="User input")
 
 
 class ChatResponse(BaseModel):
@@ -67,11 +66,11 @@ class ChatResponse(BaseModel):
     workflow_id: str
     stage: str
     query: str
-    intent: Optional[Dict[str, Any]] = None
-    context: Optional[Dict[str, Any]] = None
-    execution: Optional[Dict[str, Any]] = None
-    reflection: Optional[Dict[str, Any]] = None
-    errors: Optional[list] = None
+    intent: dict[str, Any] | None = None
+    context: dict[str, Any] | None = None
+    execution: dict[str, Any] | None = None
+    reflection: dict[str, Any] | None = None
+    errors: list | None = None
 
 
 @router.post("/chat")

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,7 @@ Configuration manager, responsible for loading and managing system configuration
 
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
@@ -45,9 +44,9 @@ class ConfigManager:
 
     def __init__(self):
         """Initialize the configuration manager"""
-        self._config: Optional[Dict[str, Any]] = None
-        self._config_path: Optional[str] = None
-        self._env_vars: Dict[str, str] = {}
+        self._config: dict[str, Any] | None = None
+        self._config_path: str | None = None
+        self._env_vars: dict[str, str] = {}
         self._use_db_settings: bool = False
 
     @property
@@ -70,7 +69,7 @@ class ConfigManager:
         local variable before atomically swapping self._config, preventing
         other coroutines from reading a partially-merged state during awaits.
         """
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             config_data = yaml.safe_load(f)
         self._load_env_vars()
         return self._replace_env_vars(config_data)
@@ -102,7 +101,7 @@ class ConfigManager:
         self._use_db_settings = True
         return bool(db_settings)
 
-    def load_config(self, config_path: Optional[str] = None) -> bool:
+    def load_config(self, config_path: str | None = None) -> bool:
         """
         Load configuration
         """
@@ -115,7 +114,7 @@ class ConfigManager:
         else:
             raise FileNotFoundError(f"Specified configuration file does not exist: {config_path}")
 
-        with open(found_config_path, "r", encoding="utf-8") as f:
+        with open(found_config_path, encoding="utf-8") as f:
             config_data = yaml.safe_load(f)
 
         self._load_env_vars()
@@ -171,7 +170,7 @@ class ConfigManager:
         else:
             return config_data
 
-    def get_config(self) -> Optional[Dict[str, Any]]:
+    def get_config(self) -> dict[str, Any] | None:
         """
         Get configuration
 
@@ -180,7 +179,7 @@ class ConfigManager:
         """
         return self._config
 
-    def get_config_path(self) -> Optional[str]:
+    def get_config_path(self) -> str | None:
         """
         Get configuration file path
 
@@ -196,7 +195,7 @@ class ConfigManager:
             return d
         return {k: ConfigManager._strip_none_values(v) for k, v in d.items() if v is not None}
 
-    async def save_user_settings_async(self, settings: Dict[str, Any]) -> bool:
+    async def save_user_settings_async(self, settings: dict[str, Any]) -> bool:
         """Save user settings to DB.
 
         Each whitelisted key is saved as a separate row with

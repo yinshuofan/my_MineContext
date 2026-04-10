@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -13,7 +12,7 @@ Splits based on semantic boundaries (paragraphs, sections) rather than simple ch
 
 import asyncio
 import re
-from typing import Iterator, List, Optional
+from collections.abc import Iterator
 
 from opencontext.context_processing.chunker.chunkers import BaseChunker, ChunkingConfig
 from opencontext.models.context import Chunk
@@ -32,11 +31,11 @@ class DocumentTextChunker(BaseChunker):
     3. Preserve section information (if available)
     """
 
-    def __init__(self, config: Optional[ChunkingConfig] = None):
+    def __init__(self, config: ChunkingConfig | None = None):
         """Initialize document text chunker"""
         super().__init__(config)
 
-    def chunk_text(self, texts: List[str], document_title: str = None) -> List[Chunk]:
+    def chunk_text(self, texts: list[str], document_title: str = None) -> list[Chunk]:
         """
         Split text list into multiple semantic chunks (intelligent semantic chunking)
 
@@ -45,7 +44,7 @@ class DocumentTextChunker(BaseChunker):
         2. Long documents (≥10000 characters): Fallback to original paragraph-based chunking strategy
         """
         if not texts or all(not t.strip() for t in texts):
-            logger.warning(f"Empty texts provided for chunking document")
+            logger.warning("Empty texts provided for chunking document")
             return []
 
         # Merge all text into complete document
@@ -62,7 +61,7 @@ class DocumentTextChunker(BaseChunker):
         logger.info(f"Created {len(chunks)} chunks from {len(texts)} text elements")
         return chunks
 
-    def _collect_buffers(self, texts: List[str]) -> tuple:
+    def _collect_buffers(self, texts: list[str]) -> tuple:
         """
         Phase 1: Collect buffers that need LLM splitting
 
@@ -130,7 +129,7 @@ class DocumentTextChunker(BaseChunker):
 
         return buffers_to_split, direct_chunks, oversized_elements
 
-    def _batch_split_with_llm(self, buffers: List[str]) -> List[List[str]]:
+    def _batch_split_with_llm(self, buffers: list[str]) -> list[list[str]]:
         """
         Phase 2: Batch concurrent LLM calls
         """
@@ -155,7 +154,7 @@ class DocumentTextChunker(BaseChunker):
 
     def _assemble_chunks(
         self, buffers_to_split, llm_results, direct_chunks, oversized_elements
-    ) -> List[Chunk]:
+    ) -> list[Chunk]:
         """
         Phase 3: Assemble final chunks
         """
@@ -175,7 +174,7 @@ class DocumentTextChunker(BaseChunker):
 
         return chunks
 
-    async def _split_with_llm_async(self, text: str) -> List[str]:
+    async def _split_with_llm_async(self, text: str) -> list[str]:
         """
         Use LLM to intelligently split text (async version)
         """
@@ -207,7 +206,7 @@ class DocumentTextChunker(BaseChunker):
             chunks = parse_json_from_response(response)
 
             if not isinstance(chunks, list):
-                logger.warning(f"LLM returned non-list response, falling back to oversized split")
+                logger.warning("LLM returned non-list response, falling back to oversized split")
                 return self._split_oversized_element(text)
 
             logger.info(f"LLM split text into {len(chunks)} chunks")
@@ -217,7 +216,7 @@ class DocumentTextChunker(BaseChunker):
             logger.error(f"Error in async LLM text splitting: {e}, falling back to oversized split")
             return self._split_oversized_element(text)
 
-    def _split_oversized_element(self, text: str) -> List[str]:
+    def _split_oversized_element(self, text: str) -> list[str]:
         """
         Split oversized element (mechanical splitting, no LLM call)
         Strategy:
@@ -251,7 +250,7 @@ class DocumentTextChunker(BaseChunker):
 
     def _global_semantic_chunking(
         self, full_document: str, document_title: str = None
-    ) -> List[Chunk]:
+    ) -> list[Chunk]:
         """
         Global semantic chunking - LLM analyzes and chunks entire document at once
 
@@ -289,7 +288,7 @@ class DocumentTextChunker(BaseChunker):
             chunk_texts = parse_json_from_response(response)
 
             if not isinstance(chunk_texts, list):
-                logger.warning(f"LLM returned non-list response, falling back")
+                logger.warning("LLM returned non-list response, falling back")
                 return self._fallback_chunking([full_document])
 
             # Create Chunk objects
@@ -311,7 +310,7 @@ class DocumentTextChunker(BaseChunker):
             )
             return self._fallback_chunking([full_document])
 
-    def _fallback_chunking(self, texts: List[str]) -> List[Chunk]:
+    def _fallback_chunking(self, texts: list[str]) -> list[Chunk]:
         """
         Fallback chunking strategy - used when document is too long or global chunking fails
 

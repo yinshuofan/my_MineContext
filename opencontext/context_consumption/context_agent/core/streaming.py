@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Streaming Manager
@@ -7,7 +6,7 @@ Manages event streams and streaming content output.
 """
 
 import asyncio
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 
 from ..models.enums import WorkflowStage
 from ..models.events import StreamEvent
@@ -17,7 +16,7 @@ class StreamingManager:
     """Streaming manager."""
 
     def __init__(self):
-        self.event_queue: Optional[asyncio.Queue] = None
+        self.event_queue: asyncio.Queue | None = None
 
     async def _ensure_queue(self):
         """Ensure the queue is initialized in the current event loop."""
@@ -39,7 +38,7 @@ class StreamingManager:
                 if event.stage in [WorkflowStage.COMPLETED, WorkflowStage.FAILED]:
                     print("Exiting event capture")
                     break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break

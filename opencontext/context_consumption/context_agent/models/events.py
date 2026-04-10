@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Event Model Definition
@@ -8,7 +7,7 @@ Unified streaming event structure
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.utils.time_utils import now as tz_now
 
@@ -21,14 +20,14 @@ class StreamEvent:
 
     type: EventType  # Event type
     content: str  # Event content/message
-    stage: Optional[WorkflowStage] = None  # Workflow stage
-    node: Optional[NodeType] = None  # Node type (if it's a node event)
+    stage: WorkflowStage | None = None  # Workflow stage
+    node: NodeType | None = None  # Node type (if it's a node event)
     progress: float = 0.0  # Progress (0.0-1.0)
     timestamp: datetime = field(default_factory=tz_now)
-    metadata: Dict[str, Any] = field(default_factory=dict)  # Additional data
+    metadata: dict[str, Any] = field(default_factory=dict)  # Additional data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StreamEvent":
+    def from_dict(cls, data: dict[str, Any]) -> "StreamEvent":
         """Create an event from a dictionary"""
         return cls(
             type=EventType(data["type"]),
@@ -40,7 +39,7 @@ class StreamEvent:
             metadata=data.get("metadata", {}),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary format for serialization"""
         result = {
             "type": self.type.value,
@@ -70,8 +69,8 @@ class StreamEvent:
         event_type: EventType,
         stage: WorkflowStage,
         message: str,
-        duration: Optional[float] = None,
-        error: Optional[str] = None,
+        duration: float | None = None,
+        error: str | None = None,
         **kwargs,
     ) -> "StreamEvent":
         """Create a node event"""
@@ -93,7 +92,7 @@ class StreamEvent:
 
     @classmethod
     def create_chunk(
-        cls, content: str, index: int, total: Optional[int] = None, is_final: bool = False, **kwargs
+        cls, content: str, index: int, total: int | None = None, is_final: bool = False, **kwargs
     ) -> "StreamEvent":
         """Create a streaming content chunk"""
         event_type = EventType.STREAM_COMPLETE if is_final else EventType.STREAM_CHUNK
@@ -108,7 +107,7 @@ class StreamEvent:
 class EventBuffer:
     """Event buffer"""
 
-    events: List[StreamEvent] = field(default_factory=list)
+    events: list[StreamEvent] = field(default_factory=list)
     max_size: int = 1000
 
     def add(self, event: StreamEvent):
@@ -118,7 +117,7 @@ class EventBuffer:
         if len(self.events) > self.max_size:
             self.events = self.events[-self.max_size :]
 
-    def get_recent(self, n: int = 10) -> List[StreamEvent]:
+    def get_recent(self, n: int = 10) -> list[StreamEvent]:
         """Get the n most recent events"""
         return self.events[-n:] if len(self.events) >= n else self.events
 
@@ -126,10 +125,10 @@ class EventBuffer:
         """Clear the buffer"""
         self.events.clear()
 
-    def filter_by_type(self, event_type: EventType) -> List[StreamEvent]:
+    def filter_by_type(self, event_type: EventType) -> list[StreamEvent]:
         """Filter events by type"""
         return [e for e in self.events if e.type == event_type]
 
-    def filter_by_node(self, node_type: NodeType) -> List[StreamEvent]:
+    def filter_by_node(self, node_type: NodeType) -> list[StreamEvent]:
         """Filter events by node"""
         return [e for e in self.events if e.node == node_type]

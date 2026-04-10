@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,12 +9,11 @@ Base capture component class implementing common functionality from ICaptureComp
 """
 
 import abc
-import asyncio
 import inspect
 import threading
 import time
-from datetime import datetime
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 from opencontext.interfaces.capture_interface import ICaptureComponent
 from opencontext.models.context import RawContextProperties
@@ -58,7 +56,7 @@ class BaseCaptureComponent(ICaptureComponent):
         self._last_error = None
         self._lock = threading.RLock()
 
-    def initialize(self, config: Dict[str, Any]) -> bool:
+    def initialize(self, config: dict[str, Any]) -> bool:
         """
         Initialize capture component
 
@@ -177,7 +175,7 @@ class BaseCaptureComponent(ICaptureComponent):
         with self._lock:
             return self._running
 
-    def capture(self) -> List[RawContextProperties]:
+    def capture(self) -> list[RawContextProperties]:
         """
         Execute one capture operation
 
@@ -242,7 +240,7 @@ class BaseCaptureComponent(ICaptureComponent):
         """
         return self._description
 
-    def get_config_schema(self) -> Dict[str, Any]:
+    def get_config_schema(self) -> dict[str, Any]:
         """
         Get configuration schema
 
@@ -278,7 +276,7 @@ class BaseCaptureComponent(ICaptureComponent):
 
         return schema
 
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """
         Validate if configuration is valid
 
@@ -314,7 +312,7 @@ class BaseCaptureComponent(ICaptureComponent):
             )
             return False
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Get component status
 
@@ -341,7 +339,7 @@ class BaseCaptureComponent(ICaptureComponent):
 
             return status
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get statistics
 
@@ -391,7 +389,7 @@ class BaseCaptureComponent(ICaptureComponent):
                 )
                 return False
 
-    def set_callback(self, callback: Callable[[List[RawContextProperties]], None]):
+    def set_callback(self, callback: Callable[[list[RawContextProperties]], None]):
         """
         Set callback function to be called when new data is captured
 
@@ -437,7 +435,7 @@ class BaseCaptureComponent(ICaptureComponent):
     # The following methods need to be implemented by subclasses
 
     @abc.abstractmethod
-    def _initialize_impl(self, config: Dict[str, Any]) -> bool:
+    def _initialize_impl(self, config: dict[str, Any]) -> bool:
         """
         Initialization implementation
 
@@ -467,7 +465,7 @@ class BaseCaptureComponent(ICaptureComponent):
         """
 
     @abc.abstractmethod
-    def _capture_impl(self) -> List[RawContextProperties]:
+    def _capture_impl(self) -> list[RawContextProperties]:
         """
         Capture implementation
 
@@ -475,7 +473,7 @@ class BaseCaptureComponent(ICaptureComponent):
             List[RawContextProperties]: List of captured context data
         """
 
-    def _get_config_schema_impl(self) -> Dict[str, Any]:
+    def _get_config_schema_impl(self) -> dict[str, Any]:
         """
         Get configuration schema implementation
 
@@ -484,7 +482,7 @@ class BaseCaptureComponent(ICaptureComponent):
         """
         return {}
 
-    def _validate_config_impl(self, config: Dict[str, Any]) -> bool:
+    def _validate_config_impl(self, config: dict[str, Any]) -> bool:
         """
         Validate configuration implementation
 
@@ -496,7 +494,7 @@ class BaseCaptureComponent(ICaptureComponent):
         """
         return True
 
-    def _get_status_impl(self) -> Dict[str, Any]:
+    def _get_status_impl(self) -> dict[str, Any]:
         """
         Get status implementation
 
@@ -505,7 +503,7 @@ class BaseCaptureComponent(ICaptureComponent):
         """
         return {}
 
-    def _get_statistics_impl(self) -> Dict[str, Any]:
+    def _get_statistics_impl(self) -> dict[str, Any]:
         """
         Get statistics implementation
 

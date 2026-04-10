@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,17 +8,14 @@ MySQL document note storage backend implementation (async via asyncmy)
 """
 
 import json
-import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import asyncmy
 import asyncmy.cursors
 
 from opencontext.storage.base_storage import (
-    DataType,
-    DocumentData,
     IDocumentStorageBackend,
     QueryResult,
     StorageType,
@@ -37,11 +33,11 @@ class MySQLBackend(IDocumentStorageBackend):
     """
 
     def __init__(self):
-        self.db_config: Optional[Dict[str, Any]] = None
+        self.db_config: dict[str, Any] | None = None
         self._initialized = False
         self._pool = None
 
-    async def initialize(self, config: Dict[str, Any]) -> bool:
+    async def initialize(self, config: dict[str, Any]) -> bool:
         """Initialize MySQL database"""
         try:
             # Get MySQL configuration
@@ -165,10 +161,9 @@ class MySQLBackend(IDocumentStorageBackend):
 
     async def _create_tables(self):
         """Create database table structure"""
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                # vaults table
-                await cursor.execute("""
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            # vaults table
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS vaults (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         title TEXT,
@@ -190,8 +185,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                # Todo table
-                await cursor.execute("""
+            # Todo table
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS todo (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         content TEXT,
@@ -208,8 +203,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                # Tips table
-                await cursor.execute("""
+            # Tips table
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS tips (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         content TEXT,
@@ -218,8 +213,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                # Profiles table
-                await cursor.execute("""
+            # Profiles table
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS profiles (
                         user_id VARCHAR(255) NOT NULL,
                         device_id VARCHAR(100) NOT NULL DEFAULT 'default',
@@ -238,8 +233,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                # Monitoring tables
-                await cursor.execute("""
+            # Monitoring tables
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS monitoring_token_usage (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         time_bucket VARCHAR(20) NOT NULL,
@@ -254,7 +249,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                await cursor.execute("""
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS monitoring_stage_timing (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         time_bucket VARCHAR(20) NOT NULL,
@@ -274,7 +269,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                await cursor.execute("""
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS monitoring_data_stats (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         time_bucket VARCHAR(20) NOT NULL,
@@ -289,8 +284,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                # Conversation tables
-                await cursor.execute("""
+            # Conversation tables
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS conversations (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         title VARCHAR(500),
@@ -305,7 +300,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                await cursor.execute("""
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS messages (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         conversation_id BIGINT NOT NULL,
@@ -326,7 +321,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                await cursor.execute("""
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS message_thinking (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         message_id BIGINT NOT NULL,
@@ -343,8 +338,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                # System settings table (key-value, for multi-instance config consistency)
-                await cursor.execute("""
+            # System settings table (key-value, for multi-instance config consistency)
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS system_settings (
                         setting_key VARCHAR(128) NOT NULL,
                         setting_value JSON NOT NULL,
@@ -353,8 +348,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                # Chat batches table - stores raw chat messages for processor reference
-                await cursor.execute("""
+            # Chat batches table - stores raw chat messages for processor reference
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS chat_batches (
                         batch_id VARCHAR(36) PRIMARY KEY,
                         messages JSON NOT NULL,
@@ -367,8 +362,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                # Agent registry table - registered agents with soft delete
-                await cursor.execute("""
+            # Agent registry table - registered agents with soft delete
+            await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS agent_registry (
                         agent_id VARCHAR(100) PRIMARY KEY,
                         name VARCHAR(255) NOT NULL,
@@ -379,7 +374,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """)
 
-                await conn.commit()
+            await conn.commit()
 
     # Report table operations
     async def insert_vaults(
@@ -425,7 +420,7 @@ class MySQLBackend(IDocumentStorageBackend):
 
     async def get_reports(
         self, limit: int = 100, offset: int = 0, is_deleted: bool = False
-    ) -> List[Dict]:
+    ) -> list[dict]:
         return await self.get_vaults(
             limit=limit, offset=offset, is_deleted=is_deleted, document_type="report"
         )
@@ -440,7 +435,7 @@ class MySQLBackend(IDocumentStorageBackend):
         created_before: datetime = None,
         updated_after: datetime = None,
         updated_before: datetime = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         if not self._initialized:
             return []
 
@@ -483,7 +478,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.exception(f"Failed to get vaults list: {e}")
                     return []
 
-    async def get_vault(self, vault_id: int) -> Optional[Dict]:
+    async def get_vault(self, vault_id: int) -> dict | None:
         if not self._initialized:
             return None
 
@@ -508,34 +503,33 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    set_clauses = []
-                    params = []
-                    for key, value in kwargs.items():
-                        if key in [
-                            "title",
-                            "summary",
-                            "content",
-                            "tags",
-                            "parent_id",
-                            "is_folder",
-                            "is_deleted",
-                        ]:
-                            set_clauses.append(f"{key} = %s")
-                            params.append(value)
-                    if not set_clauses:
-                        return False
-                    params.append(vault_id)
-                    sql = f"UPDATE vaults SET {', '.join(set_clauses)} WHERE id = %s"
-                    await cursor.execute(sql, params)
-                    success = cursor.rowcount > 0
-                    await conn.commit()
-                    return success
-                except Exception as e:
-                    logger.exception(f"Failed to update report: {e}")
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                set_clauses = []
+                params = []
+                for key, value in kwargs.items():
+                    if key in [
+                        "title",
+                        "summary",
+                        "content",
+                        "tags",
+                        "parent_id",
+                        "is_folder",
+                        "is_deleted",
+                    ]:
+                        set_clauses.append(f"{key} = %s")
+                        params.append(value)
+                if not set_clauses:
                     return False
+                params.append(vault_id)
+                sql = f"UPDATE vaults SET {', '.join(set_clauses)} WHERE id = %s"
+                await cursor.execute(sql, params)
+                success = cursor.rowcount > 0
+                await conn.commit()
+                return success
+            except Exception as e:
+                logger.exception(f"Failed to update report: {e}")
+                return False
 
     # Todo table operations
     async def insert_todo(
@@ -585,7 +579,7 @@ class MySQLBackend(IDocumentStorageBackend):
         offset: int = 0,
         start_time: datetime = None,
         end_time: datetime = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         if not self._initialized:
             return []
 
@@ -626,41 +620,39 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    if status == 1 and end_time is None:
-                        end_time = tz_now()
-                    await cursor.execute(
-                        "UPDATE todo SET status = %s, end_time = %s WHERE id = %s",
-                        (status, end_time, todo_id),
-                    )
-                    success = cursor.rowcount > 0
-                    await conn.commit()
-                    return success
-                except Exception as e:
-                    logger.exception(f"Failed to update todo item status: {e}")
-                    return False
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                if status == 1 and end_time is None:
+                    end_time = tz_now()
+                await cursor.execute(
+                    "UPDATE todo SET status = %s, end_time = %s WHERE id = %s",
+                    (status, end_time, todo_id),
+                )
+                success = cursor.rowcount > 0
+                await conn.commit()
+                return success
+            except Exception as e:
+                logger.exception(f"Failed to update todo item status: {e}")
+                return False
 
     # Tips table operations
     async def insert_tip(self, content: str) -> int:
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "INSERT INTO tips (content, created_at) VALUES (%s, %s)",
-                        (content, tz_now()),
-                    )
-                    tip_id = cursor.lastrowid
-                    await conn.commit()
-                    logger.info(f"Tip inserted, ID: {tip_id}")
-                    return tip_id
-                except Exception as e:
-                    logger.exception(f"Failed to insert tip: {e}")
-                    raise
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    "INSERT INTO tips (content, created_at) VALUES (%s, %s)",
+                    (content, tz_now()),
+                )
+                tip_id = cursor.lastrowid
+                await conn.commit()
+                logger.info(f"Tip inserted, ID: {tip_id}")
+                return tip_id
+            except Exception as e:
+                logger.exception(f"Failed to insert tip: {e}")
+                raise
 
     async def get_tips(
         self,
@@ -668,7 +660,7 @@ class MySQLBackend(IDocumentStorageBackend):
         end_time: datetime = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         if not self._initialized:
             return []
 
@@ -708,11 +700,11 @@ class MySQLBackend(IDocumentStorageBackend):
         device_id: str = "default",
         agent_id: str = "default",
         factual_profile: str = "",
-        behavioral_profile: Optional[str] = None,
-        entities: Optional[List[str]] = None,
+        behavioral_profile: str | None = None,
+        entities: list[str] | None = None,
         importance: int = 0,
-        metadata: Optional[Dict[str, Any]] = None,
-        refs: Optional[Dict] = None,
+        metadata: dict[str, Any] | None = None,
+        refs: dict | None = None,
         context_type: str = "profile",
     ) -> bool:
         if not self._initialized:
@@ -772,7 +764,7 @@ class MySQLBackend(IDocumentStorageBackend):
         device_id: str = "default",
         agent_id: str = "default",
         context_type: str = "profile",
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         if not self._initialized:
             return None
 
@@ -869,7 +861,7 @@ class MySQLBackend(IDocumentStorageBackend):
         stage_name: str,
         duration_ms: int,
         status: str = "success",
-        metadata: Optional[str] = None,
+        metadata: str | None = None,
     ) -> bool:
         if not self._initialized:
             return False
@@ -920,8 +912,8 @@ class MySQLBackend(IDocumentStorageBackend):
         self,
         data_type: str,
         count: int = 1,
-        context_type: Optional[str] = None,
-        metadata: Optional[str] = None,
+        context_type: str | None = None,
+        metadata: str | None = None,
     ) -> bool:
         if not self._initialized:
             return False
@@ -945,7 +937,7 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.error(f"Failed to save data stats: {e}")
             return False
 
-    async def query_monitoring_token_usage(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_token_usage(self, hours: int = 24) -> list[dict[str, Any]]:
         if not self._initialized:
             return []
 
@@ -967,7 +959,7 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query token usage: {e}")
             return []
 
-    async def query_monitoring_stage_timing(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_stage_timing(self, hours: int = 24) -> list[dict[str, Any]]:
         if not self._initialized:
             return []
 
@@ -1005,7 +997,7 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query stage timing: {e}")
             return []
 
-    async def query_monitoring_data_stats(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_data_stats(self, hours: int = 24) -> list[dict[str, Any]]:
         if not self._initialized:
             return []
 
@@ -1036,7 +1028,7 @@ class MySQLBackend(IDocumentStorageBackend):
 
     async def query_monitoring_data_stats_by_range(
         self, start_time: datetime, end_time: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if not self._initialized:
             return []
 
@@ -1067,7 +1059,7 @@ class MySQLBackend(IDocumentStorageBackend):
 
     async def query_monitoring_data_stats_trend(
         self, hours: int = 24, interval_hours: int = 1
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if not self._initialized:
             return []
 
@@ -1105,22 +1097,21 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(days=days)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            async with self._get_connection() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute(
-                        "DELETE FROM monitoring_token_usage WHERE time_bucket < %s",
-                        (cutoff_bucket,),
-                    )
-                    await cursor.execute(
-                        "DELETE FROM monitoring_stage_timing WHERE time_bucket < %s",
-                        (cutoff_bucket,),
-                    )
-                    await cursor.execute(
-                        "DELETE FROM monitoring_data_stats WHERE time_bucket < %s", (cutoff_bucket,)
-                    )
-                    await conn.commit()
-                    logger.info(f"Cleaned up monitoring data older than {days} days")
-                    return True
+            async with self._get_connection() as conn, conn.cursor() as cursor:
+                await cursor.execute(
+                    "DELETE FROM monitoring_token_usage WHERE time_bucket < %s",
+                    (cutoff_bucket,),
+                )
+                await cursor.execute(
+                    "DELETE FROM monitoring_stage_timing WHERE time_bucket < %s",
+                    (cutoff_bucket,),
+                )
+                await cursor.execute(
+                    "DELETE FROM monitoring_data_stats WHERE time_bucket < %s", (cutoff_bucket,)
+                )
+                await conn.commit()
+                logger.info(f"Cleaned up monitoring data older than {days} days")
+                return True
         except Exception as e:
             logger.error(f"Failed to cleanup old monitoring data: {e}")
             return False
@@ -1129,10 +1120,10 @@ class MySQLBackend(IDocumentStorageBackend):
     async def create_conversation(
         self,
         page_name: str,
-        user_id: Optional[str] = None,
-        title: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        user_id: str | None = None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
 
@@ -1156,7 +1147,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.exception(f"Failed to create conversation: {e}")
                     return None
 
-    async def get_conversation(self, conversation_id: int) -> Optional[Dict[str, Any]]:
+    async def get_conversation(self, conversation_id: int) -> dict[str, Any] | None:
         if not self._initialized:
             return None
 
@@ -1177,10 +1168,10 @@ class MySQLBackend(IDocumentStorageBackend):
         self,
         limit: int = 20,
         offset: int = 0,
-        page_name: Optional[str] = None,
-        user_id: Optional[str] = None,
+        page_name: str | None = None,
+        user_id: str | None = None,
         status: str = "active",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if not self._initialized:
             return {"items": [], "total": 0}
 
@@ -1224,9 +1215,9 @@ class MySQLBackend(IDocumentStorageBackend):
     async def update_conversation(
         self,
         conversation_id: int,
-        title: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        title: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any] | None:
         if not self._initialized:
             return None
 
@@ -1259,7 +1250,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.exception(f"Failed to update conversation: {e}")
                     return None
 
-    async def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
+    async def delete_conversation(self, conversation_id: int) -> dict[str, Any]:
         updated_convo = await self.update_conversation(
             conversation_id=conversation_id, status="deleted"
         )
@@ -1268,7 +1259,7 @@ class MySQLBackend(IDocumentStorageBackend):
 
     async def get_message(
         self, message_id: int, include_thinking: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         if not self._initialized:
             return None
 
@@ -1294,9 +1285,9 @@ class MySQLBackend(IDocumentStorageBackend):
         content: str,
         is_complete: bool = True,
         token_count: int = 0,
-        parent_message_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        parent_message_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
 
@@ -1342,9 +1333,9 @@ class MySQLBackend(IDocumentStorageBackend):
         self,
         conversation_id: int,
         role: str,
-        parent_message_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        parent_message_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         return await self.create_message(
             conversation_id=conversation_id,
             role=role,
@@ -1359,9 +1350,9 @@ class MySQLBackend(IDocumentStorageBackend):
         self,
         message_id: int,
         new_content: str,
-        is_complete: Optional[bool] = None,
-        token_count: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
+        is_complete: bool | None = None,
+        token_count: int | None = None,
+    ) -> dict[str, Any] | None:
         if not self._initialized:
             return None
 
@@ -1431,28 +1422,27 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.exception(f"Failed to append message content: {e}")
                     return False
 
-    async def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
+    async def update_message_metadata(self, message_id: int, metadata: dict[str, Any]) -> bool:
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    now = tz_now()
-                    meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
-                    await cursor.execute(
-                        "UPDATE messages SET metadata = %s, updated_at = %s WHERE id = %s",
-                        (meta_str, now, message_id),
-                    )
-                    success = cursor.rowcount > 0
-                    await conn.commit()
-                    return success
-                except Exception as e:
-                    logger.exception(f"Failed to update message metadata: {e}")
-                    return False
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                now = tz_now()
+                meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
+                await cursor.execute(
+                    "UPDATE messages SET metadata = %s, updated_at = %s WHERE id = %s",
+                    (meta_str, now, message_id),
+                )
+                success = cursor.rowcount > 0
+                await conn.commit()
+                return success
+            except Exception as e:
+                logger.exception(f"Failed to update message metadata: {e}")
+                return False
 
     async def mark_message_finished(
-        self, message_id: int, status: str = "completed", error_message: Optional[str] = None
+        self, message_id: int, status: str = "completed", error_message: str | None = None
     ) -> bool:
         if not self._initialized:
             return False
@@ -1500,7 +1490,7 @@ class MySQLBackend(IDocumentStorageBackend):
             message_id=message_id, status="cancelled", error_message="Message interrupted by user."
         )
 
-    async def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
+    async def get_conversation_messages(self, conversation_id: int) -> list[dict[str, Any]]:
         if not self._initialized:
             return []
 
@@ -1527,26 +1517,25 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.warning("Storage not initialized")
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
-                    await conn.commit()
-                    return cursor.rowcount > 0
-                except Exception as e:
-                    logger.exception(f"Failed to delete message {message_id}: {e}")
-                    return False
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
+                await conn.commit()
+                return cursor.rowcount > 0
+            except Exception as e:
+                logger.exception(f"Failed to delete message {message_id}: {e}")
+                return False
 
     # Message Thinking Management Methods
     async def add_message_thinking(
         self,
         message_id: int,
         content: str,
-        stage: Optional[str] = None,
+        stage: str | None = None,
         progress: float = 0.0,
-        sequence: Optional[int] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[int]:
+        sequence: int | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int | None:
         if not self._initialized:
             logger.warning("Storage not initialized")
             return None
@@ -1577,7 +1566,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.exception(f"Failed to add thinking to message {message_id}: {e}")
                     return None
 
-    async def get_message_thinking(self, message_id: int) -> List[Dict[str, Any]]:
+    async def get_message_thinking(self, message_id: int) -> list[dict[str, Any]]:
         if not self._initialized:
             return []
 
@@ -1601,21 +1590,20 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "DELETE FROM message_thinking WHERE message_id = %s", (message_id,)
-                    )
-                    await conn.commit()
-                    return True
-                except Exception as e:
-                    logger.exception(f"Failed to clear thinking for message {message_id}: {e}")
-                    return False
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    "DELETE FROM message_thinking WHERE message_id = %s", (message_id,)
+                )
+                await conn.commit()
+                return True
+            except Exception as e:
+                logger.exception(f"Failed to clear thinking for message {message_id}: {e}")
+                return False
 
     # ── System Settings ──
 
-    async def load_all_settings(self) -> Dict[str, Any]:
+    async def load_all_settings(self) -> dict[str, Any]:
         """Load all settings rows and return as a dict keyed by setting_key."""
         if not self._initialized:
             return {}
@@ -1627,7 +1615,7 @@ class MySQLBackend(IDocumentStorageBackend):
                         " WHERE setting_key NOT LIKE '\\_%'"
                     )
                     rows = await cursor.fetchall()
-            result: Dict[str, Any] = {}
+            result: dict[str, Any] = {}
             for row in rows:
                 value = row["setting_value"]
                 if isinstance(value, str):
@@ -1692,8 +1680,8 @@ class MySQLBackend(IDocumentStorageBackend):
     async def create_chat_batch(
         self,
         batch_id: str,
-        messages: List[Dict],
-        user_id: Optional[str],
+        messages: list[dict],
+        user_id: str | None,
         device_id: str = "default",
         agent_id: str = "default",
     ) -> bool:
@@ -1701,47 +1689,45 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        """INSERT INTO chat_batches
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    """INSERT INTO chat_batches
                            (batch_id, messages, user_id, device_id, agent_id, message_count)
                            VALUES (%s, %s, %s, %s, %s, %s)""",
-                        (
-                            batch_id,
-                            json.dumps(messages, ensure_ascii=False),
-                            user_id,
-                            device_id,
-                            agent_id,
-                            len(messages),
-                        ),
-                    )
-                    await conn.commit()
-                    return True
-                except Exception as e:
-                    logger.error(f"create_chat_batch failed: {e}")
-                    return False
+                    (
+                        batch_id,
+                        json.dumps(messages, ensure_ascii=False),
+                        user_id,
+                        device_id,
+                        agent_id,
+                        len(messages),
+                    ),
+                )
+                await conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"create_chat_batch failed: {e}")
+                return False
 
     async def cleanup_chat_batches(self, retention_days: int = 90) -> int:
         """Delete chat batches older than retention_days."""
         if not self._initialized:
             return 0
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "DELETE FROM chat_batches WHERE created_at < DATE_SUB(NOW(), INTERVAL %s DAY)",
-                        (retention_days,),
-                    )
-                    await conn.commit()
-                    return cursor.rowcount
-                except Exception as e:
-                    logger.error(f"cleanup_chat_batches failed: {e}")
-                    return 0
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    "DELETE FROM chat_batches WHERE created_at < DATE_SUB(NOW(), INTERVAL %s DAY)",
+                    (retention_days,),
+                )
+                await conn.commit()
+                return cursor.rowcount
+            except Exception as e:
+                logger.error(f"cleanup_chat_batches failed: {e}")
+                return 0
 
-    def _parse_date(self, date_str: str) -> Optional[datetime]:
+    def _parse_date(self, date_str: str) -> datetime | None:
         """Parse date string supporting multiple formats."""
         for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
             try:
@@ -1752,11 +1738,11 @@ class MySQLBackend(IDocumentStorageBackend):
 
     def _build_chat_batches_where(
         self,
-        user_id: Optional[str],
-        device_id: Optional[str],
-        agent_id: Optional[str],
-        start_date: Optional[str],
-        end_date: Optional[str],
+        user_id: str | None,
+        device_id: str | None,
+        agent_id: str | None,
+        start_date: str | None,
+        end_date: str | None,
     ) -> tuple:
         """Build WHERE clause and params for chat_batches queries."""
         conditions = []
@@ -1785,85 +1771,82 @@ class MySQLBackend(IDocumentStorageBackend):
 
     async def list_chat_batches(
         self,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """List chat batches (without messages) with optional filters."""
         if not self._initialized:
             return []
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    where, params = self._build_chat_batches_where(
-                        user_id, device_id, agent_id, start_date, end_date
-                    )
-                    sql = (
-                        "SELECT batch_id, user_id, device_id, agent_id, message_count, created_at"
-                        f" FROM chat_batches{where} ORDER BY created_at DESC LIMIT %s OFFSET %s"
-                    )
-                    params.extend([limit, offset])
-                    await cursor.execute(sql, params)
-                    rows = await cursor.fetchall()
-                    columns = [desc[0] for desc in cursor.description]
-                    return [dict(zip(columns, row)) for row in rows]
-                except Exception as e:
-                    logger.error(f"list_chat_batches failed: {e}")
-                    return []
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                where, params = self._build_chat_batches_where(
+                    user_id, device_id, agent_id, start_date, end_date
+                )
+                sql = (
+                    "SELECT batch_id, user_id, device_id, agent_id, message_count, created_at"
+                    f" FROM chat_batches{where} ORDER BY created_at DESC LIMIT %s OFFSET %s"
+                )
+                params.extend([limit, offset])
+                await cursor.execute(sql, params)
+                rows = await cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in rows]
+            except Exception as e:
+                logger.error(f"list_chat_batches failed: {e}")
+                return []
 
     async def count_chat_batches(
         self,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> int:
         """Count chat batches matching filters."""
         if not self._initialized:
             return 0
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    where, params = self._build_chat_batches_where(
-                        user_id, device_id, agent_id, start_date, end_date
-                    )
-                    sql = f"SELECT COUNT(*) FROM chat_batches{where}"
-                    await cursor.execute(sql, params)
-                    row = await cursor.fetchone()
-                    return row[0] if row else 0
-                except Exception as e:
-                    logger.error(f"count_chat_batches failed: {e}")
-                    return 0
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                where, params = self._build_chat_batches_where(
+                    user_id, device_id, agent_id, start_date, end_date
+                )
+                sql = f"SELECT COUNT(*) FROM chat_batches{where}"
+                await cursor.execute(sql, params)
+                row = await cursor.fetchone()
+                return row[0] if row else 0
+            except Exception as e:
+                logger.error(f"count_chat_batches failed: {e}")
+                return 0
 
-    async def get_chat_batch(self, batch_id: str) -> Optional[Dict]:
+    async def get_chat_batch(self, batch_id: str) -> dict | None:
         """Get single chat batch with messages."""
         if not self._initialized:
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "SELECT * FROM chat_batches WHERE batch_id = %s", (batch_id,)
-                    )
-                    row = await cursor.fetchone()
-                    if not row:
-                        return None
-                    columns = [desc[0] for desc in cursor.description]
-                    result = dict(zip(columns, row))
-                    if isinstance(result.get("messages"), str):
-                        result["messages"] = json.loads(result["messages"])
-                    return result
-                except Exception as e:
-                    logger.error(f"get_chat_batch failed: {e}")
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    "SELECT * FROM chat_batches WHERE batch_id = %s", (batch_id,)
+                )
+                row = await cursor.fetchone()
+                if not row:
                     return None
+                columns = [desc[0] for desc in cursor.description]
+                result = dict(zip(columns, row))
+                if isinstance(result.get("messages"), str):
+                    result["messages"] = json.loads(result["messages"])
+                return result
+            except Exception as e:
+                logger.error(f"get_chat_batch failed: {e}")
+                return None
 
     # ── Agent Registry CRUD ──
 
@@ -1872,20 +1855,19 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "INSERT INTO agent_registry (agent_id, name, description) VALUES (%s, %s, %s)",
-                        (agent_id, name, description),
-                    )
-                    await conn.commit()
-                    return True
-                except Exception as e:
-                    logger.error(f"create_agent failed: {e}")
-                    return False
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    "INSERT INTO agent_registry (agent_id, name, description) VALUES (%s, %s, %s)",
+                    (agent_id, name, description),
+                )
+                await conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"create_agent failed: {e}")
+                return False
 
-    async def get_agent(self, agent_id: str) -> Optional[Dict]:
+    async def get_agent(self, agent_id: str) -> dict | None:
         """Get agent by ID (excludes soft-deleted)."""
         if not self._initialized:
             return None
@@ -1903,7 +1885,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.error(f"get_agent failed: {e}")
                     return None
 
-    async def list_agents(self) -> List[Dict]:
+    async def list_agents(self) -> list[dict]:
         """List all active agents."""
         if not self._initialized:
             return []
@@ -1921,58 +1903,56 @@ class MySQLBackend(IDocumentStorageBackend):
                     return []
 
     async def update_agent(
-        self, agent_id: str, name: Optional[str] = None, description: Optional[str] = None
+        self, agent_id: str, name: str | None = None, description: str | None = None
     ) -> bool:
         """Update agent info."""
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    updates = []
-                    params = []
-                    if name is not None:
-                        updates.append("name = %s")
-                        params.append(name)
-                    if description is not None:
-                        updates.append("description = %s")
-                        params.append(description)
-                    if not updates:
-                        return True
-                    params.append(agent_id)
-                    await cursor.execute(
-                        f"UPDATE agent_registry SET {', '.join(updates)} "
-                        f"WHERE agent_id = %s AND is_deleted = FALSE",
-                        tuple(params),
-                    )
-                    await conn.commit()
-                    return cursor.rowcount > 0
-                except Exception as e:
-                    logger.error(f"update_agent failed: {e}")
-                    return False
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                updates = []
+                params = []
+                if name is not None:
+                    updates.append("name = %s")
+                    params.append(name)
+                if description is not None:
+                    updates.append("description = %s")
+                    params.append(description)
+                if not updates:
+                    return True
+                params.append(agent_id)
+                await cursor.execute(
+                    f"UPDATE agent_registry SET {', '.join(updates)} "
+                    f"WHERE agent_id = %s AND is_deleted = FALSE",
+                    tuple(params),
+                )
+                await conn.commit()
+                return cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"update_agent failed: {e}")
+                return False
 
     async def delete_agent(self, agent_id: str) -> bool:
         """Soft delete agent."""
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "UPDATE agent_registry SET is_deleted = TRUE "
-                        "WHERE agent_id = %s AND is_deleted = FALSE",
-                        (agent_id,),
-                    )
-                    await conn.commit()
-                    return cursor.rowcount > 0
-                except Exception as e:
-                    logger.error(f"delete_agent failed: {e}")
-                    return False
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    "UPDATE agent_registry SET is_deleted = TRUE "
+                    "WHERE agent_id = %s AND is_deleted = FALSE",
+                    (agent_id,),
+                )
+                await conn.commit()
+                return cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"delete_agent failed: {e}")
+                return False
 
     async def query(
-        self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None
+        self, query: str, limit: int = 10, filters: dict[str, Any] | None = None
     ) -> QueryResult:
         if not self._initialized:
             return QueryResult(documents=[], total_count=0)

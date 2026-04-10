@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -14,7 +13,7 @@ import mimetypes
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -31,11 +30,11 @@ class Chunk(BaseModel):
     Represents a chunk split from a document or text
     """
 
-    text: Optional[str] = None
-    image: Optional[bytes] = None
+    text: str | None = None
+    image: bytes | None = None
     chunk_index: int = 0
-    keywords: List[str] = Field(default_factory=list)  # keywords
-    entities: List[str] = Field(default_factory=list)  # entities
+    keywords: list[str] = Field(default_factory=list)  # keywords
+    entities: list[str] = Field(default_factory=list)  # entities
 
 
 class RawContextProperties(BaseModel):
@@ -43,23 +42,23 @@ class RawContextProperties(BaseModel):
     source: ContextSource
     create_time: datetime.datetime
     object_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    content_path: Optional[str] = None  # file path if ContentFormat is VIDEO or IMAGE; None if TEXT
-    content_type: Optional[str] = None  # content type, e.g. "text", "image", "video"
-    content_text: Optional[str] = None  # text content if ContentFormat is TEXT; None otherwise
-    filter_path: Optional[str] = None  # filter path
-    additional_info: Optional[Dict[str, Any]] = None  # additional information
+    content_path: str | None = None  # file path if ContentFormat is VIDEO or IMAGE; None if TEXT
+    content_type: str | None = None  # content type, e.g. "text", "image", "video"
+    content_text: str | None = None  # text content if ContentFormat is TEXT; None otherwise
+    filter_path: str | None = None  # filter path
+    additional_info: dict[str, Any] | None = None  # additional information
     enable_merge: bool = True
     # Multi-user support fields
-    user_id: Optional[str] = None  # User identifier
-    device_id: Optional[str] = None  # Device identifier
-    agent_id: Optional[str] = None  # Agent identifier
+    user_id: str | None = None  # User identifier
+    device_id: str | None = None  # Device identifier
+    agent_id: str | None = None  # Agent identifier
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert model to dictionary"""
         return self.model_dump(exclude_none=True)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RawContextProperties":
+    def from_dict(cls, data: dict[str, Any]) -> "RawContextProperties":
         """Create model from dictionary"""
         return cls.model_validate(data)
 
@@ -69,14 +68,14 @@ class ExtractedData(BaseModel):
     Represents information extracted from context data
     """
 
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    keywords: List[str] = Field(default_factory=list)  # keywords
-    entities: List[str] = Field(default_factory=list)  # entities
+    title: str | None = None
+    summary: str | None = None
+    keywords: list[str] = Field(default_factory=list)  # keywords
+    entities: list[str] = Field(default_factory=list)  # entities
     context_type: ContextType  # context type
     confidence: int = Field(default=0)  # confidence (0-10)
     importance: int = Field(default=0)  # importance (0-10)
-    agent_commentary: Optional[str] = None  # agent's subjective commentary on this event
+    agent_commentary: str | None = None  # agent's subjective commentary on this event
 
     @field_validator("confidence", "importance", mode="before")
     @classmethod
@@ -87,12 +86,12 @@ class ExtractedData(BaseModel):
             return 0
         return max(0, min(10, v))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert model to dictionary"""
         return self.model_dump(exclude_none=True)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ExtractedData":
+    def from_dict(cls, data: dict[str, Any]) -> "ExtractedData":
         """Create model from dictionary"""
         return cls.model_validate(data)
 
@@ -115,24 +114,24 @@ class ContextProperties(BaseModel):
     merge_count: int = 0  # merge count
     duration_count: int = 1  # context duration count
     enable_merge: bool = False
-    last_call_time: Optional[datetime.datetime] = (
+    last_call_time: datetime.datetime | None = (
         None  # last call time, updated during online service calls
     )
     # position: Optional[Dict[str, Any]] = None # context position in original data
 
     # Document tracking fields
-    file_path: Optional[str] = None  # file path (empty for documents)
-    raw_type: Optional[str] = None  # raw type (e.g. 'vaults')
-    raw_id: Optional[str] = None  # raw ID (ID in vaults table)
+    file_path: str | None = None  # file path (empty for documents)
+    raw_type: str | None = None  # raw type (e.g. 'vaults')
+    raw_id: str | None = None  # raw ID (ID in vaults table)
 
     # Multi-user support fields
-    user_id: Optional[str] = None  # User identifier
-    device_id: Optional[str] = None  # Device identifier
-    agent_id: Optional[str] = None  # Agent identifier
+    user_id: str | None = None  # User identifier
+    device_id: str | None = None  # Device identifier
+    agent_id: str | None = None  # Agent identifier
 
     # Hierarchy indexing fields (event type only, for time-based hierarchical summaries)
     hierarchy_level: int = 0  # 0=original, 1=daily summary, 2=weekly summary, 3=monthly summary
-    refs: Dict[str, List[str]] = Field(default_factory=dict)
+    refs: dict[str, list[str]] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -155,8 +154,8 @@ class Vectorize(BaseModel):
     Uses Ark API content parts format as unified internal representation.
     """
 
-    input: List[Dict[str, Any]] = Field(default_factory=list)
-    vector: Optional[List[float]] = None
+    input: list[dict[str, Any]] = Field(default_factory=list)
+    vector: list[float] | None = None
     content_format: ContentFormat = ContentFormat.TEXT
 
     def get_modality_string(self) -> str:
@@ -166,7 +165,7 @@ class Vectorize(BaseModel):
         Falls back to "text" when no content is present.
         """
         types = {item.get("type") for item in self.input}
-        parts: List[str] = []
+        parts: list[str] = []
         if "text" in types:
             parts.append("text")
         if "image_url" in types:
@@ -175,13 +174,13 @@ class Vectorize(BaseModel):
             parts.append("video")
         return " and ".join(parts) if parts else "text"
 
-    def build_ark_input(self) -> List[Dict[str, Any]]:
+    def build_ark_input(self) -> list[dict[str, Any]]:
         """Build the input list for the Ark multimodal embedding API.
 
         Local file paths in image_url/video_url items are converted to
         base64 data URIs since remote APIs cannot access local files.
         """
-        result: List[Dict[str, Any]] = []
+        result: list[dict[str, Any]] = []
         for item in self.input:
             item_type = item.get("type")
             if item_type == "image_url":
@@ -201,7 +200,7 @@ class Vectorize(BaseModel):
                 result.append(item)
         return result
 
-    def get_text(self) -> Optional[str]:
+    def get_text(self) -> str | None:
         """Extract text content from input items. Returns concatenated text or None."""
         texts = [item["text"] for item in self.input if item.get("type") == "text"]
         return "\n".join(texts) if texts else None
@@ -216,7 +215,7 @@ class ProcessedContext(BaseModel):
     properties: ContextProperties
     extracted_data: ExtractedData
     vectorize: Vectorize
-    metadata: Optional[Dict[str, Any]] = Field(
+    metadata: dict[str, Any] | None = Field(
         default_factory=dict
     )  # metadata for storing structured entity information
 
@@ -258,7 +257,7 @@ class ProcessedContext(BaseModel):
 
         return "\n".join(parts)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert model to dictionary"""
         return self.model_dump(exclude_none=True)
 
@@ -267,7 +266,7 @@ class ProcessedContext(BaseModel):
         return self.model_dump_json(exclude_none=True)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProcessedContext":
+    def from_dict(cls, data: dict[str, Any]) -> "ProcessedContext":
         """Create model from dictionary"""
         return cls.model_validate(data)
 
@@ -286,9 +285,9 @@ class RawContextModel(BaseModel):
     content_format: str
     source: str
     create_time: str
-    content_path: Optional[str] = None
-    content_text: Optional[str] = None
-    additional_info: Optional[Dict[str, Any]] = None
+    content_path: str | None = None
+    content_text: str | None = None
+    additional_info: dict[str, Any] | None = None
 
     @classmethod
     def from_raw_context_properties(
@@ -322,34 +321,34 @@ class ProcessedContextModel(BaseModel):
     """
 
     id: str
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    keywords: List[str] = Field(default_factory=list)
-    entities: List[str] = Field(default_factory=list)
+    title: str | None = None
+    summary: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
     context_type: str
     confidence: int
     importance: int
-    agent_commentary: Optional[str] = None
+    agent_commentary: str | None = None
     is_processed: bool
     call_count: int
     enable_merge: bool = False
     merge_count: int  # merge count
-    last_call_time: Optional[str] = None
+    last_call_time: str | None = None
     create_time: str
     update_time: str
     event_time_start: str
     event_time_end: str
-    embedding: Optional[List[float]] = None
-    raw_contexts: List["RawContextModel"] = Field(default_factory=list)
+    embedding: list[float] | None = None
+    raw_contexts: list["RawContextModel"] = Field(default_factory=list)
     duration_count: int  # context duration count
-    metadata: Optional[Dict[str, Any]] = None  # metadata information
+    metadata: dict[str, Any] | None = None  # metadata information
     # Multi-user support fields
-    user_id: Optional[str] = None  # User identifier
-    device_id: Optional[str] = None  # Device identifier
-    agent_id: Optional[str] = None  # Agent identifier
+    user_id: str | None = None  # User identifier
+    device_id: str | None = None  # Device identifier
+    agent_id: str | None = None  # Agent identifier
     # Hierarchy fields
     hierarchy_level: int = 0
-    refs: Dict[str, List[str]] = Field(default_factory=dict)
+    refs: dict[str, list[str]] = Field(default_factory=dict)
 
     @classmethod
     def from_processed_context(
@@ -404,7 +403,7 @@ class ProcessedContextModel(BaseModel):
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProcessedContextModel":
+    def from_dict(cls, data: dict[str, Any]) -> "ProcessedContextModel":
         """Create model from dictionary"""
         return cls.model_validate(data)
 
@@ -418,19 +417,19 @@ class ProfileData(BaseModel):
         "default"  # Composite primary key part 3 (different agents can have different profiles)
     )
     factual_profile: str  # Factual profile text (LLM-merged result)
-    behavioral_profile: Optional[str] = None  # Behavioral profile text
-    entities: List[str] = Field(default_factory=list)
+    behavioral_profile: str | None = None  # Behavioral profile text
+    entities: list[str] = Field(default_factory=list)
     importance: int = 0
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    metadata: dict[str, Any] | None = Field(default_factory=dict)
     created_at: datetime.datetime = Field(default_factory=_tz_now)
     updated_at: datetime.datetime = Field(default_factory=_tz_now)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary"""
         return self.model_dump(exclude_none=True)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProfileData":
+    def from_dict(cls, data: dict[str, Any]) -> "ProfileData":
         """Create model from dictionary"""
         return cls.model_validate(data)
 

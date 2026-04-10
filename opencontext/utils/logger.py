@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,7 @@ Log manager for configuring and managing logging
 
 import os
 import sys
-from typing import Any, Dict
+from typing import Any
 
 from loguru import logger
 
@@ -38,7 +37,7 @@ class LogManager:
         # Remove default handlers
         logger.remove()
 
-    def configure(self, config: Dict[str, Any]) -> None:
+    def configure(self, config: dict[str, Any]) -> None:
         """
         Configure logging
 
@@ -73,7 +72,7 @@ class LogManager:
             dated_log_path = os.path.join(log_dir, f"{name_without_ext}_{{time:YYYY-MM-DD}}{ext}")
 
             file_format = (
-                "{time:YYYY-MM-DD HH:mm:ss} | {level}" " | {extra[request_id]:>8} | {message}"
+                "{time:YYYY-MM-DD HH:mm:ss} | {level} | {extra[request_id]:>8} | {message}"
             )
             rotation = "100 MB"
             retention = 2  # Keep only the 2 most recent files

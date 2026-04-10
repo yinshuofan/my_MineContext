@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,9 +9,8 @@ Refactored for better separation of concerns and maintainability.
 """
 
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from opencontext.config.config_manager import ConfigManager
 from opencontext.config.global_config import GlobalConfig
 from opencontext.llm.global_embedding_client import GlobalEmbeddingClient
 from opencontext.llm.global_vlm_client import GlobalVLMClient
@@ -39,10 +37,10 @@ class OpenContext:
 
         # Helper classes
         self.component_initializer = ComponentInitializer()
-        self.context_operations: Optional[ContextOperations] = None
+        self.context_operations: ContextOperations | None = None
 
         # Web server state
-        self.web_server: Optional[threading.Thread] = None
+        self.web_server: threading.Thread | None = None
         self.web_server_running: bool = False
 
         logger.info("OpenContext initialization completed")
@@ -80,8 +78,7 @@ class OpenContext:
                 )
                 init_redis_cache(redis_cfg)
                 logger.info(
-                    f"Redis singleton configured: "
-                    f"{redis_cfg.host}:{redis_cfg.port}/{redis_cfg.db}"
+                    f"Redis singleton configured: {redis_cfg.host}:{redis_cfg.port}/{redis_cfg.db}"
                 )
 
             self.context_operations = ContextOperations()
@@ -115,7 +112,7 @@ class OpenContext:
         except Exception as e:
             logger.error(f"Failed to initialize monitoring system: {e}")
 
-    async def _handle_captured_context(self, contexts: List[RawContextProperties]) -> bool:
+    async def _handle_captured_context(self, contexts: list[RawContextProperties]) -> bool:
         """
         Handle batch processing and storage of captured context data.
         """
@@ -130,7 +127,7 @@ class OpenContext:
             logger.error(f"Error processing captured contexts: {e}")
             return False
 
-    async def _handle_processed_context(self, contexts: List[ProcessedContext]) -> bool:
+    async def _handle_processed_context(self, contexts: list[ProcessedContext]) -> bool:
         """Store processed contexts, routing by type per CONTEXT_STORAGE_BACKENDS."""
         if not contexts:
             return False
@@ -218,9 +215,9 @@ class OpenContext:
 
     async def _invalidate_user_cache(
         self,
-        user_id: Optional[str],
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        user_id: str | None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> None:
         """Invalidate the cache snapshot for a user.
 
@@ -345,8 +342,8 @@ class OpenContext:
 
     # Delegate context operations to ContextOperations helper
     async def get_all_contexts(
-        self, limit: int = 10, offset: int = 0, filter_criteria: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, List[ProcessedContext]]:
+        self, limit: int = 10, offset: int = 0, filter_criteria: dict[str, Any] | None = None
+    ) -> dict[str, list[ProcessedContext]]:
         """Get all processed contexts."""
         if not self.context_operations:
             logger.warning("Context operations not initialized.")
@@ -355,7 +352,7 @@ class OpenContext:
             limit, offset, filter_criteria, need_vector=False
         )
 
-    async def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]:
+    async def get_context(self, doc_id: str, context_type: str) -> ProcessedContext | None:
         """Get a single processed context."""
         if not self.context_operations:
             logger.warning("Context operations not initialized.")
@@ -376,7 +373,7 @@ class OpenContext:
             return False
         return await self.context_operations.delete_context(doc_id, context_type)
 
-    async def add_document(self, file_path: str) -> Optional[str]:
+    async def add_document(self, file_path: str) -> str | None:
         """Add a document to the system."""
         if not self.context_operations:
             logger.warning("Context operations not initialized.")
@@ -387,13 +384,13 @@ class OpenContext:
         self,
         query: str,
         top_k: int = 10,
-        context_types: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        score_threshold: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+        context_types: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        score_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
         """Perform vector search without LLM processing.
 
         Args:
@@ -418,15 +415,15 @@ class OpenContext:
             score_threshold=score_threshold,
         )
 
-    def get_context_types(self) -> List[str]:
+    def get_context_types(self) -> list[str]:
         """Get all available context types."""
         if not self.context_operations:
             raise RuntimeError("Context operations not initialized")
         return self.context_operations.get_context_types()
 
-    async def check_components_health(self) -> Dict[str, Any]:
+    async def check_components_health(self) -> dict[str, Any]:
         """Check health status of all components including actual connectivity."""
-        health: Dict[str, Any] = {
+        health: dict[str, Any] = {
             "config": GlobalConfig.get_instance().is_initialized(),
             "storage": GlobalStorage.get_instance().get_storage() is not None,
             "llm": GlobalEmbeddingClient.get_instance().is_initialized(),

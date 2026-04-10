@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Memory Compression Periodic Task
@@ -9,7 +8,7 @@ and improve retrieval performance.
 """
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
 from opencontext.scheduler.base import TriggerMode
@@ -83,8 +82,7 @@ class MemoryCompressionTask(BasePeriodicTask):
         agent_id = context.agent_id
 
         logger.info(
-            f"Starting memory compression for user={user_id}, "
-            f"device={device_id}, agent={agent_id}"
+            f"Starting memory compression for user={user_id}, device={device_id}, agent={agent_id}"
         )
 
         try:
@@ -110,9 +108,7 @@ class MemoryCompressionTask(BasePeriodicTask):
 
             execution_time = int((time.time() - start_time) * 1000)
 
-            logger.info(
-                f"Memory compression completed for user={user_id} " f"in {execution_time}ms"
-            )
+            logger.info(f"Memory compression completed for user={user_id} in {execution_time}ms")
 
             return TaskResult.ok(
                 message=f"Compression completed for user {user_id}",
@@ -141,7 +137,7 @@ def create_compression_handler(context_merger: Any):
     """
     task = MemoryCompressionTask(context_merger=context_merger)
 
-    async def handler(user_id: str, device_id: Optional[str], agent_id: Optional[str]) -> bool:
+    async def handler(user_id: str, device_id: str | None, agent_id: str | None) -> bool:
         context = TaskContext(
             user_id=user_id,
             device_id=device_id,

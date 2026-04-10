@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,7 +8,6 @@ Processor component factory implementing the Factory design pattern.
 Provides centralized creation and management of processor instances.
 """
 
-from typing import Dict, List, Optional, Type
 
 from opencontext.config import GlobalConfig
 from opencontext.context_processing.processor.agent_memory_processor import AgentMemoryProcessor
@@ -36,7 +34,7 @@ class ProcessorFactory:
 
     def __init__(self):
         """Initialize the processor factory with built-in processor types."""
-        self._processor_registry: Dict[str, Type[IContextProcessor]] = {}
+        self._processor_registry: dict[str, type[IContextProcessor]] = {}
         self._register_built_in_processors()
 
     def _register_built_in_processors(self) -> None:
@@ -53,7 +51,7 @@ class ProcessorFactory:
         logger.info(f"Registered {len(built_in_processors)} built-in processor types")
 
     def register_processor_type(
-        self, type_name: str, processor_class: Type[IContextProcessor]
+        self, type_name: str, processor_class: type[IContextProcessor]
     ) -> bool:
         """
         Register a new processor type.
@@ -78,7 +76,7 @@ class ProcessorFactory:
         logger.debug(f"Registered processor type '{type_name}' -> {processor_class.__name__}")
         return True
 
-    def get_registered_types(self) -> List[str]:
+    def get_registered_types(self) -> list[str]:
         """
         Get all registered processor type names.
 
@@ -99,7 +97,7 @@ class ProcessorFactory:
         """
         return type_name in self._processor_registry
 
-    def create_processor(self, type_name: str) -> Optional[IContextProcessor]:
+    def create_processor(self, type_name: str) -> IContextProcessor | None:
         """
         Create a processor instance.
 
@@ -129,7 +127,7 @@ class ProcessorFactory:
             logger.exception(f"Error creating processor '{type_name}': {e}")
             return None
 
-    def create_processor_with_validation(self, type_name: str) -> Optional[IContextProcessor]:
+    def create_processor_with_validation(self, type_name: str) -> IContextProcessor | None:
         """
         Create processor with configuration validation.
 

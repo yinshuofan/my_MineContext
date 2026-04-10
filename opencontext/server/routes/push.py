@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -12,13 +11,12 @@ replacing the automatic capture/pull mechanisms with a push-based architecture.
 
 import asyncio
 import base64
-import datetime
 import json
 import mimetypes
 import os
 import tempfile
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -43,9 +41,9 @@ router = APIRouter(prefix="/api/push", tags=["push"])
 
 async def _schedule_user_task(
     task_type: str,
-    user_id: Optional[str],
-    device_id: Optional[str] = None,
-    agent_id: Optional[str] = None,
+    user_id: str | None,
+    device_id: str | None = None,
+    agent_id: str | None = None,
 ) -> None:
     """Schedule a user task (compression, hierarchy summary, etc.) without failing the request."""
     if not user_id:
@@ -74,22 +72,22 @@ async def _schedule_user_task(
 class PushChatRequest(BaseModel):
     """Unified chat push request"""
 
-    messages: List[Dict[str, Any]] = Field(
+    messages: list[dict[str, Any]] = Field(
         ...,
         min_length=1,
         max_length=100,
         description="Chat messages (OpenAI format: [{role, content}])",
     )
-    user_id: Optional[str] = Field(
+    user_id: str | None = Field(
         None, min_length=1, max_length=255, description="User identifier"
     )
-    device_id: Optional[str] = Field(
+    device_id: str | None = Field(
         None, min_length=1, max_length=100, description="Device identifier"
     )
-    agent_id: Optional[str] = Field(
+    agent_id: str | None = Field(
         None, min_length=1, max_length=100, description="Agent identifier"
     )
-    processors: List[str] = Field(
+    processors: list[str] = Field(
         default=["user_memory"],
         description="Processors to run: 'user_memory', 'agent_memory', etc.",
     )
@@ -99,17 +97,17 @@ class PushDocumentRequest(BaseModel):
     """Push a document"""
 
     # Either provide file_path (local) or base64_data (remote upload)
-    file_path: Optional[str] = Field(None, description="Local file path")
-    base64_data: Optional[str] = Field(None, description="Base64 encoded document data")
-    filename: Optional[str] = Field(None, description="Filename for base64 uploads")
-    content_type: Optional[str] = Field(None, description="MIME type of the document")
-    user_id: Optional[str] = Field(
+    file_path: str | None = Field(None, description="Local file path")
+    base64_data: str | None = Field(None, description="Base64 encoded document data")
+    filename: str | None = Field(None, description="Filename for base64 uploads")
+    content_type: str | None = Field(None, description="MIME type of the document")
+    user_id: str | None = Field(
         None, min_length=1, max_length=255, description="User identifier"
     )
-    device_id: Optional[str] = Field(
+    device_id: str | None = Field(
         None, min_length=1, max_length=100, description="Device identifier"
     )
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    metadata: dict[str, Any] | None = Field(None, description="Additional metadata")
 
 
 # ============================================================================
@@ -167,7 +165,7 @@ _MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 _MEDIA_UPLOAD_DIR = "./uploads/media"
 
 
-def _detect_media_ext_from_data_uri(data_uri: str) -> Optional[str]:
+def _detect_media_ext_from_data_uri(data_uri: str) -> str | None:
     """Extract file extension from a data URI (e.g., 'data:image/jpeg;base64,...' -> 'jpeg')."""
     if not data_uri.startswith("data:"):
         return None
@@ -246,8 +244,8 @@ def _save_media_base64(data_uri: str, media_type: str) -> str:
 
 
 async def _process_multimodal_messages(
-    messages: List[Dict[str, Any]], user_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
+    messages: list[dict[str, Any]], user_id: str | None = None
+) -> list[dict[str, Any]]:
     """
     Process multimodal messages: upload base64 media to object storage (or save locally).
 
@@ -558,7 +556,7 @@ async def push_document(
             return convert_resp(code=400, status=400, message=err_msg)
 
         return convert_resp(message="Document pushed successfully", data={"path": file_path})
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("Push document timed out after 60s")
         return convert_resp(code=504, status=504, message="Request timed out")
     except Exception as e:
@@ -569,8 +567,8 @@ async def push_document(
 @router.post("/document/upload", response_class=JSONResponse)
 async def upload_document_file(
     file: UploadFile = File(...),
-    user_id: Optional[str] = Form(None),
-    device_id: Optional[str] = Form(None),
+    user_id: str | None = Form(None),
+    device_id: str | None = Form(None),
     opencontext: OpenContext = Depends(get_context_lab),
     _auth: str = auth_dependency,
 ):

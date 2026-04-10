@@ -9,7 +9,8 @@ Follows the StreamInterruptManager pattern.
 """
 
 import asyncio
-from typing import Callable, Coroutine, Optional
+from collections.abc import Callable, Coroutine
+from typing import Optional
 
 from opencontext.storage.redis_cache import get_redis_cache
 from opencontext.utils.logging_utils import get_logger
@@ -25,8 +26,8 @@ class ConfigReloadManager:
     """Listens for config reload signals via Redis Pub/Sub and executes a reload callback."""
 
     def __init__(self):
-        self._subscriber_task: Optional[asyncio.Task] = None
-        self._reload_fn: Optional[Callable[[], Coroutine]] = None
+        self._subscriber_task: asyncio.Task | None = None
+        self._reload_fn: Callable[[], Coroutine] | None = None
 
     async def start(self, reload_fn: Callable[[], Coroutine]) -> None:
         """Start the Pub/Sub subscriber background task."""

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,7 +8,7 @@
 
 import functools
 import time
-from typing import Any, Callable, Optional
+from collections.abc import Callable
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -22,7 +21,7 @@ class MetricsCollector:
     """指标收集器工具类"""
 
     @staticmethod
-    def timing_decorator(processor_name: str, operation: str, context_type: Optional[str] = None):
+    def timing_decorator(processor_name: str, operation: str, context_type: str | None = None):
         """
         时间测量装饰器
 
@@ -122,7 +121,7 @@ class MetricsCollector:
 
     @staticmethod
     def manual_timing_context(
-        processor_name: str, operation: str, context_type: Optional[str] = None
+        processor_name: str, operation: str, context_type: str | None = None
     ):
         """
         手动时间测量上下文管理器
@@ -148,7 +147,7 @@ class MetricsCollector:
 class TimingContext:
     """处理时间测量上下文管理器"""
 
-    def __init__(self, processor_name: str, operation: str, context_type: Optional[str] = None):
+    def __init__(self, processor_name: str, operation: str, context_type: str | None = None):
         self.processor_name = processor_name
         self.operation = operation
         self.context_type = context_type

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Node Base Class
@@ -8,22 +7,20 @@ Base class definition for all processing nodes
 
 import asyncio
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Any, Dict, Optional
 
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import now as tz_now
 
 from ..core.state import WorkflowState
 from ..core.streaming import StreamingManager
-from ..models.enums import EventType, NodeType, WorkflowStage
+from ..models.enums import EventType, NodeType
 from ..models.events import StreamEvent
 
 
 class BaseNode(ABC):
     """Node base class"""
 
-    def __init__(self, node_type: NodeType, streaming_manager: Optional[StreamingManager] = None):
+    def __init__(self, node_type: NodeType, streaming_manager: StreamingManager | None = None):
         self.node_type = node_type
         self.streaming_manager = streaming_manager
         self.logger = get_logger(self.__class__.__name__)

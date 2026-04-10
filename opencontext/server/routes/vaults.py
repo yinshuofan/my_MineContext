@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,12 +8,7 @@ Vaults document management API routes
 Focuses on document CRUD operations, AI chat functionality handled by advanced_chat
 """
 
-import asyncio
-import json
-import os
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -38,11 +32,11 @@ templates = Jinja2Templates(directory=templates_path)
 class VaultDocument(BaseModel):
     """Vault document model"""
 
-    id: Optional[int] = None
+    id: int | None = None
     title: str
     content: str
-    summary: Optional[str] = None
-    tags: Optional[str] = None
+    summary: str | None = None
+    tags: str | None = None
     document_type: str = VaultType.NOTE.value
 
 

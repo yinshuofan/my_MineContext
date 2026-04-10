@@ -1,6 +1,5 @@
-import datetime
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
@@ -44,7 +43,7 @@ class TextChatProcessor(BaseContextProcessor):
 
     async def process(
         self, context: RawContextProperties, prior_results=None
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         """Process chat context asynchronously."""
         logger.debug(
             f"[text_chat_processor] Processing: user={context.user_id}, agent={context.agent_id}, source={context.source}, content_length={len(context.content_text or '')}"
@@ -56,7 +55,7 @@ class TextChatProcessor(BaseContextProcessor):
             logger.error(f"Failed to process chat context: {e}")
             return []
 
-    async def _process_async(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
+    async def _process_async(self, raw_context: RawContextProperties) -> list[ProcessedContext]:
         # 1. 获取 Prompt
         prompt_group = get_prompt_group("processing.extraction.chat_analyze")
         if not prompt_group:
@@ -122,7 +121,7 @@ class TextChatProcessor(BaseContextProcessor):
         return processed_list
 
     @staticmethod
-    def _build_media_index(chat_history_str: str) -> List[Dict[str, str]]:
+    def _build_media_index(chat_history_str: str) -> list[dict[str, str]]:
         """
         Build an ordered index of all media items across all messages.
 
@@ -153,8 +152,8 @@ class TextChatProcessor(BaseContextProcessor):
 
     @staticmethod
     def _build_multimodal_llm_messages(
-        prompt_group: Dict[str, str], chat_history_str: str
-    ) -> List[Dict[str, Any]]:
+        prompt_group: dict[str, str], chat_history_str: str
+    ) -> list[dict[str, Any]]:
         """
         Build LLM messages for multimodal chat analysis.
 
@@ -165,9 +164,8 @@ class TextChatProcessor(BaseContextProcessor):
         Local file paths in media URLs are converted to base64 data URIs so the
         remote LLM API can access the content.
         """
-        from opencontext.models.context import _file_to_data_uri, _is_local_path
 
-        llm_messages: List[Dict[str, Any]] = [
+        llm_messages: list[dict[str, Any]] = [
             {"role": "system", "content": prompt_group.get("system", "")},
         ]
 
@@ -195,11 +193,11 @@ class TextChatProcessor(BaseContextProcessor):
 
     def _build_processed_context(
         self,
-        memory: Dict,
+        memory: dict,
         raw_context: RawContextProperties,
-        media_index: Optional[List[Dict[str, str]]] = None,
-        batch_id: Optional[str] = None,
-    ) -> Optional[ProcessedContext]:
+        media_index: list[dict[str, str]] | None = None,
+        batch_id: str | None = None,
+    ) -> ProcessedContext | None:
         """Build ProcessedContext for a single memory with input validation.
 
         Args:
@@ -375,7 +373,7 @@ class TextChatProcessor(BaseContextProcessor):
         )
 
 
-def _convert_local_paths_in_content(content_parts: List[Dict]) -> List[Dict]:
+def _convert_local_paths_in_content(content_parts: list[dict]) -> list[dict]:
     """Convert local file paths in multimodal content parts to base64 data URIs."""
     from opencontext.models.context import _file_to_data_uri, _is_local_path
 

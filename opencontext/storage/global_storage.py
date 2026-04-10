@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,6 @@ Provides global access to UnifiedStorage instance
 """
 
 import threading
-from typing import List, Optional
 
 from opencontext.models.context import ProcessedContext
 from opencontext.models.enums import ContextType
@@ -45,7 +43,7 @@ class GlobalStorage:
         if not self._initialized:
             with self._lock:
                 if not self._initialized:
-                    self._storage: Optional[UnifiedStorage] = None
+                    self._storage: UnifiedStorage | None = None
                     self._auto_initialized = False
                     self._init_attempts = 0
                     GlobalStorage._initialized = True
@@ -129,7 +127,7 @@ class GlobalStorage:
         self._auto_initialized = False
         self._init_attempts = 0
 
-    def get_storage(self) -> Optional[UnifiedStorage]:
+    def get_storage(self) -> UnifiedStorage | None:
         """
         Get storage instance
 
@@ -155,7 +153,7 @@ class GlobalStorage:
             raise RuntimeError("Storage not initialized")
         return await self._storage.upsert_processed_context(context)
 
-    async def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> bool:
+    async def batch_upsert_processed_context(self, contexts: list[ProcessedContext]) -> bool:
         """Batch store processed contexts"""
         if not self._storage:
             raise RuntimeError("Storage not initialized")
@@ -163,7 +161,7 @@ class GlobalStorage:
 
     async def get_processed_context(
         self, doc_id: str, context_type: ContextType
-    ) -> Optional[ProcessedContext]:
+    ) -> ProcessedContext | None:
         """Get processed context"""
         if not self._storage:
             raise RuntimeError("Storage not initialized")
@@ -182,6 +180,6 @@ def get_global_storage() -> GlobalStorage:
     return GlobalStorage.get_instance()
 
 
-def get_storage() -> Optional[UnifiedStorage]:
+def get_storage() -> UnifiedStorage | None:
     """Convenience function to get storage instance"""
     return GlobalStorage.get_instance().get_storage()

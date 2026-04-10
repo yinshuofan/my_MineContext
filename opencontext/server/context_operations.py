@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,8 +8,7 @@ Context search operations for OpenContext.
 Separated from main OpenContext class for better maintainability.
 """
 
-import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.models.context import ProcessedContext, RawContextProperties, Vectorize
 from opencontext.models.enums import ContentFormat, ContextSource, ContextType
@@ -33,9 +31,9 @@ class ContextOperations:
         self,
         limit: int = 10,
         offset: int = 0,
-        filter_criteria: Optional[Dict[str, Any]] = None,
+        filter_criteria: dict[str, Any] | None = None,
         need_vector: bool = False,
-    ) -> Dict[str, List[ProcessedContext]]:
+    ) -> dict[str, list[ProcessedContext]]:
         """Get all processed contexts with pagination and filtering."""
         limit = min(limit, 1000)  # Prevent excessive memory usage
         if self.storage:
@@ -45,7 +43,7 @@ class ContextOperations:
         logger.warning("Storage is not initialized.")
         return {}
 
-    async def get_context(self, doc_id: str, context_type: str) -> Optional[ProcessedContext]:
+    async def get_context(self, doc_id: str, context_type: str) -> ProcessedContext | None:
         """Get a single processed context by ID and type."""
         if self.storage:
             return await self.storage.get_processed_context(doc_id, context_type)
@@ -66,7 +64,7 @@ class ContextOperations:
         logger.warning("Storage is not initialized.")
         return False
 
-    async def add_document(self, file_path: str, context_processor_callback) -> Optional[str]:
+    async def add_document(self, file_path: str, context_processor_callback) -> str | None:
         """Add a document to the system."""
         import uuid
         from pathlib import Path
@@ -112,13 +110,13 @@ class ContextOperations:
         self,
         query: str,
         top_k: int = 10,
-        context_types: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        score_threshold: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+        context_types: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        score_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Perform vector search without LLM processing.
 
@@ -184,7 +182,7 @@ class ContextOperations:
             logger.exception(f"Vector search failed: {e}")
             raise RuntimeError(f"Vector search failed: {str(e)}") from e
 
-    def get_context_types(self) -> List[str]:
+    def get_context_types(self) -> list[str]:
         """
         Get all available context types.
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -18,9 +17,8 @@ import datetime
 import json
 import math
 from datetime import timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from opencontext.config import GlobalConfig
 from opencontext.context_processing.merger.merge_strategies import (
     ContextTypeAwareStrategy,
     StrategyFactory,
@@ -51,7 +49,7 @@ class ContextMerger(BaseContextProcessor):
         self._statistics = {"merges_attempted": 0, "merges_succeeded": 0, "errors": 0}
 
         # Initialize strategy management (only knowledge strategy)
-        self.strategies: Dict[ContextType, ContextTypeAwareStrategy] = {}
+        self.strategies: dict[ContextType, ContextTypeAwareStrategy] = {}
         self._initialize_strategies()
 
         # Intelligent merging switch
@@ -81,7 +79,7 @@ class ContextMerger(BaseContextProcessor):
 
         logger.info(f"Initialized {len(self.strategies)} context merge strategies")
 
-    async def process(self, context: ProcessedContext) -> List[ProcessedContext]:
+    async def process(self, context: ProcessedContext) -> list[ProcessedContext]:
         return []
 
     def can_process(self, context: ProcessedContext) -> bool:
@@ -91,7 +89,7 @@ class ContextMerger(BaseContextProcessor):
             and context.extracted_data.context_type == ContextType.KNOWLEDGE
         )
 
-    async def find_merge_target(self, context: ProcessedContext) -> Optional[ProcessedContext]:
+    async def find_merge_target(self, context: ProcessedContext) -> ProcessedContext | None:
         """
         Find merge target for knowledge contexts using intelligent strategies.
         Only processes KNOWLEDGE type — other types skip merging entirely.
@@ -119,7 +117,7 @@ class ContextMerger(BaseContextProcessor):
 
     def _find_intelligent_merge_target(
         self, context: ProcessedContext
-    ) -> Optional[ProcessedContext]:
+    ) -> ProcessedContext | None:
         """Find merge target using intelligent strategies"""
         context_type = context.extracted_data.context_type
         strategy = self.strategies.get(context_type)
@@ -157,7 +155,7 @@ class ContextMerger(BaseContextProcessor):
 
     def _get_merge_candidates(
         self, context: ProcessedContext, max_candidates: int = 10
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         """Get merge candidate contexts"""
         try:
             backend = self.storage._get_or_create_backend(context.extracted_data.context_type.value)
@@ -177,14 +175,14 @@ class ContextMerger(BaseContextProcessor):
             logger.error(f"Error getting merge candidates: {e}", exc_info=True)
             return []
 
-    def _find_legacy_merge_target(self, context: ProcessedContext) -> Optional[ProcessedContext]:
+    def _find_legacy_merge_target(self, context: ProcessedContext) -> ProcessedContext | None:
         """Find merge target using legacy similarity logic"""
         sim_target, _ = self._find_similarity_merge_target(context)
         return sim_target
 
     def _find_similarity_merge_target(
         self, context: ProcessedContext
-    ) -> tuple[Optional[ProcessedContext], float]:
+    ) -> tuple[ProcessedContext | None, float]:
         try:
             backend = self.storage._get_or_create_backend(context.extracted_data.context_type.value)
             similar_results = backend.query(
@@ -208,8 +206,8 @@ class ContextMerger(BaseContextProcessor):
         return None, 0.0
 
     async def merge_multiple(
-        self, target: ProcessedContext, sources: List[ProcessedContext]
-    ) -> Optional[ProcessedContext]:
+        self, target: ProcessedContext, sources: list[ProcessedContext]
+    ) -> ProcessedContext | None:
         """
         Merges multiple source contexts into a target context.
         """
@@ -243,8 +241,8 @@ class ContextMerger(BaseContextProcessor):
             return None
 
     async def _merge_with_intelligent_strategy(
-        self, target: ProcessedContext, sources: List[ProcessedContext]
-    ) -> Optional[ProcessedContext]:
+        self, target: ProcessedContext, sources: list[ProcessedContext]
+    ) -> ProcessedContext | None:
         """Merge using intelligent strategies"""
         context_type = target.extracted_data.context_type
         strategy = self.strategies.get(context_type)
@@ -271,8 +269,8 @@ class ContextMerger(BaseContextProcessor):
             return await self._merge_with_llm(target, sources)
 
     async def _merge_with_llm(
-        self, target: ProcessedContext, sources: List[ProcessedContext]
-    ) -> Optional[ProcessedContext]:
+        self, target: ProcessedContext, sources: list[ProcessedContext]
+    ) -> ProcessedContext | None:
         """
         Uses an LLM to merge a list of source contexts into a target context.
         """
@@ -489,8 +487,8 @@ class ContextMerger(BaseContextProcessor):
     async def periodic_memory_compression_for_user(
         self,
         user_id: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         interval_seconds: int = 1800,
     ):
         """
@@ -588,8 +586,8 @@ class ContextMerger(BaseContextProcessor):
             logger.exception(f"Error during periodic memory compression for user={user_id}: {e}")
 
     def _group_contexts_by_similarity(
-        self, contexts: List[ProcessedContext], threshold: float
-    ) -> List[List[ProcessedContext]]:
+        self, contexts: list[ProcessedContext], threshold: float
+    ) -> list[list[ProcessedContext]]:
         """Greedily groups contexts by similarity based on their embeddings."""
         if not contexts:
             return []
@@ -616,7 +614,7 @@ class ContextMerger(BaseContextProcessor):
 
         return groups
 
-    def _calculate_similarity(self, emb1: List[float], emb2: List[float]) -> float:
+    def _calculate_similarity(self, emb1: list[float], emb2: list[float]) -> float:
         """Calculates cosine similarity between two embeddings."""
         if emb1 is None or emb2 is None or not emb1 or not emb2:
             return 0.0
@@ -659,12 +657,12 @@ class ContextMerger(BaseContextProcessor):
 
     async def _cleanup_contexts_by_type(
         self, context_type: ContextType, strategy: ContextTypeAwareStrategy
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Clean up contexts by type using cursor-based scrolling."""
         stats = {"checked": 0, "cleaned": 0, "errors": 0}
 
         try:
-            ids_to_delete: List[str] = []
+            ids_to_delete: list[str] = []
 
             async for context in self.storage.scroll_processed_contexts(
                 context_types=[context_type.value],
@@ -708,7 +706,7 @@ class ContextMerger(BaseContextProcessor):
 
         return stats
 
-    async def memory_reinforcement(self, context_ids: List[str]):
+    async def memory_reinforcement(self, context_ids: list[str]):
         """
         Memory reinforcement: reset forgetting state and boost importance.
         """
@@ -740,7 +738,7 @@ class ContextMerger(BaseContextProcessor):
             f"{reinforced_count}/{len(context_ids)} contexts reinforced"
         )
 
-    async def _find_context_by_id(self, context_id: str) -> Optional[ProcessedContext]:
+    async def _find_context_by_id(self, context_id: str) -> ProcessedContext | None:
         """Find a context by ID across all backends"""
         try:
             for context_type in ContextType:
@@ -763,7 +761,7 @@ class ContextMerger(BaseContextProcessor):
             logger.error(f"Error finding context {context_id}: {e}", exc_info=True)
             return None
 
-    def _apply_memory_reinforcement(self, context: ProcessedContext) -> Optional[ProcessedContext]:
+    def _apply_memory_reinforcement(self, context: ProcessedContext) -> ProcessedContext | None:
         """Apply memory reinforcement logic"""
         from datetime import datetime as dt
 
@@ -804,7 +802,7 @@ class ContextMerger(BaseContextProcessor):
             logger.error(f"Error applying memory reinforcement: {e}", exc_info=True)
             return None
 
-    def get_memory_statistics(self) -> Dict[str, Any]:
+    def get_memory_statistics(self) -> dict[str, Any]:
         """Get memory management statistics"""
         stats = {
             "merge_statistics": self._statistics,

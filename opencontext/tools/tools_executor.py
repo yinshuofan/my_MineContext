@@ -4,7 +4,7 @@
 import asyncio
 import json
 from difflib import get_close_matches
-from typing import Any, Dict, List
+from typing import Any
 
 from opencontext.tools.base import BaseTool
 from opencontext.tools.operation_tools import *
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 class ToolsExecutor:
     def __init__(self):
-        self._tools_map: Dict[str, BaseTool] = {
+        self._tools_map: dict[str, BaseTool] = {
             # Context retrieval tools (vector DB)
             DocumentRetrievalTool.get_name(): DocumentRetrievalTool(),
             KnowledgeRetrievalTool.get_name(): KnowledgeRetrievalTool(),
@@ -43,15 +43,14 @@ class ToolsExecutor:
         if not isinstance(tool_input, dict):
             return None, {
                 "error": (
-                    f"Tool parameter format error: expected dict, "
-                    f"got {type(tool_input).__name__}"
+                    f"Tool parameter format error: expected dict, got {type(tool_input).__name__}"
                 ),
                 "message": "Tool parameters must be in dictionary format",
                 "received_type": type(tool_input).__name__,
             }
         return tool_input, None
 
-    def _handle_unknown_tool(self, tool_name: str) -> Dict[str, Any]:
+    def _handle_unknown_tool(self, tool_name: str) -> dict[str, Any]:
         """Handle unknown tool call with suggestions."""
         available_tools = list(self._tools_map.keys())
         suggestions = get_close_matches(tool_name, available_tools, n=3, cutoff=0.6)
@@ -70,7 +69,7 @@ class ToolsExecutor:
             "suggestions": suggestions,
         }
 
-    async def run_async(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
+    async def run_async(self, tool_name: str, tool_input: dict[str, Any]) -> Any:
         if tool_name not in self._tools_map:
             return self._handle_unknown_tool(tool_name)
 
@@ -80,7 +79,7 @@ class ToolsExecutor:
             return error
         return await tool.execute(**tool_input)
 
-    async def batch_run_tools_async(self, tool_calls: List[Dict[str, Any]]) -> Any:
+    async def batch_run_tools_async(self, tool_calls: list[dict[str, Any]]) -> Any:
         results = []
         tool_call_info = []
         tasks = []

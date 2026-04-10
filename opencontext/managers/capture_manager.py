@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,8 +9,7 @@ Manages and coordinates context capture components with loose coupling.
 """
 
 import time
-from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 from opencontext.interfaces import ICaptureComponent
 from opencontext.models.context import RawContextProperties
@@ -30,17 +28,17 @@ class ContextCaptureManager:
     def __init__(self):
         """Initializes the context capture manager."""
         # Dictionary of registered capture components, with component name as key and component instance as value
-        self._components: Dict[str, ICaptureComponent] = {}
-        self._component_configs: Dict[str, Dict[str, Any]] = {}
+        self._components: dict[str, ICaptureComponent] = {}
+        self._component_configs: dict[str, dict[str, Any]] = {}
 
         # Set of running components
-        self._running_components: Set[str] = set()
+        self._running_components: set[str] = set()
 
         # Callback function, called when new data is captured
-        self._callback: Optional[callable] = None
+        self._callback: callable | None = None
 
         # Statistics
-        self._statistics: Dict[str, Any] = {
+        self._statistics: dict[str, Any] = {
             "total_captures": 0,
             "total_contexts_captured": 0,
             "components": {},
@@ -97,7 +95,7 @@ class ContextCaptureManager:
         logger.info(f"Component '{component_name}' unregistered successfully")
         return True
 
-    def initialize_component(self, component_name: str, config: Dict[str, Any]) -> bool:
+    def initialize_component(self, component_name: str, config: dict[str, Any]) -> bool:
         """
         Initialize a capture component.
 
@@ -205,7 +203,7 @@ class ContextCaptureManager:
             self._statistics["errors"] += 1
             return False
 
-    def start_all_components(self) -> Dict[str, bool]:
+    def start_all_components(self) -> dict[str, bool]:
         """
         Start all capture components.
 
@@ -218,7 +216,7 @@ class ContextCaptureManager:
 
         return results
 
-    def stop_all_components(self, graceful: bool = True) -> Dict[str, bool]:
+    def stop_all_components(self, graceful: bool = True) -> dict[str, bool]:
         """
         Stop all capture components.
 
@@ -231,7 +229,7 @@ class ContextCaptureManager:
 
         return results
 
-    def get_component(self, component_name: str) -> Optional[ICaptureComponent]:
+    def get_component(self, component_name: str) -> ICaptureComponent | None:
         """
         Get a capture component.
 
@@ -243,7 +241,7 @@ class ContextCaptureManager:
         """
         return self._components.get(component_name)
 
-    def get_all_components(self) -> Dict[str, ICaptureComponent]:
+    def get_all_components(self) -> dict[str, ICaptureComponent]:
         """
         Get all capture components.
 
@@ -252,7 +250,7 @@ class ContextCaptureManager:
         """
         return self._components.copy()
 
-    def get_running_components(self) -> Dict[str, ICaptureComponent]:
+    def get_running_components(self) -> dict[str, ICaptureComponent]:
         """
         Get all running capture components.
 
@@ -270,7 +268,7 @@ class ContextCaptureManager:
         """
         self._callback = callback
 
-    async def _on_component_capture(self, contexts: List[RawContextProperties]) -> None:
+    async def _on_component_capture(self, contexts: list[RawContextProperties]) -> None:
         """
         Component capture callback function.
 
@@ -309,7 +307,7 @@ class ContextCaptureManager:
                     f"An exception occurred when executing the upper-level callback function: {e}"
                 )
 
-    def capture(self, component_name: str) -> List[RawContextProperties]:
+    def capture(self, component_name: str) -> list[RawContextProperties]:
         """
         Manually trigger a capture from a specified component.
         Note: This method is mainly used for manual or one-time captures. Regular automatic captures are handled by the component's internal thread.
@@ -337,7 +335,7 @@ class ContextCaptureManager:
                 self._statistics["components"][component_name]["errors"] += 1
             return []
 
-    def capture_all(self) -> Dict[str, List[RawContextProperties]]:
+    def capture_all(self) -> dict[str, list[RawContextProperties]]:
         """
         Manually trigger a capture from all running components.
 
@@ -354,7 +352,7 @@ class ContextCaptureManager:
 
         return results
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get statistics.
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,10 +10,9 @@ Provides GitHub Copilot-like note content completion functionality
 
 import asyncio
 import json
-from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -34,13 +32,13 @@ class CompletionRequest(BaseModel):
 
     text: str = Field(..., description="Current document content")
     cursor_position: int = Field(..., description="Cursor position")
-    document_id: Optional[int] = Field(None, description="Document ID")
-    completion_types: Optional[list] = Field(
+    document_id: int | None = Field(None, description="Document ID")
+    completion_types: list | None = Field(
         default=None,
         description="Specify completion types, e.g., ['semantic_continuation', 'template_completion']",
     )
-    max_suggestions: Optional[int] = Field(default=3, description="Maximum number of suggestions")
-    context: Optional[Dict[str, Any]] = Field(
+    max_suggestions: int | None = Field(default=3, description="Maximum number of suggestions")
+    context: dict[str, Any] | None = Field(
         default=None, description="Additional context information"
     )
 
@@ -52,7 +50,7 @@ class CompletionResponse(BaseModel):
     suggestions: list
     processing_time_ms: float
     cache_hit: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @router.post("/api/completions/suggest")
@@ -206,9 +204,9 @@ async def get_completion_suggestions_stream(
 @router.post("/api/completions/feedback")
 async def submit_completion_feedback(
     suggestion_text: str,
-    document_id: Optional[int] = None,
+    document_id: int | None = None,
     accepted: bool = False,
-    completion_type: Optional[str] = None,
+    completion_type: str | None = None,
     _auth: str = auth_dependency,
 ):
     """

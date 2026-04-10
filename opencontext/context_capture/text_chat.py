@@ -1,6 +1,5 @@
-import datetime
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.context_capture.base import BaseCaptureComponent
 from opencontext.models.context import RawContextProperties
@@ -25,7 +24,7 @@ class TextChatCapture(BaseCaptureComponent):
             source_type=ContextSource.CHAT_LOG,
         )
 
-    def _initialize_impl(self, config: Dict[str, Any]) -> bool:
+    def _initialize_impl(self, config: dict[str, Any]) -> bool:
         """初始化组件"""
         return True
 
@@ -36,15 +35,15 @@ class TextChatCapture(BaseCaptureComponent):
     def _stop_impl(self, graceful: bool = True) -> bool:
         return True
 
-    def _capture_impl(self) -> List[RawContextProperties]:
+    def _capture_impl(self) -> list[RawContextProperties]:
         return []
 
     async def _create_and_send_context(
         self,
-        messages: List[Dict[str, Any]],
-        user_id: Optional[str],
-        device_id: Optional[str],
-        agent_id: Optional[str],
+        messages: list[dict[str, Any]],
+        user_id: str | None,
+        device_id: str | None,
+        agent_id: str | None,
     ):
         """创建 RawContext 并发送到处理管道"""
         if not messages:
@@ -99,10 +98,10 @@ class TextChatCapture(BaseCaptureComponent):
 
     async def process_messages_directly(
         self,
-        messages: List[Dict[str, Any]],
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        messages: list[dict[str, Any]],
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ):
         """
         直接处理聊天消息，立即发送到处理管道。

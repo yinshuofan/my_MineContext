@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,6 @@ Web interface routes
 import datetime
 import math
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -42,13 +40,13 @@ async def read_contexts(
     request: Request,
     page: int = 1,
     limit: int = 15,
-    type: Optional[str] = None,
-    user_id: Optional[str] = None,
-    device_id: Optional[str] = None,
-    agent_id: Optional[str] = None,
-    hierarchy_level: Optional[int] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    type: str | None = None,
+    user_id: str | None = None,
+    device_id: str | None = None,
+    agent_id: str | None = None,
+    hierarchy_level: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     opencontext: OpenContext = Depends(get_context_lab),
 ):
     storage = get_storage()

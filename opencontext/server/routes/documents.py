@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -8,7 +7,6 @@
 Document upload API routes, managed through OpenContext class
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -33,7 +31,7 @@ class UploadWebLinkRequest(BaseModel):
     """Web link upload request"""
 
     url: str
-    filename_hint: Optional[str] = None
+    filename_hint: str | None = None
 
 
 @router.post("/api/documents/upload", response_class=JSONResponse)

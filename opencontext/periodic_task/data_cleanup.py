@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Data Cleanup Periodic Task
@@ -9,7 +8,7 @@ cleanup strategies from context_merger.
 """
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from loguru import logger
 
@@ -150,7 +149,7 @@ class DataCleanupTask(BasePeriodicTask):
 
             execution_time = int((time.time() - start_time) * 1000)
 
-            logger.info(f"Data cleanup completed using {cleanup_result} " f"in {execution_time}ms")
+            logger.info(f"Data cleanup completed using {cleanup_result} in {execution_time}ms")
 
             return TaskResult.ok(
                 message=f"Cleanup completed using {cleanup_result}",
@@ -185,7 +184,7 @@ def create_cleanup_handler(
     )
 
     async def handler(
-        user_id: Optional[str], device_id: Optional[str], agent_id: Optional[str]
+        user_id: str | None, device_id: str | None, agent_id: str | None
     ) -> bool:
         # Global task, user info is not used
         context = TaskContext(

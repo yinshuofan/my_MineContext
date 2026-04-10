@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Core Data Model Definition
@@ -9,7 +8,7 @@ Use dataclass to define all data structures to ensure type safety
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from opencontext.utils.time_utils import now as tz_now
 
@@ -35,7 +34,7 @@ class WebSearchResult:
     snippet: str
     relevance_score: float = 1.0
     source: str = "web"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -43,11 +42,11 @@ class Query:
     """User query encapsulation"""
 
     text: str
-    query_type: Optional[QueryType] = None
-    user_id: Optional[str] = None
-    session_id: Optional[str] = None
-    selected_content: Optional[str] = None
-    document_id: Optional[str] = None
+    query_type: QueryType | None = None
+    user_id: str | None = None
+    session_id: str | None = None
+    selected_content: str | None = None
+    document_id: str | None = None
 
 
 @dataclass
@@ -56,8 +55,8 @@ class Intent:
 
     original_query: str
     query_type: QueryType
-    enhanced_query: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    enhanced_query: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -67,14 +66,14 @@ class ContextItem:
     source: DataSource
     content: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    title: Optional[str] = None
+    title: str | None = None
     relevance_score: float = 1.0
     timestamp: datetime = field(default_factory=tz_now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     is_relevant: bool = True
-    relevance_reason: Optional[str] = None
+    relevance_reason: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "source": self.source.value,
@@ -92,13 +91,13 @@ class ContextItem:
 class DocumentInfo:
     """Document context"""
 
-    id: Optional[str] = None
-    title: Optional[str] = None
-    content: Optional[str] = None
-    summary: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
+    id: str | None = None
+    title: str | None = None
+    content: str | None = None
+    summary: str | None = None
+    tags: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "title": self.title,
@@ -112,19 +111,19 @@ class DocumentInfo:
 class ContextCollection:
     """Context collection"""
 
-    items: List[ContextItem] = field(default_factory=list)
+    items: list[ContextItem] = field(default_factory=list)
     sufficiency: ContextSufficiency = ContextSufficiency.UNKNOWN
-    missing_sources: Set[DataSource] = field(default_factory=set)
-    collection_metadata: Dict[str, Any] = field(default_factory=dict)
-    current_document: Optional[DocumentInfo] = None
-    chat_history: List[ChatMessage] = field(default_factory=list)
-    selected_content: Optional[str] = None
+    missing_sources: set[DataSource] = field(default_factory=set)
+    collection_metadata: dict[str, Any] = field(default_factory=dict)
+    current_document: DocumentInfo | None = None
+    chat_history: list[ChatMessage] = field(default_factory=list)
+    selected_content: str | None = None
 
     def add_item(self, item: ContextItem):
         """Add a context item"""
         self.items.append(item)
 
-    def get_by_source(self, source: DataSource) -> List[ContextItem]:
+    def get_by_source(self, source: DataSource) -> list[ContextItem]:
         """Get context by data source"""
         return [item for item in self.items if item.source == source]
 
@@ -132,7 +131,7 @@ class ContextCollection:
         """Check if the context is sufficient"""
         return self.sufficiency == ContextSufficiency.SUFFICIENT
 
-    def prepare_context(self) -> Dict[str, Any]:
+    def prepare_context(self) -> dict[str, Any]:
         import json
         from dataclasses import asdict
 
@@ -162,7 +161,7 @@ class ContextCollection:
         summary_parts = [f"{source.value}: {count}" for source, count in source_counts.items()]
         return f"Collected {len(self.items)} context items ({', '.join(summary_parts)}), sufficiency: {self.sufficiency.value}"
 
-    def get_chat_history(self) -> List[Dict[str, str]]:
+    def get_chat_history(self) -> list[dict[str, str]]:
         """Get chat history as a list of dictionaries"""
         return [{"role": msg.role, "content": msg.content} for msg in self.chat_history]
 
@@ -173,12 +172,12 @@ class ExecutionStep:
 
     action: ActionType
     description: str = ""
-    dependencies: List[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
     status: TaskStatus = TaskStatus.PENDING
-    result: Optional[Any] = None
-    error: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
+    result: Any | None = None
+    error: str | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
     def to_dict(self):
         """Convert to a dictionary"""
@@ -198,11 +197,11 @@ class ExecutionStep:
 class ExecutionPlan:
     """Execution plan"""
 
-    steps: List[ExecutionStep] = field(default_factory=list)
+    steps: list[ExecutionStep] = field(default_factory=list)
     current_step: int = 0
     total_steps: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary"""
         return {
             "steps": [step.to_dict() for step in self.steps],
@@ -215,7 +214,7 @@ class ExecutionPlan:
         self.steps.append(step)
         self.total_steps = len(self.steps)
 
-    def get_current_step(self) -> Optional[ExecutionStep]:
+    def get_current_step(self) -> ExecutionStep | None:
         """Get the current step"""
         if 0 <= self.current_step < len(self.steps):
             return self.steps[self.current_step]
@@ -233,10 +232,10 @@ class ExecutionResult:
 
     success: bool
     plan: ExecutionPlan
-    outputs: List[Any] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    outputs: list[Any] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     execution_time: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -246,8 +245,8 @@ class ReflectionResult:
     reflection_type: ReflectionType
     success_rate: float
     summary: str
-    issues: List[str] = field(default_factory=list)
-    improvements: List[str] = field(default_factory=list)
+    issues: list[str] = field(default_factory=list)
+    improvements: list[str] = field(default_factory=list)
     should_retry: bool = False
-    retry_strategy: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    retry_strategy: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -12,8 +11,7 @@ import asyncio
 import threading
 import time
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from opencontext.context_capture import BaseCaptureComponent
 from opencontext.models.context import RawContextProperties
@@ -39,7 +37,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
         )
         self._monitor_interval = 5  # Monitor interval (seconds)
         self._last_scan_time = None
-        self._processed_vault_ids: Set[int] = set()
+        self._processed_vault_ids: set[int] = set()
         self._document_events = []
         self._event_lock = threading.RLock()
         self._monitor_thread = None
@@ -54,7 +52,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
         """Lazy storage access — avoids init-order issues with async GlobalStorage."""
         return get_storage()
 
-    def _get_vaults_sync(self, **kwargs) -> List[Dict]:
+    def _get_vaults_sync(self, **kwargs) -> list[dict]:
         """Sync wrapper to call async get_vaults() from thread context."""
         try:
             loop = asyncio.get_running_loop()
@@ -66,7 +64,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             logger.exception(f"Failed to get vaults: {e}")
             return []
 
-    def _initialize_impl(self, config: Dict[str, Any]) -> bool:
+    def _initialize_impl(self, config: dict[str, Any]) -> bool:
         """
         Initialize document monitoring component
 
@@ -133,7 +131,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             logger.exception(f"Failed to stop Vault document monitoring: {str(e)}")
             return False
 
-    def _capture_impl(self) -> List[RawContextProperties]:
+    def _capture_impl(self) -> list[RawContextProperties]:
         """
         Execute document capture
 
@@ -265,7 +263,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
         except Exception as e:
             logger.exception(f"Failed to scan vault changes: {e}")
 
-    def _create_context_from_event(self, event: Dict[str, Any]) -> Optional[RawContextProperties]:
+    def _create_context_from_event(self, event: dict[str, Any]) -> RawContextProperties | None:
         """
         Create RawContextProperties from event
 
@@ -302,7 +300,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             logger.exception(f"Failed to create context from event: {e}")
             return None
 
-    def _get_document_path(self, doc: Dict[str, Any]) -> str:
+    def _get_document_path(self, doc: dict[str, Any]) -> str:
         """
         Get complete path of document (based on parent_id hierarchy)
 
@@ -324,7 +322,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             logger.debug(f"Failed to build document path: {e}")
             return f"/{doc.get('title', 'untitled')}"
 
-    def _get_config_schema_impl(self) -> Dict[str, Any]:
+    def _get_config_schema_impl(self) -> dict[str, Any]:
         """
         Get configuration schema implementation
 
@@ -347,7 +345,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             }
         }
 
-    def _validate_config_impl(self, config: Dict[str, Any]) -> bool:
+    def _validate_config_impl(self, config: dict[str, Any]) -> bool:
         """
         Validate configuration implementation
 
@@ -368,7 +366,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             logger.exception(f"Configuration validation failed: {e}")
             return False
 
-    def _get_status_impl(self) -> Dict[str, Any]:
+    def _get_status_impl(self) -> dict[str, Any]:
         """
         Get status implementation
 
@@ -383,7 +381,7 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             "is_monitoring": not self._stop_event.is_set(),
         }
 
-    def _get_statistics_impl(self) -> Dict[str, Any]:
+    def _get_statistics_impl(self) -> dict[str, Any]:
         """
         Get statistics implementation
 

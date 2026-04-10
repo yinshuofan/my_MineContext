@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -22,13 +21,12 @@ import datetime
 import json
 import time
 import uuid
-from typing import Dict, List, Optional, Tuple
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
-from opencontext.models.enums import MEMORY_OWNER_TYPES, ContentFormat, ContextType
+from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
 from opencontext.scheduler.base import TriggerMode
 from opencontext.storage.global_storage import get_storage
@@ -292,7 +290,7 @@ class HierarchySummaryTask(BasePeriodicTask):
     # ── Content formatting methods ──
 
     @staticmethod
-    def _format_l0_events(contexts: List[ProcessedContext]) -> str:
+    def _format_l0_events(contexts: list[ProcessedContext]) -> str:
         """
         Format L0 raw events for L1 (daily) summary generation.
         将 L0 原始事件格式化为 L1（每日）摘要生成的输入。
@@ -328,7 +326,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     @staticmethod
     def _format_weekly_hierarchical(
-        l1_summaries: List[ProcessedContext],
+        l1_summaries: list[ProcessedContext],
     ) -> str:
         """
         Format weekly content from L1 daily summaries.
@@ -343,7 +341,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         Returns:
             Formatted hierarchical text string
         """
-        l1_by_day: Dict[str, ProcessedContext] = {}
+        l1_by_day: dict[str, ProcessedContext] = {}
         for ctx in l1_summaries:
             if ctx.properties.event_time_start:
                 day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
@@ -366,8 +364,8 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     @staticmethod
     def _format_monthly_hierarchical(
-        l2_summaries: List[ProcessedContext],
-        l1_summaries_by_week: Dict[str, List[ProcessedContext]],
+        l2_summaries: list[ProcessedContext],
+        l1_summaries_by_week: dict[str, list[ProcessedContext]],
     ) -> str:
         """
         Format monthly content hierarchically: L2 weekly summaries + L1 daily summaries per week.
@@ -383,7 +381,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             Formatted hierarchical text string
         """
         # Build map from week_str -> L2 summary
-        l2_by_week: Dict[str, ProcessedContext] = {}
+        l2_by_week: dict[str, ProcessedContext] = {}
         for ctx in l2_summaries:
             if ctx.properties.event_time_start:
                 iso_year, iso_week, _ = ctx.properties.event_time_start.isocalendar()
@@ -464,8 +462,8 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     @staticmethod
     def _split_into_batches(
-        contexts: List[ProcessedContext], max_tokens_per_batch: int
-    ) -> List[List[ProcessedContext]]:
+        contexts: list[ProcessedContext], max_tokens_per_batch: int
+    ) -> list[list[ProcessedContext]]:
         """
         Split a list of contexts into batches that fit within the token budget.
         将上下文列表拆分为符合 token 预算的批次。
@@ -482,8 +480,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         if not contexts:
             return []
 
-        batches: List[List[ProcessedContext]] = []
-        current_batch: List[ProcessedContext] = []
+        batches: list[list[ProcessedContext]] = []
+        current_batch: list[ProcessedContext] = []
         current_tokens = 0
 
         for ctx in contexts:
@@ -506,11 +504,11 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     async def _batch_summarize_and_merge(
         self,
-        contexts: List[ProcessedContext],
+        contexts: list[ProcessedContext],
         level: int,
         time_bucket: str,
         format_fn,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Main overflow handler for L1 daily summaries.
         L1 每日摘要的主要溢出处理程序。
@@ -579,9 +577,9 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     async def _batch_summarize_weekly(
         self,
-        l1_contexts: List[ProcessedContext],
+        l1_contexts: list[ProcessedContext],
         time_bucket: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Weekly overflow handler — batches by day-groups for coherence.
         每周溢出处理 — 按天分组批处理以保持连贯性。
@@ -608,7 +606,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             f"Token overflow for weekly {time_bucket}: "
             f"~{total_tokens} tokens, splitting by day-groups"
         )
-        l1_by_day: Dict[str, ProcessedContext] = {}
+        l1_by_day: dict[str, ProcessedContext] = {}
         for ctx in l1_contexts:
             if ctx.properties.event_time_start:
                 day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
@@ -616,7 +614,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         all_days = sorted(l1_by_day.keys())
         # Split days into groups of 2-3
-        day_groups: List[List[str]] = []
+        day_groups: list[list[str]] = []
         for i in range(0, len(all_days), 3):
             day_groups.append(all_days[i : i + 3])
 
@@ -651,10 +649,10 @@ class HierarchySummaryTask(BasePeriodicTask):
 
     async def _batch_summarize_monthly(
         self,
-        l2_contexts: List[ProcessedContext],
-        l1_by_week: Dict[str, List[ProcessedContext]],
+        l2_contexts: list[ProcessedContext],
+        l1_by_week: dict[str, list[ProcessedContext]],
         time_bucket: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Monthly overflow handler — batches by week-groups.
         每月溢出处理 — 按周分组批处理。
@@ -682,7 +680,7 @@ class HierarchySummaryTask(BasePeriodicTask):
             f"Token overflow for monthly {time_bucket}: "
             f"~{total_tokens} tokens, splitting by week-groups"
         )
-        l2_by_week: Dict[str, ProcessedContext] = {}
+        l2_by_week: dict[str, ProcessedContext] = {}
         for ctx in l2_contexts:
             if ctx.properties.event_time_start:
                 iso_year, iso_week, _ = ctx.properties.event_time_start.isocalendar()
@@ -690,7 +688,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                 l2_by_week[wk_key] = ctx
 
         all_weeks = sorted(set(list(l2_by_week.keys()) + list(l1_by_week.keys())))
-        week_groups: List[List[str]] = []
+        week_groups: list[list[str]] = []
         for i in range(0, len(all_weeks), 2):
             week_groups.append(all_weeks[i : i + 2])
 
@@ -730,9 +728,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         self,
         user_id: str,
         today: datetime.date,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> Tuple[List[str], List[str]]:
+        device_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> tuple[list[str], list[str]]:
         """
         Backfill missing L1 daily summaries for the recent N days.
         回溯最近 N 天，补全缺失的 L1 日摘要。
@@ -840,9 +838,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         self,
         user_id: str,
         date_str: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> Optional[ProcessedContext]:
+        device_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> ProcessedContext | None:
         """
         Generate a daily summary (Level 1) from Level 0 raw events.
         从 Level 0 原始事件生成每日摘要 (Level 1)。
@@ -954,9 +952,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         self,
         user_id: str,
         week_str: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> Optional[ProcessedContext]:
+        device_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> ProcessedContext | None:
         """
         Generate a weekly summary (Level 2) from Level 1 daily summaries.
         从 Level 1 日摘要生成每周摘要 (Level 2)。
@@ -1040,7 +1038,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         )
 
         # Deduplicate by event_time_start date (prefer new format if both exist for same day)
-        l1_by_day: Dict[str, ProcessedContext] = {}
+        l1_by_day: dict[str, ProcessedContext] = {}
         for ctx, _score in l1_results_old or []:
             if ctx.properties.event_time_start:
                 day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
@@ -1082,9 +1080,9 @@ class HierarchySummaryTask(BasePeriodicTask):
         self,
         user_id: str,
         month_str: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> Optional[ProcessedContext]:
+        device_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> ProcessedContext | None:
         """
         Generate a monthly summary (Level 3) from Level 2 weekly summaries + Level 1 daily summaries.
         从 Level 2 周摘要 + Level 1 日摘要生成月摘要 (Level 3)。
@@ -1163,8 +1161,8 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         # Query Level 2 weekly summaries and Level 1 daily summaries for each week
         # 查询该月每周的 Level 2 周摘要和 Level 1 日摘要
-        all_weekly_contexts: List[ProcessedContext] = []
-        l1_summaries_by_week: Dict[str, List[ProcessedContext]] = {}
+        all_weekly_contexts: list[ProcessedContext] = []
+        l1_summaries_by_week: dict[str, list[ProcessedContext]] = {}
 
         for wk in sorted(weeks_in_month):
             # Compute week datetime boundaries for search
@@ -1232,7 +1230,7 @@ class HierarchySummaryTask(BasePeriodicTask):
                 top_k=7,
             )
             # Deduplicate L1 by event_time_start date (prefer new format)
-            l1_by_day: Dict[str, ProcessedContext] = {}
+            l1_by_day: dict[str, ProcessedContext] = {}
             for ctx, _score in l1_results_old or []:
                 if ctx.properties.event_time_start:
                     day_key = ctx.properties.event_time_start.strftime("%Y-%m-%d")
@@ -1282,7 +1280,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         time_bucket: str,
         is_partial: bool = False,
         batch_info: str = "",
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Call LLM to produce a summary from pre-formatted content.
         调用 LLM 从预格式化的内容生成摘要。
@@ -1364,7 +1362,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         sub_summaries_text: str,
         level: int,
         time_bucket: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Call LLM to merge multiple partial sub-summaries into one cohesive summary.
         调用 LLM 将多个部分子摘要合并为一个完整摘要。
@@ -1431,10 +1429,10 @@ class HierarchySummaryTask(BasePeriodicTask):
         level: int,
         event_time_start: datetime.datetime,
         event_time_end: datetime.datetime,
-        children_ids: List[str],
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> Optional[ProcessedContext]:
+        children_ids: list[str],
+        device_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> ProcessedContext | None:
         """
         Store a generated summary as a ProcessedContext with hierarchy fields.
         将生成的摘要作为带有层级字段的 ProcessedContext 存储。
@@ -1471,7 +1469,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         title = f"{level_name.capitalize()} Summary - {period_label}"
         summary_body = summary_text
         keywords = [level_name, "summary", period_label]
-        entities: List[str] = []
+        entities: list[str] = []
         importance = 5 + level
 
         # Strip markdown code fences if present (```json ... ```)
@@ -1611,8 +1609,8 @@ def create_hierarchy_handler():
 
     async def handler(
         user_id: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> bool:
         context = TaskContext(
             user_id=user_id,

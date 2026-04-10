@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 
 """S3-compatible object storage backend."""
 
 import asyncio
 import hashlib
-from typing import Optional
 
 import aiohttp
 
@@ -44,7 +42,7 @@ class S3CompatibleBackend(IObjectStorage):
         self._auth = S3Auth(access_key_id, secret_access_key, region)
         self._max_retries = max_retries
         self._retry_delay = retry_delay
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
         self._session_lock = asyncio.Lock()
 
     async def _get_session(self) -> aiohttp.ClientSession:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Redis-backed Task Scheduler Implementation (Async)
@@ -11,8 +10,7 @@ supporting multi-instance deployment. All Redis operations are async.
 import asyncio
 import json
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import now as tz_now
@@ -70,7 +68,7 @@ class RedisTaskScheduler(ITaskScheduler):
     HEARTBEAT_KEY = "scheduler:heartbeat"
     HEARTBEAT_TTL_MULTIPLIER = 3
 
-    def __init__(self, redis_cache: RedisCache, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, redis_cache: RedisCache, config: dict[str, Any] | None = None):
         """
         Initialize the Redis Task Scheduler.
 
@@ -91,21 +89,21 @@ class RedisTaskScheduler(ITaskScheduler):
         self._user_key_builder = UserKeyBuilder(user_key_config)
 
         # Task handlers registry (in-memory, each instance has its own)
-        self._task_handlers: Dict[str, TaskHandler] = {}
+        self._task_handlers: dict[str, TaskHandler] = {}
 
         # In-memory cache for task configs (set at register_task_type, immutable after startup)
-        self._task_config_cache: Dict[str, TaskConfig] = {}
+        self._task_config_cache: dict[str, TaskConfig] = {}
 
         # Running state
         self._running = False
-        self._executor_task: Optional[asyncio.Task] = None
+        self._executor_task: asyncio.Task | None = None
 
         # Concurrency control for fire-and-forget task execution
-        self._concurrency_sem: Optional[asyncio.Semaphore] = None
-        self._in_flight: Set[asyncio.Task] = set()
+        self._concurrency_sem: asyncio.Semaphore | None = None
+        self._in_flight: set[asyncio.Task] = set()
 
         # Heartbeat state
-        self._started_at: Optional[str] = None  # ISO 8601, set in start()
+        self._started_at: str | None = None  # ISO 8601, set in start()
 
         # Store pending task type configs for async initialization
         self._pending_task_configs: list = []
@@ -130,7 +128,7 @@ class RedisTaskScheduler(ITaskScheduler):
 
     async def init_task_types(self) -> None:
         """Initialize task types in Redis (async)"""
-        enabled_names: Set[str] = set()
+        enabled_names: set[str] = set()
         for config in self._pending_task_configs:
             await self.register_task_type(config)
             enabled_names.add(config.name)
@@ -139,7 +137,7 @@ class RedisTaskScheduler(ITaskScheduler):
         # Mark disabled task types in Redis so other workers' runtime guards take effect
         await self._sync_disabled_task_types(enabled_names)
 
-    async def _sync_disabled_task_types(self, enabled_names: Set[str]) -> None:
+    async def _sync_disabled_task_types(self, enabled_names: set[str]) -> None:
         """Mark task types not in enabled_names as disabled in Redis.
 
         Reads all task type names from config (including disabled ones).
@@ -182,8 +180,8 @@ class RedisTaskScheduler(ITaskScheduler):
         self,
         task_type: str,
         user_id: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> bool:
         """
         Schedule a task for a specific user (async).
@@ -287,12 +285,10 @@ class RedisTaskScheduler(ITaskScheduler):
             pipe.zadd(queue_key, {user_key: scheduled_at})
             await pipe.execute()
 
-        logger.info(
-            f"Scheduled {task_type} task for {user_key}, " f"will execute at {scheduled_at}"
-        )
+        logger.info(f"Scheduled {task_type} task for {user_key}, will execute at {scheduled_at}")
         return True
 
-    async def get_pending_task(self, task_type: str) -> Optional[TaskInfo]:
+    async def get_pending_task(self, task_type: str) -> TaskInfo | None:
         """
         Get a pending task ready for execution (async).
 
@@ -409,7 +405,7 @@ class RedisTaskScheduler(ITaskScheduler):
 
         logger.info(f"Task {task_type} for {user_key} {'completed' if success else 'failed'}")
 
-    async def get_task_config(self, task_type: str) -> Optional[TaskConfig]:
+    async def get_task_config(self, task_type: str) -> TaskConfig | None:
         """Get configuration for a task type (async). Reads from in-memory cache first."""
         if task_type in self._task_config_cache:
             return self._task_config_cache[task_type]
@@ -484,7 +480,7 @@ class RedisTaskScheduler(ITaskScheduler):
         except Exception as e:
             logger.warning(f"Initial heartbeat write failed: {e}")
 
-        workers: List[asyncio.Task] = []
+        workers: list[asyncio.Task] = []
         for task_type in self._task_handlers:
             workers.append(asyncio.create_task(self._type_worker(task_type)))
         workers.append(asyncio.create_task(self._periodic_worker()))
@@ -533,7 +529,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 while self._running:
                     try:
                         await asyncio.wait_for(self._concurrency_sem.acquire(), timeout=1.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         continue  # re-check _running
 
                     # Wrap the region between acquire and ownership transfer to
@@ -785,7 +781,7 @@ class RedisTaskScheduler(ITaskScheduler):
                 try:
                     await asyncio.wait_for(asyncio.shield(self._executor_task), timeout=timeout)
                     logger.info("Task scheduler stopped gracefully")
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(f"Scheduler did not stop within {timeout}s, cancelling")
                     self._executor_task.cancel()
                     try:
@@ -827,7 +823,7 @@ class RedisTaskScheduler(ITaskScheduler):
 
         logger.info("Task scheduler stopped")
 
-    async def get_queue_depths(self) -> Dict[str, int]:
+    async def get_queue_depths(self) -> dict[str, int]:
         """Get current queue depth for each registered task type."""
         depths = {}
         for task_type in self._task_handlers:
@@ -835,7 +831,7 @@ class RedisTaskScheduler(ITaskScheduler):
             depths[task_type] = await self._redis.zcard(queue_key)
         return depths
 
-    async def get_queue_status(self) -> Dict[str, Dict[str, Any]]:
+    async def get_queue_status(self) -> dict[str, dict[str, Any]]:
         """Get queue depth and enabled status for all configured task types.
 
         Unlike get_queue_depths() which only covers handler-registered types,
@@ -868,22 +864,22 @@ class RedisTaskScheduler(ITaskScheduler):
 
 
 # Global scheduler instance
-_scheduler: Optional[RedisTaskScheduler] = None
+_scheduler: RedisTaskScheduler | None = None
 
 
-def get_scheduler() -> Optional[RedisTaskScheduler]:
+def get_scheduler() -> RedisTaskScheduler | None:
     """Get the global scheduler instance"""
     return _scheduler
 
 
-def set_scheduler(scheduler: Optional[RedisTaskScheduler]) -> None:
+def set_scheduler(scheduler: RedisTaskScheduler | None) -> None:
     """Set the global scheduler instance (pass None to clear)."""
     global _scheduler
     _scheduler = scheduler
 
 
 def init_scheduler(
-    redis_cache: RedisCache, config: Optional[Dict[str, Any]] = None
+    redis_cache: RedisCache, config: dict[str, Any] | None = None
 ) -> RedisTaskScheduler:
     """
     Initialize and set the global scheduler instance.
@@ -900,15 +896,15 @@ def init_scheduler(
     return scheduler
 
 
-async def read_scheduler_heartbeat(redis_cache: RedisCache) -> Optional[Dict[str, str]]:
+async def read_scheduler_heartbeat(redis_cache: RedisCache) -> dict[str, str] | None:
     """Read scheduler heartbeat from Redis. Used by server processes without local scheduler."""
     data = await redis_cache.hgetall(RedisTaskScheduler.HEARTBEAT_KEY)
     return data if data else None
 
 
 async def read_scheduler_queue_depths(
-    redis_cache: RedisCache, task_types: List[str]
-) -> Dict[str, int]:
+    redis_cache: RedisCache, task_types: list[str]
+) -> dict[str, int]:
     """Read queue depths from Redis for given task types."""
     depths = {}
     for task_type in task_types:
@@ -918,8 +914,8 @@ async def read_scheduler_queue_depths(
 
 
 async def read_scheduler_queue_status(
-    redis_cache: RedisCache, task_types: List[str]
-) -> Dict[str, Dict[str, Any]]:
+    redis_cache: RedisCache, task_types: list[str]
+) -> dict[str, dict[str, Any]]:
     """Read queue depths and enabled status from Redis for given task types.
 
     Fallback version of get_queue_status() for processes without a local scheduler.

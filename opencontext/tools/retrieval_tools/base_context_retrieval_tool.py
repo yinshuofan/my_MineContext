@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,7 +8,7 @@ Provides common functionality for searching and filtering processed contexts
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import ProcessedContext, Vectorize
@@ -25,22 +24,22 @@ logger = get_logger(__name__)
 class TimeRangeFilter:
     """Time range filter conditions"""
 
-    start: Optional[int] = None
-    end: Optional[int] = None
-    timezone: Optional[str] = None
-    time_type: Optional[str] = "event_time_start_ts"
+    start: int | None = None
+    end: int | None = None
+    timezone: str | None = None
+    time_type: str | None = "event_time_start_ts"
 
 
 @dataclass
 class ContextRetrievalFilter:
     """Context retrieval filter conditions"""
 
-    time_range: Optional[TimeRangeFilter] = None
-    entities: List[str] = field(default_factory=list)
+    time_range: TimeRangeFilter | None = None
+    entities: list[str] = field(default_factory=list)
     # Multi-user support fields
-    user_id: Optional[str] = None
-    device_id: Optional[str] = None
-    agent_id: Optional[str] = None
+    user_id: str | None = None
+    device_id: str | None = None
+    agent_id: str | None = None
 
 
 class BaseContextRetrievalTool(BaseTool):
@@ -63,7 +62,7 @@ class BaseContextRetrievalTool(BaseTool):
         """Get storage from global singleton"""
         return get_storage()
 
-    async def _build_filters(self, filters: ContextRetrievalFilter) -> Dict[str, Any]:
+    async def _build_filters(self, filters: ContextRetrievalFilter) -> dict[str, Any]:
         """Build filter conditions for storage backend"""
         build_filter = {}
 
@@ -84,12 +83,12 @@ class BaseContextRetrievalTool(BaseTool):
 
     async def _execute_search(
         self,
-        query: Optional[str],
+        query: str | None,
         filters: ContextRetrievalFilter,
         top_k: int = 20,
-        image_url: Optional[str] = None,
-        video_url: Optional[str] = None,
-    ) -> List[Tuple[ProcessedContext, float]]:
+        image_url: str | None = None,
+        video_url: str | None = None,
+    ) -> list[tuple[ProcessedContext, float]]:
         """
         Execute search operation
 
@@ -150,8 +149,8 @@ class BaseContextRetrievalTool(BaseTool):
             return results[:top_k]
 
     def _format_context_result(
-        self, context: ProcessedContext, score: float, additional_fields: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
+        self, context: ProcessedContext, score: float, additional_fields: dict[str, Any] = None
+    ) -> dict[str, Any]:
         """Format single context result"""
         ed = context.extracted_data
         props = context.properties
@@ -185,8 +184,8 @@ class BaseContextRetrievalTool(BaseTool):
         return result
 
     def _format_results(
-        self, search_results: List[Tuple[ProcessedContext, float]]
-    ) -> List[Dict[str, Any]]:
+        self, search_results: list[tuple[ProcessedContext, float]]
+    ) -> list[dict[str, Any]]:
         """Format search results"""
         formatted_results = []
 
@@ -197,7 +196,7 @@ class BaseContextRetrievalTool(BaseTool):
         return formatted_results
 
     @classmethod
-    def get_parameters(cls) -> Dict[str, Any]:
+    def get_parameters(cls) -> dict[str, Any]:
         """
         Get tool parameter definitions
         Subclasses can override to customize parameters
@@ -268,7 +267,7 @@ class BaseContextRetrievalTool(BaseTool):
             "required": [],
         }
 
-    async def execute(self, **kwargs) -> List[Dict[str, Any]]:
+    async def execute(self, **kwargs) -> list[dict[str, Any]]:
         """
         Execute context retrieval
 

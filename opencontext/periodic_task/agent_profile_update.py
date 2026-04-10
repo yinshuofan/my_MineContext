@@ -1,6 +1,5 @@
 """Agent Profile Update Task — updates agent_profile from daily events."""
 
-from typing import List, Optional
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_vlm_client import generate_with_messages
@@ -189,8 +188,8 @@ def create_agent_profile_update_handler():
 
     async def handler(
         user_id: str,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> bool:
         context = TaskContext(
             user_id=user_id,

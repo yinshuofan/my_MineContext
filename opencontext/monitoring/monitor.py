@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,8 +10,8 @@ import json
 import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import Any
 
 from opencontext.models.enums import ContextType
 from opencontext.storage.global_storage import get_storage
@@ -41,7 +40,7 @@ class ProcessingMetrics:
     processor_name: str
     operation: str
     duration_ms: int
-    context_type: Optional[str] = None
+    context_type: str | None = None
     context_count: int = 1
     timestamp: datetime = field(default_factory=tz_now)
 
@@ -53,7 +52,7 @@ class RetrievalMetrics:
     operation: str
     duration_ms: int
     snippets_count: int = 0
-    query: Optional[str] = None
+    query: str | None = None
     timestamp: datetime = field(default_factory=tz_now)
 
 
@@ -97,17 +96,17 @@ class Monitor:
 
         # Token usage history (keep last 1000 records)
         self._token_usage_history: deque = deque(maxlen=1000)
-        self._token_usage_by_model: Dict[str, List[TokenUsage]] = defaultdict(list)
+        self._token_usage_by_model: dict[str, list[TokenUsage]] = defaultdict(list)
 
         # Processing performance history (keep last 1000 records)
         self._processing_history: deque = deque(maxlen=1000)
-        self._processing_by_type: Dict[str, List[ProcessingMetrics]] = defaultdict(list)
+        self._processing_by_type: dict[str, list[ProcessingMetrics]] = defaultdict(list)
 
         # Retrieval performance history (keep last 1000 records)
         self._retrieval_history: deque = deque(maxlen=1000)
 
         # Context type statistics cache
-        self._context_type_stats: Dict[str, ContextTypeStats] = {}
+        self._context_type_stats: dict[str, ContextTypeStats] = {}
         self._stats_cache_ttl = 60  # Cache for 60 seconds
         self._last_stats_update = datetime.min.replace(tzinfo=get_timezone())
 
@@ -167,7 +166,7 @@ class Monitor:
         processor_name: str,
         operation: str,
         duration_ms: int,
-        context_type: Optional[str] = None,
+        context_type: str | None = None,
         context_count: int = 1,
     ):
         """Record processing performance metrics"""
@@ -188,7 +187,7 @@ class Monitor:
                 self._processing_by_type[key] = self._processing_by_type[key][-100:]
 
     def record_retrieval_metrics(
-        self, operation: str, duration_ms: int, snippets_count: int = 0, query: Optional[str] = None
+        self, operation: str, duration_ms: int, snippets_count: int = 0, query: str | None = None
     ):
         """Record retrieval performance metrics"""
         with self._lock:
@@ -200,7 +199,7 @@ class Monitor:
             )
             self._retrieval_history.append(metrics)
 
-    async def get_context_type_stats(self, force_refresh: bool = False) -> Dict[str, int]:
+    async def get_context_type_stats(self, force_refresh: bool = False) -> dict[str, int]:
         """Get record count for each context_type"""
         now = tz_now()
 
@@ -232,7 +231,7 @@ class Monitor:
         # Return cached data or empty dict
         return {k: v.count for k, v in self._context_type_stats.items()}
 
-    async def get_token_usage_summary(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_token_usage_summary(self, hours: int = 24) -> dict[str, Any]:
         """Get token usage summary from database"""
         summary = {
             "total_records": 0,
@@ -272,7 +271,7 @@ class Monitor:
 
         return summary
 
-    def get_processing_summary(self, hours: int = 24) -> Dict[str, Any]:
+    def get_processing_summary(self, hours: int = 24) -> dict[str, Any]:
         """Get processing performance summary"""
         cutoff_time = tz_now() - timedelta(hours=hours)
 
@@ -338,7 +337,7 @@ class Monitor:
         stage_name: str,
         duration_ms: int,
         status: str = "success",
-        metadata: Optional[str] = None,
+        metadata: str | None = None,
     ):
         """Record processing stage timing"""
         try:
@@ -352,8 +351,8 @@ class Monitor:
         self,
         data_type: str,
         count: int = 1,
-        context_type: Optional[str] = None,
-        metadata: Optional[str] = None,
+        context_type: str | None = None,
+        metadata: str | None = None,
     ):
         """Increment data count"""
         try:
@@ -361,7 +360,7 @@ class Monitor:
         except Exception as e:
             logger.error(f"Failed to increment data count: {e}")
 
-    async def get_stage_timing_summary(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_stage_timing_summary(self, hours: int = 24) -> dict[str, Any]:
         """Get stage timing summary from database"""
         summary = {
             "total_operations": 0,
@@ -413,7 +412,7 @@ class Monitor:
 
         return summary
 
-    async def get_data_stats_summary(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_data_stats_summary(self, hours: int = 24) -> dict[str, Any]:
         """Get data statistics summary from database"""
         summary = {
             "by_data_type": {},
@@ -449,7 +448,7 @@ class Monitor:
 
     async def get_data_stats_by_range(
         self, start_time: datetime, end_time: datetime
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get data statistics by custom time range"""
         summary = {
             "by_data_type": {},
@@ -487,7 +486,7 @@ class Monitor:
 
         return summary
 
-    async def get_data_stats_trend(self, hours: int = 24) -> Dict[str, Any]:
+    async def get_data_stats_trend(self, hours: int = 24) -> dict[str, Any]:
         """Get data statistics trend with time series data"""
         try:
             rows = await get_storage().query_monitoring_data_stats_trend(hours)
@@ -548,7 +547,7 @@ class Monitor:
             )
             self._processing_errors.append(error)
 
-    def get_processing_errors(self, hours: int = 1, top_n: int = 5) -> Dict[str, Any]:
+    def get_processing_errors(self, hours: int = 1, top_n: int = 5) -> dict[str, Any]:
         """Get top N processing errors"""
         cutoff_time = tz_now() - timedelta(hours=hours)
 
@@ -605,14 +604,14 @@ class Monitor:
             metadata=json.dumps({"user_key": user_key, "trigger_mode": trigger_mode}),
         )
 
-    def get_scheduler_summary(self, hours: int = 24) -> Dict[str, Any]:
+    def get_scheduler_summary(self, hours: int = 24) -> dict[str, Any]:
         """Get scheduler execution summary"""
         cutoff_time = tz_now() - timedelta(hours=hours)
 
         with self._lock:
             recent_metrics = [m for m in self._scheduler_history if m.timestamp >= cutoff_time]
 
-            summary: Dict[str, Any] = {
+            summary: dict[str, Any] = {
                 "total_executions": len(recent_metrics),
                 "by_task_type": {},
                 "by_trigger_mode": {},
@@ -622,7 +621,7 @@ class Monitor:
             if not recent_metrics:
                 return summary
 
-            task_type_stats: Dict[str, Dict[str, Any]] = defaultdict(
+            task_type_stats: dict[str, dict[str, Any]] = defaultdict(
                 lambda: {
                     "count": 0,
                     "success_count": 0,
@@ -633,7 +632,7 @@ class Monitor:
                     "min_duration_ms": float("inf"),
                 }
             )
-            trigger_mode_stats: Dict[str, Dict[str, int]] = defaultdict(
+            trigger_mode_stats: dict[str, dict[str, int]] = defaultdict(
                 lambda: {"count": 0, "success_count": 0, "failure_count": 0}
             )
 
@@ -692,7 +691,7 @@ class Monitor:
 
             return summary
 
-    def get_retrieval_summary(self, hours: int = 24) -> Dict[str, Any]:
+    def get_retrieval_summary(self, hours: int = 24) -> dict[str, Any]:
         """Get retrieval performance summary"""
         cutoff_time = tz_now() - timedelta(hours=hours)
 
@@ -741,7 +740,7 @@ class Monitor:
 
             return summary
 
-    async def get_system_overview(self) -> Dict[str, Any]:
+    async def get_system_overview(self) -> dict[str, Any]:
         """Get system overview"""
         uptime = tz_now() - self._start_time
 
@@ -760,7 +759,7 @@ class Monitor:
 
 
 # Global monitor instance
-_monitor: Optional[Monitor] = None
+_monitor: Monitor | None = None
 _monitor_lock = threading.Lock()
 
 
@@ -792,7 +791,7 @@ def record_processing_metrics(
     processor_name: str,
     operation: str,
     duration_ms: int,
-    context_type: Optional[str] = None,
+    context_type: str | None = None,
     context_count: int = 1,
 ):
     """Global function: Record processing performance metrics"""
@@ -802,7 +801,7 @@ def record_processing_metrics(
 
 
 def record_retrieval_metrics(
-    operation: str, duration_ms: int, snippets_count: int = 0, query: Optional[str] = None
+    operation: str, duration_ms: int, snippets_count: int = 0, query: str | None = None
 ):
     """Global function: Record retrieval performance metrics"""
     get_monitor().record_retrieval_metrics(operation, duration_ms, snippets_count, query)
@@ -816,7 +815,7 @@ def record_processing_error(
 
 
 async def record_processing_stage(
-    stage_name: str, duration_ms: int, status: str = "success", metadata: Optional[str] = None
+    stage_name: str, duration_ms: int, status: str = "success", metadata: str | None = None
 ):
     """Global function: Record processing stage timing"""
     await get_monitor().record_processing_stage(stage_name, duration_ms, status, metadata)
@@ -830,8 +829,8 @@ async def increment_context_count(context_type: str):
 async def increment_data_count(
     data_type: str,
     count: int = 1,
-    context_type: Optional[str] = None,
-    metadata: Optional[str] = None,
+    context_type: str | None = None,
+    metadata: str | None = None,
 ):
     """Global function: Increment data count"""
     await get_monitor().increment_data_count(data_type, count, context_type, metadata)

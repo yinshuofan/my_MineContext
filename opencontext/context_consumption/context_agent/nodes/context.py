@@ -1,13 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Context Collection Node
 Intelligently collects and judges context information
 """
 
-import json
-from typing import Any, Dict, List, Optional
 
 from ..core.llm_context_strategy import LLMContextStrategy
 from ..core.state import StreamEvent, WorkflowState

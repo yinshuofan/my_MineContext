@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 LLM-based context collection strategy
@@ -9,9 +8,7 @@ Use large language models to intelligently analyze user needs and decide which r
 import asyncio
 import json
 import uuid
-from datetime import datetime
-from math import log
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_vlm_client import generate_for_agent_async, generate_with_messages
@@ -44,7 +41,7 @@ class LLMContextStrategy:
 
     async def analyze_and_plan_tools(
         self, intent: Intent, existing_context: ContextCollection, iteration: int = 1
-    ) -> tuple[List[Dict[str, Any]], Dict[str, str]]:
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
         """
         Analyze user intent and existing context to decide which tools to call
         Returns:
@@ -119,14 +116,14 @@ class LLMContextStrategy:
             chat_history = []
             for message in context.chat_history:
                 chat_history.append(f"{message.role}: {message.content}")
-            summary_lines.append(f"Chat History: \n" + "\n".join(chat_history))
+            summary_lines.append("Chat History: \n" + "\n".join(chat_history))
 
         if context.items:
             summary_lines.append(f"Collected Context Items ({len(context.items)} total):")
             for i, item in enumerate(context.items):
                 title = item.title or ""
                 content_preview = item.content or ""
-                summary_lines.append(f"  {i+1}. [{item.source.value}] {title}: {content_preview}")
+                summary_lines.append(f"  {i + 1}. [{item.source.value}] {title}: {content_preview}")
 
         return "\n".join(summary_lines) if summary_lines else "No existing context"
 
@@ -162,9 +159,9 @@ class LLMContextStrategy:
         # Parse sufficiency evaluation
         response_upper = response.upper()
         self.logger.info(f"evaluate_sufficiency {response_upper}")
-        if "SUFFICIENT" == response_upper:
+        if response_upper == "SUFFICIENT":
             return ContextSufficiency.SUFFICIENT
-        elif "PARTIAL" == response_upper:
+        elif response_upper == "PARTIAL":
             return ContextSufficiency.PARTIAL
         else:
             return ContextSufficiency.INSUFFICIENT
@@ -178,14 +175,14 @@ class LLMContextStrategy:
         for i, item in enumerate(context.items):  # Show only the first 10 items
             title = item.title or ""
             content_preview = item.content
-            summary_lines.append(f"{i+1}. [{item.source.value}] {title}: {content_preview}")
+            summary_lines.append(f"{i + 1}. [{item.source.value}] {title}: {content_preview}")
 
         if len(context.items) > 10:
             summary_lines.append(f"... and {len(context.items) - 10} more items")
 
         return "\n".join(summary_lines)
 
-    def _extract_tool_calls_from_response(self, response) -> List[Dict[str, Any]]:
+    def _extract_tool_calls_from_response(self, response) -> list[dict[str, Any]]:
         """
         Extract tool calls from the LLM response object
 
@@ -219,8 +216,8 @@ class LLMContextStrategy:
             return []
 
     async def execute_tool_calls_parallel(
-        self, tool_calls: List[Dict[str, Any]]
-    ) -> List[ContextItem]:
+        self, tool_calls: list[dict[str, Any]]
+    ) -> list[ContextItem]:
         """
         Execute tool calls concurrently and convert the results to ContextItem
         """
@@ -257,7 +254,7 @@ class LLMContextStrategy:
 
     def _convert_tool_result_to_context_items(
         self, tool_name: str, tool_result: Any
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         """
         Convert tool execution result to a list of ContextItems
         """
@@ -292,7 +289,7 @@ class LLMContextStrategy:
 
         return context_items
 
-    def _dict_to_context_item(self, tool_name: str, item_dict: dict) -> Optional[ContextItem]:
+    def _dict_to_context_item(self, tool_name: str, item_dict: dict) -> ContextItem | None:
         """Convert a dictionary to a ContextItem"""
         try:
             # Try to extract information from the dictionary
@@ -334,11 +331,11 @@ class LLMContextStrategy:
 
     async def validate_and_filter_tool_results(
         self,
-        tool_calls: List[Dict[str, Any]],
-        tool_results: List[ContextItem],
+        tool_calls: list[dict[str, Any]],
+        tool_results: list[ContextItem],
         intent: Intent,
         existing_context: ContextCollection,
-    ) -> tuple[List[ContextItem], Dict[str, str]]:
+    ) -> tuple[list[ContextItem], dict[str, str]]:
         """
         Validate tool results and filter relevant context items
         Returns:

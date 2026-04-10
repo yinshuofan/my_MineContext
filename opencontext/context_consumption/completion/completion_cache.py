@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -17,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import now as tz_now
@@ -38,14 +37,14 @@ class CacheEntry:
     """Cache Entry"""
 
     key: str
-    suggestions: List[Any]  # Use Any to avoid circular imports
+    suggestions: list[Any]  # Use Any to avoid circular imports
     created_at: str  # ISO format string for JSON serialization
     last_accessed: str  # ISO format string
     access_count: int
     confidence_score: float
     context_hash: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return {
             "key": self.key,
@@ -58,7 +57,7 @@ class CacheEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CacheEntry":
+    def from_dict(cls, data: dict[str, Any]) -> "CacheEntry":
         """Create from dictionary"""
         return cls(
             key=data["key"],
@@ -93,7 +92,7 @@ class CompletionCache:
         max_size: int = 1000,
         ttl_seconds: int = 300,
         strategy: CacheStrategy = CacheStrategy.HYBRID,
-        redis_config: Optional[Dict[str, Any]] = None,
+        redis_config: dict[str, Any] | None = None,
     ):
         self.max_size = max_size
         self.ttl = timedelta(seconds=ttl_seconds)
@@ -101,8 +100,8 @@ class CompletionCache:
         self.strategy = strategy
 
         # Local cache storage (fallback)
-        self._local_cache: Dict[str, CacheEntry] = {}
-        self._local_access_order: List[str] = []
+        self._local_cache: dict[str, CacheEntry] = {}
+        self._local_access_order: list[str] = []
         self._lock = threading.RLock()
 
         # Statistics
@@ -115,7 +114,7 @@ class CompletionCache:
         }
 
         # Performance optimizations
-        self._precomputed_contexts: Dict[int, Dict[str, Any]] = {}
+        self._precomputed_contexts: dict[int, dict[str, Any]] = {}
         self._hot_keys: set = set()
 
         # Redis cache — flag indicates configuration, not connectivity.
@@ -133,7 +132,7 @@ class CompletionCache:
             f"strategy={strategy.value}, redis_configured={self._redis_configured}"
         )
 
-    def _init_redis(self, redis_config: Dict[str, Any]):
+    def _init_redis(self, redis_config: dict[str, Any]):
         """Get Redis cache reference. Actual connectivity verified on first use via try/except."""
         try:
             from opencontext.storage.redis_cache import get_redis_cache
@@ -149,7 +148,7 @@ class CompletionCache:
         """Generate full cache key"""
         return f"{self.CACHE_KEY_PREFIX}{key}"
 
-    async def get(self, key: str, context_hash: str = None) -> Optional[List[Any]]:
+    async def get(self, key: str, context_hash: str = None) -> list[Any] | None:
         """Get cached completion suggestions"""
         import time
 
@@ -166,7 +165,7 @@ class CompletionCache:
 
         return result
 
-    async def _get_redis(self, key: str, context_hash: str = None) -> Optional[List[Any]]:
+    async def _get_redis(self, key: str, context_hash: str = None) -> list[Any] | None:
         """Get from Redis cache"""
         try:
             await self._increment_stat("total_requests")
@@ -215,7 +214,7 @@ class CompletionCache:
             # Fallback to local cache
             return self._get_local(key, context_hash)
 
-    def _get_local(self, key: str, context_hash: str = None) -> Optional[List[Any]]:
+    def _get_local(self, key: str, context_hash: str = None) -> list[Any] | None:
         """Get from local memory cache"""
         with self._lock:
             self._stats["total_requests"] += 1
@@ -258,7 +257,7 @@ class CompletionCache:
     async def put(
         self,
         key: str,
-        suggestions: List[Any],
+        suggestions: list[Any],
         context_hash: str = None,
         confidence_score: float = 0.0,
     ):
@@ -271,7 +270,7 @@ class CompletionCache:
     async def _put_redis(
         self,
         key: str,
-        suggestions: List[Any],
+        suggestions: list[Any],
         context_hash: str = None,
         confidence_score: float = 0.0,
     ):
@@ -312,7 +311,7 @@ class CompletionCache:
     def _put_local(
         self,
         key: str,
-        suggestions: List[Any],
+        suggestions: list[Any],
         context_hash: str = None,
         confidence_score: float = 0.0,
     ):
@@ -509,7 +508,7 @@ class CompletionCache:
         except Exception as e:
             logger.error(f"Failed to precompute context: {e}")
 
-    async def get_precomputed_context(self, document_id: int) -> Optional[Dict[str, Any]]:
+    async def get_precomputed_context(self, document_id: int) -> dict[str, Any] | None:
         """Get precomputed context"""
         # Try Redis first
         if self._redis_configured:
@@ -602,7 +601,7 @@ class CompletionCache:
                 f"{len(old_contexts)} old contexts"
             )
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """Get cache statistics"""
         with self._lock:
             total_requests = self._stats["total_requests"]
@@ -633,7 +632,7 @@ class CompletionCache:
 
         return stats
 
-    def _estimate_memory_usage(self) -> Dict[str, Any]:
+    def _estimate_memory_usage(self) -> dict[str, Any]:
         """Estimate memory usage"""
         try:
             cache_size = sys.getsizeof(self._local_cache)
@@ -658,7 +657,7 @@ class CompletionCache:
         except Exception:
             return {"error": "Unable to estimate memory usage"}
 
-    async def export_hot_patterns(self) -> List[Dict[str, Any]]:
+    async def export_hot_patterns(self) -> list[dict[str, Any]]:
         """Export hot patterns for model training optimization"""
         hot_patterns = []
 
@@ -717,7 +716,7 @@ _completion_cache_instance = None
 _completion_cache_lock = threading.Lock()
 
 
-def get_completion_cache(redis_config: Optional[Dict[str, Any]] = None) -> CompletionCache:
+def get_completion_cache(redis_config: dict[str, Any] | None = None) -> CompletionCache:
     """Get the global completion cache instance"""
     global _completion_cache_instance
     with _completion_cache_lock:
@@ -730,7 +729,7 @@ def init_completion_cache(
     max_size: int = 1000,
     ttl_seconds: int = 300,
     strategy: CacheStrategy = CacheStrategy.HYBRID,
-    redis_config: Optional[Dict[str, Any]] = None,
+    redis_config: dict[str, Any] | None = None,
 ) -> CompletionCache:
     """Initialize the global completion cache with specific configuration"""
     global _completion_cache_instance

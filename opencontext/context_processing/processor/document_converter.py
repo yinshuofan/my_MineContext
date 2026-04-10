@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -15,7 +14,6 @@ Provides document conversion and analysis functions:
 import os
 import tempfile
 from pathlib import Path
-from typing import List
 
 from PIL import Image
 
@@ -32,7 +30,7 @@ class PageInfo:
         page_number: int,
         text: str = "",
         has_visual_elements: bool = False,
-        doc_images: List[Image.Image] = None,
+        doc_images: list[Image.Image] = None,
     ):
         self.page_number = page_number
         self.text = text
@@ -49,7 +47,7 @@ class DocumentConverter:
     def __init__(self, dpi: int = 200):
         self.dpi = dpi
 
-    def convert_to_images(self, file_path: str) -> List[Image.Image]:
+    def convert_to_images(self, file_path: str) -> list[Image.Image]:
         """Convert document to image list"""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -66,7 +64,7 @@ class DocumentConverter:
         else:
             raise ValueError(f"Unsupported file format: {file_ext}")
 
-    def _convert_pdf_to_images(self, pdf_path: str) -> List[Image.Image]:
+    def _convert_pdf_to_images(self, pdf_path: str) -> list[Image.Image]:
         """Convert PDF to image list (using pypdfium2)"""
         try:
             import pypdfium2 as pdfium
@@ -89,7 +87,7 @@ class DocumentConverter:
             logger.exception(f"Error converting PDF: {e}")
             raise
 
-    def _load_image(self, image_path: str) -> List[Image.Image]:
+    def _load_image(self, image_path: str) -> list[Image.Image]:
         """Load single image"""
         logger.info(f"Loading image: {image_path}")
         try:
@@ -101,7 +99,7 @@ class DocumentConverter:
             logger.exception(f"Error loading image: {e}")
             raise
 
-    def _convert_pptx_to_images(self, pptx_path: str) -> List[Image.Image]:
+    def _convert_pptx_to_images(self, pptx_path: str) -> list[Image.Image]:
         """Convert PPTX to images (requires LibreOffice)"""
         logger.warning("PPTX processing requires LibreOffice")
         try:
@@ -139,7 +137,7 @@ class DocumentConverter:
             logger.exception(f"Error converting PPTX: {e}")
             raise
 
-    def analyze_pdf_pages(self, file_path: str, text_threshold: int = 50) -> List[PageInfo]:
+    def analyze_pdf_pages(self, file_path: str, text_threshold: int = 50) -> list[PageInfo]:
         """
         Analyze each PDF page (one-time read, detect visual elements)
         """
@@ -183,7 +181,7 @@ class DocumentConverter:
             logger.debug(f"PDF page image detection failed: {e}")
             return False
 
-    def analyze_docx_pages(self, file_path: str) -> List[PageInfo]:
+    def analyze_docx_pages(self, file_path: str) -> list[PageInfo]:
         """
         Analyze DOCX (split by paragraphs, extract images for VLM)
 
@@ -359,7 +357,7 @@ class DocumentConverter:
             logger.debug(f"DOCX page break detection failed: {e}")
             return False
 
-    def _extract_paragraph_images(self, paragraph, doc) -> List[Image.Image]:
+    def _extract_paragraph_images(self, paragraph, doc) -> list[Image.Image]:
         """
         Extract embedded images from paragraph
 
@@ -411,7 +409,7 @@ class DocumentConverter:
 
         return images
 
-    def _extract_all_images(self, doc) -> List[Image.Image]:
+    def _extract_all_images(self, doc) -> list[Image.Image]:
         """
         Extract all images from document
 
@@ -430,7 +428,7 @@ class DocumentConverter:
 
         return images
 
-    def analyze_markdown_pages(self, file_path: str, chars_per_group: int = 2000) -> List[PageInfo]:
+    def analyze_markdown_pages(self, file_path: str, chars_per_group: int = 2000) -> list[PageInfo]:
         """
         Analyze Markdown file (group by heading level + character count, extract local images)
 
@@ -445,7 +443,7 @@ class DocumentConverter:
             md_dir = Path(file_path).parent
 
             # Read Markdown file
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 md_content = f.read()
 
             if not md_content.strip():

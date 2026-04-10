@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 Event Search API Route
@@ -10,7 +9,7 @@ children.
 
 import asyncio
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -111,7 +110,7 @@ async def search_events(
             ),
         )
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         elapsed_ms = (time.monotonic() - start_time) * 1000
         logger.warning(f"Event search timed out after {elapsed_ms:.0f}ms")
         return EventSearchResponse(
@@ -141,12 +140,12 @@ async def search_events(
 async def _execute_search(
     storage,
     request: EventSearchRequest,
-) -> Tuple[List[EventNode], List[EventNode]]:
+) -> tuple[list[EventNode], list[EventNode]]:
     """Execute the search and return (search_hits_for_tracking, tree_roots)."""
 
     # ── Step 1: Get raw results + ancestors via service ──
-    raw_results: List[Tuple[ProcessedContext, float]] = []
-    all_ancestors: Dict[str, ProcessedContext] = {}
+    raw_results: list[tuple[ProcessedContext, float]] = []
+    all_ancestors: dict[str, ProcessedContext] = {}
 
     l0_type = _search_service.get_l0_type()
 
@@ -176,8 +175,8 @@ async def _execute_search(
         all_ancestors = result.ancestors
 
     # ── Step 2: Build node map (stays in route — EventNode is a response model) ──
-    nodes: Dict[str, EventNode] = {}
-    search_hits: List[EventNode] = []
+    nodes: dict[str, EventNode] = {}
+    search_hits: list[EventNode] = []
     for ctx, score in raw_results:
         node = _to_search_hit_node(ctx, score)
         nodes[ctx.id] = node
@@ -200,7 +199,7 @@ async def _execute_search(
     }
     summary_type_values = user_summary_types | base_summary_types
 
-    roots: List[EventNode] = []
+    roots: list[EventNode] = []
     linked: set = set()
     for node_id, node in nodes.items():
         pid = _extract_parent_id_from_refs(node.refs, nodes, summary_type_values)
@@ -211,8 +210,8 @@ async def _execute_search(
             roots.append(node)
 
     # ── Step 4: Sort ──
-    def sort_tree(node_list: List[EventNode]):
-        node_list.sort(key=lambda n: (n.event_time_start or ""))
+    def sort_tree(node_list: list[EventNode]):
+        node_list.sort(key=lambda n: n.event_time_start or "")
         for n in node_list:
             if n.children:
                 sort_tree(n.children)
@@ -221,7 +220,7 @@ async def _execute_search(
     return search_hits, roots
 
 
-def _format_timestamp(value) -> Optional[str]:
+def _format_timestamp(value) -> str | None:
     """Format a timestamp value to ISO string."""
     if not value:
         return None
@@ -232,8 +231,8 @@ def _format_timestamp(value) -> Optional[str]:
 
 
 def _extract_parent_id_from_refs(
-    refs: Dict[str, List[str]], nodes: Dict[str, Any], summary_type_values: set = None
-) -> Optional[str]:
+    refs: dict[str, list[str]], nodes: dict[str, Any], summary_type_values: set = None
+) -> str | None:
     """Find the first upward ref target that exists in the nodes map (i.e., a known ancestor).
 
     Only considers refs whose keys are summary types (upward/parent direction).
@@ -248,7 +247,7 @@ def _extract_parent_id_from_refs(
     return None
 
 
-def _extract_media_refs(ctx: ProcessedContext) -> List[Dict[str, Any]]:
+def _extract_media_refs(ctx: ProcessedContext) -> list[dict[str, Any]]:
     """Extract normalized media_refs from context metadata."""
     if not ctx.metadata:
         return []
@@ -300,14 +299,14 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
 
 async def _track_accessed_safe(
     user_id: str,
-    results: List[EventNode],
+    results: list[EventNode],
     device_id: str = "default",
     agent_id: str = "default",
 ) -> None:
     """Fire-and-forget: record accessed event IDs in Redis for memory cache."""
     try:
         l0_type = _search_service.get_l0_type()
-        items: List[dict] = []
+        items: list[dict] = []
         for er in results:
             items.append(
                 {

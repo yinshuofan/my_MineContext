@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -8,7 +7,6 @@ OpenContext module: prompt_manager
 """
 
 import os
-from typing import Dict
 
 import yaml
 
@@ -24,7 +22,7 @@ class PromptManager:
         self.prompts = {}
         self.prompt_config_path = prompt_config_path
         if prompt_config_path and os.path.exists(prompt_config_path):
-            with open(prompt_config_path, "r", encoding="utf-8") as f:
+            with open(prompt_config_path, encoding="utf-8") as f:
                 self.prompts = yaml.safe_load(f)
         else:
             logger.warning("Prompt config file not found, using default prompts.")
@@ -41,7 +39,7 @@ class PromptManager:
                 return default
         return value if isinstance(value, str) else default
 
-    def get_prompt_group(self, name: str) -> Dict[str, str]:
+    def get_prompt_group(self, name: str) -> dict[str, str]:
         keys = name.split(".")
         value = self.prompts
         for key in keys:
@@ -87,7 +85,7 @@ class PromptManager:
             return False
 
         try:
-            with open(user_prompts_path, "r", encoding="utf-8") as f:
+            with open(user_prompts_path, encoding="utf-8") as f:
                 user_prompts = yaml.safe_load(f)
 
             if not user_prompts:
@@ -195,7 +193,7 @@ class PromptManager:
 
             # Reload prompts from base file
             if self.prompt_config_path and os.path.exists(self.prompt_config_path):
-                with open(self.prompt_config_path, "r", encoding="utf-8") as f:
+                with open(self.prompt_config_path, encoding="utf-8") as f:
                     self.prompts = yaml.safe_load(f)
 
             return True

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 Global object storage singleton
@@ -6,7 +5,6 @@ Global object storage singleton
 
 import os
 import threading
-from typing import Optional
 
 from opencontext.storage.object_storage.base import IObjectStorage
 from opencontext.utils.logging_utils import get_logger
@@ -15,12 +13,12 @@ logger = get_logger(__name__)
 
 
 class GlobalObjectStorage:
-    _instance: Optional[IObjectStorage] = None
+    _instance: IObjectStorage | None = None
     _lock = threading.Lock()
     _initialized = False
 
     @classmethod
-    def initialize(cls) -> Optional[IObjectStorage]:
+    def initialize(cls) -> IObjectStorage | None:
         """Initialize from config. Call once at startup. Returns the instance or None."""
         if cls._initialized:
             return cls._instance
@@ -32,7 +30,7 @@ class GlobalObjectStorage:
             return cls._instance
 
     @classmethod
-    def _create_from_config(cls) -> Optional[IObjectStorage]:
+    def _create_from_config(cls) -> IObjectStorage | None:
         """Create backend from config/config.yaml object_storage section."""
         from opencontext.config.global_config import get_config
 
@@ -88,7 +86,7 @@ class GlobalObjectStorage:
             return None
 
     @classmethod
-    def get_instance(cls) -> Optional[IObjectStorage]:
+    def get_instance(cls) -> IObjectStorage | None:
         """Get the singleton. Returns None if not initialized or not configured."""
         if not cls._initialized:
             cls.initialize()
@@ -102,6 +100,6 @@ class GlobalObjectStorage:
             cls._initialized = False
 
 
-def get_object_storage() -> Optional[IObjectStorage]:
+def get_object_storage() -> IObjectStorage | None:
     """Convenience function - get object storage singleton. Returns None if not configured."""
     return GlobalObjectStorage.get_instance()

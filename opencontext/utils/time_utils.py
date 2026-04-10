@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -26,7 +25,7 @@ from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-_configured_tz: datetime.tzinfo = datetime.timezone.utc
+_configured_tz: datetime.tzinfo = datetime.UTC
 
 
 def init_timezone(tz_name: str | None = None) -> None:
@@ -43,7 +42,7 @@ def init_timezone(tz_name: str | None = None) -> None:
         logger.info(f"Global timezone set to: {name}")
     except KeyError:
         logger.error(f"Unknown timezone '{name}', falling back to UTC")
-        _configured_tz = datetime.timezone.utc
+        _configured_tz = datetime.UTC
 
 
 def get_timezone() -> datetime.tzinfo:
@@ -67,7 +66,7 @@ def utc_now() -> datetime.datetime:
     (e.g. AWS Signature V4, HTTP Date headers).
     For all other cases, use ``now()``.
     """
-    return datetime.datetime.now(tz=datetime.timezone.utc)
+    return datetime.datetime.now(tz=datetime.UTC)
 
 
 def today_start() -> datetime.datetime:

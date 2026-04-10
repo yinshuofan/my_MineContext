@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -17,13 +16,14 @@ Usage:
 """
 
 import asyncio
+import builtins
 import json
 import threading
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Optional
 
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import now as tz_now
@@ -59,7 +59,7 @@ class RedisCacheConfig:
 
     host: str = "localhost"
     port: int = 6379
-    password: Optional[str] = None
+    password: str | None = None
     db: int = 0
     key_prefix: str = "opencontext:"
     default_ttl: int = 3600  # 1 hour
@@ -113,7 +113,7 @@ class RedisCache:
     All methods are asynchronous (non-blocking).
     """
 
-    def __init__(self, config: Optional[RedisCacheConfig] = None):
+    def __init__(self, config: RedisCacheConfig | None = None):
         """
         Initialize Redis cache manager.
 
@@ -215,7 +215,7 @@ class RedisCache:
     # Basic Key-Value Operations
     # =========================================================================
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         """Get value by key."""
         if not await self._ensure_async_client():
             return None
@@ -229,7 +229,7 @@ class RedisCache:
         self,
         key: str,
         value: str,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
         nx: bool = False,
         xx: bool = False,
     ) -> bool:
@@ -296,7 +296,7 @@ class RedisCache:
     # JSON Operations
     # =========================================================================
 
-    async def get_json(self, key: str) -> Optional[Any]:
+    async def get_json(self, key: str) -> Any | None:
         """Get JSON value by key."""
         value = await self.get(key)
         if value is None:
@@ -311,7 +311,7 @@ class RedisCache:
         self,
         key: str,
         value: Any,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
         nx: bool = False,
         xx: bool = False,
     ) -> bool:
@@ -347,7 +347,7 @@ class RedisCache:
             logger.error(f"Redis RPUSH error: {e}")
             return 0
 
-    async def lpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
+    async def lpop(self, key: str, count: int = 1) -> str | list[str] | None:
         """Pop values from the left of a list."""
         if not await self._ensure_async_client():
             return None
@@ -357,7 +357,7 @@ class RedisCache:
             logger.error(f"Redis LPOP error: {e}")
             return None
 
-    async def rpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
+    async def rpop(self, key: str, count: int = 1) -> str | list[str] | None:
         """Pop values from the right of a list."""
         if not await self._ensure_async_client():
             return None
@@ -367,7 +367,7 @@ class RedisCache:
             logger.error(f"Redis RPOP error: {e}")
             return None
 
-    async def lrange(self, key: str, start: int = 0, end: int = -1) -> List[str]:
+    async def lrange(self, key: str, start: int = 0, end: int = -1) -> list[str]:
         """Get range of elements from a list."""
         if not await self._ensure_async_client():
             return []
@@ -397,7 +397,7 @@ class RedisCache:
             logger.error(f"Redis LTRIM error: {e}")
             return False
 
-    async def lrange_json(self, key: str, start: int = 0, end: int = -1) -> List[Any]:
+    async def lrange_json(self, key: str, start: int = 0, end: int = -1) -> list[Any]:
         """Get range of JSON elements from a list."""
         items = await self.lrange(key, start, end)
         result = []
@@ -450,7 +450,7 @@ class RedisCache:
     # Hash Operations
     # =========================================================================
 
-    async def hget(self, key: str, field: str) -> Optional[str]:
+    async def hget(self, key: str, field: str) -> str | None:
         """Get a field from a hash."""
         if not await self._ensure_async_client():
             return None
@@ -470,7 +470,7 @@ class RedisCache:
             logger.error(f"Redis HSET error: {e}")
             return 0
 
-    async def hmset(self, key: str, mapping: Dict[str, str]) -> bool:
+    async def hmset(self, key: str, mapping: dict[str, str]) -> bool:
         """Set multiple fields in a hash."""
         if not await self._ensure_async_client() or not mapping:
             return False
@@ -480,7 +480,7 @@ class RedisCache:
             logger.error(f"Redis HMSET error: {e}")
             return False
 
-    async def hgetall(self, key: str) -> Dict[str, str]:
+    async def hgetall(self, key: str) -> dict[str, str]:
         """Get all fields and values from a hash."""
         if not await self._ensure_async_client():
             return {}
@@ -520,7 +520,7 @@ class RedisCache:
             logger.error(f"Redis HEXISTS error: {e}")
             return False
 
-    async def hget_json(self, key: str, field: str) -> Optional[Any]:
+    async def hget_json(self, key: str, field: str) -> Any | None:
         """Get a JSON field from a hash."""
         value = await self.hget(key, field)
         if value is None:
@@ -539,7 +539,7 @@ class RedisCache:
             logger.error(f"Redis HSET_JSON error: {e}")
             return 0
 
-    async def hmset_json(self, key: str, mapping: Dict[str, Any]) -> bool:
+    async def hmset_json(self, key: str, mapping: dict[str, Any]) -> bool:
         """Set multiple JSON fields in a hash."""
         if not mapping:
             return False
@@ -552,7 +552,7 @@ class RedisCache:
             logger.error(f"Redis HMSET_JSON error: {e}")
             return False
 
-    async def hgetall_json(self, key: str) -> Dict[str, Any]:
+    async def hgetall_json(self, key: str) -> dict[str, Any]:
         """Get all fields from a hash as JSON objects."""
         data = await self.hgetall(key)
         result = {}
@@ -563,7 +563,7 @@ class RedisCache:
                 result[k] = v
         return result
 
-    async def hkeys(self, key: str) -> List[str]:
+    async def hkeys(self, key: str) -> list[str]:
         """Get all field names from a hash."""
         if not await self._ensure_async_client():
             return []
@@ -573,7 +573,7 @@ class RedisCache:
             logger.error(f"Redis HKEYS error: {e}")
             return []
 
-    async def hvals(self, key: str) -> List[str]:
+    async def hvals(self, key: str) -> list[str]:
         """Get all values from a hash."""
         if not await self._ensure_async_client():
             return []
@@ -583,7 +583,7 @@ class RedisCache:
             logger.error(f"Redis HVALS error: {e}")
             return []
 
-    async def hvals_json(self, key: str) -> List[Any]:
+    async def hvals_json(self, key: str) -> list[Any]:
         """Get all values from a hash as JSON objects."""
         values = await self.hvals(key)
         result = []
@@ -628,7 +628,7 @@ class RedisCache:
             logger.error(f"Redis SISMEMBER error: {e}")
             return False
 
-    async def smembers(self, key: str) -> Set[str]:
+    async def smembers(self, key: str) -> builtins.set[str]:
         """Get all members of a set."""
         if not await self._ensure_async_client():
             return set()
@@ -652,7 +652,7 @@ class RedisCache:
     # Sorted Set Operations
     # =========================================================================
 
-    async def zadd(self, key: str, mapping: Dict[str, float]) -> int:
+    async def zadd(self, key: str, mapping: dict[str, float]) -> int:
         """Add members to a sorted set with their scores."""
         if not await self._ensure_async_client() or not mapping:
             return 0
@@ -664,7 +664,7 @@ class RedisCache:
 
     async def zrangebyscore(
         self, key: str, min_score: float, max_score: float, withscores: bool = False
-    ) -> List[str]:
+    ) -> list[str]:
         """Get members from a sorted set within a score range."""
         if not await self._ensure_async_client():
             return []
@@ -680,7 +680,7 @@ class RedisCache:
             logger.error(f"Redis ZRANGEBYSCORE error: {e}")
             return []
 
-    async def eval_lua(self, script: str, keys: List[str], args: List = None) -> Any:
+    async def eval_lua(self, script: str, keys: list[str], args: list = None) -> Any:
         """Execute a Lua script on Redis server.
 
         Keys are automatically prefixed. Scripts run atomically (Redis single-threaded).
@@ -706,7 +706,7 @@ class RedisCache:
             logger.error(f"Redis ZREM error: {e}")
             return 0
 
-    async def zscore(self, key: str, member: str) -> Optional[float]:
+    async def zscore(self, key: str, member: str) -> float | None:
         """Get the score of a member in a sorted set."""
         if not await self._ensure_async_client():
             return None
@@ -750,7 +750,7 @@ class RedisCache:
             logger.error(f"Redis DECR error: {e}")
             return 0
 
-    async def getset(self, key: str, value: str) -> Optional[str]:
+    async def getset(self, key: str, value: str) -> str | None:
         """Set a new value and return the old value atomically."""
         if not await self._ensure_async_client():
             return None
@@ -770,7 +770,7 @@ class RedisCache:
         timeout: int = 10,
         blocking: bool = True,
         blocking_timeout: float = 5.0,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Acquire a distributed lock (non-blocking).
 
@@ -838,7 +838,7 @@ class RedisCache:
     # Utility Methods
     # =========================================================================
 
-    async def keys(self, pattern: str = "*") -> List[str]:
+    async def keys(self, pattern: str = "*") -> list[str]:
         """Get keys matching a pattern."""
         if not await self._ensure_async_client():
             return []
@@ -863,7 +863,7 @@ class RedisCache:
             logger.error(f"Redis FLUSHDB error: {e}")
             return False
 
-    async def info(self) -> Dict[str, Any]:
+    async def info(self) -> dict[str, Any]:
         """Get Redis server info."""
         if not await self._ensure_async_client():
             return {}
@@ -939,7 +939,7 @@ class RedisCache:
 # =============================================================================
 
 
-def get_redis_cache(config: Optional[RedisCacheConfig] = None) -> RedisCache:
+def get_redis_cache(config: RedisCacheConfig | None = None) -> RedisCache:
     """
     Get or create the global Redis cache instance.
 
@@ -957,7 +957,7 @@ def get_redis_cache(config: Optional[RedisCacheConfig] = None) -> RedisCache:
         return _redis_client
 
 
-def peek_redis_cache() -> Optional[RedisCache]:
+def peek_redis_cache() -> RedisCache | None:
     """Get the global Redis cache instance without implicitly creating one."""
     with _redis_lock:
         return _redis_client
@@ -1003,12 +1003,12 @@ class InMemoryCache:
     """
 
     def __init__(self):
-        self._data: Dict[str, Any] = {}
-        self._lists: Dict[str, List[str]] = {}
-        self._hashes: Dict[str, Dict[str, str]] = {}
-        self._sets: Dict[str, Set[str]] = {}
-        self._sorted_sets: Dict[str, Dict[str, float]] = {}
-        self._expiry: Dict[str, datetime] = {}
+        self._data: dict[str, Any] = {}
+        self._lists: dict[str, list[str]] = {}
+        self._hashes: dict[str, dict[str, str]] = {}
+        self._sets: dict[str, set[str]] = {}
+        self._sorted_sets: dict[str, dict[str, float]] = {}
+        self._expiry: dict[str, datetime] = {}
         self._async_lock = asyncio.Lock()
         logger.warning("Using in-memory cache fallback. Multi-instance sharing is NOT supported!")
 
@@ -1030,14 +1030,14 @@ class InMemoryCache:
         return False
 
     # Basic Key-Value Operations
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         async with self._async_lock:
             if self._check_expiry(key):
                 return None
             return self._data.get(key)
 
     async def set(
-        self, key: str, value: str, ttl: Optional[int] = None, nx: bool = False, xx: bool = False
+        self, key: str, value: str, ttl: int | None = None, nx: bool = False, xx: bool = False
     ) -> bool:
         async with self._async_lock:
             exists = key in self._data
@@ -1097,7 +1097,7 @@ class InMemoryCache:
             return -1
 
     # JSON Operations
-    async def get_json(self, key: str) -> Optional[Any]:
+    async def get_json(self, key: str) -> Any | None:
         value = await self.get(key)
         if value is None:
             return None
@@ -1107,7 +1107,7 @@ class InMemoryCache:
             return None
 
     async def set_json(
-        self, key: str, value: Any, ttl: Optional[int] = None, nx: bool = False, xx: bool = False
+        self, key: str, value: Any, ttl: int | None = None, nx: bool = False, xx: bool = False
     ) -> bool:
         try:
             json_str = json.dumps(value, ensure_ascii=False, default=str)
@@ -1132,7 +1132,7 @@ class InMemoryCache:
                 self._lists[key].insert(0, v)
             return len(self._lists[key])
 
-    async def lpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
+    async def lpop(self, key: str, count: int = 1) -> str | list[str] | None:
         async with self._async_lock:
             if key not in self._lists or not self._lists[key]:
                 return None
@@ -1142,7 +1142,7 @@ class InMemoryCache:
             self._lists[key] = self._lists[key][count:]
             return result
 
-    async def rpop(self, key: str, count: int = 1) -> Optional[Union[str, List[str]]]:
+    async def rpop(self, key: str, count: int = 1) -> str | list[str] | None:
         async with self._async_lock:
             if key not in self._lists or not self._lists[key]:
                 return None
@@ -1152,7 +1152,7 @@ class InMemoryCache:
             self._lists[key] = self._lists[key][:-count]
             return result
 
-    async def lrange(self, key: str, start: int = 0, end: int = -1) -> List[str]:
+    async def lrange(self, key: str, start: int = 0, end: int = -1) -> list[str]:
         async with self._async_lock:
             if key not in self._lists:
                 return []
@@ -1176,7 +1176,7 @@ class InMemoryCache:
                 self._lists[key] = lst[start : end + 1]
             return True
 
-    async def lrange_json(self, key: str, start: int = 0, end: int = -1) -> List[Any]:
+    async def lrange_json(self, key: str, start: int = 0, end: int = -1) -> list[Any]:
         items = await self.lrange(key, start, end)
         result = []
         for item in items:
@@ -1209,7 +1209,7 @@ class InMemoryCache:
         return await self.lpush(key, *json_values)
 
     # Hash Operations
-    async def hget(self, key: str, field: str) -> Optional[str]:
+    async def hget(self, key: str, field: str) -> str | None:
         async with self._async_lock:
             return self._hashes.get(key, {}).get(field)
 
@@ -1221,14 +1221,14 @@ class InMemoryCache:
             self._hashes[key][field] = value
             return 1 if is_new else 0
 
-    async def hmset(self, key: str, mapping: Dict[str, str]) -> bool:
+    async def hmset(self, key: str, mapping: dict[str, str]) -> bool:
         async with self._async_lock:
             if key not in self._hashes:
                 self._hashes[key] = {}
             self._hashes[key].update(mapping)
             return True
 
-    async def hgetall(self, key: str) -> Dict[str, str]:
+    async def hgetall(self, key: str) -> dict[str, str]:
         async with self._async_lock:
             return dict(self._hashes.get(key, {}))
 
@@ -1251,7 +1251,7 @@ class InMemoryCache:
         async with self._async_lock:
             return field in self._hashes.get(key, {})
 
-    async def hget_json(self, key: str, field: str) -> Optional[Any]:
+    async def hget_json(self, key: str, field: str) -> Any | None:
         value = await self.hget(key, field)
         if value is None:
             return None
@@ -1268,7 +1268,7 @@ class InMemoryCache:
             logger.debug(f"Redis hset_json failed: {e}")
             return 0
 
-    async def hmset_json(self, key: str, mapping: Dict[str, Any]) -> bool:
+    async def hmset_json(self, key: str, mapping: dict[str, Any]) -> bool:
         if not mapping:
             return False
         try:
@@ -1280,7 +1280,7 @@ class InMemoryCache:
             logger.debug(f"Redis hmset_json failed: {e}")
             return False
 
-    async def hgetall_json(self, key: str) -> Dict[str, Any]:
+    async def hgetall_json(self, key: str) -> dict[str, Any]:
         data = await self.hgetall(key)
         result = {}
         for k, v in data.items():
@@ -1290,15 +1290,15 @@ class InMemoryCache:
                 result[k] = v
         return result
 
-    async def hkeys(self, key: str) -> List[str]:
+    async def hkeys(self, key: str) -> list[str]:
         async with self._async_lock:
             return list(self._hashes.get(key, {}).keys())
 
-    async def hvals(self, key: str) -> List[str]:
+    async def hvals(self, key: str) -> list[str]:
         async with self._async_lock:
             return list(self._hashes.get(key, {}).values())
 
-    async def hvals_json(self, key: str) -> List[Any]:
+    async def hvals_json(self, key: str) -> list[Any]:
         values = await self.hvals(key)
         result = []
         for v in values:
@@ -1332,7 +1332,7 @@ class InMemoryCache:
         async with self._async_lock:
             return member in self._sets.get(key, set())
 
-    async def smembers(self, key: str) -> Set[str]:
+    async def smembers(self, key: str) -> builtins.set[str]:
         async with self._async_lock:
             return set(self._sets.get(key, set()))
 
@@ -1341,7 +1341,7 @@ class InMemoryCache:
             return len(self._sets.get(key, set()))
 
     # Sorted Set Operations
-    async def zadd(self, key: str, mapping: Dict[str, float]) -> int:
+    async def zadd(self, key: str, mapping: dict[str, float]) -> int:
         async with self._async_lock:
             if key not in self._sorted_sets:
                 self._sorted_sets[key] = {}
@@ -1351,7 +1351,7 @@ class InMemoryCache:
 
     async def zrangebyscore(
         self, key: str, min_score: float, max_score: float, withscores: bool = False
-    ) -> List:
+    ) -> list:
         async with self._async_lock:
             if key not in self._sorted_sets:
                 return []
@@ -1374,7 +1374,7 @@ class InMemoryCache:
                     count += 1
             return count
 
-    async def zscore(self, key: str, member: str) -> Optional[float]:
+    async def zscore(self, key: str, member: str) -> float | None:
         async with self._async_lock:
             return self._sorted_sets.get(key, {}).get(member)
 
@@ -1397,7 +1397,7 @@ class InMemoryCache:
             self._data[key] = str(new_value)
             return new_value
 
-    async def getset(self, key: str, value: str) -> Optional[str]:
+    async def getset(self, key: str, value: str) -> str | None:
         async with self._async_lock:
             old_value = self._data.get(key)
             self._data[key] = value
@@ -1410,7 +1410,7 @@ class InMemoryCache:
         timeout: int = 10,
         blocking: bool = True,
         blocking_timeout: float = 5.0,
-    ) -> Optional[str]:
+    ) -> str | None:
         import time
 
         lock_key = f"lock:{lock_name}"
@@ -1437,7 +1437,7 @@ class InMemoryCache:
         return False
 
     # Utility Methods
-    async def keys(self, pattern: str = "*") -> List[str]:
+    async def keys(self, pattern: str = "*") -> list[str]:
         async with self._async_lock:
             import fnmatch
 
@@ -1462,7 +1462,7 @@ class InMemoryCache:
             self._expiry.clear()
             return True
 
-    async def info(self) -> Dict[str, Any]:
+    async def info(self) -> dict[str, Any]:
         async with self._async_lock:
             return {
                 "keys": len(self._data)
@@ -1477,7 +1477,7 @@ class InMemoryCache:
         pass
 
 
-async def get_cache(config: Optional[RedisCacheConfig] = None) -> Union[RedisCache, InMemoryCache]:
+async def get_cache(config: RedisCacheConfig | None = None) -> RedisCache | InMemoryCache:
     """
     Get the best available cache implementation.
     Returns RedisCache if Redis is available, otherwise InMemoryCache.

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,8 +9,7 @@ Global configuration manager, providing a unified interface for accessing config
 
 import os
 import threading
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from opencontext.config.config_manager import ConfigManager
 from opencontext.config.prompt_manager import PromptManager
@@ -45,10 +43,10 @@ class GlobalConfig:
         if not self._initialized:
             with self._lock:
                 if not self._initialized:
-                    self._config_manager: Optional[ConfigManager] = None
-                    self._prompt_manager: Optional[PromptManager] = None
-                    self._config_path: Optional[str] = None
-                    self._prompt_path: Optional[str] = None
+                    self._config_manager: ConfigManager | None = None
+                    self._prompt_manager: PromptManager | None = None
+                    self._config_path: str | None = None
+                    self._prompt_path: str | None = None
                     self._auto_initialized = False
                     self._language = "zh"
                     GlobalConfig._initialized = True
@@ -102,7 +100,7 @@ class GlobalConfig:
             logger.error(f"GlobalConfig auto-initialization failed: {e}")
             self._auto_initialized = True  # Prevent repeated attempts
 
-    def initialize(self, config_path: Optional[str] = None) -> bool:
+    def initialize(self, config_path: str | None = None) -> bool:
         """
         Initialize the configuration and prompt managers
         """
@@ -179,13 +177,13 @@ class GlobalConfig:
         """
         self._prompt_manager = prompt_manager
 
-    def get_config_manager(self) -> Optional[ConfigManager]:
+    def get_config_manager(self) -> ConfigManager | None:
         """
         Get the configuration manager instance
         """
         return self._config_manager
 
-    def get_prompt_manager(self) -> Optional[PromptManager]:
+    def get_prompt_manager(self) -> PromptManager | None:
         """
         Get the prompt manager instance
         """
@@ -230,7 +228,7 @@ class GlobalConfig:
             logger.error(f"Failed to set language: {e}")
             return False
 
-    def get_config(self, path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def get_config(self, path: str | None = None) -> dict[str, Any] | None:
         """
         Get configuration
         """
@@ -257,7 +255,7 @@ class GlobalConfig:
 
         return value
 
-    def get_prompt(self, name: str, default: Optional[str] = None) -> Optional[str]:
+    def get_prompt(self, name: str, default: str | None = None) -> str | None:
         """
         Get a prompt
         """
@@ -267,7 +265,7 @@ class GlobalConfig:
 
         return self._prompt_manager.get_prompt(name, default)
 
-    def get_prompt_group(self, name: str) -> Dict[str, str]:
+    def get_prompt_group(self, name: str) -> dict[str, str]:
         """
         Get a prompt group
         """
@@ -297,7 +295,7 @@ def get_global_config() -> GlobalConfig:
     return GlobalConfig.get_instance()
 
 
-def get_config(path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def get_config(path: str | None = None) -> dict[str, Any] | None:
     """Convenience function to get a configuration value"""
     return GlobalConfig.get_instance().get_config(path)
 
@@ -307,12 +305,12 @@ def get_language() -> str:
     return GlobalConfig.get_instance().get_language()
 
 
-def get_prompt(name: str, default: Optional[str] = None) -> Optional[str]:
+def get_prompt(name: str, default: str | None = None) -> str | None:
     """Convenience function to get a prompt"""
     return GlobalConfig.get_instance().get_prompt(name, default)
 
 
-def get_prompt_group(name: str) -> Dict[str, str]:
+def get_prompt_group(name: str) -> dict[str, str]:
     """Convenience function to get a prompt group"""
     return GlobalConfig.get_instance().get_prompt_group(name)
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 Request ID middleware for request tracing across components.

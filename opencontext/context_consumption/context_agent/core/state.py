@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Workflow State Management
@@ -9,7 +8,7 @@ Manages the state of the entire workflow.
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.utils.time_utils import now as tz_now
 
@@ -31,13 +30,13 @@ class WorkflowMetadata:
     """Workflow metadata."""
 
     workflow_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    session_id: Optional[str] = None
-    user_id: Optional[str] = None
+    session_id: str | None = None
+    user_id: str | None = None
     created_at: datetime = field(default_factory=tz_now)
     updated_at: datetime = field(default_factory=tz_now)
     version: str = "1.0.0"
-    tags: List[str] = field(default_factory=list)
-    custom_data: Dict[str, Any] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
+    custom_data: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -49,14 +48,14 @@ class WorkflowState:
     stage: WorkflowStage = WorkflowStage.INIT
 
     # Results of each stage
-    intent: Optional[Intent] = None
+    intent: Intent | None = None
     contexts: ContextCollection = field(default_factory=ContextCollection)
-    execution_plan: Optional[ExecutionPlan] = None
-    execution_result: Optional[ExecutionResult] = None
-    reflection: Optional[ReflectionResult] = None
+    execution_plan: ExecutionPlan | None = None
+    execution_result: ExecutionResult | None = None
+    reflection: ReflectionResult | None = None
 
     # Tool call history - track all tool calls and validations
-    tool_history: List[Dict[str, Any]] = field(default_factory=list)
+    tool_history: list[dict[str, Any]] = field(default_factory=list)
 
     # Streaming processing
     event_buffer: EventBuffer = field(default_factory=EventBuffer)
@@ -78,7 +77,7 @@ class WorkflowState:
         self.stage = new_stage
         self.metadata.updated_at = tz_now()
 
-    def add_tool_history_entry(self, entry: Dict[str, Any]):
+    def add_tool_history_entry(self, entry: dict[str, Any]):
         """Add a tool history entry."""
         entry["timestamp"] = tz_now().isoformat()
         self.tool_history.append(entry)
@@ -136,7 +135,7 @@ class WorkflowState:
         """Check if the workflow is complete."""
         return self.stage in [WorkflowStage.COMPLETED, WorkflowStage.FAILED]
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get a summary of the state."""
         return {
             "workflow_id": self.metadata.workflow_id,
@@ -154,7 +153,7 @@ class WorkflowState:
             "updated_at": self.metadata.updated_at.isoformat(),
         }
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary format."""
         return {
             "query": {
@@ -212,7 +211,7 @@ class StateManager:
     """State manager."""
 
     def __init__(self):
-        self.states: Dict[str, WorkflowState] = {}
+        self.states: dict[str, WorkflowState] = {}
 
     def create_state(self, query_obj: Query, **kwargs) -> WorkflowState:
         """Create a new workflow state."""
@@ -236,11 +235,11 @@ class StateManager:
         self.states[state.metadata.workflow_id] = state
         return state
 
-    def get_state(self, workflow_id: str) -> Optional[WorkflowState]:
+    def get_state(self, workflow_id: str) -> WorkflowState | None:
         """Get the workflow state."""
         return self.states.get(workflow_id)
 
-    def update_state(self, workflow_id: str, updates: Dict[str, Any]):
+    def update_state(self, workflow_id: str, updates: dict[str, Any]):
         """Update the workflow state."""
         state = self.get_state(workflow_id)
         if state:

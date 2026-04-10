@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,8 +9,9 @@ Context processing manager for managing and coordinating context processing comp
 """
 
 import asyncio
+from collections.abc import Callable
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from loguru import logger
 
@@ -42,16 +42,16 @@ class ContextProcessorManager:
 
     def __init__(self, max_workers: int = 5):
         """Initialize context processing manager"""
-        self._processors: Dict[str, IContextProcessor] = {}
-        self._callback: Optional[Callable[[List[Any]], None]] = None
-        self._merger: Optional[IContextProcessor] = None
-        self._statistics: Dict[str, Any] = {
+        self._processors: dict[str, IContextProcessor] = {}
+        self._callback: Callable[[list[Any]], None] | None = None
+        self._merger: IContextProcessor | None = None
+        self._statistics: dict[str, Any] = {
             "total_processed_inputs": 0,
             "total_contexts_generated": 0,
             "processors": {},
             "errors": 0,
         }
-        self._routing_table: Dict[ContextSource, List[str]] = {}
+        self._routing_table: dict[ContextSource, list[str]] = {}
         self._define_routing()
         self._lock = Lock()
         self._max_workers = max_workers
@@ -96,7 +96,7 @@ class ContextProcessorManager:
         self._merger = merger
         logger.info(f"Merger component '{merger.get_name()}' has been set")
 
-    def get_merger(self) -> Optional[IContextProcessor]:
+    def get_merger(self) -> IContextProcessor | None:
         """
         Get the merger component
 
@@ -105,13 +105,13 @@ class ContextProcessorManager:
         """
         return self._merger
 
-    def get_processor(self, processor_name: str) -> Optional[IContextProcessor]:
+    def get_processor(self, processor_name: str) -> IContextProcessor | None:
         return self._processors.get(processor_name)
 
-    def get_all_processors(self) -> Dict[str, IContextProcessor]:
+    def get_all_processors(self) -> dict[str, IContextProcessor]:
         return self._processors.copy()
 
-    def set_callback(self, callback: Callable[[List[Any]], None]) -> None:
+    def set_callback(self, callback: Callable[[list[Any]], None]) -> None:
         self._callback = callback
 
     async def process(self, initial_input: RawContextProperties) -> bool:
@@ -145,8 +145,8 @@ class ContextProcessorManager:
             return False
 
     async def process_batch(
-        self, raw_context: RawContextProperties, processor_names: List[str]
-    ) -> List[ProcessedContext]:
+        self, raw_context: RawContextProperties, processor_names: list[str]
+    ) -> list[ProcessedContext]:
         """
         Process a raw context through multiple processors with DAG-based ordering.
 
@@ -179,7 +179,7 @@ class ContextProcessorManager:
         proc_map = {name: proc for name, proc in resolved}
 
         # Execute layer by layer
-        accumulated: Dict[str, ProcessedContext] = {}  # id -> context
+        accumulated: dict[str, ProcessedContext] = {}  # id -> context
 
         for layer in layers:
             layer_processors = [(name, proc_map[name]) for name in layer if name in proc_map]
@@ -214,7 +214,7 @@ class ContextProcessorManager:
         all_contexts = list(accumulated.values())
 
         if all_contexts:
-            type_summary: Dict[str, int] = {}
+            type_summary: dict[str, int] = {}
             for ctx in all_contexts:
                 t = ctx.extracted_data.context_type.value
                 type_summary[t] = type_summary.get(t, 0) + 1
@@ -226,7 +226,7 @@ class ContextProcessorManager:
         return all_contexts
 
     @staticmethod
-    def _topological_sort(processor_names: List[str]) -> List[List[str]]:
+    def _topological_sort(processor_names: list[str]) -> list[list[str]]:
         """
         Sort processor names into execution layers based on PROCESSOR_DEPENDENCIES.
 
@@ -270,7 +270,7 @@ class ContextProcessorManager:
 
         return layers
 
-    async def batch_process(self, initial_inputs: List[RawContextProperties]) -> Dict[str, bool]:
+    async def batch_process(self, initial_inputs: list[RawContextProperties]) -> dict[str, bool]:
         """Batch process raw context data"""
         tasks = [self.process(initial_input) for initial_input in initial_inputs]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -284,7 +284,7 @@ class ContextProcessorManager:
                 results[initial_input.object_id] = result
         return results
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get statistics for all processors and managers
         """

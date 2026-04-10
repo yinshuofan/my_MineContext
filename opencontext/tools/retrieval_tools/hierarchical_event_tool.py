@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -20,7 +19,7 @@ fallback so that recent events not yet rolled up are still discoverable.
 """
 
 from collections import deque
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from opencontext.llm.global_embedding_client import do_vectorize as do_vectorize_fn
 from opencontext.models.context import ProcessedContext, Vectorize
@@ -90,7 +89,7 @@ class HierarchicalEventTool(BaseTool):
         )
 
     @classmethod
-    def get_parameters(cls) -> Dict[str, Any]:
+    def get_parameters(cls) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -183,13 +182,13 @@ class HierarchicalEventTool(BaseTool):
     async def _search_summaries(
         self,
         level: int,
-        time_start: Optional[float],
-        time_end: Optional[float],
-        user_id: Optional[str],
+        time_start: float | None,
+        time_end: float | None,
+        user_id: str | None,
         top_k: int,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> List[Tuple[ProcessedContext, float]]:
+        device_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> list[tuple[ProcessedContext, float]]:
         """Search summary contexts at a given hierarchy level."""
         try:
             return await self.storage.search_hierarchy(
@@ -208,9 +207,9 @@ class HierarchicalEventTool(BaseTool):
 
     async def _drill_down_children(
         self,
-        parent_contexts: List[Tuple[ProcessedContext, float]],
-        user_id: Optional[str] = None,
-    ) -> List[Tuple[ProcessedContext, float, int]]:
+        parent_contexts: list[tuple[ProcessedContext, float]],
+        user_id: str | None = None,
+    ) -> list[tuple[ProcessedContext, float, int]]:
         """
         Recursively drill down through refs of matched summaries
         until L0 events are reached.
@@ -222,7 +221,7 @@ class HierarchicalEventTool(BaseTool):
         baseline so semantic search results rank higher) and parent_score is
         the match score of the summary that led us here.
         """
-        results: List[Tuple[ProcessedContext, float, int]] = []
+        results: list[tuple[ProcessedContext, float, int]] = []
 
         # Also keep summaries themselves for transparency
         for ctx, score in parent_contexts:
@@ -279,14 +278,14 @@ class HierarchicalEventTool(BaseTool):
     async def _direct_l0_search(
         self,
         query: str,
-        user_id: Optional[str],
-        device_id: Optional[str],
-        agent_id: Optional[str],
-        filters: Dict[str, Any],
+        user_id: str | None,
+        device_id: str | None,
+        agent_id: str | None,
+        filters: dict[str, Any],
         top_k: int,
-        image_url: Optional[str] = None,
-        video_url: Optional[str] = None,
-    ) -> List[Tuple[ProcessedContext, float, int]]:
+        image_url: str | None = None,
+        video_url: str | None = None,
+    ) -> list[tuple[ProcessedContext, float, int]]:
         """
         Perform a direct semantic search over L0 events as a fallback.
         This catches recent events that haven't been aggregated into
@@ -326,7 +325,7 @@ class HierarchicalEventTool(BaseTool):
         context: ProcessedContext,
         score: float,
         hierarchy_level: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Format a single context into the output dict."""
         ed = context.extracted_data
         props = context.properties
@@ -351,7 +350,7 @@ class HierarchicalEventTool(BaseTool):
 
     # ── Main execute ─────────────────────────────────────────────────
 
-    async def execute(self, **kwargs) -> List[Dict[str, Any]]:
+    async def execute(self, **kwargs) -> list[dict[str, Any]]:
         """
         Execute hierarchical event retrieval.
 
@@ -372,22 +371,22 @@ class HierarchicalEventTool(BaseTool):
             context_type, hierarchy_level.
         """
         query: str = kwargs.get("query", "")
-        image_url: Optional[str] = kwargs.get("image_url")
-        video_url: Optional[str] = kwargs.get("video_url")
-        time_range: Optional[Dict[str, Any]] = kwargs.get("time_range")
+        image_url: str | None = kwargs.get("image_url")
+        video_url: str | None = kwargs.get("video_url")
+        time_range: dict[str, Any] | None = kwargs.get("time_range")
         top_k: int = kwargs.get("top_k", 5)
-        user_id: Optional[str] = kwargs.get("user_id")
-        device_id: Optional[str] = kwargs.get("device_id")
-        agent_id: Optional[str] = kwargs.get("agent_id")
+        user_id: str | None = kwargs.get("user_id")
+        device_id: str | None = kwargs.get("device_id")
+        agent_id: str | None = kwargs.get("agent_id")
 
         if not query:
             return [{"error": "A query parameter is required for hierarchical event retrieval."}]
 
         try:
             # ── Derive time bounds from time_range ──────────────────
-            ts_start: Optional[float] = None
-            ts_end: Optional[float] = None
-            time_filters: Dict[str, Any] = {}
+            ts_start: float | None = None
+            ts_end: float | None = None
+            time_filters: dict[str, Any] = {}
 
             if time_range:
                 ts_start = time_range.get("start")
@@ -400,7 +399,7 @@ class HierarchicalEventTool(BaseTool):
 
             # ── Path 1: Top-down hierarchical search ─────────────────
             # Search each summary level and collect matched summaries.
-            all_summary_hits: List[Tuple[ProcessedContext, float]] = []
+            all_summary_hits: list[tuple[ProcessedContext, float]] = []
 
             for level in [1, 2, 3]:
                 hits = await self._search_summaries(
@@ -415,7 +414,7 @@ class HierarchicalEventTool(BaseTool):
                 all_summary_hits.extend(hits)
 
             # Drill down from summaries to L0 events
-            drilldown_results: List[Tuple[ProcessedContext, float, int]] = []
+            drilldown_results: list[tuple[ProcessedContext, float, int]] = []
             if all_summary_hits:
                 drilldown_results = await self._drill_down_children(
                     all_summary_hits, user_id=user_id
@@ -435,7 +434,7 @@ class HierarchicalEventTool(BaseTool):
 
             # ── Merge & deduplicate ──────────────────────────────────
             # Use a dict keyed by context ID; keep the higher score.
-            merged: Dict[str, Tuple[ProcessedContext, float, int]] = {}
+            merged: dict[str, tuple[ProcessedContext, float, int]] = {}
 
             for ctx, score, level in drilldown_results:
                 existing = merged.get(ctx.id)

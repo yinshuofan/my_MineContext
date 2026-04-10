@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -13,7 +12,7 @@ Uses role-based instructions (corpus vs query) to control embedding behavior.
 
 import asyncio
 import threading
-from typing import Dict, List, Optional, Sequence
+from collections.abc import Sequence
 
 from opencontext.config.global_config import get_config
 from opencontext.llm.llm_client import LLMClient, LLMType
@@ -56,7 +55,7 @@ class GlobalEmbeddingClient:
         if not self._initialized:
             with self._lock:
                 if not self._initialized:
-                    self._embedding_client: Optional[LLMClient] = None
+                    self._embedding_client: LLMClient | None = None
                     self._auto_initialized = False
                     # Multimodal config (populated during auto-init)
                     self._dimensions: int = _DEFAULT_DIMENSIONS
@@ -113,7 +112,7 @@ class GlobalEmbeddingClient:
     def is_initialized(self) -> bool:
         return self._embedding_client is not None
 
-    def reinitialize(self, new_config: Optional[Dict] = None):
+    def reinitialize(self, new_config: dict | None = None):
         """
         Reinitialize embedding client (thread-safe)
         """

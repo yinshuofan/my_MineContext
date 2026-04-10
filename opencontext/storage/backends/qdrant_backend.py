@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
 import datetime
 import json
+from collections.abc import AsyncGenerator
 from enum import Enum
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any
 
 from qdrant_client import AsyncQdrantClient, models
 
@@ -28,13 +28,13 @@ class QdrantBackend(IVectorStorageBackend):
     """
 
     def __init__(self):
-        self._client: Optional[AsyncQdrantClient] = None
-        self._collections: Dict[str, str] = {}
+        self._client: AsyncQdrantClient | None = None
+        self._collections: dict[str, str] = {}
         self._initialized = False
         self._config = None
         self._vector_size = None
 
-    async def initialize(self, config: Dict[str, Any]) -> bool:
+    async def initialize(self, config: dict[str, Any]) -> bool:
         try:
             self._config = config
             qdrant_config = config.get("config", {})
@@ -89,13 +89,13 @@ class QdrantBackend(IVectorStorageBackend):
     def get_name(self) -> str:
         return "qdrant"
 
-    async def get_collection_names(self) -> Optional[List[str]]:
+    async def get_collection_names(self) -> list[str] | None:
         return list(self._collections.keys())
 
     def get_storage_type(self) -> StorageType:
         return StorageType.VECTOR_DB
 
-    async def _ensure_vectorized(self, context: ProcessedContext) -> List[float]:
+    async def _ensure_vectorized(self, context: ProcessedContext) -> list[float]:
         if not context.vectorize:
             raise ValueError("Vectorize not set")
         if context.vectorize.vector:
@@ -108,7 +108,7 @@ class QdrantBackend(IVectorStorageBackend):
             self._vector_size = len(context.vectorize.vector)
         return context.vectorize.vector
 
-    def _context_to_qdrant_format(self, context: ProcessedContext) -> Dict[str, Any]:
+    def _context_to_qdrant_format(self, context: ProcessedContext) -> dict[str, Any]:
         payload = context.model_dump(
             exclude_none=True,
             exclude={"properties", "extracted_data", "vectorize", "metadata"},
@@ -166,7 +166,7 @@ class QdrantBackend(IVectorStorageBackend):
     async def upsert_processed_context(self, context: ProcessedContext) -> str:
         return (await self.batch_upsert_processed_context([context]))[0]
 
-    async def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> List[str]:
+    async def batch_upsert_processed_context(self, contexts: list[ProcessedContext]) -> list[str]:
         if not self._initialized:
             raise RuntimeError("Qdrant backend not initialized")
 
@@ -235,7 +235,7 @@ class QdrantBackend(IVectorStorageBackend):
 
     async def get_processed_context(
         self, id: str, context_type: str, need_vector: bool = False
-    ) -> Optional[ProcessedContext]:
+    ) -> ProcessedContext | None:
         if not self._initialized:
             return None
 
@@ -261,16 +261,16 @@ class QdrantBackend(IVectorStorageBackend):
 
     async def get_all_processed_contexts(
         self,
-        context_types: Optional[List[str]] = None,
+        context_types: list[str] | None = None,
         limit: int = 100,
         offset: int = 0,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         need_vector: bool = False,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         skip_slice: bool = False,
-    ) -> Dict[str, List[ProcessedContext]]:
+    ) -> dict[str, list[ProcessedContext]]:
         if not self._initialized:
             return {}
 
@@ -334,13 +334,13 @@ class QdrantBackend(IVectorStorageBackend):
 
     async def scroll_processed_contexts(
         self,
-        context_types: Optional[List[str]] = None,
+        context_types: list[str] | None = None,
         batch_size: int = 100,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         need_vector: bool = False,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> AsyncGenerator[ProcessedContext, None]:
         """Cursor-based scrolling using Qdrant's native next_page_offset.
 
@@ -403,14 +403,14 @@ class QdrantBackend(IVectorStorageBackend):
         self,
         query: Vectorize,
         top_k: int = 10,
-        context_types: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        context_types: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         need_vector: bool = False,
-        score_threshold: Optional[float] = None,
-    ) -> List[Tuple[ProcessedContext, float]]:
+        score_threshold: float | None = None,
+    ) -> list[tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
 
@@ -486,7 +486,7 @@ class QdrantBackend(IVectorStorageBackend):
 
     def _qdrant_result_to_context(
         self, point: models.Record, need_vector: bool = True
-    ) -> Optional[ProcessedContext]:
+    ) -> ProcessedContext | None:
         try:
             if not point.id:
                 logger.warning("Qdrant result missing id field")
@@ -553,7 +553,7 @@ class QdrantBackend(IVectorStorageBackend):
             logger.exception(f"Failed to convert Qdrant result to ProcessedContext: {e}")
             return None
 
-    def _build_filter_condition(self, filters: Optional[Dict[str, Any]]) -> Optional[models.Filter]:
+    def _build_filter_condition(self, filters: dict[str, Any] | None) -> models.Filter | None:
         if not filters:
             return None
 
@@ -616,7 +616,7 @@ class QdrantBackend(IVectorStorageBackend):
         else:
             return models.Filter(must=must_conditions)
 
-    async def delete_contexts(self, ids: List[str], context_type: str) -> bool:
+    async def delete_contexts(self, ids: list[str], context_type: str) -> bool:
         if not self._initialized:
             return False
 
@@ -637,10 +637,10 @@ class QdrantBackend(IVectorStorageBackend):
     async def get_processed_context_count(
         self,
         context_type: str,
-        filter: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        filter: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> int:
         if not self._initialized:
             return 0
@@ -661,7 +661,7 @@ class QdrantBackend(IVectorStorageBackend):
         count_filter = self._build_filter_condition(merged_filter) if merged_filter else None
         return (await self._client.count(collection_name, count_filter=count_filter)).count
 
-    async def get_all_processed_context_counts(self) -> Dict[str, int]:
+    async def get_all_processed_context_counts(self) -> dict[str, int]:
         if not self._initialized:
             return {}
 
@@ -675,13 +675,13 @@ class QdrantBackend(IVectorStorageBackend):
         self,
         context_type: str,
         hierarchy_level: int,
-        time_start: Optional[float] = None,
-        time_end: Optional[float] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        time_start: float | None = None,
+        time_end: float | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         top_k: int = 20,
-    ) -> List[Tuple[ProcessedContext, float]]:
+    ) -> list[tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
 
@@ -766,10 +766,10 @@ class QdrantBackend(IVectorStorageBackend):
 
     async def get_by_ids(
         self,
-        ids: List[str],
-        context_type: Optional[str] = None,
+        ids: list[str],
+        context_type: str | None = None,
         need_vector: bool = False,
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         if not self._initialized:
             return []
 
@@ -806,7 +806,7 @@ class QdrantBackend(IVectorStorageBackend):
 
     async def batch_update_refs(
         self,
-        context_ids: List[str],
+        context_ids: list[str],
         ref_key: str,
         ref_value: str,
         context_type: str,

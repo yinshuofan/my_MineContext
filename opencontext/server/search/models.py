@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 
 """
 Event Search API - Request/Response Models
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -12,8 +11,8 @@ from pydantic import BaseModel, Field, model_validator
 class TimeRange(BaseModel):
     """Time range filter"""
 
-    start: Optional[int] = Field(default=None, description="Start timestamp in Unix epoch seconds")
-    end: Optional[int] = Field(default=None, description="End timestamp in Unix epoch seconds")
+    start: int | None = Field(default=None, description="Start timestamp in Unix epoch seconds")
+    end: int | None = Field(default=None, description="End timestamp in Unix epoch seconds")
 
     @model_validator(mode="after")
     def validate_range(self) -> "TimeRange":
@@ -25,7 +24,7 @@ class TimeRange(BaseModel):
 class EventSearchRequest(BaseModel):
     """Event search API request"""
 
-    query: Optional[List[Dict[str, Any]]] = Field(
+    query: list[dict[str, Any]] | None = Field(
         default=None,
         description=(
             "Multimodal search query in OpenAI content parts format. "
@@ -33,15 +32,15 @@ class EventSearchRequest(BaseModel):
             '{"type": "image_url", "image_url": {"url": "..."}}]'
         ),
     )
-    event_ids: Optional[List[str]] = Field(
+    event_ids: list[str] | None = Field(
         default=None,
         description="Exact event IDs to retrieve",
     )
-    time_range: Optional[TimeRange] = Field(
+    time_range: TimeRange | None = Field(
         default=None,
         description="Time range filter (Unix epoch seconds)",
     )
-    hierarchy_levels: Optional[List[int]] = Field(
+    hierarchy_levels: list[int] | None = Field(
         default=None,
         description="Filter by hierarchy levels: 0=raw events, 1=daily, 2=weekly, 3=monthly",
     )
@@ -55,19 +54,19 @@ class EventSearchRequest(BaseModel):
         le=100,
         description="Maximum number of results",
     )
-    score_threshold: Optional[float] = Field(
+    score_threshold: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
         description="Minimum similarity score (0-1). Results below this score are filtered out. Default: no threshold.",
     )
-    user_id: Optional[str] = Field(
+    user_id: str | None = Field(
         default=None, description="User identifier for multi-user filtering"
     )
-    device_id: Optional[str] = Field(
+    device_id: str | None = Field(
         default=None, description="Device identifier for multi-user filtering"
     )
-    agent_id: Optional[str] = Field(
+    agent_id: str | None = Field(
         default=None, description="Agent identifier for multi-user filtering"
     )
 
@@ -99,31 +98,31 @@ class EventNode(BaseModel):
 
     id: str
     hierarchy_level: int = 0
-    refs: Dict[str, List[str]] = Field(default_factory=dict)
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    event_time_start: Optional[str] = None
-    event_time_end: Optional[str] = None
-    create_time: Optional[str] = None
+    refs: dict[str, list[str]] = Field(default_factory=dict)
+    title: str | None = None
+    summary: str | None = None
+    event_time_start: str | None = None
+    event_time_end: str | None = None
+    create_time: str | None = None
     is_search_hit: bool = False
-    children: List["EventNode"] = Field(default_factory=list)
+    children: list["EventNode"] = Field(default_factory=list)
 
     # Multimodal media references (L0 events carry media, summaries have empty list)
-    media_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    media_refs: list[dict[str, Any]] = Field(default_factory=list)
 
     # Agent commentary (populated when agent annotated this event)
-    agent_commentary: Optional[str] = None
+    agent_commentary: str | None = None
 
     # Search-hit fields (populated only when is_search_hit=True)
-    keywords: List[str] = Field(default_factory=list)
-    entities: List[str] = Field(default_factory=list)
-    score: Optional[float] = None
+    keywords: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
+    score: float | None = None
 
 
 class SearchMetadata(BaseModel):
     """Metadata about the search execution"""
 
-    query: Optional[str] = None
+    query: str | None = None
     total_results: int
     search_time_ms: float
 
@@ -132,5 +131,5 @@ class EventSearchResponse(BaseModel):
     """Event search API response"""
 
     success: bool
-    events: List[EventNode] = Field(default_factory=list)
+    events: list[EventNode] = Field(default_factory=list)
     metadata: SearchMetadata

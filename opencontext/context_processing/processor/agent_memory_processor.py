@@ -2,7 +2,7 @@
 
 import asyncio
 import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
@@ -38,8 +38,8 @@ class AgentMemoryProcessor(BaseContextProcessor):
     async def process(
         self,
         context: RawContextProperties,
-        prior_results: Optional[List[ProcessedContext]] = None,
-    ) -> List[ProcessedContext]:
+        prior_results: list[ProcessedContext] | None = None,
+    ) -> list[ProcessedContext]:
         """Annotate events from prior_results with agent commentary.
 
         Returns the modified event contexts (same IDs, with agent_commentary populated).
@@ -54,8 +54,8 @@ class AgentMemoryProcessor(BaseContextProcessor):
     async def _process_async(
         self,
         raw_context: RawContextProperties,
-        prior_results: List[ProcessedContext],
-    ) -> List[ProcessedContext]:
+        prior_results: list[ProcessedContext],
+    ) -> list[ProcessedContext]:
         # 0. Validate agent_id
         agent_id = raw_context.agent_id
         if not agent_id or agent_id == "default":
@@ -184,7 +184,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
         logger.info(f"[agent_memory_processor] Annotated {annotated_count}/{len(events)} events")
         return events
 
-    async def _extract_search_query(self, chat_content: str) -> Optional[str]:
+    async def _extract_search_query(self, chat_content: str) -> str | None:
         """Use LLM to extract a search query from chat content (from AI's perspective)."""
         try:
             prompt_group = get_prompt_group("processing.extraction.agent_memory_query")
@@ -238,7 +238,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
         return "\n".join(lines).strip()
 
     @staticmethod
-    def _format_event_list(events: List[ProcessedContext]) -> str:
+    def _format_event_list(events: list[ProcessedContext]) -> str:
         """Format events into a numbered list for the LLM prompt."""
         lines = []
         for i, ctx in enumerate(events):

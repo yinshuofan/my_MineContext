@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Profile processing module — LLM-driven intelligent merge before overwrite.
@@ -11,7 +10,7 @@ before writing, rather than blindly overwriting.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.utils.logging_utils import get_logger
 
@@ -20,9 +19,9 @@ logger = get_logger(__name__)
 
 async def refresh_profile(
     new_factual_profile: str,
-    new_entities: Optional[List[str]],
+    new_entities: list[str] | None,
     new_importance: int,
-    new_metadata: Optional[Dict[str, Any]],
+    new_metadata: dict[str, Any] | None,
     user_id: str = "default",
     device_id: str = "default",
     agent_id: str = "default",
@@ -107,9 +106,9 @@ async def refresh_profile(
 
 
 async def _merge_profile_with_llm(
-    existing: Dict[str, Any],
-    new_data: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+    existing: dict[str, Any],
+    new_data: dict[str, Any],
+) -> dict[str, Any] | None:
     """
     Use LLM to intelligently merge new profile data into an existing profile.
 
@@ -160,7 +159,7 @@ async def _merge_profile_with_llm(
 
         merged = parse_json_from_response(response)
         if not merged or not isinstance(merged, dict):
-            logger.warning(f"Failed to parse LLM merge response as JSON")
+            logger.warning("Failed to parse LLM merge response as JSON")
             return None
 
         if "factual_profile" not in merged:

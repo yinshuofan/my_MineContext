@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,7 @@ Context processor component interface definition
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from opencontext.models.context import ProcessedContext
@@ -51,7 +50,7 @@ class IContextProcessor(ABC):
         """
 
     @abstractmethod
-    def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
+    def initialize(self, config: dict[str, Any] | None = None) -> bool:
         """
         Initialize the processor component
 
@@ -63,7 +62,7 @@ class IContextProcessor(ABC):
         """
 
     @abstractmethod
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """
         Validate if the configuration is valid
 
@@ -87,7 +86,7 @@ class IContextProcessor(ABC):
         """
 
     @abstractmethod
-    async def process(self, context: Any) -> List["ProcessedContext"]:
+    async def process(self, context: Any) -> list["ProcessedContext"]:
         """
         Process context data
 
@@ -99,7 +98,7 @@ class IContextProcessor(ABC):
         """
 
     @abstractmethod
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get statistics information
 

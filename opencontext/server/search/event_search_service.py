@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 Event Search Service — reusable search logic for routes and processors.
@@ -11,7 +10,7 @@ Storage backends automatically skip user_id/device_id filtering for agent_base_*
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import ProcessedContext, Vectorize
@@ -26,8 +25,8 @@ logger = get_logger(__name__)
 class SearchResult:
     """Return type for search."""
 
-    hits: List[Tuple[ProcessedContext, float]] = field(default_factory=list)
-    ancestors: Dict[str, ProcessedContext] = field(default_factory=dict)
+    hits: list[tuple[ProcessedContext, float]] = field(default_factory=list)
+    ancestors: dict[str, ProcessedContext] = field(default_factory=dict)
 
 
 class EventSearchService:
@@ -41,14 +40,14 @@ class EventSearchService:
 
     async def search(
         self,
-        query: Optional[List[Dict]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        hierarchy_levels: Optional[List[int]] = None,
+        query: list[dict] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        hierarchy_levels: list[int] | None = None,
         top_k: int = 20,
-        score_threshold: Optional[float] = None,
-        time_range: Optional[Any] = None,
+        score_threshold: float | None = None,
+        time_range: Any | None = None,
         drill_up: bool = False,
     ) -> SearchResult:
         """Unified search — vector or filter-only, with optional drill-up.
@@ -96,7 +95,7 @@ class EventSearchService:
             )
 
         # Drill-up
-        ancestors: Dict[str, ProcessedContext] = {}
+        ancestors: dict[str, ProcessedContext] = {}
         if drill_up and raw_results:
             max_level = max(hierarchy_levels) if hierarchy_levels else 3
             ancestors = await self.collect_ancestors(raw_results, max_level=max_level)
@@ -120,15 +119,15 @@ class EventSearchService:
 
     async def _vector_search(
         self,
-        query: List[Dict],
-        context_types: List[str],
-        filters: Dict[str, Any],
-        user_id: Optional[str],
-        device_id: Optional[str],
-        agent_id: Optional[str],
+        query: list[dict],
+        context_types: list[str],
+        filters: dict[str, Any],
+        user_id: str | None,
+        device_id: str | None,
+        agent_id: str | None,
         top_k: int,
-        score_threshold: Optional[float],
-    ) -> List[Tuple[ProcessedContext, float]]:
+        score_threshold: float | None,
+    ) -> list[tuple[ProcessedContext, float]]:
         """Vector similarity search — single storage.search() call."""
         query_types = {item.get("type") for item in query}
         has_multimodal = bool(query_types & {"image_url", "video_url"})
@@ -151,13 +150,13 @@ class EventSearchService:
 
     async def _filter_search(
         self,
-        context_types: List[str],
-        filters: Dict[str, Any],
-        user_id: Optional[str],
-        device_id: Optional[str],
-        agent_id: Optional[str],
+        context_types: list[str],
+        filters: dict[str, Any],
+        user_id: str | None,
+        device_id: str | None,
+        agent_id: str | None,
         top_k: int,
-    ) -> List[Tuple[ProcessedContext, float]]:
+    ) -> list[tuple[ProcessedContext, float]]:
         """Filter-only retrieval — single storage.get_all_processed_contexts() call."""
         result = await self.storage.get_all_processed_contexts(
             context_types=context_types,
@@ -168,7 +167,7 @@ class EventSearchService:
             agent_id=agent_id,
         )
 
-        contexts: List[ProcessedContext] = []
+        contexts: list[ProcessedContext] = []
         for ct in context_types:
             contexts.extend(result.get(ct, []))
         return [(ctx, 1.0) for ctx in contexts[:top_k]]
@@ -181,7 +180,7 @@ class EventSearchService:
         return ContextType.EVENT.value
 
     @staticmethod
-    def _get_context_types_for_levels(levels: Optional[List[int]] = None) -> List[str]:
+    def _get_context_types_for_levels(levels: list[int] | None = None) -> list[str]:
         """Map hierarchy_levels to combined user + agent_base ContextType values."""
         user_types = [
             ContextType.EVENT,
@@ -207,15 +206,15 @@ class EventSearchService:
 
     @staticmethod
     def _build_filters(
-        time_range: Optional[Any],
-        hierarchy_levels: Optional[List[int]],
-    ) -> Dict[str, Any]:
+        time_range: Any | None,
+        hierarchy_levels: list[int] | None,
+    ) -> dict[str, Any]:
         """Build storage filter dict from request parameters.
 
         Uses range-overlap pattern on two fields (event_time_start_ts, event_time_end_ts)
         so that events whose [start, end] interval overlaps the query [start, end] are matched.
         """
-        filters: Dict[str, Any] = {}
+        filters: dict[str, Any] = {}
         if time_range:
             if time_range.end is not None:
                 filters["event_time_start_ts"] = {"$lte": time_range.end}
@@ -231,9 +230,9 @@ class EventSearchService:
 
     async def collect_ancestors(
         self,
-        results: List[Tuple[ProcessedContext, float]],
+        results: list[tuple[ProcessedContext, float]],
         max_level: int,
-    ) -> Dict[str, ProcessedContext]:
+    ) -> dict[str, ProcessedContext]:
         """Collect ancestors by following refs upward (to summary types)."""
         user_summary_types = {
             ContextType.DAILY_SUMMARY.value,

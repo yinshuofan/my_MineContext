@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Workflow Engine
@@ -7,12 +6,11 @@ Core workflow control logic.
 """
 
 import asyncio
-from datetime import datetime
-from typing import Any, AsyncIterator, Dict, Optional
+from collections.abc import AsyncIterator
 
 from opencontext.utils.logging_utils import get_logger
 
-from ..models.enums import ContextSufficiency, EventType, ReflectionType, WorkflowStage
+from ..models.enums import ContextSufficiency, EventType, WorkflowStage
 from ..models.events import StreamEvent
 from ..models.schemas import Query
 from .state import StateManager, WorkflowState
@@ -24,8 +22,8 @@ class WorkflowEngine:
 
     def __init__(
         self,
-        streaming_manager: Optional[StreamingManager] = None,
-        state_manager: Optional[StateManager] = None,
+        streaming_manager: StreamingManager | None = None,
+        state_manager: StateManager | None = None,
     ):
         self.streaming_manager = streaming_manager or StreamingManager()
         self.state_manager = state_manager or StateManager()
@@ -63,10 +61,10 @@ class WorkflowEngine:
         self._init_nodes()
         query_obj = Query(
             text=kwargs.get("query", ""),
-            user_id=kwargs.get("user_id", None),
-            session_id=kwargs.get("session_id", None),
-            selected_content=kwargs.get("selected_content", None),
-            document_id=kwargs.get("document_id", None),
+            user_id=kwargs.get("user_id"),
+            session_id=kwargs.get("session_id"),
+            selected_content=kwargs.get("selected_content"),
+            document_id=kwargs.get("document_id"),
         )
         state = self.state_manager.create_state(query_obj=query_obj, **kwargs)
         try:
@@ -176,7 +174,7 @@ class WorkflowEngine:
             )
             await self.streaming_manager.emit(event)
 
-    async def resume(self, workflow_id: str, user_input: Optional[str] = None) -> WorkflowState:
+    async def resume(self, workflow_id: str, user_input: str | None = None) -> WorkflowState:
         """
         Resume workflow execution.
 
@@ -199,7 +197,7 @@ class WorkflowEngine:
             return await self._execute_workflow(state)
         return await self._execute_workflow(state)
 
-    def get_state(self, workflow_id: str) -> Optional[WorkflowState]:
+    def get_state(self, workflow_id: str) -> WorkflowState | None:
         """Get the workflow state."""
         return self.state_manager.get_state(workflow_id)
 

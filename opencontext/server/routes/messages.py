@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,10 +8,10 @@ Conversation Message Management API Routes
 Handles CRUD operations for individual messages within a conversation.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.stream_interrupt import get_stream_interrupt_manager
@@ -34,8 +33,8 @@ class CreateMessageParams(BaseModel):
     conversation_id: int
     role: str
     content: str
-    is_complete: Optional[bool] = False
-    token_count: Optional[int] = 0
+    is_complete: bool | None = False
+    token_count: int | None = 0
 
 
 class CreateStreamingMessageParams(BaseModel):
@@ -53,8 +52,8 @@ class UpdateMessageContentParams(BaseModel):
 
     message_id: int
     new_content: str
-    is_complete: Optional[bool] = False
-    token_count: Optional[int] = None
+    is_complete: bool | None = False
+    token_count: int | None = None
 
 
 class AppendMessageContentParams(BaseModel):
@@ -65,7 +64,7 @@ class AppendMessageContentParams(BaseModel):
 
     message_id: int
     content_chunk: str
-    token_count: Optional[int] = None
+    token_count: int | None = None
 
 
 class ConversationMessage(BaseModel):
@@ -73,7 +72,7 @@ class ConversationMessage(BaseModel):
 
     id: int
     conversation_id: int
-    parent_message_id: Optional[str] = None
+    parent_message_id: str | None = None
     role: str
     content: str
     status: str
@@ -81,10 +80,10 @@ class ConversationMessage(BaseModel):
     metadata: str  # JSON string
     latency_ms: int
     error_message: str
-    thinking: List[Dict[str, Any]] = []  # Thinking records for this message
-    completed_at: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    thinking: list[dict[str, Any]] = []  # Thinking records for this message
+    completed_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class MessageInterruptResponse(BaseModel):
@@ -244,7 +243,7 @@ async def mark_message_finished_route(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/conversations/{cid}/messages", response_model=List[ConversationMessage])
+@router.get("/conversations/{cid}/messages", response_model=list[ConversationMessage])
 async def get_conversation_messages(
     cid: int,
     _auth: str = auth_dependency,

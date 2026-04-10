@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -8,7 +7,6 @@
 
 import math
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -25,11 +23,11 @@ router = APIRouter(prefix="/api/chat-batches", tags=["chat-batches"])
 
 @router.get("")
 async def list_chat_batches(
-    user_id: Optional[str] = None,
-    device_id: Optional[str] = None,
-    agent_id: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    user_id: str | None = None,
+    device_id: str | None = None,
+    agent_id: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     page: int = 1,
     limit: int = 20,
     _auth: str = auth_dependency,

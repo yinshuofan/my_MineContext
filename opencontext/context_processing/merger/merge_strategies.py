@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -16,8 +15,7 @@ Only the KNOWLEDGE context type uses vector-based similarity merging.
 
 import math
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from opencontext.models.context import ExtractedData, ProcessedContext
 from opencontext.models.enums import ContextType
@@ -48,7 +46,7 @@ class ContextTypeAwareStrategy(ABC):
         pass
 
     @abstractmethod
-    def can_merge(self, target: ProcessedContext, source: ProcessedContext) -> Tuple[bool, float]:
+    def can_merge(self, target: ProcessedContext, source: ProcessedContext) -> tuple[bool, float]:
         """
         Determine if two contexts can be merged, return (can_merge, similarity_score)
         """
@@ -56,8 +54,8 @@ class ContextTypeAwareStrategy(ABC):
 
     @abstractmethod
     def merge_contexts(
-        self, target: ProcessedContext, sources: List[ProcessedContext]
-    ) -> Optional[ProcessedContext]:
+        self, target: ProcessedContext, sources: list[ProcessedContext]
+    ) -> ProcessedContext | None:
         """
         Execute specific merge logic, return merged context
         """
@@ -111,7 +109,7 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
     def get_context_type(self) -> ContextType:
         return ContextType.KNOWLEDGE
 
-    def can_merge(self, target: ProcessedContext, source: ProcessedContext) -> Tuple[bool, float]:
+    def can_merge(self, target: ProcessedContext, source: ProcessedContext) -> tuple[bool, float]:
         """
         Knowledge merge criteria:
         1. High keyword overlap (same domain)
@@ -154,8 +152,8 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
         return False, 0.0
 
     def merge_contexts(
-        self, target: ProcessedContext, sources: List[ProcessedContext]
-    ) -> Optional[ProcessedContext]:
+        self, target: ProcessedContext, sources: list[ProcessedContext]
+    ) -> ProcessedContext | None:
         """
         Knowledge merge logic: deduplicate and combine knowledge entries.
         """
@@ -202,7 +200,7 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
             },
         )
 
-    def _calculate_cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+    def _calculate_cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
         """Calculate cosine similarity"""
         if not vec1 or not vec2 or len(vec1) != len(vec2):
             return 0.0
@@ -217,7 +215,7 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
         return dot_product / (norm1 * norm2)
 
     def _create_merged_context(
-        self, target: ProcessedContext, sources: List[ProcessedContext], merged_data: Dict[str, Any]
+        self, target: ProcessedContext, sources: list[ProcessedContext], merged_data: dict[str, Any]
     ) -> ProcessedContext:
         """Create merged context object"""
         from opencontext.models.context import ContextProperties, Vectorize
@@ -266,10 +264,10 @@ class StrategyFactory:
             ContextType.KNOWLEDGE: KnowledgeMergeStrategy(config),
         }
 
-    def get_supported_types(self) -> List[ContextType]:
+    def get_supported_types(self) -> list[ContextType]:
         """Get all supported context types"""
         return list(self._strategies.keys())
 
-    def get_strategy(self, context_type: ContextType) -> Optional[ContextTypeAwareStrategy]:
+    def get_strategy(self, context_type: ContextType) -> ContextTypeAwareStrategy | None:
         """Get the merge strategy for a specific context type"""
         return self._strategies.get(context_type)

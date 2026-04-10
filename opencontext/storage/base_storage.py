@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,10 +9,11 @@ Defines contracts for different storage backend types.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from opencontext.models.context import ProcessedContext, Vectorize
 
@@ -40,7 +40,7 @@ class StorageConfig:
 
     storage_type: StorageType
     name: str
-    config: Dict[str, Any]
+    config: dict[str, Any]
 
 
 @dataclass
@@ -49,26 +49,26 @@ class DocumentData:
 
     id: str
     content: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
     data_type: DataType = DataType.TEXT
-    images: Optional[List[str]] = None  # Image paths or base64 data
-    files: Optional[List[str]] = None  # Attachment file paths
+    images: list[str] | None = None  # Image paths or base64 data
+    files: list[str] | None = None  # Attachment file paths
 
 
 @dataclass
 class QueryResult:
     """Query result"""
 
-    documents: List[DocumentData]
+    documents: list[DocumentData]
     total_count: int
-    scores: Optional[List[float]] = None
+    scores: list[float] | None = None
 
 
 class IStorageBackend(ABC):
     """Storage backend interface"""
 
     @abstractmethod
-    async def initialize(self, config: Dict[str, Any]) -> bool:
+    async def initialize(self, config: dict[str, Any]) -> bool:
         """Initialize storage backend"""
 
     @abstractmethod
@@ -84,11 +84,11 @@ class IVectorStorageBackend(IStorageBackend):
     """Vector storage backend interface"""
 
     @abstractmethod
-    async def get_collection_names(self) -> Optional[List[str]]:
+    async def get_collection_names(self) -> list[str] | None:
         """Get all collection names in vector database"""
 
     @abstractmethod
-    async def delete_contexts(self, ids: List[str], context_type: str) -> bool:
+    async def delete_contexts(self, ids: list[str], context_type: str) -> bool:
         """Delete contexts of specified type"""
 
     @abstractmethod
@@ -96,22 +96,22 @@ class IVectorStorageBackend(IStorageBackend):
         """Store processed context"""
 
     @abstractmethod
-    async def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> List[str]:
+    async def batch_upsert_processed_context(self, contexts: list[ProcessedContext]) -> list[str]:
         """Batch store processed contexts"""
 
     @abstractmethod
     async def get_all_processed_contexts(
         self,
-        context_types: Optional[List[str]] = None,
+        context_types: list[str] | None = None,
         limit: int = 100,
         offset: int = 0,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         need_vector: bool = False,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         skip_slice: bool = False,
-    ) -> Dict[str, List[ProcessedContext]]:
+    ) -> dict[str, list[ProcessedContext]]:
         """Get processed contexts
 
         Args:
@@ -128,13 +128,13 @@ class IVectorStorageBackend(IStorageBackend):
 
     async def scroll_processed_contexts(
         self,
-        context_types: Optional[List[str]] = None,
+        context_types: list[str] | None = None,
         batch_size: int = 100,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         need_vector: bool = False,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> AsyncGenerator[ProcessedContext, None]:
         """Iterate over all contexts matching the criteria, yielding one at a time.
 
@@ -192,13 +192,13 @@ class IVectorStorageBackend(IStorageBackend):
         self,
         query: Vectorize,
         top_k: int = 10,
-        context_types: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        score_threshold: Optional[float] = None,
-    ) -> List[Tuple[ProcessedContext, float]]:
+        context_types: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        score_threshold: float | None = None,
+    ) -> list[tuple[ProcessedContext, float]]:
         """Vector similarity search
 
         Args:
@@ -218,15 +218,15 @@ class IVectorStorageBackend(IStorageBackend):
     async def get_processed_context_count(
         self,
         context_type: str,
-        filter: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        filter: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> int:
         """Get record count for specified context_type"""
 
     @abstractmethod
-    async def get_all_processed_context_counts(self) -> Dict[str, int]:
+    async def get_all_processed_context_counts(self) -> dict[str, int]:
         """Get record counts for all context_types"""
 
     @abstractmethod
@@ -234,13 +234,13 @@ class IVectorStorageBackend(IStorageBackend):
         self,
         context_type: str,
         hierarchy_level: int,
-        time_start: Optional[float] = None,
-        time_end: Optional[float] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        time_start: float | None = None,
+        time_end: float | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         top_k: int = 20,
-    ) -> List[Tuple[ProcessedContext, float]]:
+    ) -> list[tuple[ProcessedContext, float]]:
         """Search contexts by hierarchy level and numeric timestamp range overlap.
 
         Returns contexts whose [event_time_start, event_time_end] overlaps
@@ -263,10 +263,10 @@ class IVectorStorageBackend(IStorageBackend):
     @abstractmethod
     async def get_by_ids(
         self,
-        ids: List[str],
-        context_type: Optional[str] = None,
+        ids: list[str],
+        context_type: str | None = None,
         need_vector: bool = False,
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         """Get contexts by their IDs
 
         Args:
@@ -280,7 +280,7 @@ class IVectorStorageBackend(IStorageBackend):
 
     async def batch_update_refs(
         self,
-        context_ids: List[str],
+        context_ids: list[str],
         ref_key: str,
         ref_value: str,
         context_type: str,
@@ -311,7 +311,7 @@ class IDocumentStorageBackend(IStorageBackend):
     @abstractmethod
     async def get_reports(
         self, limit: int = 100, offset: int = 0, is_deleted: bool = False
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get reports"""
 
     @abstractmethod
@@ -325,11 +325,11 @@ class IDocumentStorageBackend(IStorageBackend):
         created_before: datetime = None,
         updated_after: datetime = None,
         updated_before: datetime = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get vaults"""
 
     @abstractmethod
-    async def get_vault(self, vault_id: int) -> Optional[Dict]:
+    async def get_vault(self, vault_id: int) -> dict | None:
         """Get vault by ID"""
 
     @abstractmethod
@@ -357,7 +357,7 @@ class IDocumentStorageBackend(IStorageBackend):
         offset: int = 0,
         start_time: datetime = None,
         end_time: datetime = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get todo items"""
 
     @abstractmethod
@@ -365,7 +365,7 @@ class IDocumentStorageBackend(IStorageBackend):
         """Insert tip"""
 
     @abstractmethod
-    async def get_tips(self, limit: int = 100, offset: int = 0) -> List[Dict]:
+    async def get_tips(self, limit: int = 100, offset: int = 0) -> list[dict]:
         """Get tips"""
 
     @abstractmethod
@@ -383,11 +383,11 @@ class IDocumentStorageBackend(IStorageBackend):
         device_id: str = "default",
         agent_id: str = "default",
         factual_profile: str = "",
-        behavioral_profile: Optional[str] = None,
-        entities: Optional[List[str]] = None,
+        behavioral_profile: str | None = None,
+        entities: list[str] | None = None,
         importance: int = 0,
-        metadata: Optional[Dict[str, Any]] = None,
-        refs: Optional[Dict] = None,
+        metadata: dict[str, Any] | None = None,
+        refs: dict | None = None,
         context_type: str = "profile",
     ) -> bool:
         """Insert or update user profile (composite key: user_id + device_id + agent_id + context_type)
@@ -415,7 +415,7 @@ class IDocumentStorageBackend(IStorageBackend):
         device_id: str = "default",
         agent_id: str = "default",
         context_type: str = "profile",
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Get user profile by composite key
 
         Args:
@@ -454,16 +454,16 @@ class IDocumentStorageBackend(IStorageBackend):
         """Register a new agent."""
         raise NotImplementedError
 
-    async def get_agent(self, agent_id: str) -> Optional[Dict]:
+    async def get_agent(self, agent_id: str) -> dict | None:
         """Get agent by ID (excludes soft-deleted)."""
         raise NotImplementedError
 
-    async def list_agents(self) -> List[Dict]:
+    async def list_agents(self) -> list[dict]:
         """List all active agents."""
         raise NotImplementedError
 
     async def update_agent(
-        self, agent_id: str, name: Optional[str] = None, description: Optional[str] = None
+        self, agent_id: str, name: str | None = None, description: str | None = None
     ) -> bool:
         """Update agent info."""
         raise NotImplementedError
@@ -477,8 +477,8 @@ class IDocumentStorageBackend(IStorageBackend):
     async def create_chat_batch(
         self,
         batch_id: str,
-        messages: List[Dict],
-        user_id: Optional[str],
+        messages: list[dict],
+        user_id: str | None,
         device_id: str = "default",
         agent_id: str = "default",
     ) -> bool:
@@ -491,28 +491,28 @@ class IDocumentStorageBackend(IStorageBackend):
 
     async def list_chat_batches(
         self,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """List chat batches (without messages) with optional filters."""
         raise NotImplementedError
 
     async def count_chat_batches(
         self,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> int:
         """Count chat batches matching filters."""
         raise NotImplementedError
 
-    async def get_chat_batch(self, batch_id: str) -> Optional[Dict]:
+    async def get_chat_batch(self, batch_id: str) -> dict | None:
         """Get single chat batch with messages."""
         raise NotImplementedError

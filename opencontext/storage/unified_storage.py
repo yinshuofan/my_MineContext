@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,13 +9,13 @@ Unified storage system - unified management supporting multiple storage backends
 
 import asyncio
 import functools
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any
 
 from opencontext.models.context import ProcessedContext, Vectorize
 from opencontext.models.enums import ContextType
 from opencontext.storage.base_storage import (
-    DataType,
     DocumentData,
     IDocumentStorageBackend,
     IStorageBackend,
@@ -64,8 +63,8 @@ class StorageBackendFactory:
         }
 
     async def create_backend(
-        self, storage_type: StorageType, config: Dict[str, Any]
-    ) -> Optional[IStorageBackend]:
+        self, storage_type: StorageType, config: dict[str, Any]
+    ) -> IStorageBackend | None:
         """Create storage backend"""
         backend_name = config.get("backend", "default")
 
@@ -93,22 +92,22 @@ class StorageBackendFactory:
             logger.exception(f"Creating {backend_name} backend failed: {e}")
             return None
 
-    def _create_qdrant_backend(self, config: Dict[str, Any]):
+    def _create_qdrant_backend(self, config: dict[str, Any]):
         from opencontext.storage.backends.qdrant_backend import QdrantBackend
 
         return QdrantBackend()
 
-    def _create_sqlite_backend(self, config: Dict[str, Any]):
+    def _create_sqlite_backend(self, config: dict[str, Any]):
         from opencontext.storage.backends.sqlite_backend import SQLiteBackend
 
         return SQLiteBackend()
 
-    def _create_mysql_backend(self, config: Dict[str, Any]):
+    def _create_mysql_backend(self, config: dict[str, Any]):
         from opencontext.storage.backends.mysql_backend import MySQLBackend
 
         return MySQLBackend()
 
-    def _create_vikingdb_backend(self, config: Dict[str, Any]):
+    def _create_vikingdb_backend(self, config: dict[str, Any]):
         from opencontext.storage.backends.vikingdb_backend import VikingDBBackend
 
         return VikingDBBackend()
@@ -140,7 +139,7 @@ class UnifiedStorage:
         self._document_backend = None
         self._initialized = False
 
-    async def get_vector_collection_names(self) -> Optional[List[str]]:
+    async def get_vector_collection_names(self) -> list[str] | None:
         """Get all collection names in vector database"""
         if not self._vector_backend:
             return None
@@ -215,7 +214,7 @@ class UnifiedStorage:
             logger.exception(f"Unified storage system initialization failed: {e}")
             return False
 
-    def get_default_backend(self, storage_type: StorageType) -> Optional[IStorageBackend]:
+    def get_default_backend(self, storage_type: StorageType) -> IStorageBackend | None:
         """Get default storage backend for specified type"""
         if storage_type == StorageType.VECTOR_DB:
             return self._vector_backend
@@ -225,8 +224,8 @@ class UnifiedStorage:
 
     @_require_backend("_vector_backend")
     async def batch_upsert_processed_context(
-        self, contexts: List[ProcessedContext]
-    ) -> Optional[List[str]]:
+        self, contexts: list[ProcessedContext]
+    ) -> list[str] | None:
         """Batch store processed contexts to vector database"""
         try:
             # Directly pass ProcessedContext to vector database
@@ -238,7 +237,7 @@ class UnifiedStorage:
             return None
 
     @_require_backend("_vector_backend")
-    async def upsert_processed_context(self, context: ProcessedContext) -> Optional[str]:
+    async def upsert_processed_context(self, context: ProcessedContext) -> str | None:
         """Store processed context to vector database"""
         try:
             # Directly pass ProcessedContext to vector database
@@ -255,22 +254,22 @@ class UnifiedStorage:
     async def delete_processed_context(self, id: str, context_type: str):
         return await self._vector_backend.delete_processed_context(id, context_type)
 
-    async def delete_batch_processed_contexts(self, ids: List[str], context_type: str):
+    async def delete_batch_processed_contexts(self, ids: list[str], context_type: str):
         return await self._vector_backend.delete_contexts(ids, context_type)
 
     @_require_backend("_vector_backend", default={})
     async def get_all_processed_contexts(
         self,
-        context_types: Optional[List[str]] = None,
+        context_types: list[str] | None = None,
         limit: int = 100,
         offset: int = 0,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         need_vector: bool = False,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         skip_slice: bool = False,
-    ) -> Dict[str, List[ProcessedContext]]:
+    ) -> dict[str, list[ProcessedContext]]:
         """Get processed contexts, query only from vector database
 
         Args:
@@ -304,13 +303,13 @@ class UnifiedStorage:
 
     async def scroll_processed_contexts(
         self,
-        context_types: Optional[List[str]] = None,
+        context_types: list[str] | None = None,
         batch_size: int = 100,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         need_vector: bool = False,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> AsyncGenerator[ProcessedContext, None]:
         """Iterate over all contexts matching the criteria, yielding one at a time.
 
@@ -345,10 +344,10 @@ class UnifiedStorage:
     async def get_processed_context_count(
         self,
         context_type: str,
-        filter: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        filter: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> int:
         """Get record count for specified context_type"""
         try:
@@ -366,11 +365,11 @@ class UnifiedStorage:
     @_require_backend("_vector_backend", default=0)
     async def get_filtered_context_count(
         self,
-        context_types: Optional[List[str]] = None,
-        filter: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        context_types: list[str] | None = None,
+        filter: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> int:
         """Get total record count across multiple context types with filters"""
         if not context_types:
@@ -386,7 +385,7 @@ class UnifiedStorage:
         return total
 
     @_require_backend("_vector_backend", default={})
-    async def get_all_processed_context_counts(self) -> Dict[str, int]:
+    async def get_all_processed_context_counts(self) -> dict[str, int]:
         """Get record count for all context_type"""
         try:
             return await self._vector_backend.get_all_processed_context_counts()
@@ -394,7 +393,7 @@ class UnifiedStorage:
             logger.exception(f"Failed to get all context_type record counts: {e}")
             return {}
 
-    def get_available_context_types(self) -> List[str]:
+    def get_available_context_types(self) -> list[str]:
         """Get all available context_type - all ProcessedContext use vector database"""
         # Return all ContextType enum values, as all ProcessedContext are stored in vector database
         from opencontext.models.enums import ContextType
@@ -406,13 +405,13 @@ class UnifiedStorage:
         self,
         query: Vectorize,
         top_k: int = 10,
-        context_types: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        score_threshold: Optional[float] = None,
-    ) -> List[Tuple[ProcessedContext, float]]:
+        context_types: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        score_threshold: float | None = None,
+    ) -> list[tuple[ProcessedContext, float]]:
         """Vector search, supports context_type filtering
 
         Args:
@@ -445,14 +444,14 @@ class UnifiedStorage:
             return []
 
     @_require_backend("_document_backend")
-    async def get_document(self, doc_id: str) -> Optional[DocumentData]:
+    async def get_document(self, doc_id: str) -> DocumentData | None:
         """Get document"""
         return await self._document_backend.get(doc_id)
 
     @_require_backend("_document_backend")
     async def query_documents(
-        self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None
-    ) -> Optional[QueryResult]:
+        self, query: str, limit: int = 10, filters: dict[str, Any] | None = None
+    ) -> QueryResult | None:
         """Query documents"""
         return await self._document_backend.query(query, limit, filters)
 
@@ -472,10 +471,10 @@ class UnifiedStorage:
     async def create_conversation(
         self,
         page_name: str,
-        user_id: Optional[str] = None,
-        title: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        user_id: str | None = None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """Create a new conversation record."""
         return await self._document_backend.create_conversation(
             page_name=page_name,
@@ -485,7 +484,7 @@ class UnifiedStorage:
         )
 
     @_require_backend("_document_backend")
-    async def get_conversation(self, conversation_id: int) -> Optional[Dict[str, Any]]:
+    async def get_conversation(self, conversation_id: int) -> dict[str, Any] | None:
         """Query single conversation details."""
         return await self._document_backend.get_conversation(conversation_id)
 
@@ -494,10 +493,10 @@ class UnifiedStorage:
         self,
         limit: int = 20,
         offset: int = 0,
-        page_name: Optional[str] = None,
-        user_id: Optional[str] = None,
+        page_name: str | None = None,
+        user_id: str | None = None,
         status: str = "active",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """List conversations with pagination/filtering."""
         return await self._document_backend.get_conversation_list(
             limit=limit,
@@ -511,9 +510,9 @@ class UnifiedStorage:
     async def update_conversation(
         self,
         conversation_id: int,
-        title: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        title: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any] | None:
         """Update conversation metadata (title/status)."""
         return await self._document_backend.update_conversation(
             conversation_id=conversation_id,
@@ -521,7 +520,7 @@ class UnifiedStorage:
             status=status,
         )
 
-    async def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
+    async def delete_conversation(self, conversation_id: int) -> dict[str, Any]:
         """Soft delete conversation."""
         if not self._initialized:
             logger.error("Unified storage system not initialized")
@@ -578,7 +577,7 @@ class UnifiedStorage:
     @_require_backend("_document_backend", default=[])
     async def get_reports(
         self, limit: int = 100, offset: int = 0, is_deleted: bool = False
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get report"""
         return await self._document_backend.get_reports(limit, offset, is_deleted)
 
@@ -593,7 +592,7 @@ class UnifiedStorage:
         created_before: datetime = None,
         updated_after: datetime = None,
         updated_before: datetime = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get vaults list, supports more filtering conditions"""
         return await self._document_backend.get_vaults(
             limit=limit,
@@ -607,7 +606,7 @@ class UnifiedStorage:
         )
 
     @_require_backend("_document_backend")
-    async def get_vault(self, vault_id: int) -> Optional[Dict]:
+    async def get_vault(self, vault_id: int) -> dict | None:
         """Get vaults by ID"""
         return await self._document_backend.get_vault(vault_id)
 
@@ -635,7 +634,7 @@ class UnifiedStorage:
         offset: int = 0,
         start_time: datetime = None,
         end_time: datetime = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get todo items"""
         return await self._document_backend.get_todos(status, limit, offset, start_time, end_time)
 
@@ -651,7 +650,7 @@ class UnifiedStorage:
         end_time: datetime = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get tips"""
         return await self._document_backend.get_tips(start_time, end_time, limit, offset)
 
@@ -678,7 +677,7 @@ class UnifiedStorage:
         stage_name: str,
         duration_ms: int,
         status: str = "success",
-        metadata: Optional[str] = None,
+        metadata: str | None = None,
     ) -> bool:
         """Save stage timing monitoring data"""
         return await self._document_backend.save_monitoring_stage_timing(
@@ -689,29 +688,29 @@ class UnifiedStorage:
         self,
         data_type: str,
         count: int = 1,
-        context_type: Optional[str] = None,
-        metadata: Optional[str] = None,
+        context_type: str | None = None,
+        metadata: str | None = None,
     ) -> bool:
         """Save data statistics monitoring data"""
         return await self._document_backend.save_monitoring_data_stats(
             data_type, count, context_type, metadata
         )
 
-    async def query_monitoring_token_usage(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_token_usage(self, hours: int = 24) -> list[dict[str, Any]]:
         """Query token usage monitoring data"""
         return await self._document_backend.query_monitoring_token_usage(hours)
 
-    async def query_monitoring_stage_timing(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_stage_timing(self, hours: int = 24) -> list[dict[str, Any]]:
         """Query stage timing monitoring data"""
         return await self._document_backend.query_monitoring_stage_timing(hours)
 
-    async def query_monitoring_data_stats(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_data_stats(self, hours: int = 24) -> list[dict[str, Any]]:
         """Query data statistics monitoring data"""
         return await self._document_backend.query_monitoring_data_stats(hours)
 
     async def query_monitoring_data_stats_by_range(
         self, start_time: Any, end_time: Any
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Query data statistics monitoring data by custom time range"""
         return await self._document_backend.query_monitoring_data_stats_by_range(
             start_time, end_time
@@ -719,7 +718,7 @@ class UnifiedStorage:
 
     async def query_monitoring_data_stats_trend(
         self, hours: int = 24, interval_hours: int = 1
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Query data statistics trend with time grouping"""
         return await self._document_backend.query_monitoring_data_stats_trend(hours, interval_hours)
 
@@ -736,9 +735,9 @@ class UnifiedStorage:
         content: str,
         is_complete: bool = True,
         token_count: int = 0,
-        parent_message_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[int]:
+        parent_message_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int | None:
         """Create a new message, returns message ID"""
         result = await self._document_backend.create_message(
             conversation_id=conversation_id,
@@ -757,9 +756,9 @@ class UnifiedStorage:
         self,
         conversation_id: int,
         role: str,
-        parent_message_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[int]:
+        parent_message_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int | None:
         """Create a streaming message (initial content is empty), returns message ID"""
         result = await self._document_backend.create_streaming_message(
             conversation_id=conversation_id,
@@ -775,9 +774,9 @@ class UnifiedStorage:
         self,
         message_id: int,
         new_content: str,
-        is_complete: Optional[bool] = None,
-        token_count: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
+        is_complete: bool | None = None,
+        token_count: int | None = None,
+    ) -> dict[str, Any] | None:
         """Update message content"""
         return await self._document_backend.update_message(
             message_id=message_id,
@@ -796,7 +795,7 @@ class UnifiedStorage:
         )
 
     @_require_backend("_document_backend", default=False)
-    async def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
+    async def update_message_metadata(self, message_id: int, metadata: dict[str, Any]) -> bool:
         """Update message metadata"""
         return await self._document_backend.update_message_metadata(
             message_id=message_id, metadata=metadata
@@ -804,7 +803,7 @@ class UnifiedStorage:
 
     @_require_backend("_document_backend", default=False)
     async def mark_message_finished(
-        self, message_id: int, status: str = "completed", error_message: Optional[str] = None
+        self, message_id: int, status: str = "completed", error_message: str | None = None
     ) -> bool:
         """Mark a message as finished (completed, failed, or cancelled)"""
         return await self._document_backend.mark_message_finished(
@@ -812,12 +811,12 @@ class UnifiedStorage:
         )
 
     @_require_backend("_document_backend")
-    async def get_message(self, message_id: int) -> Optional[Dict[str, Any]]:
+    async def get_message(self, message_id: int) -> dict[str, Any] | None:
         """Get a single message"""
         return await self._document_backend.get_message(message_id)
 
     @_require_backend("_document_backend", default=[])
-    async def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
+    async def get_conversation_messages(self, conversation_id: int) -> list[dict[str, Any]]:
         """Get all messages for a conversation"""
         return await self._document_backend.get_conversation_messages(conversation_id)
 
@@ -837,11 +836,11 @@ class UnifiedStorage:
         self,
         message_id: int,
         content: str,
-        stage: Optional[str] = None,
+        stage: str | None = None,
         progress: float = 0.0,
-        sequence: Optional[int] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[int]:
+        sequence: int | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int | None:
         """Add a thinking record to a message"""
         return await self._document_backend.add_message_thinking(
             message_id=message_id,
@@ -853,7 +852,7 @@ class UnifiedStorage:
         )
 
     @_require_backend("_document_backend", default=[])
-    async def get_message_thinking(self, message_id: int) -> List[Dict[str, Any]]:
+    async def get_message_thinking(self, message_id: int) -> list[dict[str, Any]]:
         """Get all thinking records for a message"""
         return await self._document_backend.get_message_thinking(message_id)
 
@@ -871,11 +870,11 @@ class UnifiedStorage:
         device_id: str = "default",
         agent_id: str = "default",
         factual_profile: str = "",
-        behavioral_profile: Optional[str] = None,
-        entities: Optional[List[str]] = None,
+        behavioral_profile: str | None = None,
+        entities: list[str] | None = None,
         importance: int = 0,
-        metadata: Optional[Dict[str, Any]] = None,
-        refs: Optional[Dict] = None,
+        metadata: dict[str, Any] | None = None,
+        refs: dict | None = None,
         context_type: str = "profile",
     ) -> bool:
         """Store/update user profile → relational DB"""
@@ -899,7 +898,7 @@ class UnifiedStorage:
         device_id: str = "default",
         agent_id: str = "default",
         context_type: str = "profile",
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Get user profile → relational DB"""
         return await self._document_backend.get_profile(
             user_id, device_id, agent_id, context_type=context_type
@@ -925,13 +924,13 @@ class UnifiedStorage:
         self,
         context_type: str,
         hierarchy_level: int,
-        time_start: Optional[float] = None,
-        time_end: Optional[float] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        time_start: float | None = None,
+        time_end: float | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         top_k: int = 20,
-    ) -> List[Tuple[ProcessedContext, float]]:
+    ) -> list[tuple[ProcessedContext, float]]:
         """Search by hierarchy level and timestamp range → vector DB"""
         return await self._vector_backend.search_by_hierarchy(
             context_type=context_type,
@@ -947,17 +946,17 @@ class UnifiedStorage:
     @_require_backend("_vector_backend", default=[])
     async def get_contexts_by_ids(
         self,
-        ids: List[str],
-        context_type: Optional[str] = None,
+        ids: list[str],
+        context_type: str | None = None,
         need_vector: bool = False,
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         """Get contexts by IDs → vector DB"""
         return await self._vector_backend.get_by_ids(ids, context_type, need_vector=need_vector)
 
     @_require_backend("_vector_backend", default=0)
     async def batch_update_refs(
         self,
-        context_ids: List[str],
+        context_ids: list[str],
         ref_key: str,
         ref_value: str,
         context_type: str,
@@ -970,7 +969,7 @@ class UnifiedStorage:
     # ── System Settings (→ document DB) ──
 
     @_require_backend("_document_backend", default={})
-    async def load_all_settings(self) -> Dict[str, Any]:
+    async def load_all_settings(self) -> dict[str, Any]:
         """Load all system settings from document backend."""
         return await self._document_backend.load_all_settings()
 
@@ -992,18 +991,18 @@ class UnifiedStorage:
         return await self._document_backend.create_agent(agent_id, name, description)
 
     @_require_backend("_document_backend")
-    async def get_agent(self, agent_id: str) -> Optional[Dict]:
+    async def get_agent(self, agent_id: str) -> dict | None:
         """Get agent by ID (excludes soft-deleted)."""
         return await self._document_backend.get_agent(agent_id)
 
     @_require_backend("_document_backend", default=[])
-    async def list_agents(self) -> List[Dict]:
+    async def list_agents(self) -> list[dict]:
         """List all active agents."""
         return await self._document_backend.list_agents()
 
     @_require_backend("_document_backend", default=False)
     async def update_agent(
-        self, agent_id: str, name: Optional[str] = None, description: Optional[str] = None
+        self, agent_id: str, name: str | None = None, description: str | None = None
     ) -> bool:
         """Update agent info."""
         return await self._document_backend.update_agent(
@@ -1021,8 +1020,8 @@ class UnifiedStorage:
     async def create_chat_batch(
         self,
         batch_id: str,
-        messages: List[Dict],
-        user_id: Optional[str],
+        messages: list[dict],
+        user_id: str | None,
         device_id: str = "default",
         agent_id: str = "default",
     ) -> bool:
@@ -1037,7 +1036,7 @@ class UnifiedStorage:
         return await self._document_backend.cleanup_chat_batches(retention_days)
 
     @_require_backend("_document_backend", default=[])
-    async def list_chat_batches(self, **kwargs) -> List[Dict]:
+    async def list_chat_batches(self, **kwargs) -> list[dict]:
         """List chat batches from document backend."""
         return await self._document_backend.list_chat_batches(**kwargs)
 
@@ -1047,6 +1046,6 @@ class UnifiedStorage:
         return await self._document_backend.count_chat_batches(**kwargs)
 
     @_require_backend("_document_backend", default=None)
-    async def get_chat_batch(self, batch_id: str) -> Optional[Dict]:
+    async def get_chat_batch(self, batch_id: str) -> dict | None:
         """Get single chat batch from document backend."""
         return await self._document_backend.get_chat_batch(batch_id)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.context_capture.base import BaseCaptureComponent
 from opencontext.models.context import RawContextProperties
@@ -35,21 +34,21 @@ class WebLinkCapture(BaseCaptureComponent):
         self._mode: str = "markdown"  # 'pdf' or 'markdown'
         self._timeout: int = 30000
         self._wait_until: str = "networkidle"
-        self._pdf_options: Dict[str, Any] = {
+        self._pdf_options: dict[str, Any] = {
             "format": "A4",
             "print_background": True,
             "landscape": False,
         }
         self._total_converted = 0
-        self._last_activity_time: Optional[datetime] = None
+        self._last_activity_time: datetime | None = None
         # Use a lock for thread-safe statistics updates
         self._stats_lock = threading.Lock()
         # Max workers for PDF conversion
         self._max_workers = 4
         # Temporary storage for URLs passed to the overridden capture method
-        self._urls_to_process: List[str] = []
+        self._urls_to_process: list[str] = []
 
-    def submit_url(self, url: str) -> List[RawContextProperties]:
+    def submit_url(self, url: str) -> list[RawContextProperties]:
         """
         Submits a single URL for immediate capture and processing.
         This is a convenience method that directly calls the main capture logic.
@@ -61,8 +60,8 @@ class WebLinkCapture(BaseCaptureComponent):
         return self.capture(urls=[url])
 
     def convert_url_to_markdown(
-        self, url: str, filename_hint: Optional[str] = None
-    ) -> Optional[Dict[str, str]]:
+        self, url: str, filename_hint: str | None = None
+    ) -> dict[str, str] | None:
         """
         Converts a single URL to a Markdown file.
 
@@ -116,8 +115,8 @@ class WebLinkCapture(BaseCaptureComponent):
             return None
 
     def convert_url_to_pdf(
-        self, url: str, filename_hint: Optional[str] = None
-    ) -> Optional[Dict[str, str]]:
+        self, url: str, filename_hint: str | None = None
+    ) -> dict[str, str] | None:
         """
         Converts a single URL to a PDF file.
 
@@ -158,7 +157,7 @@ class WebLinkCapture(BaseCaptureComponent):
             logger.exception(f"Failed to render URL to PDF: {url}, error: {e}")
             return None
 
-    def _initialize_impl(self, config: Dict[str, Any]) -> bool:
+    def _initialize_impl(self, config: dict[str, Any]) -> bool:
         try:
             output_dir = config.get("output_dir")
             if output_dir:
@@ -189,7 +188,7 @@ class WebLinkCapture(BaseCaptureComponent):
         # Nothing to stop, no background threads are managed by this component.
         return True
 
-    def capture(self, urls: Optional[List[str]] = None) -> List[RawContextProperties]:
+    def capture(self, urls: list[str] | None = None) -> list[RawContextProperties]:
         """
         Overrides the base capture method to accept a list of URLs.
         It stores the URLs and then calls the base class's capture method.
@@ -199,7 +198,7 @@ class WebLinkCapture(BaseCaptureComponent):
         # Call the base implementation which will, in turn, call _capture_impl
         return super().capture()
 
-    def _capture_impl(self) -> List[RawContextProperties]:
+    def _capture_impl(self) -> list[RawContextProperties]:
         """
         Processes the list of URLs stored in self._urls_to_process.
         """
@@ -208,7 +207,7 @@ class WebLinkCapture(BaseCaptureComponent):
             return []
 
         logger.info(f"Starting capture for {len(urls_to_process)} URLs in '{self._mode}' mode.")
-        results: List[RawContextProperties] = []
+        results: list[RawContextProperties] = []
 
         if self._mode == "markdown":
             convert_function = self.convert_url_to_markdown
@@ -252,7 +251,7 @@ class WebLinkCapture(BaseCaptureComponent):
         )
         return results
 
-    def _get_config_schema_impl(self) -> Dict[str, Any]:
+    def _get_config_schema_impl(self) -> dict[str, Any]:
         return {
             "properties": {
                 "output_dir": {
@@ -296,7 +295,7 @@ class WebLinkCapture(BaseCaptureComponent):
             }
         }
 
-    def _validate_config_impl(self, config: Dict[str, Any]) -> bool:
+    def _validate_config_impl(self, config: dict[str, Any]) -> bool:
         try:
             if "output_dir" in config and not isinstance(config["output_dir"], str):
                 logger.error("output_dir must be a string")
@@ -315,7 +314,7 @@ class WebLinkCapture(BaseCaptureComponent):
             logger.exception(f"Config validation failed: {e}")
             return False
 
-    def _get_status_impl(self) -> Dict[str, Any]:
+    def _get_status_impl(self) -> dict[str, Any]:
         return {
             "mode": self._mode,
             "output_dir": str(self._output_dir),
@@ -325,7 +324,7 @@ class WebLinkCapture(BaseCaptureComponent):
             ),
         }
 
-    def _get_statistics_impl(self) -> Dict[str, Any]:
+    def _get_statistics_impl(self) -> dict[str, Any]:
         return {
             "total_converted": self._total_converted,
         }
@@ -334,7 +333,7 @@ class WebLinkCapture(BaseCaptureComponent):
         with self._stats_lock:
             self._total_converted = 0
 
-    def _make_safe_filename(self, url: str, filename_hint: Optional[str]) -> str:
+    def _make_safe_filename(self, url: str, filename_hint: str | None) -> str:
         if filename_hint:
             base = filename_hint
         else:

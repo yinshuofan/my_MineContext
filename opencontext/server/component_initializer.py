@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,11 +9,9 @@ Separated from main OpenContext class for better maintainability.
 """
 
 import importlib
-from typing import Any, Dict, Optional
+from typing import Any
 
-from opencontext.config.config_manager import ConfigManager
 from opencontext.config.global_config import GlobalConfig
-from opencontext.config.prompt_manager import PromptManager
 from opencontext.context_capture.text_chat import TextChatCapture
 
 # Import capture components
@@ -85,7 +82,7 @@ class ComponentInitializer:
 
         logger.info("Context capture modules initialization complete")
 
-    def _create_capture_component(self, name: str, config: Dict[str, Any]):
+    def _create_capture_component(self, name: str, config: dict[str, Any]):
         """Create a capture component instance."""
         if name in CAPTURE_COMPONENTS:
             component_class = CAPTURE_COMPONENTS[name]
@@ -166,7 +163,7 @@ class ComponentInitializer:
         logger.info("Context processors initialization complete")
 
     def initialize_task_scheduler(
-        self, processor_manager: Optional[ContextProcessorManager] = None
+        self, processor_manager: ContextProcessorManager | None = None
     ) -> None:
         """
         Initialize the task scheduler for periodic tasks.
@@ -198,7 +195,7 @@ class ComponentInitializer:
                 create_compression_handler,
                 create_hierarchy_handler,
             )
-            from opencontext.scheduler import get_scheduler, init_scheduler
+            from opencontext.scheduler import init_scheduler
             from opencontext.storage.redis_cache import peek_redis_cache
 
             # Get Redis cache (singleton already initialized by OpenContext.initialize())

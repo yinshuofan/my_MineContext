@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 from opencontext.storage.object_storage.base import IObjectStorage
 from opencontext.storage.object_storage.global_object_storage import (

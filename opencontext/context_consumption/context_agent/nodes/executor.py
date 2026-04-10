@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Execution Node
 Executes specific tasks
 """
 
-from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_vlm_client import generate_stream_for_agent
@@ -61,7 +59,7 @@ class ExecutorNode(BaseNode):
             await self.streaming_manager.emit(
                 StreamEvent(
                     type=EventType.RUNNING,
-                    content=f"Executing step {i+1}/{total_steps}: {step.description}",
+                    content=f"Executing step {i + 1}/{total_steps}: {step.description}",
                     stage=WorkflowStage.EXECUTION,
                     progress=progress,
                 )
@@ -106,7 +104,7 @@ class ExecutorNode(BaseNode):
             plan.add_step(step)
         return plan
 
-    async def _execute_step(self, step: ExecutionStep, state: WorkflowState) -> Dict[str, Any]:
+    async def _execute_step(self, step: ExecutionStep, state: WorkflowState) -> dict[str, Any]:
         """Execute a single step"""
         step.start_time = tz_now()
         step.status = TaskStatus.RUNNING
@@ -122,7 +120,7 @@ class ExecutorNode(BaseNode):
         state.final_method = step.action.value
         return result
 
-    async def _execute_generate(self, state: WorkflowState) -> Dict[str, Any]:
+    async def _execute_generate(self, state: WorkflowState) -> dict[str, Any]:
         """Execute generation task with streaming"""
         prompt_group = get_prompt_group("chat_workflow.executor.generate")
 
@@ -165,7 +163,7 @@ class ExecutorNode(BaseNode):
 
         return {"success": True, "output": {"type": "generated_content", "content": full_content}}
 
-    async def _execute_edit(self, state: WorkflowState) -> Dict[str, Any]:
+    async def _execute_edit(self, state: WorkflowState) -> dict[str, Any]:
         """Execute edit/rewrite task with streaming"""
         context = state.contexts.prepare_context()
         prompt_group = get_prompt_group("chat_workflow.executor.edit")
@@ -238,7 +236,7 @@ class ExecutorNode(BaseNode):
     #         }
     #     }
 
-    async def _execute_answer(self, state: WorkflowState) -> Dict[str, Any]:
+    async def _execute_answer(self, state: WorkflowState) -> dict[str, Any]:
         """Execute answer task - intelligently handle Q&A, summarization, analysis, etc. with streaming"""
         context = state.contexts.prepare_context()
         prompt_group = get_prompt_group("chat_workflow.executor.answer")

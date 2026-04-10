@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,7 @@ SQLite document note storage backend implementation
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import aiosqlite
 
@@ -36,11 +35,11 @@ class SQLiteBackend(IDocumentStorageBackend):
     """
 
     def __init__(self):
-        self.db_path: Optional[str] = None
-        self._connection: Optional[aiosqlite.Connection] = None
+        self.db_path: str | None = None
+        self._connection: aiosqlite.Connection | None = None
         self._initialized = False
 
-    async def initialize(self, config: Dict[str, Any]) -> bool:
+    async def initialize(self, config: dict[str, Any]) -> bool:
         """Initialize SQLite database"""
         try:
             # Use path from configuration, default to ./persist/sqlite/app.db
@@ -381,14 +380,14 @@ class SQLiteBackend(IDocumentStorageBackend):
             quick_start_file = os.path.join(config_dir, "quick_start_default.md")
 
             if os.path.exists(quick_start_file):
-                with open(quick_start_file, "r", encoding="utf-8") as f:
+                with open(quick_start_file, encoding="utf-8") as f:
                     default_content = f.read()
             else:
                 # If file doesn't exist, use fallback content
                 logger.error(f"Quick Start document {quick_start_file} does not exist")
                 default_content = "Welcome to MineContext!\n\nYour Context-Aware AI Partner is ready to help you work, study, and create better."
 
-        except Exception as e:
+        except Exception:
             default_content = "Welcome to MineContext!\n\nYour Context-Aware AI Partner is ready to help you work, study, and create better."
 
         # Insert default document
@@ -462,7 +461,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     async def get_reports(
         self, limit: int = 100, offset: int = 0, is_deleted: bool = False
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get report list"""
         if not self._initialized:
             return []
@@ -498,7 +497,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         created_before: datetime = None,
         updated_after: datetime = None,
         updated_before: datetime = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get vaults list with more filter conditions
 
@@ -566,7 +565,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to get vaults list: {e}")
             return []
 
-    async def get_vault(self, vault_id: int) -> Optional[Dict]:
+    async def get_vault(self, vault_id: int) -> dict | None:
         """Get vaults by ID"""
         if not self._initialized:
             return None
@@ -682,7 +681,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         offset: int = 0,
         start_time: datetime = None,
         end_time: datetime = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get todo item list"""
         if not self._initialized:
             return []
@@ -776,7 +775,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         end_time: datetime = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Get tip list"""
         if not self._initialized:
             return []
@@ -821,11 +820,11 @@ class SQLiteBackend(IDocumentStorageBackend):
         device_id: str = "default",
         agent_id: str = "default",
         factual_profile: str = "",
-        behavioral_profile: Optional[str] = None,
-        entities: Optional[List[str]] = None,
+        behavioral_profile: str | None = None,
+        entities: list[str] | None = None,
         importance: int = 0,
-        metadata: Optional[Dict[str, Any]] = None,
-        refs: Optional[Dict] = None,
+        metadata: dict[str, Any] | None = None,
+        refs: dict | None = None,
         context_type: str = "profile",
     ) -> bool:
         """Insert or update user profile (composite key: user_id + device_id + agent_id + context_type)"""
@@ -885,7 +884,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         device_id: str = "default",
         agent_id: str = "default",
         context_type: str = "profile",
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Get user profile by composite key"""
         if not self._initialized:
             return None
@@ -1003,7 +1002,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         stage_name: str,
         duration_ms: int,
         status: str = "success",
-        metadata: Optional[str] = None,
+        metadata: str | None = None,
     ) -> bool:
         """Save stage timing monitoring data (aggregated by hour using UPSERT)"""
         if not self._initialized:
@@ -1058,8 +1057,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         self,
         data_type: str,
         count: int = 1,
-        context_type: Optional[str] = None,
-        metadata: Optional[str] = None,
+        context_type: str | None = None,
+        metadata: str | None = None,
     ) -> bool:
         """Save data statistics monitoring data (aggregated by hour using UPSERT)"""
         if not self._initialized:
@@ -1093,7 +1092,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 logger.debug(f"Rollback failed: {e}")
             return False
 
-    async def query_monitoring_token_usage(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_token_usage(self, hours: int = 24) -> list[dict[str, Any]]:
         """Query token usage monitoring data"""
         if not self._initialized:
             return []
@@ -1126,7 +1125,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query token usage: {e}")
             return []
 
-    async def query_monitoring_stage_timing(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_stage_timing(self, hours: int = 24) -> list[dict[str, Any]]:
         """Query stage timing monitoring data"""
         if not self._initialized:
             return []
@@ -1165,7 +1164,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"Failed to query stage timing: {e}")
             return []
 
-    async def query_monitoring_data_stats(self, hours: int = 24) -> List[Dict[str, Any]]:
+    async def query_monitoring_data_stats(self, hours: int = 24) -> list[dict[str, Any]]:
         """Query data statistics monitoring data"""
         if not self._initialized:
             return []
@@ -1198,7 +1197,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     async def query_monitoring_data_stats_by_range(
         self, start_time: datetime, end_time: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Query data statistics monitoring data by custom time range"""
         if not self._initialized:
             return []
@@ -1233,7 +1232,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     async def query_monitoring_data_stats_trend(
         self, hours: int = 24, interval_hours: int = 1
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Query data statistics trend with time grouping
 
         Args:
@@ -1323,10 +1322,10 @@ class SQLiteBackend(IDocumentStorageBackend):
     async def create_conversation(
         self,
         page_name: str,
-        user_id: Optional[str] = None,
-        title: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        user_id: str | None = None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Create a new conversation (4.1.1)
         """
@@ -1355,7 +1354,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to create conversation: {e}")
             return None
 
-    async def get_conversation(self, conversation_id: int) -> Optional[Dict[str, Any]]:
+    async def get_conversation(self, conversation_id: int) -> dict[str, Any] | None:
         """
         Get a single conversation's details (4.1.2)
         """
@@ -1385,10 +1384,10 @@ class SQLiteBackend(IDocumentStorageBackend):
         self,
         limit: int = 20,
         offset: int = 0,
-        page_name: Optional[str] = None,
-        user_id: Optional[str] = None,
+        page_name: str | None = None,
+        user_id: str | None = None,
         status: str = "active",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get a list of conversations with pagination (4.1.3)
         """
@@ -1449,9 +1448,9 @@ class SQLiteBackend(IDocumentStorageBackend):
     async def update_conversation(
         self,
         conversation_id: int,
-        title: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        title: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any] | None:
         """
         Update a conversation's title or status (4.1.4, 4.1.5)
         """
@@ -1497,7 +1496,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to update conversation: {e}")
             return None
 
-    async def delete_conversation(self, conversation_id: int) -> Dict[str, Any]:
+    async def delete_conversation(self, conversation_id: int) -> dict[str, Any]:
         """
         Mark a conversation as deleted (4.1.5)
         """
@@ -1514,7 +1513,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     async def get_message(
         self, message_id: int, include_thinking: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Get a single message by its ID, optionally including thinking records.
 
@@ -1557,9 +1556,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         content: str,
         is_complete: bool = True,
         token_count: int = 0,
-        parent_message_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        parent_message_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Create a new message (4.2.2)
         """
@@ -1613,9 +1612,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         self,
         conversation_id: int,
         role: str,
-        parent_message_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        parent_message_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Create a new streaming message (initial content is empty, status is 'streaming') (4.2.3)
         """
@@ -1633,9 +1632,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         self,
         message_id: int,
         new_content: str,
-        is_complete: Optional[bool] = None,
-        token_count: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
+        is_complete: bool | None = None,
+        token_count: int | None = None,
+    ) -> dict[str, Any] | None:
         """
         Update a message's content and optionally mark it complete (4.2.4)
         This SETS the content, it does not append.
@@ -1739,7 +1738,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to append message content: {e}")
             return False
 
-    async def update_message_metadata(self, message_id: int, metadata: Dict[str, Any]) -> bool:
+    async def update_message_metadata(self, message_id: int, metadata: dict[str, Any]) -> bool:
         """
         Update message metadata
         """
@@ -1769,7 +1768,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
     async def mark_message_finished(
-        self, message_id: int, status: str = "completed", error_message: Optional[str] = None
+        self, message_id: int, status: str = "completed", error_message: str | None = None
     ) -> bool:
         """
         Mark a message as finished (completed, failed, or cancelled) (4.2.6 & Interrupt)
@@ -1836,7 +1835,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             message_id=message_id, status="cancelled", error_message="Message interrupted by user."
         )
 
-    async def get_conversation_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
+    async def get_conversation_messages(self, conversation_id: int) -> list[dict[str, Any]]:
         """
         Get all messages for a specific conversation, ordered by creation time (4.2.7)
         Each message includes its thinking records if available.
@@ -1897,11 +1896,11 @@ class SQLiteBackend(IDocumentStorageBackend):
         self,
         message_id: int,
         content: str,
-        stage: Optional[str] = None,
+        stage: str | None = None,
         progress: float = 0.0,
-        sequence: Optional[int] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[int]:
+        sequence: int | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int | None:
         """
         Add a thinking record to a message.
 
@@ -1950,7 +1949,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.exception(f"Failed to add thinking to message {message_id}: {e}")
             return None
 
-    async def get_message_thinking(self, message_id: int) -> List[Dict[str, Any]]:
+    async def get_message_thinking(self, message_id: int) -> list[dict[str, Any]]:
         """
         Get all thinking records for a message, ordered by sequence.
 
@@ -2005,7 +2004,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     # ── System Settings ──
 
-    async def load_all_settings(self) -> Dict[str, Any]:
+    async def load_all_settings(self) -> dict[str, Any]:
         """Load all settings rows and return as a dict keyed by setting_key."""
         if not self._initialized:
             return {}
@@ -2016,7 +2015,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 " WHERE SUBSTR(setting_key, 1, 1) != '_'"
             )
             rows = await cursor.fetchall()
-            result: Dict[str, Any] = {}
+            result: dict[str, Any] = {}
             for row in rows:
                 value = row["setting_value"]
                 if isinstance(value, str):
@@ -2092,8 +2091,8 @@ class SQLiteBackend(IDocumentStorageBackend):
     async def create_chat_batch(
         self,
         batch_id: str,
-        messages: List[Dict],
-        user_id: Optional[str],
+        messages: list[dict],
+        user_id: str | None,
         device_id: str = "default",
         agent_id: str = "default",
     ) -> bool:
@@ -2141,7 +2140,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"cleanup_chat_batches failed: {e}")
             return 0
 
-    def _parse_date(self, date_str: str) -> Optional[str]:
+    def _parse_date(self, date_str: str) -> str | None:
         """Parse date string supporting multiple formats, return ISO string."""
         for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
             try:
@@ -2153,11 +2152,11 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     def _build_chat_batches_where(
         self,
-        user_id: Optional[str],
-        device_id: Optional[str],
-        agent_id: Optional[str],
-        start_date: Optional[str],
-        end_date: Optional[str],
+        user_id: str | None,
+        device_id: str | None,
+        agent_id: str | None,
+        start_date: str | None,
+        end_date: str | None,
     ) -> tuple:
         """Build WHERE clause and params for chat_batches queries."""
         conditions = []
@@ -2186,14 +2185,14 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     async def list_chat_batches(
         self,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """List chat batches (without messages) with optional filters."""
         if not self._initialized:
             return []
@@ -2218,11 +2217,11 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     async def count_chat_batches(
         self,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> int:
         """Count chat batches matching filters."""
         if not self._initialized:
@@ -2241,7 +2240,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"count_chat_batches failed: {e}")
             return 0
 
-    async def get_chat_batch(self, batch_id: str) -> Optional[Dict]:
+    async def get_chat_batch(self, batch_id: str) -> dict | None:
         """Get single chat batch with messages."""
         if not self._initialized:
             return None
@@ -2264,7 +2263,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return None
 
     async def query(
-        self, query: str, limit: int = 10, filters: Optional[Dict[str, Any]] = None
+        self, query: str, limit: int = 10, filters: dict[str, Any] | None = None
     ) -> QueryResult:
         """Query documents"""
         if not self._initialized:
@@ -2317,10 +2316,14 @@ class SQLiteBackend(IDocumentStorageBackend):
                 FROM documents d
                 LEFT JOIN document_tags dt ON d.id = dt.document_id
                 WHERE """
-            sql = base_sql + where_clause + """
+            sql = (
+                base_sql
+                + where_clause
+                + """
                 ORDER BY d.updated_at DESC
                 LIMIT ?
             """
+            )
             params.append(limit)
 
             cursor = await conn.execute(sql, params)
@@ -2389,7 +2392,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"create_agent failed: {e}")
             return False
 
-    async def get_agent(self, agent_id: str) -> Optional[Dict]:
+    async def get_agent(self, agent_id: str) -> dict | None:
         """Get agent by ID (excludes soft-deleted)."""
         if not self._initialized:
             return None
@@ -2407,7 +2410,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"get_agent failed: {e}")
             return None
 
-    async def list_agents(self) -> List[Dict]:
+    async def list_agents(self) -> list[dict]:
         """List all active agents."""
         if not self._initialized:
             return []
@@ -2425,7 +2428,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return []
 
     async def update_agent(
-        self, agent_id: str, name: Optional[str] = None, description: Optional[str] = None
+        self, agent_id: str, name: str | None = None, description: str | None = None
     ) -> bool:
         """Update agent info."""
         if not self._initialized:

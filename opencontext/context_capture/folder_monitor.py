@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -15,7 +14,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from opencontext.context_capture.base import BaseCaptureComponent
 from opencontext.context_processing.processor.document_processor import DocumentProcessor
@@ -41,14 +40,14 @@ class FolderMonitorCapture(BaseCaptureComponent):
             source_type=ContextSource.LOCAL_FILE,
         )
         self._monitor_interval = 5
-        self._watch_folder_paths: List[str] = []
+        self._watch_folder_paths: list[str] = []
         self._recursive = True
         self._max_file_size = 104857600  # 100MB
         self._initial_scan = True  # Initialize initial_scan
-        self._file_info_cache: Dict[str, Dict[str, Any]] = {}
-        self._supported_formats: Set[str] = set()
+        self._file_info_cache: dict[str, dict[str, Any]] = {}
+        self._supported_formats: set[str] = set()
 
-        self._document_events: List[Dict[str, Any]] = []
+        self._document_events: list[dict[str, Any]] = []
         self._event_lock = threading.RLock()
         self._monitor_thread = None
         self._stop_event = threading.Event()
@@ -62,7 +61,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
         """Lazy storage access — avoids init-order issues with async GlobalStorage."""
         return get_storage()
 
-    def _initialize_impl(self, config: Dict[str, Any]) -> bool:
+    def _initialize_impl(self, config: dict[str, Any]) -> bool:
         """
         Initialize folder monitoring component.
         """
@@ -118,7 +117,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             logger.exception(f"Failed to stop Folder monitoring: {e}")
             return False
 
-    def _capture_impl(self) -> List[RawContextProperties]:
+    def _capture_impl(self) -> list[RawContextProperties]:
         """
         Execute document capture by processing queued events.
         """
@@ -192,7 +191,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
         except Exception as e:
             logger.exception(f"Folder scan failed: {e}")
 
-    def _detect_new_and_updated_files(self, current_files: set) -> Tuple[List[str], List[str]]:
+    def _detect_new_and_updated_files(self, current_files: set) -> tuple[list[str], list[str]]:
         new_files, updated_files = [], []
         for file_path in current_files:
             try:
@@ -226,7 +225,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
                 continue
         return new_files, updated_files
 
-    def _detect_deleted_files(self, current_files: set) -> List[str]:
+    def _detect_deleted_files(self, current_files: set) -> list[str]:
         cached_files = set(self._file_info_cache.keys())
         deleted_files = list(cached_files - current_files)
         for file_path in deleted_files:
@@ -235,7 +234,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             logger.debug(f"Detected file deletion: {file_path}")
         return deleted_files
 
-    def _generate_events(self, file_paths: List[str], event_type: str, timestamp: datetime):
+    def _generate_events(self, file_paths: list[str], event_type: str, timestamp: datetime):
         for file_path in file_paths:
             event = {
                 "event_type": event_type,
@@ -247,7 +246,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             with self._event_lock:
                 self._document_events.append(event)
 
-    def _process_file_event(self, event: Dict[str, Any]):
+    def _process_file_event(self, event: dict[str, Any]):
         """Process file events, handling deletions."""
         if event["event_type"] == "file_deleted":
             file_path = event["file_path"]
@@ -303,7 +302,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             logger.exception(f"Failed to clean up context for file {file_path}: {e}")
             return 0
 
-    def _create_context_from_event(self, event: Dict[str, Any]) -> Optional[RawContextProperties]:
+    def _create_context_from_event(self, event: dict[str, Any]) -> RawContextProperties | None:
         """Create RawContextProperties from a file event."""
         event_type = event.get("event_type", "")
         if event_type in ["file_created", "file_updated"]:
@@ -318,7 +317,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             content_text = ""
             if content_format == ContentFormat.TEXT:
                 try:
-                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    with open(file_path, encoding="utf-8", errors="ignore") as f:
                         content_text = f.read()
                 except Exception as e:
                     logger.warning(f"Could not read text content from {file_path}: {e}")
@@ -341,7 +340,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             )
         return None
 
-    def _get_content_format(self, file_ext: str) -> Optional[ContentFormat]:
+    def _get_content_format(self, file_ext: str) -> ContentFormat | None:
         """Map file extension to ContentFormat."""
         if file_ext in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}:
             return ContentFormat.IMAGE
@@ -361,7 +360,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             return ContentFormat.TEXT
         return None
 
-    def _scan_folder_files(self, folder_path: str, recursive: bool) -> List[str]:
+    def _scan_folder_files(self, folder_path: str, recursive: bool) -> list[str]:
         """Scan a folder for supported files."""
         files = []
         try:
@@ -398,7 +397,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             logger.warning(f"Failed to calculate hash for file {file_path}: {e}")
             return ""
 
-    def _get_config_schema_impl(self) -> Dict[str, Any]:
+    def _get_config_schema_impl(self) -> dict[str, Any]:
         """Get configuration schema implementation."""
         return {
             "properties": {
@@ -439,7 +438,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             }
         }
 
-    def _validate_config_impl(self, config: Dict[str, Any]) -> bool:
+    def _validate_config_impl(self, config: dict[str, Any]) -> bool:
         """Validate configuration implementation."""
         try:
             for key in ["capture_interval", "monitor_interval", "max_file_size"]:
@@ -460,7 +459,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             logger.exception(f"Configuration validation failed: {e}")
             return False
 
-    def _get_status_impl(self) -> Dict[str, Any]:
+    def _get_status_impl(self) -> dict[str, Any]:
         """Get status implementation."""
         return {
             "monitor_interval": self._monitor_interval,
@@ -471,7 +470,7 @@ class FolderMonitorCapture(BaseCaptureComponent):
             "cached_files": len(self._file_info_cache),
         }
 
-    def _get_statistics_impl(self) -> Dict[str, Any]:
+    def _get_statistics_impl(self) -> dict[str, Any]:
         """Get statistics implementation."""
         return {
             "total_processed": self._total_processed,

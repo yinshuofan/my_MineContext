@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 Media Upload API — upload images/videos to object storage for search queries.

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -8,7 +7,6 @@
 
 import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -44,14 +42,14 @@ class CreateAgentRequest(BaseModel):
 
 
 class UpdateAgentRequest(BaseModel):
-    name: Optional[str] = Field(None, max_length=255)
-    description: Optional[str] = None
+    name: str | None = Field(None, max_length=255)
+    description: str | None = None
 
 
 class BaseProfileRequest(BaseModel):
     factual_profile: str
-    behavioral_profile: Optional[str] = None
-    entities: List[str] = Field(default_factory=list)
+    behavioral_profile: str | None = None
+    entities: list[str] = Field(default_factory=list)
     importance: int = 0
 
 
@@ -70,21 +68,21 @@ _ALL_AGENT_BASE_TYPES = [ct.value for ct in _BASE_HIERARCHY_LEVEL_TO_TYPE.values
 class BaseEventItem(BaseModel):
     title: str
     summary: str
-    event_time_start: Optional[str] = None  # ISO 8601, defaults to current time
-    event_time_end: Optional[str] = None  # Required for hierarchy_level > 0
-    keywords: List[str] = Field(default_factory=list)
-    entities: List[str] = Field(default_factory=list)
+    event_time_start: str | None = None  # ISO 8601, defaults to current time
+    event_time_end: str | None = None  # Required for hierarchy_level > 0
+    keywords: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
     importance: int = 5
     hierarchy_level: int = 0  # 0/1/2/3, pure hierarchy depth
-    children: Optional[List["BaseEventItem"]] = None  # Nested child events
+    children: list["BaseEventItem"] | None = None  # Nested child events
 
 
 class BaseEventsRequest(BaseModel):
-    events: List[BaseEventItem] = Field(..., min_length=1)
+    events: list[BaseEventItem] = Field(..., min_length=1)
 
 
 def _validate_base_event_tree(
-    events: List[BaseEventItem],
+    events: list[BaseEventItem],
     path: str = "events",
 ) -> int:
     """Validate a list of base events (potentially with nested children).
@@ -188,8 +186,8 @@ def _validate_base_event_tree(
 
 
 def _parse_event_time(
-    value: Optional[str], node_path: str, field_name: str
-) -> Optional[datetime.datetime]:
+    value: str | None, node_path: str, field_name: str
+) -> datetime.datetime | None:
     """Parse an ISO 8601 string to datetime. Returns None if value is None."""
     if value is None:
         return None
@@ -206,18 +204,18 @@ def _parse_event_time(
 
 
 def _flatten_base_event_tree(
-    events: List[BaseEventItem],
+    events: list[BaseEventItem],
     agent_id: str,
-    parent_id: Optional[str] = None,
-    parent_context_type: Optional[ContextType] = None,
-) -> List[ProcessedContext]:
+    parent_id: str | None = None,
+    parent_context_type: ContextType | None = None,
+) -> list[ProcessedContext]:
     """Flatten a nested event tree into a list of ProcessedContext objects.
 
     Builds bidirectional refs in-memory:
     - Downward: parent.refs[child_type] = [child_ids]
     - Upward: child.refs[parent_type] = [parent_id]
     """
-    result: List[ProcessedContext] = []
+    result: list[ProcessedContext] = []
 
     for event in events:
         now = tz_now()
@@ -238,7 +236,7 @@ def _flatten_base_event_tree(
         )
 
         # Build refs (upward ref to parent, if any)
-        refs: Dict[str, List[str]] = {}
+        refs: dict[str, list[str]] = {}
         if parent_id and parent_context_type:
             refs[parent_context_type.value] = [parent_id]
 
@@ -440,7 +438,7 @@ async def list_base_events(
     agent_id: str,
     limit: int = 50,
     offset: int = 0,
-    hierarchy_level: Optional[int] = None,
+    hierarchy_level: int | None = None,
     _auth: str = auth_dependency,
 ):
     """List base events for an agent.

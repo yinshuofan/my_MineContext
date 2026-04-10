@@ -1,18 +1,17 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Context Agent Main Entry Point
 Provides a simple API interface
 """
 
-import asyncio
-from typing import Any, AsyncIterator, Dict, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from opencontext.context_consumption.context_agent.core.state import StateManager, WorkflowState
 from opencontext.context_consumption.context_agent.core.streaming import StreamingManager
 from opencontext.context_consumption.context_agent.core.workflow import WorkflowEngine
-from opencontext.context_consumption.context_agent.models.events import EventType, StreamEvent
+from opencontext.context_consumption.context_agent.models.events import StreamEvent
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger("ContextAgent")
@@ -35,7 +34,7 @@ class ContextAgent:
         )
         self.enable_streaming = enable_streaming
 
-    async def process(self, **kwargs) -> Dict[str, Any]:
+    async def process(self, **kwargs) -> dict[str, Any]:
         """
         Process user queries
         """
@@ -47,7 +46,7 @@ class ContextAgent:
         async for event in self.workflow_engine.execute_stream(**kwargs):
             yield event
 
-    def _format_result(self, state: WorkflowState) -> Dict[str, Any]:
+    def _format_result(self, state: WorkflowState) -> dict[str, Any]:
         """Format the result"""
         result = {
             "success": state.stage.value == "completed",
@@ -91,7 +90,7 @@ class ContextAgent:
 
         return result
 
-    async def get_state(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+    async def get_state(self, workflow_id: str) -> dict[str, Any] | None:
         """
         Get workflow state
         """
@@ -100,7 +99,7 @@ class ContextAgent:
             return self._format_result(state)
         return None
 
-    async def resume(self, workflow_id: str, user_input: Optional[str] = None) -> Dict[str, Any]:
+    async def resume(self, workflow_id: str, user_input: str | None = None) -> dict[str, Any]:
         """
         Resume a workflow
 
@@ -128,8 +127,8 @@ class ContextAgent:
 
 
 async def process_query(
-    query: str, session_id: Optional[str] = None, context: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    query: str, session_id: str | None = None, context: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Convenience function to process a query
 
@@ -146,8 +145,8 @@ async def process_query(
 
 
 async def process_query_stream(
-    query: str, session_id: Optional[str] = None, context: Optional[Dict[str, Any]] = None
-) -> AsyncIterator[Dict[str, Any]]:
+    query: str, session_id: str | None = None, context: dict[str, Any] | None = None
+) -> AsyncIterator[dict[str, Any]]:
     """
     Convenience function to process a query with streaming
 

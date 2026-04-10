@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,9 +9,9 @@ Provides common functionality and interface for all processors.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
-from opencontext.config import GlobalConfig
 from opencontext.interfaces.processor_interface import IContextProcessor
 from opencontext.models.context import ProcessedContext, RawContextProperties
 from opencontext.utils.logging_utils import get_logger
@@ -28,7 +27,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
     Includes statistics tracking, configuration management, and callback handling.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """
         Initialize the base processor.
 
@@ -38,7 +37,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
         # If no config is passed, use an empty dictionary (subclasses should get it from the global config themselves)
         self.config = config or {}
         self._is_initialized = False
-        self._callback: Optional[Callable] = None
+        self._callback: Callable | None = None
         self._processing_stats = {
             "processed_count": 0,
             "contexts_generated_count": 0,
@@ -63,7 +62,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
         """Check if the processor has been initialized."""
         return self._is_initialized
 
-    def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
+    def initialize(self, config: dict[str, Any] | None = None) -> bool:
         """
         Initialize the processor with configuration.
 
@@ -89,7 +88,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
             logger.error(f"Failed to initialize processor {self.get_name()}: {e}")
             return False
 
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """
         Validate the provided configuration.
 
@@ -121,8 +120,8 @@ class BaseContextProcessor(IContextProcessor, ABC):
     async def process(
         self,
         context: Any,
-        prior_results: Optional[List] = None,
-    ) -> List[ProcessedContext]:
+        prior_results: list | None = None,
+    ) -> list[ProcessedContext]:
         """
         Process a single context and return processed results.
 
@@ -136,7 +135,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
         """
         pass
 
-    async def batch_process(self, contexts: List[Any]) -> Dict[str, List[ProcessedContext]]:
+    async def batch_process(self, contexts: list[Any]) -> dict[str, list[ProcessedContext]]:
         """
         Process multiple contexts in batch and group results by object ID.
 
@@ -148,7 +147,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
         """
         import asyncio
 
-        processed_by_object_id: Dict[str, List[ProcessedContext]] = {}
+        processed_by_object_id: dict[str, list[ProcessedContext]] = {}
 
         async def _process_one(context):
             if not self.can_process(context):
@@ -178,7 +177,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
 
         return processed_by_object_id
 
-    def _extract_object_id(self, context: Any, processed_contexts: List[ProcessedContext]) -> str:
+    def _extract_object_id(self, context: Any, processed_contexts: list[ProcessedContext]) -> str:
         """
         Extract object ID from context or processed contexts.
 
@@ -198,7 +197,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
             # Last resort: use string representation
             return str(id(context))
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get processing statistics for this processor.
 
@@ -225,7 +224,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
             logger.error(f"Failed to reset statistics for {self.get_name()}: {e}")
             return False
 
-    def set_callback(self, callback: Optional[Callable]) -> bool:
+    def set_callback(self, callback: Callable | None) -> bool:
         """
         Set callback function to be called when processing is complete.
 
@@ -242,7 +241,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
             logger.error(f"Failed to set callback for {self.get_name()}: {e}")
             return False
 
-    async def _invoke_callback(self, processed_contexts: List[ProcessedContext]) -> None:
+    async def _invoke_callback(self, processed_contexts: list[ProcessedContext]) -> None:
         """
         Invoke the callback function if it's set.
 

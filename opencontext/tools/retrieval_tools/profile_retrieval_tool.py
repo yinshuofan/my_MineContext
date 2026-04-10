@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,7 @@ This tool operates on the relational database (not vector DB), providing access 
 user profile data via UnifiedStorage's profile methods.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from opencontext.storage.global_storage import get_storage
 from opencontext.tools.base import BaseTool
@@ -44,7 +43,7 @@ class ProfileRetrievalTool(BaseTool):
 **Note:** This tool queries the relational DB directly and does NOT perform vector similarity search."""
 
     @classmethod
-    def get_parameters(cls) -> Dict[str, Any]:
+    def get_parameters(cls) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -72,7 +71,7 @@ class ProfileRetrievalTool(BaseTool):
             "additionalProperties": False,
         }
 
-    async def execute(self, **kwargs) -> Dict[str, Any]:
+    async def execute(self, **kwargs) -> dict[str, Any]:
         """Execute the requested profile retrieval operation."""
         operation = kwargs.get("operation")
         user_id = kwargs.get("user_id")
@@ -109,7 +108,7 @@ class ProfileRetrievalTool(BaseTool):
             raise RuntimeError("Storage not initialized")
         return storage
 
-    async def _handle_get_profile(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_get_profile(self, params: dict[str, Any]) -> dict[str, Any]:
         """Fetch user profile from relational DB."""
         user_id = params["user_id"]
         device_id = params.get("device_id", "default")

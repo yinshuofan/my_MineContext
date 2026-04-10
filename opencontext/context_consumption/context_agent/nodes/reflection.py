@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Reflection Node
 Evaluates the execution results and provides suggestions for improvement
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from opencontext.llm.global_vlm_client import generate_with_messages
 
@@ -85,7 +83,7 @@ class ReflectionNode(BaseNode):
             )
             return state
 
-    async def _evaluate_execution(self, state: WorkflowState) -> Dict[str, Any]:
+    async def _evaluate_execution(self, state: WorkflowState) -> dict[str, Any]:
         """Evaluate execution results"""
         evaluation = {"type": ReflectionType.FAILURE, "success_rate": 0.0, "metrics": {}}
 
@@ -135,7 +133,7 @@ class ReflectionNode(BaseNode):
 
         return evaluation
 
-    async def _analyze_issues(self, state: WorkflowState, evaluation: Dict[str, Any]) -> List[str]:
+    async def _analyze_issues(self, state: WorkflowState, evaluation: dict[str, Any]) -> list[str]:
         """Analyze issues"""
         issues = []
 
@@ -166,7 +164,7 @@ class ReflectionNode(BaseNode):
 
         return issues
 
-    async def _analyze_output_quality(self, query: str, outputs: List[Any]) -> List[str]:
+    async def _analyze_output_quality(self, query: str, outputs: list[Any]) -> list[str]:
         """Analyze output quality"""
         issues = []
 
@@ -202,7 +200,7 @@ class ReflectionNode(BaseNode):
 
         return issues
 
-    async def _generate_improvements(self, state: WorkflowState, issues: List[str]) -> List[str]:
+    async def _generate_improvements(self, state: WorkflowState, issues: list[str]) -> list[str]:
         """Generate improvement suggestions"""
         improvements = []
 
@@ -228,7 +226,7 @@ class ReflectionNode(BaseNode):
                 Based on the following issues, provide specific improvement suggestions:
                 
                 List of issues:
-                {chr(10).join(f'- {issue}' for issue in issues)}
+                {chr(10).join(f"- {issue}" for issue in issues)}
                 
                 Original query: {state.query.text}
                 
@@ -262,8 +260,8 @@ class ReflectionNode(BaseNode):
         return improvements[:5]  # Return at most 5 suggestions
 
     async def _decide_retry(
-        self, state: WorkflowState, evaluation: Dict[str, Any], issues: List[str]
-    ) -> tuple[bool, Optional[str]]:
+        self, state: WorkflowState, evaluation: dict[str, Any], issues: list[str]
+    ) -> tuple[bool, str | None]:
         """Decide whether to retry"""
         should_retry = False
         retry_strategy = None
@@ -288,7 +286,7 @@ class ReflectionNode(BaseNode):
 
         return should_retry, retry_strategy
 
-    async def _generate_summary(self, state: WorkflowState, evaluation: Dict[str, Any]) -> str:
+    async def _generate_summary(self, state: WorkflowState, evaluation: dict[str, Any]) -> str:
         """Generate summary"""
         # Build summary content
         summary_parts = []

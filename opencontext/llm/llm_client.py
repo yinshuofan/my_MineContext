@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,7 @@ OpenContext module: llm_client
 import asyncio
 import time as _time
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiohttp
 from openai import APIError, AsyncOpenAI
@@ -34,7 +33,7 @@ class LLMType(Enum):
 
 
 class LLMClient:
-    def __init__(self, llm_type: LLMType, config: Dict[str, Any]):
+    def __init__(self, llm_type: LLMType, config: dict[str, Any]):
         self.llm_type = llm_type
         self.config = config
         self.model = config.get("model")
@@ -46,7 +45,7 @@ class LLMClient:
         if not self.api_key or not self.base_url or not self.model:
             raise ValueError("API key, base URL, and model must be provided")
         self._max_concurrent = int(config.get("max_concurrent", 10))
-        self._semaphore: Optional[asyncio.Semaphore] = None
+        self._semaphore: asyncio.Semaphore | None = None
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
@@ -55,7 +54,7 @@ class LLMClient:
         )
 
         # aiohttp session for multimodal embedding (lazy-initialized)
-        self._http_session: Optional[aiohttp.ClientSession] = None
+        self._http_session: aiohttp.ClientSession | None = None
         self._http_session_lock = asyncio.Lock()
 
     @property
@@ -65,13 +64,13 @@ class LLMClient:
             self._semaphore = asyncio.Semaphore(self._max_concurrent)
         return self._semaphore
 
-    async def generate_with_messages(self, messages: List[Dict[str, Any]], **kwargs):
+    async def generate_with_messages(self, messages: list[dict[str, Any]], **kwargs):
         if self.llm_type == LLMType.CHAT:
             return await self._openai_chat_completion(messages, **kwargs)
         else:
             raise ValueError(f"Unsupported LLM type for message generation: {self.llm_type}")
 
-    async def generate_with_messages_stream(self, messages: List[Dict[str, Any]], **kwargs):
+    async def generate_with_messages_stream(self, messages: list[dict[str, Any]], **kwargs):
         """Async stream generate response"""
         if self.llm_type == LLMType.CHAT:
             async for chunk in self._openai_chat_completion_stream(messages, **kwargs):
@@ -79,13 +78,13 @@ class LLMClient:
         else:
             raise ValueError(f"Unsupported LLM type for stream generation: {self.llm_type}")
 
-    async def generate_embedding(self, text: str, **kwargs) -> List[float]:
+    async def generate_embedding(self, text: str, **kwargs) -> list[float]:
         if self.llm_type == LLMType.EMBEDDING:
             return await self._openai_embedding(text, **kwargs)
         else:
             raise ValueError(f"Unsupported LLM type for embedding generation: {self.llm_type}")
 
-    async def _openai_chat_completion(self, messages: List[Dict[str, Any]], **kwargs):
+    async def _openai_chat_completion(self, messages: list[dict[str, Any]], **kwargs):
         """Async chat completion"""
         import time
 
@@ -93,8 +92,8 @@ class LLMClient:
         try:
             request_start = time.time()
             try:
-                tools = kwargs.get("tools", None)
-                thinking = kwargs.get("thinking", None)
+                tools = kwargs.get("tools")
+                thinking = kwargs.get("thinking")
 
                 create_params = {
                     "model": self.model,
@@ -146,13 +145,13 @@ class LLMClient:
         finally:
             self._sem.release()
 
-    async def _openai_chat_completion_stream(self, messages: List[Dict[str, Any]], **kwargs):
+    async def _openai_chat_completion_stream(self, messages: list[dict[str, Any]], **kwargs):
         """Async stream chat completion - async generator"""
         await self._sem.acquire()
         try:
             try:
-                tools = kwargs.get("tools", None)
-                thinking = kwargs.get("thinking", None)
+                tools = kwargs.get("tools")
+                thinking = kwargs.get("thinking")
 
                 create_params = {
                     "model": self.model,
@@ -181,7 +180,7 @@ class LLMClient:
         finally:
             self._sem.release()
 
-    async def _openai_embedding(self, text: str, **kwargs) -> List[float]:
+    async def _openai_embedding(self, text: str, **kwargs) -> list[float]:
         await self._sem.acquire()
         try:
             response = await self.client.embeddings.create(model=self.model, input=[text])
@@ -225,7 +224,7 @@ class LLMClient:
             return
         vectorize.vector = await self.generate_embedding(content, **kwargs)
 
-    async def generate_embedding_batch(self, texts: List[str], **kwargs) -> List[List[float]]:
+    async def generate_embedding_batch(self, texts: list[str], **kwargs) -> list[list[float]]:
         """Generate embeddings for multiple texts in a single API call (with internal chunking)."""
         if not texts:
             return []
@@ -234,7 +233,7 @@ class LLMClient:
 
         max_batch = int(kwargs.pop("max_batch_size", self.config.get("max_batch_size", 64)))
         output_dim = int(kwargs.get("output_dim", self.config.get("output_dim", 0)))
-        all_embeddings: List[List[float]] = []
+        all_embeddings: list[list[float]] = []
 
         for i in range(0, len(texts), max_batch):
             chunk = texts[i : i + max_batch]
@@ -272,8 +271,8 @@ class LLMClient:
         return all_embeddings
 
     def _truncate_embeddings(
-        self, embeddings: List[List[float]], output_dim: int
-    ) -> List[List[float]]:
+        self, embeddings: list[list[float]], output_dim: int
+    ) -> list[list[float]]:
         """Truncate embeddings to output_dim and re-normalize with L2 norm."""
         import math
 
@@ -311,10 +310,10 @@ class LLMClient:
 
     async def generate_multimodal_embedding(
         self,
-        input_data: List[Dict[str, Any]],
+        input_data: list[dict[str, Any]],
         instruction: str,
         dimensions: int = 2048,
-    ) -> List[float]:
+    ) -> list[float]:
         """Call Ark multimodal embedding API via HTTP (not SDK).
 
         Args:
@@ -343,7 +342,7 @@ class LLMClient:
 
         session = await self._get_http_session()
 
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(self.max_retries + 1):
             try:
                 async with self._sem:

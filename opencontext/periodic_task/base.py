@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Periodic Task Base Module
@@ -9,7 +8,7 @@ Defines the abstract base classes and interfaces for periodic tasks.
 
 import abc
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 from opencontext.scheduler.base import TaskConfig, TriggerMode
 
@@ -20,11 +19,11 @@ class TaskResult:
 
     success: bool
     message: str = ""
-    data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    data: dict[str, Any] | None = None
+    error: str | None = None
 
     @classmethod
-    def ok(cls, message: str = "Success", data: Dict[str, Any] = None) -> "TaskResult":
+    def ok(cls, message: str = "Success", data: dict[str, Any] = None) -> "TaskResult":
         """Create a successful result"""
         return cls(success=True, message=message, data=data)
 
@@ -39,10 +38,10 @@ class TaskContext:
     """Context information passed to task execution"""
 
     user_id: str
-    device_id: Optional[str] = None
-    agent_id: Optional[str] = None
+    device_id: str | None = None
+    agent_id: str | None = None
     task_type: str = ""
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 class IPeriodicTask(abc.ABC):

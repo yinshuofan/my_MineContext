@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,12 +9,11 @@ Only includes essential chunkers: BaseChunker, StructuredFileChunker, FAQChunker
 PDF, Text, Image and Cloud processing are now handled by LLMDocumentChunker.
 """
 
-import io
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Generator, Iterator
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Generator, Iterator, List, Optional, Tuple
 
 import pandas as pd
 
@@ -50,7 +48,7 @@ class BaseChunker(ABC):
     Provides memory-efficient chunking with configurable parameters.
     """
 
-    def __init__(self, config: Optional[ChunkingConfig] = None):
+    def __init__(self, config: ChunkingConfig | None = None):
         self.config = config or ChunkingConfig()
         self._chunk_cache = {} if self.config.enable_caching else None
 
@@ -67,7 +65,7 @@ class BaseChunker(ABC):
         """
         pass
 
-    def chunk_to_list(self, context: RawContextProperties) -> List[Chunk]:
+    def chunk_to_list(self, context: RawContextProperties) -> list[Chunk]:
         """
         Convert iterator to list for backward compatibility.
 
@@ -80,7 +78,7 @@ class BaseChunker(ABC):
         return list(self.chunk(context))
 
     @lru_cache(maxsize=128)
-    def _get_sentence_boundaries(self, text: str) -> List[int]:
+    def _get_sentence_boundaries(self, text: str) -> list[int]:
         """
         Get sentence boundary positions with caching for performance.
 
@@ -101,7 +99,7 @@ class BaseChunker(ABC):
         return boundaries
 
     def _create_overlapping_chunks(
-        self, text: str, boundaries: List[int]
+        self, text: str, boundaries: list[int]
     ) -> Generator[str, None, None]:
         """
         Create overlapping text chunks efficiently.
@@ -272,7 +270,7 @@ class StructuredFileChunker(BaseChunker):
                         chunk_index=chunk_idx,
                         source_document_id=context.object_id,
                         title=f"Excel {sheet_name} Chunk {chunk_idx + 1}",
-                        summary=f"Excel sheet '{sheet_name}' rows {start_idx}-{end_idx-1}",
+                        summary=f"Excel sheet '{sheet_name}' rows {start_idx}-{end_idx - 1}",
                         semantic_type="structured_data",
                         keywords=list(df_chunk.columns),  # Column names as keywords
                         metadata=metadata,
@@ -292,7 +290,7 @@ class StructuredFileChunker(BaseChunker):
             chunk_size = self.config.batch_size
             lines_buffer = []
 
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:

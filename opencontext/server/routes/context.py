@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -7,9 +6,8 @@
 Context management routes
 """
 
-import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -21,7 +19,6 @@ from opencontext.models.enums import ContentFormat, ContextSource
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.opencontext import OpenContext
 from opencontext.server.utils import convert_resp, get_context_lab
-from opencontext.utils.json_encoder import CustomJSONEncoder
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -36,13 +33,13 @@ class ContextIn(BaseModel):
     source: ContextSource
     content_format: ContentFormat
     data: Any
-    metadata: Optional[dict] = {}
+    metadata: dict | None = {}
 
 
 class UpdateContextIn(BaseModel):
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    keywords: Optional[List[str]] = None
+    title: str | None = None
+    summary: str | None = None
+    keywords: list[str] | None = None
 
 
 class QueryIn(BaseModel):
@@ -51,7 +48,7 @@ class QueryIn(BaseModel):
 
 class ConsumeIn(BaseModel):
     query: str
-    context_ids: List[str]
+    context_ids: list[str]
 
 
 class ContextDetailRequest(BaseModel):
@@ -62,18 +59,18 @@ class ContextDetailRequest(BaseModel):
 class VectorSearchRequest(BaseModel):
     query: str
     top_k: int = 10
-    context_types: Optional[List[str]] = None
-    filters: Optional[Dict[str, Any]] = None
-    score_threshold: Optional[float] = Field(
+    context_types: list[str] | None = None
+    filters: dict[str, Any] | None = None
+    score_threshold: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
         description="Minimum similarity score (0-1). Results below this score are filtered out.",
     )
     # Multi-user support fields
-    user_id: Optional[str] = None
-    device_id: Optional[str] = None
-    agent_id: Optional[str] = None
+    user_id: str | None = None
+    device_id: str | None = None
+    agent_id: str | None = None
 
 
 @router.post("/contexts/delete")

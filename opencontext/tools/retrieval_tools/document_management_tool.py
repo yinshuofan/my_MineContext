@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -9,7 +8,7 @@ Handles document-level operations like deletion and retrieval by ID
 Separate from retrieval tools which focus on search/filter operations
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from opencontext.models.context import ProcessedContext, Vectorize
 from opencontext.models.enums import ContextType
@@ -42,7 +41,7 @@ class DocumentManagementTool:
 
     async def get_document_by_id(
         self, raw_type: str, raw_id: str, return_chunks: bool = True
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get complete document by raw_type and raw_id
 
@@ -91,7 +90,7 @@ class DocumentManagementTool:
             logger.exception(f"Failed to get document: {e}")
             return {"success": False, "error": str(e), "document": None}
 
-    async def delete_document_chunks(self, raw_type: str, raw_id: str) -> Dict[str, Any]:
+    async def delete_document_chunks(self, raw_type: str, raw_id: str) -> dict[str, Any]:
         """
         Delete all chunks of specified document (for cleanup when deleting document)
 
@@ -145,8 +144,8 @@ class DocumentManagementTool:
             return {"success": False, "error": str(e), "deleted_count": 0}
 
     async def _execute_document_search(
-        self, query: str, context_types: List[str], filters: Dict[str, Any], top_k: int = 10
-    ) -> List[Tuple[ProcessedContext, float]]:
+        self, query: str, context_types: list[str], filters: dict[str, Any], top_k: int = 10
+    ) -> list[tuple[ProcessedContext, float]]:
         """Execute document search operation - directly use the built filter dictionary"""
         if query:
             # Semantic search
@@ -170,8 +169,8 @@ class DocumentManagementTool:
             return results[:top_k]
 
     def _aggregate_document_info(
-        self, results: List[Tuple[ProcessedContext, float]]
-    ) -> Dict[str, Any]:
+        self, results: list[tuple[ProcessedContext, float]]
+    ) -> dict[str, Any]:
         """Aggregate complete information for a single document"""
         if not results:
             return None
@@ -216,8 +215,8 @@ class DocumentManagementTool:
         }
 
     def _format_context_result(
-        self, context: ProcessedContext, score: float, additional_fields: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
+        self, context: ProcessedContext, score: float, additional_fields: dict[str, Any] = None
+    ) -> dict[str, Any]:
         """Format single context result"""
         result = {"similarity_score": score}
         result["context"] = context.get_llm_context_string()

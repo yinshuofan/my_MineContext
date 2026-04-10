@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,7 @@ Provides internet search capabilities to help obtain the latest information
 """
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any
 
 from opencontext.config.global_config import get_config
 from opencontext.tools.base import BaseTool
@@ -80,7 +79,7 @@ class WebSearchTool(BaseTool):
 """
 
     @classmethod
-    def get_parameters(cls) -> Dict[str, Any]:
+    def get_parameters(cls) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -103,7 +102,7 @@ class WebSearchTool(BaseTool):
 
     async def execute(
         self, query: str, max_results: int = None, lang: str = "zh-cn", **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute web search with automatic fallback support"""
         if max_results is None:
             max_results = self.max_results
@@ -134,7 +133,7 @@ class WebSearchTool(BaseTool):
             "results": [],
         }
 
-    def _search_duckduckgo(self, query: str, max_results: int, lang: str) -> List[Dict[str, Any]]:
+    def _search_duckduckgo(self, query: str, max_results: int, lang: str) -> list[dict[str, Any]]:
         """Search using ddgs library"""
         try:
             from ddgs import DDGS

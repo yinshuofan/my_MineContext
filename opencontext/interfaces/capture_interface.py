@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,7 +9,7 @@ Context capture component interface definition
 """
 
 import abc
-from typing import Any, Dict, List
+from typing import Any
 
 from opencontext.models.context import RawContextProperties
 
@@ -23,7 +22,7 @@ class ICaptureComponent(abc.ABC):
     """
 
     @abc.abstractmethod
-    def initialize(self, config: Dict[str, Any]) -> bool:
+    def initialize(self, config: dict[str, Any]) -> bool:
         """
         Initialize the capture component
 
@@ -65,7 +64,7 @@ class ICaptureComponent(abc.ABC):
         """
 
     @abc.abstractmethod
-    def capture(self) -> List[RawContextProperties]:
+    def capture(self) -> list[RawContextProperties]:
         """
         Execute a single capture operation
 
@@ -92,7 +91,7 @@ class ICaptureComponent(abc.ABC):
         """
 
     @abc.abstractmethod
-    def get_config_schema(self) -> Dict[str, Any]:
+    def get_config_schema(self) -> dict[str, Any]:
         """
         Get the configuration schema
 
@@ -101,7 +100,7 @@ class ICaptureComponent(abc.ABC):
         """
 
     @abc.abstractmethod
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """
         Validate if the configuration is valid
 
@@ -113,7 +112,7 @@ class ICaptureComponent(abc.ABC):
         """
 
     @abc.abstractmethod
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Get component status
 
@@ -122,7 +121,7 @@ class ICaptureComponent(abc.ABC):
         """
 
     @abc.abstractmethod
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get statistics information
 

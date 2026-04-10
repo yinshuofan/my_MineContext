@@ -6,7 +6,7 @@ Falls back to local dict when Redis is unavailable.
 """
 
 import asyncio
-from typing import Dict, Optional
+from typing import Optional
 
 from opencontext.storage.redis_cache import get_redis_cache
 from opencontext.utils.logging_utils import get_logger
@@ -26,8 +26,8 @@ class StreamInterruptManager:
     CHANNEL_PREFIX = "stream:interrupt:"
 
     def __init__(self):
-        self._local_flags: Dict[int, bool] = {}
-        self._subscriber_task: Optional[asyncio.Task] = None
+        self._local_flags: dict[int, bool] = {}
+        self._subscriber_task: asyncio.Task | None = None
 
     async def register(self, msg_id: int) -> None:
         """Register a new active stream. Starts the pattern subscriber if needed."""
@@ -50,8 +50,7 @@ class StreamInterruptManager:
             channel = f"{self.CHANNEL_PREFIX}{msg_id}"
             receivers = await cache.publish(channel, "1")
             logger.info(
-                f"Published interrupt for message {msg_id}, "
-                f"received by {receivers} subscriber(s)"
+                f"Published interrupt for message {msg_id}, received by {receivers} subscriber(s)"
             )
         except Exception as e:
             logger.warning(f"Redis publish failed for interrupt {msg_id}: {e}")

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -10,11 +9,9 @@ Supports high concurrency without blocking.
 """
 
 import asyncio
-import datetime
-import os
 import time
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 from PIL import Image
 
@@ -30,7 +27,6 @@ from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import *
 from opencontext.models.enums import *
 from opencontext.monitoring.monitor import record_processing_error
-from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import now as tz_now
 
@@ -98,7 +94,7 @@ class DocumentProcessor(BaseContextProcessor):
         return True
 
     @staticmethod
-    def get_supported_formats() -> List[str]:
+    def get_supported_formats() -> list[str]:
         return [
             ".pdf",
             ".png",
@@ -174,7 +170,7 @@ class DocumentProcessor(BaseContextProcessor):
 
     async def process(
         self, context: RawContextProperties, prior_results=None
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         """
         Process single document context asynchronously.
         """
@@ -187,7 +183,7 @@ class DocumentProcessor(BaseContextProcessor):
             logger.exception(f"Error processing document {context.object_id}: {e}")
             return []
 
-    def real_process(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
+    def real_process(self, raw_context: RawContextProperties) -> list[ProcessedContext]:
         """Process document and return processed contexts."""
         start_time = time.time()
         try:
@@ -213,7 +209,7 @@ class DocumentProcessor(BaseContextProcessor):
 
     def _process_structured_document(
         self, raw_context: RawContextProperties
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         """Process structured documents (CSV/XLSX/JSONL)"""
         file_type = self._get_file_type(raw_context.content_path)
         if file_type == FileType.FAQ_XLSX:
@@ -227,8 +223,8 @@ class DocumentProcessor(BaseContextProcessor):
         return self._create_contexts_from_chunks(raw_context, chunks)
 
     def _create_contexts_from_chunks(
-        self, raw_context: RawContextProperties, chunks: List[Chunk]
-    ) -> List[ProcessedContext]:
+        self, raw_context: RawContextProperties, chunks: list[Chunk]
+    ) -> list[ProcessedContext]:
         """Create ProcessedContext from Chunk list"""
         contexts = []
         now = tz_now()
@@ -265,7 +261,7 @@ class DocumentProcessor(BaseContextProcessor):
 
         return contexts
 
-    def _process_text_content(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
+    def _process_text_content(self, raw_context: RawContextProperties) -> list[ProcessedContext]:
         """Process TEXT type (vaults text content)"""
         if not raw_context.content_text:
             return []
@@ -274,7 +270,7 @@ class DocumentProcessor(BaseContextProcessor):
         )
         return self._create_contexts_from_chunks(raw_context, chunks)
 
-    def _process_visual_document(self, raw_context: RawContextProperties) -> List[ProcessedContext]:
+    def _process_visual_document(self, raw_context: RawContextProperties) -> list[ProcessedContext]:
         """
         Process visual documents (PDF/DOCX/images) - page-by-page intelligent detection
 
@@ -303,7 +299,7 @@ class DocumentProcessor(BaseContextProcessor):
 
     def _process_document_page_by_page(
         self, raw_context: RawContextProperties, file_path: str, file_ext: str
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         """
         Process document page-by-page (core logic)
 
@@ -367,9 +363,9 @@ class DocumentProcessor(BaseContextProcessor):
         return all_contexts
 
     async def _run_tasks_with_progress(
-        self, tasks: List[Any], start_index: int, total_count: int
-    ) -> List[Any]:
-        results: List[Any] = []
+        self, tasks: list[Any], start_index: int, total_count: int
+    ) -> list[Any]:
+        results: list[Any] = []
         completed = 0
         for coro in asyncio.as_completed(tasks):
             try:
@@ -381,7 +377,7 @@ class DocumentProcessor(BaseContextProcessor):
             logger.info(f"images {start_index + completed}/{total_count} processed")
         return results
 
-    def _extract_vlm_pages(self, file_path: str, page_infos: List[PageInfo]) -> List[str]:
+    def _extract_vlm_pages(self, file_path: str, page_infos: list[PageInfo]) -> list[str]:
         """Extract text from visual pages using VLM, returns extracted text list (in page order)"""
         file_ext = Path(file_path).suffix.lower()
 
@@ -426,11 +422,11 @@ class DocumentProcessor(BaseContextProcessor):
 
         return text_list
 
-    def _run_async_tasks(self, tasks: List[Any]) -> List[Any]:
+    def _run_async_tasks(self, tasks: list[Any]) -> list[Any]:
         """Run async tasks from sync context (called inside asyncio.to_thread)."""
         return asyncio.run(asyncio.gather(*tasks, return_exceptions=True))
 
-    def _process_vlm_pages_with_doc_images(self, page_infos: List[PageInfo]) -> List[str]:
+    def _process_vlm_pages_with_doc_images(self, page_infos: list[PageInfo]) -> list[str]:
         """
         Process DOCX pages using embedded images (instead of converting entire page to image), returns extracted text list
         """
@@ -456,7 +452,7 @@ class DocumentProcessor(BaseContextProcessor):
                 total_batches = (total + self._vlm_batch_size - 1) // self._vlm_batch_size
                 batch_index = i // self._vlm_batch_size + 1
                 logger.info(
-                    f"batch {batch_index}/{total_batches}, images {i+1}-{i+len(batch_images)} of {total}"
+                    f"batch {batch_index}/{total_batches}, images {i + 1}-{i + len(batch_images)} of {total}"
                 )
 
                 tasks = [
@@ -468,7 +464,7 @@ class DocumentProcessor(BaseContextProcessor):
 
                 for idx, result in enumerate(batch_results):
                     if isinstance(result, Exception):
-                        logger.warning(f"Error processing embedded image {i+idx+1}: {result}")
+                        logger.warning(f"Error processing embedded image {i + idx + 1}: {result}")
                         continue
                     else:
                         image_results.append(result)
@@ -498,7 +494,7 @@ class DocumentProcessor(BaseContextProcessor):
         # Return text list instead of directly creating contexts
         return all_page_texts
 
-    def _analyze_document_with_vlm(self, images: List[Image.Image]) -> List[str]:
+    def _analyze_document_with_vlm(self, images: list[Image.Image]) -> list[str]:
         """Batch analyze document images using VLM, returns text list"""
         tasks = [self._analyze_image_with_vlm(img, i + 1) for i, img in enumerate(images)]
 
@@ -557,7 +553,7 @@ class DocumentProcessor(BaseContextProcessor):
 
     def _process_txt_file(
         self, raw_context: RawContextProperties, file_path: str
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         """
         Process plain text file (.txt)
 
@@ -569,7 +565,7 @@ class DocumentProcessor(BaseContextProcessor):
         logger.info(f"Processing TXT file: {file_path}")
         try:
             # Read file content
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read()
 
             if not content.strip():

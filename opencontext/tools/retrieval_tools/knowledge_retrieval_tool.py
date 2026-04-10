@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -11,7 +10,7 @@ Extends BaseContextRetrievalTool but overrides execute to search both types,
 providing comprehensive results that combine distilled knowledge with raw event records.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.models.context import ProcessedContext, Vectorize
@@ -85,7 +84,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
         )
 
     @classmethod
-    def get_parameters(cls) -> Dict[str, Any]:
+    def get_parameters(cls) -> dict[str, Any]:
         """Get tool parameters with knowledge-specific descriptions."""
         base_params = super().get_parameters()
 
@@ -103,9 +102,9 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
         query: str,
         filters: ContextRetrievalFilter,
         top_k: int,
-        image_url: Optional[str] = None,
-        video_url: Optional[str] = None,
-    ) -> List[Tuple[ProcessedContext, float]]:
+        image_url: str | None = None,
+        video_url: str | None = None,
+    ) -> list[tuple[ProcessedContext, float]]:
         """
         Search L0 (raw individual) EVENT contexts via direct vector search.
 
@@ -147,7 +146,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             logger.warning(f"L0 event search failed: {e}")
             return []
 
-    async def execute(self, **kwargs) -> List[Dict[str, Any]]:
+    async def execute(self, **kwargs) -> list[dict[str, Any]]:
         """
         Execute knowledge retrieval with supplementary L0 event search.
 
@@ -198,7 +197,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
 
         try:
             # Step 1: Search KNOWLEDGE contexts (standard base-class search)
-            knowledge_results: List[Tuple[ProcessedContext, float]] = await self._execute_search(
+            knowledge_results: list[tuple[ProcessedContext, float]] = await self._execute_search(
                 query=query,
                 filters=filters,
                 top_k=top_k,
@@ -207,7 +206,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             )
 
             # Step 2: Search L0 EVENT contexts (only when a query is provided)
-            event_results: List[Tuple[ProcessedContext, float]] = []
+            event_results: list[tuple[ProcessedContext, float]] = []
             if query or image_url or video_url:
                 event_results = await self._search_l0_events(
                     query=query,
@@ -218,7 +217,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
                 )
 
             # Step 3: Merge and deduplicate by context ID, keeping higher scores
-            merged: Dict[str, Tuple[ProcessedContext, float]] = {}
+            merged: dict[str, tuple[ProcessedContext, float]] = {}
 
             for ctx, score in knowledge_results:
                 existing = merged.get(ctx.id)
@@ -231,7 +230,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
                     merged[ctx.id] = (ctx, score)
 
             # Step 4: Sort by score descending and truncate to top_k
-            sorted_results: List[Tuple[ProcessedContext, float]] = sorted(
+            sorted_results: list[tuple[ProcessedContext, float]] = sorted(
                 merged.values(), key=lambda x: x[1], reverse=True
             )[:top_k]
 

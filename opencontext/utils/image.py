@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
@@ -7,7 +6,6 @@
 OpenContext module: image
 """
 
-from typing import Optional
 
 import imagehash
 from PIL import Image
@@ -17,7 +15,7 @@ from opencontext.utils.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
-def calculate_bytes2phash(image_bytes: bytes) -> Optional[str]:
+def calculate_bytes2phash(image_bytes: bytes) -> str | None:
     """
     Calculate perceptual hash of image (cached).
     Uses difference hash instead of average hash for better performance.
@@ -35,7 +33,7 @@ def calculate_bytes2phash(image_bytes: bytes) -> Optional[str]:
         return None
 
 
-def calculate_phash(path: str) -> Optional[str]:
+def calculate_phash(path: str) -> str | None:
     """
     Calculate perceptual hash of image file (cached).
     """

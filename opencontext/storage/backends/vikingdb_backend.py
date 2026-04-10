@@ -15,16 +15,15 @@ import hashlib
 import hmac
 import json
 import os
-import time
 from enum import Enum
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.parse import quote, urlencode
 
 import aiohttp
 
 from opencontext.llm.global_embedding_client import do_vectorize, do_vectorize_batch
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
-from opencontext.models.enums import ContentFormat, ContextType
+from opencontext.models.enums import ContextType
 from opencontext.storage.base_storage import IVectorStorageBackend, StorageType
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.media_refs import normalize_media_refs
@@ -122,14 +121,14 @@ class VolcengineAuth:
         """Get canonical URI."""
         return quote(path, safe="/")
 
-    def _get_canonical_query_string(self, params: Dict[str, str]) -> str:
+    def _get_canonical_query_string(self, params: dict[str, str]) -> str:
         """Get canonical query string."""
         if not params:
             return ""
         sorted_params = sorted(params.items())
         return "&".join([f"{quote(k, safe='')}={quote(str(v), safe='')}" for k, v in sorted_params])
 
-    def _get_canonical_headers(self, headers: Dict[str, str]) -> Tuple[str, str]:
+    def _get_canonical_headers(self, headers: dict[str, str]) -> tuple[str, str]:
         """Get canonical headers and signed headers."""
         # Headers to sign (lowercase)
         headers_to_sign = {}
@@ -166,10 +165,10 @@ class VolcengineAuth:
         method: str,
         host: str,
         path: str,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         body: str,
-        params: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, str]:
+        params: dict[str, str] | None = None,
+    ) -> dict[str, str]:
         """
         Sign a request with Volcengine V4 signature.
 
@@ -258,8 +257,8 @@ class VikingDBHTTPClient:
         access_key_id: str,
         secret_access_key: str,
         region: str = "cn-beijing",
-        data_host: Optional[str] = None,
-        console_host: Optional[str] = None,
+        data_host: str | None = None,
+        console_host: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         max_connections: int = DEFAULT_MAX_CONNECTIONS,
         max_connections_per_host: int = DEFAULT_MAX_CONNECTIONS_PER_HOST,
@@ -287,7 +286,7 @@ class VikingDBHTTPClient:
         )
 
         # Initialize async session (lazy)
-        self._async_session: Optional[aiohttp.ClientSession] = None
+        self._async_session: aiohttp.ClientSession | None = None
         self._async_lock = asyncio.Lock()
 
     async def _get_async_session(self) -> aiohttp.ClientSession:
@@ -313,9 +312,9 @@ class VikingDBHTTPClient:
         method: str,
         host: str,
         path: str,
-        data: Optional[Dict] = None,
-        params: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
+        data: dict | None = None,
+        params: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         """
         Make an asynchronous HTTP request with retry.
 
@@ -392,7 +391,7 @@ class VikingDBHTTPClient:
                         logger.error(f"Failed to parse JSON response: {response_text[:500]}")
                         raise
 
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            except (TimeoutError, aiohttp.ClientError) as e:
                 last_exc = e
                 if attempt < self._max_retries:
                     await asyncio.sleep(self._retry_delay * (attempt + 1))
@@ -414,9 +413,9 @@ class VikingDBHTTPClient:
     async def async_console_request(
         self,
         action: str,
-        data: Optional[Dict] = None,
+        data: dict | None = None,
         version: str = VIKINGDB_VERSION,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Make async request to console (control plane) API.
 
@@ -444,8 +443,8 @@ class VikingDBHTTPClient:
     async def async_data_request(
         self,
         path: str,
-        data: Optional[Dict] = None,
-    ) -> Dict[str, Any]:
+        data: dict | None = None,
+    ) -> dict[str, Any]:
         """
         Make async request to data plane API.
 
@@ -480,16 +479,16 @@ class VikingDBBackend(IVectorStorageBackend):
     """
 
     def __init__(self):
-        self._client: Optional[VikingDBHTTPClient] = None
+        self._client: VikingDBHTTPClient | None = None
         self._collection_name: str = DEFAULT_COLLECTION_NAME
         self._index_name: str = DEFAULT_INDEX_NAME
         self._dimension: int = 0
         self._initialized: bool = False
-        self._config: Dict[str, Any] = {}
+        self._config: dict[str, Any] = {}
         self._collection_ready: bool = False
         self._index_ready: bool = False
 
-    async def initialize(self, config: Dict[str, Any]) -> bool:
+    async def initialize(self, config: dict[str, Any]) -> bool:
         """
         Initialize VikingDB backend.
 
@@ -736,7 +735,7 @@ class VikingDBBackend(IVectorStorageBackend):
         """Get storage type."""
         return StorageType.VECTOR_DB
 
-    async def get_collection_names(self) -> List[str]:
+    async def get_collection_names(self) -> list[str]:
         """Get all collection names managed by this backend."""
         if self._collection_ready:
             return [ct for ct in ContextType]
@@ -746,7 +745,7 @@ class VikingDBBackend(IVectorStorageBackend):
         """Check if backend is initialized."""
         return self._initialized
 
-    async def _ensure_vectorized(self, context: ProcessedContext) -> List[float]:
+    async def _ensure_vectorized(self, context: ProcessedContext) -> list[float]:
         """Ensure context has a vector, generate if needed."""
         if context.vectorize and context.vectorize.vector:
             return list(context.vectorize.vector)
@@ -758,7 +757,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
         raise ValueError(f"Unable to get or generate vector for context {context.id}")
 
-    def _context_to_doc_format(self, context: ProcessedContext) -> Dict[str, Any]:
+    def _context_to_doc_format(self, context: ProcessedContext) -> dict[str, Any]:
         """Convert ProcessedContext to VikingDB data format."""
         doc = context.model_dump(
             exclude_none=True, exclude={"properties", "extracted_data", "vectorize", "metadata"}
@@ -843,7 +842,7 @@ class VikingDBBackend(IVectorStorageBackend):
         results = await self.batch_upsert_processed_context([context])
         return results[0] if results else ""
 
-    async def batch_upsert_processed_context(self, contexts: List[ProcessedContext]) -> List[str]:
+    async def batch_upsert_processed_context(self, contexts: list[ProcessedContext]) -> list[str]:
         if not self._initialized:
             raise RuntimeError("VikingDB backend not initialized")
 
@@ -902,7 +901,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
     async def get_processed_context(
         self, id: str, context_type: str, need_vector: bool = False
-    ) -> Optional[ProcessedContext]:
+    ) -> ProcessedContext | None:
         if not self._initialized:
             return None
 
@@ -931,16 +930,16 @@ class VikingDBBackend(IVectorStorageBackend):
 
     async def get_all_processed_contexts(
         self,
-        context_types: Optional[List[str]] = None,
+        context_types: list[str] | None = None,
         limit: int = 100,
         offset: int = 0,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
         need_vector: bool = False,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         skip_slice: bool = False,
-    ) -> Dict[str, List[ProcessedContext]]:
+    ) -> dict[str, list[ProcessedContext]]:
         if not self._initialized:
             return {}
 
@@ -1019,7 +1018,7 @@ class VikingDBBackend(IVectorStorageBackend):
     async def delete_processed_context(self, id: str, context_type: str) -> bool:
         return await self.delete_contexts([id], context_type)
 
-    async def delete_contexts(self, ids: List[str], context_type: str) -> bool:
+    async def delete_contexts(self, ids: list[str], context_type: str) -> bool:
         if not self._initialized:
             return False
 
@@ -1047,14 +1046,14 @@ class VikingDBBackend(IVectorStorageBackend):
         self,
         query: Vectorize,
         top_k: int = 10,
-        context_types: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        context_types: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
         need_vector: bool = False,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        score_threshold: Optional[float] = None,
-    ) -> List[Tuple[ProcessedContext, float]]:
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        score_threshold: float | None = None,
+    ) -> list[tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
 
@@ -1124,10 +1123,10 @@ class VikingDBBackend(IVectorStorageBackend):
     async def _vector_search(
         self,
         query_vector: list,
-        filter_dict: Optional[Dict],
+        filter_dict: dict | None,
         top_k: int,
         need_vector: bool,
-    ) -> List[Tuple[ProcessedContext, float]]:
+    ) -> list[tuple[ProcessedContext, float]]:
         """Execute a single vector search request against VikingDB."""
         results = []
         try:
@@ -1158,8 +1157,8 @@ class VikingDBBackend(IVectorStorageBackend):
         return results
 
     def _doc_to_context(
-        self, doc: Dict[str, Any], need_vector: bool = False
-    ) -> Optional[ProcessedContext]:
+        self, doc: dict[str, Any], need_vector: bool = False
+    ) -> ProcessedContext | None:
         """Convert VikingDB data to ProcessedContext."""
         try:
             if not doc:
@@ -1263,7 +1262,7 @@ class VikingDBBackend(IVectorStorageBackend):
             logger.exception(f"Failed to convert doc to ProcessedContext: {e}")
             return None
 
-    def _parse_time_to_timestamp(self, time_value: Any) -> Optional[float]:
+    def _parse_time_to_timestamp(self, time_value: Any) -> float | None:
         """Parse various time formats to Unix timestamp."""
         if time_value is None:
             return None
@@ -1297,14 +1296,14 @@ class VikingDBBackend(IVectorStorageBackend):
 
     def _build_filter_dict(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        context_type: Optional[str] = None,
-        context_types: Optional[List[str]] = None,
-        data_type: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        filters: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        context_type: str | None = None,
+        context_types: list[str] | None = None,
+        data_type: str | None = None,
+    ) -> dict[str, Any] | None:
         """Build VikingDB filter dictionary."""
         conditions = []
 
@@ -1458,10 +1457,10 @@ class VikingDBBackend(IVectorStorageBackend):
     async def get_processed_context_count(
         self,
         context_type: str,
-        filter: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        filter: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
     ) -> int:
         if not self._initialized:
             return 0
@@ -1501,7 +1500,7 @@ class VikingDBBackend(IVectorStorageBackend):
             logger.error(f"Failed to get count for {context_type}: {e}")
             return 0
 
-    async def get_all_processed_context_counts(self) -> Dict[str, int]:
+    async def get_all_processed_context_counts(self) -> dict[str, int]:
         counts = {}
         for ct in ContextType:
             counts[ct.value] = await self.get_processed_context_count(ct.value)
@@ -1511,13 +1510,13 @@ class VikingDBBackend(IVectorStorageBackend):
         self,
         context_type: str,
         hierarchy_level: int,
-        time_start: Optional[float] = None,
-        time_end: Optional[float] = None,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        time_start: float | None = None,
+        time_end: float | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
         top_k: int = 20,
-    ) -> List[Tuple[ProcessedContext, float]]:
+    ) -> list[tuple[ProcessedContext, float]]:
         if not self._initialized:
             return []
         try:
@@ -1583,10 +1582,10 @@ class VikingDBBackend(IVectorStorageBackend):
 
     async def get_by_ids(
         self,
-        ids: List[str],
-        context_type: Optional[str] = None,
+        ids: list[str],
+        context_type: str | None = None,
         need_vector: bool = False,
-    ) -> List[ProcessedContext]:
+    ) -> list[ProcessedContext]:
         if not self._initialized:
             return []
 
@@ -1627,7 +1626,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
     async def batch_update_refs(
         self,
-        context_ids: List[str],
+        context_ids: list[str],
         ref_key: str,
         ref_value: str,
         context_type: str,
