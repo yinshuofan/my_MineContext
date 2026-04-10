@@ -187,7 +187,7 @@ Updates the `agent_profile` for a specific user by aggregating `agent_commentary
 3. Filters for events that have non-empty `agent_commentary` on `extracted_data`
 4. Fetches existing `agent_profile` for context
 5. Calls LLM with `agent_profile_update` prompt, passing existing profile and today's commentary
-6. Merges LLM result into existing profile via `refresh_profile()` (from `profile_processor.py`)
+6. Calls `storage.upsert_profile()` directly with the LLM-generated profile — bypasses the LLM merge step in `profile_processor.refresh_profile()` since the LLM has already incorporated the existing profile in step 5
 
 Returns early if:
 - `agent_id` is missing or `"default"`
@@ -262,6 +262,8 @@ execute(context)
 ```
 
 Note: The dual-format dedup checks (querying both old EVENT-with-hierarchy-level and new typed ContextTypes) ensure backward compatibility with summaries generated before the migration. New summaries are always stored with their dedicated ContextType.
+
+Note: All `search_hierarchy()` calls in the flow above are **storage-level calls** (`storage.search_hierarchy()` on `UnifiedStorage`) used by `HierarchySummaryTask` to fetch child contexts and check for existing summaries. They are unrelated to `EventSearchService` in `opencontext/server/search/`, which is the HTTP search API layer and does not call `search_hierarchy()` internally.
 
 ## Cross-Module Dependencies
 

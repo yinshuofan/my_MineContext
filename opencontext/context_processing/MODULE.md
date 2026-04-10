@@ -172,7 +172,7 @@ Key differences from the previous standalone design:
 - No longer produces `AGENT_EVENT` type (removed) or `AGENT_PROFILE` type (now updated by `AgentProfileUpdateTask` instead)
 - Does not create new contexts; annotates existing events with `agent_commentary` field
 - Two LLM calls: (1) query extraction for related memory search, (2) commentary generation
-- Uses `EventSearchService.semantic_search()` to fetch related past memories as context for commentary
+- Uses `EventSearchService.search()` to fetch related past memories as context for commentary
 - No embedding generation (`do_vectorize()` is not called since no new contexts are created)
 
 ### DocumentProcessor (`processor/document_processor.py`)
@@ -233,6 +233,8 @@ def refresh_profile(
 `_merge_profile_with_llm`: Internal function. Loads `merging.overwrite_merge` prompt group, serializes old/new profile data as JSON, calls `generate_with_messages()` (sync), parses response JSON expecting `factual_profile`, `keywords`, `entities`, `importance` fields.
 
 Called from: `OpenContext._store_profile()` in `opencontext/server/opencontext.py`.
+
+Note: `AgentProfileUpdateTask` in `opencontext/periodic_task/agent_profile_update.py` does **not** call `refresh_profile()`. It calls `storage.upsert_profile()` directly after generating the updated profile via LLM, bypassing the LLM merge step in this module.
 
 ### DocumentConverter (`processor/document_converter.py`)
 

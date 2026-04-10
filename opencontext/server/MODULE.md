@@ -123,12 +123,10 @@ class SearchResult:
 class EventSearchService:
     @property storage                               # -> get_storage()
 
-    # Public API
-    async def semantic_search(query, user_id, device_id, agent_id,
-                              top_k=20, score_threshold=None, time_range=None,
-                              drill_up=False) -> SearchResult
-    async def filter_search(user_id, device_id, agent_id,
-                            hierarchy_levels=None, time_range=None, top_k=20) -> List[Tuple[ProcessedContext, float]]
+    # Public API — single unified method
+    async def search(query=None, user_id=..., device_id=..., agent_id=...,
+                     top_k=20, score_threshold=None, time_range=None,
+                     hierarchy_levels=None, drill_up=False) -> SearchResult
 
     # Helpers (public — used by route layer)
     @staticmethod get_l0_type() -> str
@@ -137,9 +135,7 @@ class EventSearchService:
     async def collect_ancestors(results, max_level) -> Dict[str, ProcessedContext]
 ```
 
-`semantic_search()` handles vectorization internally — callers provide raw query content in OpenAI content parts format (`[{"type": "text", "text": "..."}]`). It vectorizes the query, searches storage with user + agent_base context types, and optionally collects ancestors via `collect_ancestors()`. The `memory_owner` parameter was removed -- all searches now query both user events and agent base events.
-
-`filter_search()` performs filter-only search (no semantic vector): either per-level `search_hierarchy()` calls or `get_all_processed_contexts()` with time filter.
+`search()` is the single public method. If `query` is provided, it performs vector search: callers provide raw query content in OpenAI content parts format (`[{"type": "text", "text": "..."}]`), the method vectorizes the query, applies `hierarchy_levels` and `time_range` as filter conditions, and issues **one backend call**. If `query` is `None`, it falls back to filter-only search (no vectorization): applies `hierarchy_levels` and `time_range` via storage filters, still one backend call. Optionally collects ancestors via `collect_ancestors()` when `drill_up=True`. The `memory_owner` parameter was removed -- all searches now query both user events and agent base events. `search_hierarchy()` is not called from `EventSearchService`.
 
 ### Event Search Route (routes/search.py)
 
@@ -514,8 +510,9 @@ search_events()
   -> Validate request (query/event_ids/time_range/hierarchy_levels at least one)
   -> _execute_search(search_service, request) with 30s timeout
      Path A (event_ids): storage.get_contexts_by_ids()
-     Path B (query):     search_service.semantic_search() -> SearchResult (handles vectorization internally)
-     Path C (filters):   search_service.filter_search()
+     Path B (query or filters): search_service.search(query=..., hierarchy_levels=..., ...)
+       - query provided → vector search with filter conditions (1 backend call)
+       - query=None     → filter-only search (1 backend call, no vectorization)
   -> ancestors from SearchResult (drill_up) or search_service.collect_ancestors()
   -> Build tree: node map → refs-based parent-child linking → recursive sort by event_time_start ASC
   -> Fire-and-forget _track_accessed_safe()     # Includes media_refs in tracked items
