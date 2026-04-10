@@ -1,4 +1,3 @@
-
 """S3-compatible object storage backend."""
 
 import asyncio

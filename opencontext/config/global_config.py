@@ -22,7 +22,8 @@ class GlobalConfig:
     """
     Global Configuration Manager (Singleton Pattern)
 
-    Provides a unified interface for accessing configurations and prompts, avoiding the need to pass configuration objects between components.
+    Provides a unified interface for accessing configurations and prompts,
+    avoiding the need to pass configuration objects between components.
     All components can access the configuration via GlobalConfig.get_instance().
     """
 
@@ -118,9 +119,8 @@ class GlobalConfig:
                 success = False
 
         # Initialize the prompt manager
-        if self._prompt_manager is None:
-            if not self._init_prompt_manager():
-                success = False
+        if self._prompt_manager is None and not self._init_prompt_manager():
+            success = False
 
         return success
 

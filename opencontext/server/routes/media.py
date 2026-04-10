@@ -1,4 +1,3 @@
-
 """
 Media Upload API — upload images/videos to object storage for search queries.
 """
@@ -41,8 +40,8 @@ _MEDIA_UPLOAD_DIR = "./uploads/media"
 
 @router.post("/upload")
 async def upload_media(
-    file: UploadFile = File(...),
-    user_id: str = Query(default="default"),
+    file: UploadFile = File(...),  # noqa: B008
+    user_id: str = Query(default="default"),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """
@@ -69,7 +68,9 @@ async def upload_media(
         return JSONResponse(
             status_code=400,
             content={
-                "error": f"文件过大（{len(data) / 1024 / 1024:.1f} MB），{media_type} 最大 {max_mb} MB"
+                "error": (
+                    f"文件过大（{len(data) / 1024 / 1024:.1f} MB），{media_type} 最大 {max_mb} MB"
+                )
             },
         )
 

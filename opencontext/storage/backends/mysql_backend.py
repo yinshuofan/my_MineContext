@@ -8,7 +8,7 @@ MySQL document note storage backend implementation (async via asyncmy)
 """
 
 import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -88,42 +88,38 @@ class MySQLBackend(IDocumentStorageBackend):
             await self._create_tables()
 
             # Migration: owner_type → context_type on profiles table
-            async with self._get_connection() as conn:
-                async with conn.cursor() as cursor:
-                    try:
-                        await cursor.execute(
-                            "ALTER TABLE profiles ADD COLUMN context_type VARCHAR(30) NOT NULL DEFAULT 'profile'"
-                        )
-                    except Exception:
-                        pass  # Column already exists
+            async with self._get_connection() as conn, conn.cursor() as cursor:
+                with suppress(Exception):  # Column already exists
+                    await cursor.execute(
+                        "ALTER TABLE profiles ADD COLUMN "
+                        "context_type VARCHAR(30) NOT NULL DEFAULT 'profile'"
+                    )
 
-                    try:
-                        await cursor.execute("ALTER TABLE profiles ADD COLUMN refs JSON")
-                    except Exception:
-                        pass  # Column already exists
+                with suppress(Exception):  # Column already exists
+                    await cursor.execute("ALTER TABLE profiles ADD COLUMN refs JSON")
 
-                    try:
-                        await cursor.execute(
-                            "UPDATE profiles SET context_type = 'agent_profile' WHERE owner_type = 'agent'"
-                        )
-                        await conn.commit()
-                    except Exception:
-                        pass  # owner_type column may not exist (fresh install)
+                try:
+                    await cursor.execute(
+                        "UPDATE profiles SET context_type = 'agent_profile' "
+                        "WHERE owner_type = 'agent'"
+                    )
+                    await conn.commit()
+                except Exception:
+                    pass  # owner_type column may not exist (fresh install)
 
-                    try:
-                        await cursor.execute("ALTER TABLE profiles DROP PRIMARY KEY")
-                        await cursor.execute(
-                            "ALTER TABLE profiles ADD PRIMARY KEY (user_id, device_id, agent_id, context_type)"
-                        )
-                    except Exception:
-                        pass  # PK already has 4 columns
+                try:
+                    await cursor.execute("ALTER TABLE profiles DROP PRIMARY KEY")
+                    await cursor.execute(
+                        "ALTER TABLE profiles ADD PRIMARY KEY "
+                        "(user_id, device_id, agent_id, context_type)"
+                    )
+                except Exception:
+                    pass  # PK already has 4 columns
 
-                    try:
-                        await cursor.execute(
-                            "CREATE INDEX idx_profiles_context_type ON profiles(context_type)"
-                        )
-                    except Exception:
-                        pass  # Index already exists
+                with suppress(Exception):  # Index already exists
+                    await cursor.execute(
+                        "CREATE INDEX idx_profiles_context_type ON profiles(context_type)"
+                    )
 
             self._initialized = True
             logger.info(f"MySQL backend initialized successfully, database: {self.db_config['db']}")
@@ -154,10 +150,8 @@ class MySQLBackend(IDocumentStorageBackend):
                     logger.debug(f"Nested rollback failed: {e}")
                 raise
             else:
-                try:
+                with suppress(Exception):
                     await conn.commit()
-                except Exception:
-                    pass
 
     async def _create_tables(self):
         """Create database table structure"""
@@ -390,33 +384,33 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        """
-                        INSERT INTO vaults (title, summary, content, tags, parent_id, is_folder, document_type, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                        (
-                            title,
-                            summary,
-                            content,
-                            tags,
-                            parent_id,
-                            is_folder,
-                            document_type,
-                            tz_now(),
-                            tz_now(),
-                        ),
-                    )
-                    vault_id = cursor.lastrowid
-                    await conn.commit()
-                    logger.info(f"Report inserted, ID: {vault_id}")
-                    return vault_id
-                except Exception as e:
-                    logger.exception(f"Failed to insert report: {e}")
-                    raise
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    """
+                    INSERT INTO vaults (title, summary, content, tags,
+                        parent_id, is_folder, document_type, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                    (
+                        title,
+                        summary,
+                        content,
+                        tags,
+                        parent_id,
+                        is_folder,
+                        document_type,
+                        tz_now(),
+                        tz_now(),
+                    ),
+                )
+                vault_id = cursor.lastrowid
+                await conn.commit()
+                logger.info(f"Report inserted, ID: {vault_id}")
+                return vault_id
+            except Exception as e:
+                logger.exception(f"Failed to insert report: {e}")
+                raise
 
     async def get_reports(
         self, limit: int = 100, offset: int = 0, is_deleted: bool = False
@@ -439,65 +433,69 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    where_clauses = ["is_deleted = %s"]
-                    params = [is_deleted]
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                where_clauses = ["is_deleted = %s"]
+                params = [is_deleted]
 
-                    if document_type:
-                        where_clauses.append("document_type = %s")
-                        params.append(document_type)
-                    if created_after:
-                        where_clauses.append("created_at >= %s")
-                        params.append(created_after)
-                    if created_before:
-                        where_clauses.append("created_at <= %s")
-                        params.append(created_before)
-                    if updated_after:
-                        where_clauses.append("updated_at >= %s")
-                        params.append(updated_after)
-                    if updated_before:
-                        where_clauses.append("updated_at <= %s")
-                        params.append(updated_before)
+                if document_type:
+                    where_clauses.append("document_type = %s")
+                    params.append(document_type)
+                if created_after:
+                    where_clauses.append("created_at >= %s")
+                    params.append(created_after)
+                if created_before:
+                    where_clauses.append("created_at <= %s")
+                    params.append(created_before)
+                if updated_after:
+                    where_clauses.append("updated_at >= %s")
+                    params.append(updated_after)
+                if updated_before:
+                    where_clauses.append("updated_at <= %s")
+                    params.append(updated_before)
 
-                    params.extend([limit, offset])
-                    where_clause = " AND ".join(where_clauses)
-                    sql = f"""
-                        SELECT id, title, summary, content, tags, parent_id, is_folder, is_deleted,
-                               created_at, updated_at, document_type
-                        FROM vaults
-                        WHERE {where_clause}
-                        ORDER BY created_at DESC
-                        LIMIT %s OFFSET %s
-                    """
-                    await cursor.execute(sql, params)
-                    rows = await cursor.fetchall()
-                    return list(rows)
-                except Exception as e:
-                    logger.exception(f"Failed to get vaults list: {e}")
-                    return []
+                params.extend([limit, offset])
+                where_clause = " AND ".join(where_clauses)
+                sql = f"""
+                    SELECT id, title, summary, content, tags, parent_id, is_folder, is_deleted,
+                           created_at, updated_at, document_type
+                    FROM vaults
+                    WHERE {where_clause}
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                """
+                await cursor.execute(sql, params)
+                rows = await cursor.fetchall()
+                return list(rows)
+            except Exception as e:
+                logger.exception(f"Failed to get vaults list: {e}")
+                return []
 
     async def get_vault(self, vault_id: int) -> dict | None:
         if not self._initialized:
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute(
-                        """
-                        SELECT id, title, summary, content, tags, parent_id, is_folder, is_deleted,
-                               created_at, updated_at, document_type
-                        FROM vaults WHERE id = %s
-                    """,
-                        (vault_id,),
-                    )
-                    row = await cursor.fetchone()
-                    return row
-                except Exception as e:
-                    logger.exception(f"Failed to get vaults: {e}")
-                    return None
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute(
+                    """
+                    SELECT id, title, summary, content, tags, parent_id, is_folder, is_deleted,
+                           created_at, updated_at, document_type
+                    FROM vaults WHERE id = %s
+                """,
+                    (vault_id,),
+                )
+                row = await cursor.fetchone()
+                return row
+            except Exception as e:
+                logger.exception(f"Failed to get vaults: {e}")
+                return None
 
     async def update_vault(self, vault_id: int, **kwargs) -> bool:
         if not self._initialized:
@@ -545,32 +543,32 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        """
-                        INSERT INTO todo (content, start_time, end_time, status, urgency, assignee, reason, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                        (
-                            content,
-                            start_time or tz_now(),
-                            end_time,
-                            status,
-                            urgency,
-                            assignee,
-                            reason,
-                            tz_now(),
-                        ),
-                    )
-                    todo_id = cursor.lastrowid
-                    await conn.commit()
-                    logger.info(f"Todo item inserted, ID: {todo_id}")
-                    return todo_id
-                except Exception as e:
-                    logger.exception(f"Failed to insert todo item: {e}")
-                    raise
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    """
+                    INSERT INTO todo (content, start_time, end_time,
+                        status, urgency, assignee, reason, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                    (
+                        content,
+                        start_time or tz_now(),
+                        end_time,
+                        status,
+                        urgency,
+                        assignee,
+                        reason,
+                        tz_now(),
+                    ),
+                )
+                todo_id = cursor.lastrowid
+                await conn.commit()
+                logger.info(f"Todo item inserted, ID: {todo_id}")
+                return todo_id
+            except Exception as e:
+                logger.exception(f"Failed to insert todo item: {e}")
+                raise
 
     async def get_todos(
         self,
@@ -583,36 +581,39 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    where_conditions = []
-                    params = []
-                    if start_time:
-                        where_conditions.append("start_time >= %s")
-                        params.append(start_time)
-                    if end_time:
-                        where_conditions.append("end_time <= %s")
-                        params.append(end_time)
-                    if status is not None:
-                        where_conditions.append("status = %s")
-                        params.append(status)
-                    where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-                    params.extend([limit, offset])
-                    await cursor.execute(
-                        f"""
-                        SELECT id, content, created_at, start_time, end_time, status, urgency, assignee, reason
-                        FROM todo WHERE {where_clause}
-                        ORDER BY urgency DESC, created_at DESC
-                        LIMIT %s OFFSET %s
-                    """,
-                        params,
-                    )
-                    rows = await cursor.fetchall()
-                    return list(rows)
-                except Exception as e:
-                    logger.exception(f"Failed to get todo item list: {e}")
-                    return []
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                where_conditions = []
+                params = []
+                if start_time:
+                    where_conditions.append("start_time >= %s")
+                    params.append(start_time)
+                if end_time:
+                    where_conditions.append("end_time <= %s")
+                    params.append(end_time)
+                if status is not None:
+                    where_conditions.append("status = %s")
+                    params.append(status)
+                where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+                params.extend([limit, offset])
+                await cursor.execute(
+                    f"""
+                    SELECT id, content, created_at, start_time, end_time,
+                           status, urgency, assignee, reason
+                    FROM todo WHERE {where_clause}
+                    ORDER BY urgency DESC, created_at DESC
+                    LIMIT %s OFFSET %s
+                """,
+                    params,
+                )
+                rows = await cursor.fetchall()
+                return list(rows)
+            except Exception as e:
+                logger.exception(f"Failed to get todo item list: {e}")
+                return []
 
     async def update_todo_status(
         self, todo_id: int, status: int, end_time: datetime = None
@@ -664,33 +665,35 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    where_conditions = []
-                    params = []
-                    if start_time:
-                        where_conditions.append("created_at >= %s")
-                        params.append(start_time)
-                    if end_time:
-                        where_conditions.append("created_at <= %s")
-                        params.append(end_time)
-                    where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-                    params.extend([limit, offset])
-                    await cursor.execute(
-                        f"""
-                        SELECT id, content, created_at FROM tips
-                        WHERE {where_clause}
-                        ORDER BY created_at DESC
-                        LIMIT %s OFFSET %s
-                    """,
-                        params,
-                    )
-                    rows = await cursor.fetchall()
-                    return list(rows)
-                except Exception as e:
-                    logger.exception(f"Failed to get tip list: {e}")
-                    return []
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                where_conditions = []
+                params = []
+                if start_time:
+                    where_conditions.append("created_at >= %s")
+                    params.append(start_time)
+                if end_time:
+                    where_conditions.append("created_at <= %s")
+                    params.append(end_time)
+                where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+                params.extend([limit, offset])
+                await cursor.execute(
+                    f"""
+                    SELECT id, content, created_at FROM tips
+                    WHERE {where_clause}
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                """,
+                    params,
+                )
+                rows = await cursor.fetchall()
+                return list(rows)
+            except Exception as e:
+                logger.exception(f"Failed to get tip list: {e}")
+                return []
 
     # ── Profile CRUD ──
 
@@ -710,53 +713,54 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    now = tz_now()
-                    entities_json = json.dumps(entities or [], ensure_ascii=False)
-                    metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
-                    refs_json = json.dumps(refs or {}, ensure_ascii=False)
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                now = tz_now()
+                entities_json = json.dumps(entities or [], ensure_ascii=False)
+                metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
+                refs_json = json.dumps(refs or {}, ensure_ascii=False)
 
-                    await cursor.execute(
-                        """
-                        INSERT INTO profiles (user_id, device_id, agent_id, context_type, factual_profile,
-                                              behavioral_profile, entities, importance, metadata, refs,
-                                              created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        AS new_val
-                        ON DUPLICATE KEY UPDATE
-                            factual_profile = new_val.factual_profile,
-                            behavioral_profile = new_val.behavioral_profile,
-                            entities = new_val.entities,
-                            importance = new_val.importance,
-                            metadata = new_val.metadata,
-                            refs = new_val.refs,
-                            updated_at = new_val.updated_at
-                        """,
-                        (
-                            user_id,
-                            device_id,
-                            agent_id,
-                            context_type,
-                            factual_profile,
-                            behavioral_profile,
-                            entities_json,
-                            importance,
-                            metadata_json,
-                            refs_json,
-                            now,
-                            now,
-                        ),
-                    )
-                    await conn.commit()
-                    logger.info(
-                        f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}"
-                    )
-                    return True
-                except Exception as e:
-                    logger.exception(f"Failed to upsert profile: {e}")
-                    return False
+                await cursor.execute(
+                    """
+                    INSERT INTO profiles (user_id, device_id, agent_id,
+                        context_type, factual_profile,
+                                          behavioral_profile, entities, importance, metadata, refs,
+                                          created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    AS new_val
+                    ON DUPLICATE KEY UPDATE
+                        factual_profile = new_val.factual_profile,
+                        behavioral_profile = new_val.behavioral_profile,
+                        entities = new_val.entities,
+                        importance = new_val.importance,
+                        metadata = new_val.metadata,
+                        refs = new_val.refs,
+                        updated_at = new_val.updated_at
+                    """,
+                    (
+                        user_id,
+                        device_id,
+                        agent_id,
+                        context_type,
+                        factual_profile,
+                        behavioral_profile,
+                        entities_json,
+                        importance,
+                        metadata_json,
+                        refs_json,
+                        now,
+                        now,
+                    ),
+                )
+                await conn.commit()
+                logger.info(
+                    f"Profile upserted for user_id={user_id}, "
+                    f"device_id={device_id}, agent_id={agent_id}"
+                )
+                return True
+            except Exception as e:
+                logger.exception(f"Failed to upsert profile: {e}")
+                return False
 
     async def get_profile(
         self,
@@ -768,33 +772,35 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute(
-                        """
-                        SELECT user_id, device_id, agent_id, context_type, factual_profile,
-                               behavioral_profile, entities, importance, metadata, refs,
-                               created_at, updated_at
-                        FROM profiles
-                        WHERE user_id = %s AND device_id = %s AND agent_id = %s AND context_type = %s
-                        """,
-                        (user_id, device_id, agent_id, context_type),
-                    )
-                    row = await cursor.fetchone()
-                    if row:
-                        result = dict(row)
-                        if isinstance(result.get("entities"), str):
-                            result["entities"] = json.loads(result["entities"])
-                        if isinstance(result.get("metadata"), str):
-                            result["metadata"] = json.loads(result["metadata"])
-                        if isinstance(result.get("refs"), str):
-                            result["refs"] = json.loads(result["refs"])
-                        return result
-                    return None
-                except Exception as e:
-                    logger.exception(f"Failed to get profile: {e}")
-                    return None
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute(
+                    """
+                    SELECT user_id, device_id, agent_id, context_type, factual_profile,
+                           behavioral_profile, entities, importance, metadata, refs,
+                           created_at, updated_at
+                    FROM profiles
+                    WHERE user_id = %s AND device_id = %s AND agent_id = %s AND context_type = %s
+                    """,
+                    (user_id, device_id, agent_id, context_type),
+                )
+                row = await cursor.fetchone()
+                if row:
+                    result = dict(row)
+                    if isinstance(result.get("entities"), str):
+                        result["entities"] = json.loads(result["entities"])
+                    if isinstance(result.get("metadata"), str):
+                        result["metadata"] = json.loads(result["metadata"])
+                    if isinstance(result.get("refs"), str):
+                        result["refs"] = json.loads(result["refs"])
+                    return result
+                return None
+            except Exception as e:
+                logger.exception(f"Failed to get profile: {e}")
+                return None
 
     async def delete_profile(
         self,
@@ -806,18 +812,18 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    await cursor.execute(
-                        "DELETE FROM profiles WHERE user_id = %s AND device_id = %s AND agent_id = %s AND context_type = %s",
-                        (user_id, device_id, agent_id, context_type),
-                    )
-                    await conn.commit()
-                    return cursor.rowcount > 0
-                except Exception as e:
-                    logger.exception(f"Failed to delete profile: {e}")
-                    return False
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                await cursor.execute(
+                    "DELETE FROM profiles WHERE user_id = %s AND device_id = %s "
+                    "AND agent_id = %s AND context_type = %s",
+                    (user_id, device_id, agent_id, context_type),
+                )
+                await conn.commit()
+                return cursor.rowcount > 0
+            except Exception as e:
+                logger.exception(f"Failed to delete profile: {e}")
+                return False
 
     # ── Entity CRUD ──
 
@@ -835,23 +841,27 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
         try:
-            async with self._get_connection() as conn:
-                async with conn.cursor() as cursor:
-                    now = tz_now()
-                    time_bucket = now.strftime("%Y-%m-%d %H:00:00")
-                    await cursor.execute(
-                        """
-                        INSERT INTO monitoring_token_usage (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s) AS new_val
-                        ON DUPLICATE KEY UPDATE
-                            prompt_tokens = monitoring_token_usage.prompt_tokens + new_val.prompt_tokens,
-                            completion_tokens = monitoring_token_usage.completion_tokens + new_val.completion_tokens,
-                            total_tokens = monitoring_token_usage.total_tokens + new_val.total_tokens
-                        """,
-                        (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, now),
-                    )
-                    await conn.commit()
-                    return True
+            async with self._get_connection() as conn, conn.cursor() as cursor:
+                now = tz_now()
+                time_bucket = now.strftime("%Y-%m-%d %H:00:00")
+                await cursor.execute(
+                    """
+                    INSERT INTO monitoring_token_usage
+                        (time_bucket, model, prompt_tokens,
+                         completion_tokens, total_tokens, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s) AS new_val
+                    ON DUPLICATE KEY UPDATE
+                        prompt_tokens = monitoring_token_usage.prompt_tokens
+                            + new_val.prompt_tokens,
+                        completion_tokens = monitoring_token_usage.completion_tokens
+                            + new_val.completion_tokens,
+                        total_tokens = monitoring_token_usage.total_tokens
+                            + new_val.total_tokens
+                    """,
+                    (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, now),
+                )
+                await conn.commit()
+                return True
         except Exception as e:
             logger.error(f"Failed to save token usage: {e}")
             return False
@@ -867,43 +877,58 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
         try:
-            async with self._get_connection() as conn:
-                async with conn.cursor() as cursor:
-                    now = tz_now()
-                    time_bucket = now.strftime("%Y-%m-%d %H:00:00")
-                    success_inc = 1 if status == "success" else 0
-                    error_inc = 0 if status == "success" else 1
+            async with self._get_connection() as conn, conn.cursor() as cursor:
+                now = tz_now()
+                time_bucket = now.strftime("%Y-%m-%d %H:00:00")
+                success_inc = 1 if status == "success" else 0
+                error_inc = 0 if status == "success" else 1
 
-                    await cursor.execute(
-                        """
-                        INSERT INTO monitoring_stage_timing
-                        (time_bucket, stage_name, count, total_duration_ms, min_duration_ms,
-                         max_duration_ms, avg_duration_ms, success_count, error_count, metadata, created_at)
-                        VALUES (%s, %s, 1, %s, %s, %s, %s, %s, %s, %s, %s) AS new_val
-                        ON DUPLICATE KEY UPDATE
-                            count = monitoring_stage_timing.count + 1,
-                            total_duration_ms = monitoring_stage_timing.total_duration_ms + new_val.total_duration_ms,
-                            min_duration_ms = LEAST(monitoring_stage_timing.min_duration_ms, new_val.min_duration_ms),
-                            max_duration_ms = GREATEST(monitoring_stage_timing.max_duration_ms, new_val.max_duration_ms),
-                            success_count = monitoring_stage_timing.success_count + new_val.success_count,
-                            error_count = monitoring_stage_timing.error_count + new_val.error_count,
-                            avg_duration_ms = monitoring_stage_timing.total_duration_ms DIV monitoring_stage_timing.count
-                        """,
-                        (
-                            time_bucket,
-                            stage_name,
-                            duration_ms,
-                            duration_ms,
-                            duration_ms,
-                            duration_ms,
-                            success_inc,
-                            error_inc,
-                            metadata,
-                            now,
-                        ),
-                    )
-                    await conn.commit()
-                    return True
+                await cursor.execute(
+                    """
+                    INSERT INTO monitoring_stage_timing
+                    (time_bucket, stage_name, count,
+                     total_duration_ms, min_duration_ms,
+                     max_duration_ms, avg_duration_ms,
+                     success_count, error_count, metadata,
+                     created_at)
+                    VALUES (%s, %s, 1, %s, %s, %s, %s, %s, %s, %s, %s)
+                    AS new_val
+                    ON DUPLICATE KEY UPDATE
+                        count = monitoring_stage_timing.count + 1,
+                        total_duration_ms =
+                            monitoring_stage_timing.total_duration_ms
+                            + new_val.total_duration_ms,
+                        min_duration_ms = LEAST(
+                            monitoring_stage_timing.min_duration_ms,
+                            new_val.min_duration_ms),
+                        max_duration_ms = GREATEST(
+                            monitoring_stage_timing.max_duration_ms,
+                            new_val.max_duration_ms),
+                        success_count =
+                            monitoring_stage_timing.success_count
+                            + new_val.success_count,
+                        error_count =
+                            monitoring_stage_timing.error_count
+                            + new_val.error_count,
+                        avg_duration_ms =
+                            monitoring_stage_timing.total_duration_ms
+                            DIV monitoring_stage_timing.count
+                    """,
+                    (
+                        time_bucket,
+                        stage_name,
+                        duration_ms,
+                        duration_ms,
+                        duration_ms,
+                        duration_ms,
+                        success_inc,
+                        error_inc,
+                        metadata,
+                        now,
+                    ),
+                )
+                await conn.commit()
+                return True
         except Exception as e:
             logger.error(f"Failed to save stage timing: {e}")
             return False
@@ -919,20 +944,23 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
 
         try:
-            async with self._get_connection() as conn:
-                async with conn.cursor() as cursor:
-                    now = tz_now()
-                    time_bucket = now.strftime("%Y-%m-%d %H:00:00")
-                    await cursor.execute(
-                        """
-                        INSERT INTO monitoring_data_stats (time_bucket, data_type, count, context_type, metadata, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s) AS new_val
-                        ON DUPLICATE KEY UPDATE count = monitoring_data_stats.count + new_val.count
-                        """,
-                        (time_bucket, data_type, count, context_type, metadata, now),
-                    )
-                    await conn.commit()
-                    return True
+            async with self._get_connection() as conn, conn.cursor() as cursor:
+                now = tz_now()
+                time_bucket = now.strftime("%Y-%m-%d %H:00:00")
+                await cursor.execute(
+                    """
+                    INSERT INTO monitoring_data_stats
+                        (time_bucket, data_type, count,
+                         context_type, metadata, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s) AS new_val
+                    ON DUPLICATE KEY UPDATE
+                        count = monitoring_data_stats.count
+                            + new_val.count
+                    """,
+                    (time_bucket, data_type, count, context_type, metadata, now),
+                )
+                await conn.commit()
+                return True
         except Exception as e:
             logger.error(f"Failed to save data stats: {e}")
             return False
@@ -944,17 +972,19 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            async with self._get_connection() as conn:
-                async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                    await cursor.execute(
-                        """
-                        SELECT model, prompt_tokens, completion_tokens, total_tokens, time_bucket
-                        FROM monitoring_token_usage WHERE time_bucket >= %s ORDER BY time_bucket DESC
-                        """,
-                        (cutoff_bucket,),
-                    )
-                    rows = await cursor.fetchall()
-                    return list(rows)
+            async with (
+                self._get_connection() as conn,
+                conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+            ):
+                await cursor.execute(
+                    """
+                    SELECT model, prompt_tokens, completion_tokens, total_tokens, time_bucket
+                    FROM monitoring_token_usage WHERE time_bucket >= %s ORDER BY time_bucket DESC
+                    """,
+                    (cutoff_bucket,),
+                )
+                rows = await cursor.fetchall()
+                return list(rows)
         except Exception as e:
             logger.error(f"Failed to query token usage: {e}")
             return []
@@ -966,33 +996,40 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            async with self._get_connection() as conn:
-                async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                    await cursor.execute(
-                        """
-                        SELECT stage_name, count, total_duration_ms, min_duration_ms, max_duration_ms, avg_duration_ms, success_count, error_count, time_bucket
-                        FROM monitoring_stage_timing WHERE time_bucket >= %s ORDER BY time_bucket DESC
-                        """,
-                        (cutoff_bucket,),
+            async with (
+                self._get_connection() as conn,
+                conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+            ):
+                await cursor.execute(
+                    """
+                    SELECT stage_name, count, total_duration_ms,
+                        min_duration_ms, max_duration_ms,
+                        avg_duration_ms, success_count,
+                        error_count, time_bucket
+                    FROM monitoring_stage_timing
+                    WHERE time_bucket >= %s
+                    ORDER BY time_bucket DESC
+                    """,
+                    (cutoff_bucket,),
+                )
+                rows = await cursor.fetchall()
+                result = []
+                for row in rows:
+                    result.append(
+                        {
+                            "stage_name": row["stage_name"],
+                            "count": row["count"],
+                            "total_duration": row["total_duration_ms"],
+                            "min_duration": row["min_duration_ms"],
+                            "max_duration": row["max_duration_ms"],
+                            "duration_ms": row["avg_duration_ms"],
+                            "success_count": row["success_count"],
+                            "error_count": row["error_count"],
+                            "status": "success" if row["success_count"] > 0 else "error",
+                            "time_bucket": row["time_bucket"],
+                        }
                     )
-                    rows = await cursor.fetchall()
-                    result = []
-                    for row in rows:
-                        result.append(
-                            {
-                                "stage_name": row["stage_name"],
-                                "count": row["count"],
-                                "total_duration": row["total_duration_ms"],
-                                "min_duration": row["min_duration_ms"],
-                                "max_duration": row["max_duration_ms"],
-                                "duration_ms": row["avg_duration_ms"],
-                                "success_count": row["success_count"],
-                                "error_count": row["error_count"],
-                                "status": "success" if row["success_count"] > 0 else "error",
-                                "time_bucket": row["time_bucket"],
-                            }
-                        )
-                    return result
+                return result
         except Exception as e:
             logger.error(f"Failed to query stage timing: {e}")
             return []
@@ -1004,24 +1041,28 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            async with self._get_connection() as conn:
-                async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                    await cursor.execute(
-                        """
-                        SELECT data_type, SUM(count) as total_count, context_type
-                        FROM monitoring_data_stats WHERE time_bucket >= %s GROUP BY data_type, context_type
-                        """,
-                        (cutoff_bucket,),
-                    )
-                    rows = await cursor.fetchall()
-                    return [
-                        {
-                            "data_type": r["data_type"],
-                            "count": r["total_count"],
-                            "context_type": r["context_type"],
-                        }
-                        for r in rows
-                    ]
+            async with (
+                self._get_connection() as conn,
+                conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+            ):
+                await cursor.execute(
+                    """
+                    SELECT data_type, SUM(count) as total_count, context_type
+                    FROM monitoring_data_stats
+                    WHERE time_bucket >= %s
+                    GROUP BY data_type, context_type
+                    """,
+                    (cutoff_bucket,),
+                )
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        "data_type": r["data_type"],
+                        "count": r["total_count"],
+                        "context_type": r["context_type"],
+                    }
+                    for r in rows
+                ]
         except Exception as e:
             logger.error(f"Failed to query data stats: {e}")
             return []
@@ -1035,24 +1076,28 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             start_bucket = start_time.strftime("%Y-%m-%d %H:00:00")
             end_bucket = end_time.strftime("%Y-%m-%d %H:00:00")
-            async with self._get_connection() as conn:
-                async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                    await cursor.execute(
-                        """
-                        SELECT data_type, SUM(count) as total_count, context_type
-                        FROM monitoring_data_stats WHERE time_bucket >= %s AND time_bucket <= %s GROUP BY data_type, context_type
-                        """,
-                        (start_bucket, end_bucket),
-                    )
-                    rows = await cursor.fetchall()
-                    return [
-                        {
-                            "data_type": r["data_type"],
-                            "count": r["total_count"],
-                            "context_type": r["context_type"],
-                        }
-                        for r in rows
-                    ]
+            async with (
+                self._get_connection() as conn,
+                conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+            ):
+                await cursor.execute(
+                    """
+                    SELECT data_type, SUM(count) as total_count, context_type
+                    FROM monitoring_data_stats
+                    WHERE time_bucket >= %s AND time_bucket <= %s
+                    GROUP BY data_type, context_type
+                    """,
+                    (start_bucket, end_bucket),
+                )
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        "data_type": r["data_type"],
+                        "count": r["total_count"],
+                        "context_type": r["context_type"],
+                    }
+                    for r in rows
+                ]
         except Exception as e:
             logger.error(f"Failed to query data stats by range: {e}")
             return []
@@ -1066,26 +1111,28 @@ class MySQLBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            async with self._get_connection() as conn:
-                async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                    await cursor.execute(
-                        """
-                        SELECT time_bucket, data_type, SUM(count) as total_count, context_type
-                        FROM monitoring_data_stats WHERE time_bucket >= %s
-                        GROUP BY time_bucket, data_type, context_type ORDER BY time_bucket ASC
-                        """,
-                        (cutoff_bucket,),
-                    )
-                    rows = await cursor.fetchall()
-                    return [
-                        {
-                            "timestamp": r["time_bucket"],
-                            "data_type": r["data_type"],
-                            "count": r["total_count"],
-                            "context_type": r["context_type"],
-                        }
-                        for r in rows
-                    ]
+            async with (
+                self._get_connection() as conn,
+                conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+            ):
+                await cursor.execute(
+                    """
+                    SELECT time_bucket, data_type, SUM(count) as total_count, context_type
+                    FROM monitoring_data_stats WHERE time_bucket >= %s
+                    GROUP BY time_bucket, data_type, context_type ORDER BY time_bucket ASC
+                    """,
+                    (cutoff_bucket,),
+                )
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        "timestamp": r["time_bucket"],
+                        "data_type": r["data_type"],
+                        "count": r["total_count"],
+                        "context_type": r["context_type"],
+                    }
+                    for r in rows
+                ]
         except Exception as e:
             logger.error(f"Failed to query data stats trend: {e}")
             return []
@@ -1127,42 +1174,46 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    now = tz_now()
-                    meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
-                    await cursor.execute(
-                        """
-                        INSERT INTO conversations (page_name, user_id, title, metadata, status, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (page_name, user_id, title, meta_str, "active", now, now),
-                    )
-                    conversation_id = cursor.lastrowid
-                    await conn.commit()
-                    logger.info(f"Conversation created, ID: {conversation_id}")
-                    return await self.get_conversation(conversation_id)
-                except Exception as e:
-                    logger.exception(f"Failed to create conversation: {e}")
-                    return None
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                now = tz_now()
+                meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
+                await cursor.execute(
+                    """
+                    INSERT INTO conversations (page_name, user_id, title,
+                        metadata, status, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (page_name, user_id, title, meta_str, "active", now, now),
+                )
+                conversation_id = cursor.lastrowid
+                await conn.commit()
+                logger.info(f"Conversation created, ID: {conversation_id}")
+                return await self.get_conversation(conversation_id)
+            except Exception as e:
+                logger.exception(f"Failed to create conversation: {e}")
+                return None
 
     async def get_conversation(self, conversation_id: int) -> dict[str, Any] | None:
         if not self._initialized:
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute(
-                        "SELECT id, title, user_id, page_name, status, metadata, created_at, updated_at FROM conversations WHERE id = %s",
-                        (conversation_id,),
-                    )
-                    row = await cursor.fetchone()
-                    return row
-                except Exception as e:
-                    logger.exception(f"Failed to get conversation: {e}")
-                    return None
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute(
+                    "SELECT id, title, user_id, page_name, status, "
+                    "metadata, created_at, updated_at "
+                    "FROM conversations WHERE id = %s",
+                    (conversation_id,),
+                )
+                row = await cursor.fetchone()
+                return row
+            except Exception as e:
+                logger.exception(f"Failed to get conversation: {e}")
+                return None
 
     async def get_conversation_list(
         self,
@@ -1175,42 +1226,44 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return {"items": [], "total": 0}
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    where_clauses = []
-                    params = []
-                    if status:
-                        where_clauses.append("status = %s")
-                        params.append(status)
-                    if page_name:
-                        where_clauses.append("page_name = %s")
-                        params.append(page_name)
-                    if user_id:
-                        where_clauses.append("user_id = %s")
-                        params.append(user_id)
-                    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                where_clauses = []
+                params = []
+                if status:
+                    where_clauses.append("status = %s")
+                    params.append(status)
+                if page_name:
+                    where_clauses.append("page_name = %s")
+                    params.append(page_name)
+                if user_id:
+                    where_clauses.append("user_id = %s")
+                    params.append(user_id)
+                where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
-                    count_params = params[:]
-                    await cursor.execute(
-                        f"SELECT COUNT(*) as cnt FROM conversations WHERE {where_sql}", count_params
-                    )
-                    result = await cursor.fetchone()
-                    total = result["cnt"] if result else 0
+                count_params = params[:]
+                await cursor.execute(
+                    f"SELECT COUNT(*) as cnt FROM conversations WHERE {where_sql}", count_params
+                )
+                result = await cursor.fetchone()
+                total = result["cnt"] if result else 0
 
-                    list_params = params + [limit, offset]
-                    await cursor.execute(
-                        f"""
-                        SELECT id, title, user_id, page_name, status, metadata, created_at, updated_at
-                        FROM conversations WHERE {where_sql} ORDER BY updated_at DESC LIMIT %s OFFSET %s
-                        """,
-                        list_params,
-                    )
-                    rows = await cursor.fetchall()
-                    return {"items": list(rows), "total": total}
-                except Exception as e:
-                    logger.exception(f"Failed to get conversation list: {e}")
-                    return {"items": [], "total": 0}
+                list_params = params + [limit, offset]
+                await cursor.execute(
+                    f"""
+                    SELECT id, title, user_id, page_name, status, metadata, created_at, updated_at
+                    FROM conversations WHERE {where_sql} ORDER BY updated_at DESC LIMIT %s OFFSET %s
+                    """,
+                    list_params,
+                )
+                rows = await cursor.fetchall()
+                return {"items": list(rows), "total": total}
+            except Exception as e:
+                logger.exception(f"Failed to get conversation list: {e}")
+                return {"items": [], "total": 0}
 
     async def update_conversation(
         self,
@@ -1221,34 +1274,34 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    set_clauses = []
-                    params = []
-                    if title is not None:
-                        set_clauses.append("title = %s")
-                        params.append(title)
-                    if status is not None:
-                        set_clauses.append("status = %s")
-                        params.append("deleted" if status == "delected" else status)
-                    if not set_clauses:
-                        return await self.get_conversation(conversation_id)
-                    params.append(conversation_id)
-                    sql = f"UPDATE conversations SET {', '.join(set_clauses)} WHERE id = %s"
-                    await cursor.execute(sql, params)
-                    await conn.commit()
-                    if cursor.rowcount > 0:
-                        logger.info(f"Conversation {conversation_id} updated.")
-                        return await self.get_conversation(conversation_id)
-                    else:
-                        logger.warning(
-                            f"Failed to update conversation {conversation_id}, row not found or no change."
-                        )
-                        return None
-                except Exception as e:
-                    logger.exception(f"Failed to update conversation: {e}")
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                set_clauses = []
+                params = []
+                if title is not None:
+                    set_clauses.append("title = %s")
+                    params.append(title)
+                if status is not None:
+                    set_clauses.append("status = %s")
+                    params.append("deleted" if status == "delected" else status)
+                if not set_clauses:
+                    return await self.get_conversation(conversation_id)
+                params.append(conversation_id)
+                sql = f"UPDATE conversations SET {', '.join(set_clauses)} WHERE id = %s"
+                await cursor.execute(sql, params)
+                await conn.commit()
+                if cursor.rowcount > 0:
+                    logger.info(f"Conversation {conversation_id} updated.")
+                    return await self.get_conversation(conversation_id)
+                else:
+                    logger.warning(
+                        f"Failed to update conversation {conversation_id}, "
+                        "row not found or no change."
+                    )
                     return None
+            except Exception as e:
+                logger.exception(f"Failed to update conversation: {e}")
+                return None
 
     async def delete_conversation(self, conversation_id: int) -> dict[str, Any]:
         updated_convo = await self.update_conversation(
@@ -1263,20 +1316,22 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute("SELECT * FROM messages WHERE id = %s", (message_id,))
-                    row = await cursor.fetchone()
-                    if row:
-                        message = dict(row)
-                        if include_thinking:
-                            message["thinking"] = await self.get_message_thinking(message_id)
-                        return message
-                    return None
-                except Exception as e:
-                    logger.exception(f"Failed to get message: {e}")
-                    return None
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute("SELECT * FROM messages WHERE id = %s", (message_id,))
+                row = await cursor.fetchone()
+                if row:
+                    message = dict(row)
+                    if include_thinking:
+                        message["thinking"] = await self.get_message_thinking(message_id)
+                    return message
+                return None
+            except Exception as e:
+                logger.exception(f"Failed to get message: {e}")
+                return None
 
     async def create_message(
         self,
@@ -1291,43 +1346,43 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("MySQL backend not initialized")
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    now = tz_now()
-                    status = "completed" if is_complete else "streaming"
-                    completed_at = now if is_complete else None
-                    meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
-                    await cursor.execute(
-                        """
-                        INSERT INTO messages (conversation_id, role, content, status, token_count,
-                                              parent_message_id, metadata, completed_at, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            conversation_id,
-                            role,
-                            content,
-                            status,
-                            token_count,
-                            parent_message_id,
-                            meta_str,
-                            completed_at,
-                            now,
-                            now,
-                        ),
-                    )
-                    message_id = cursor.lastrowid
-                    await cursor.execute(
-                        "UPDATE conversations SET updated_at = %s WHERE id = %s",
-                        (now, conversation_id),
-                    )
-                    await conn.commit()
-                    logger.info(f"Message created, ID: {message_id}")
-                    return await self.get_message(message_id)
-                except Exception as e:
-                    logger.exception(f"Failed to create message: {e}")
-                    return None
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                now = tz_now()
+                status = "completed" if is_complete else "streaming"
+                completed_at = now if is_complete else None
+                meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
+                await cursor.execute(
+                    """
+                    INSERT INTO messages (conversation_id, role, content, status, token_count,
+                        parent_message_id, metadata,
+                        completed_at, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        conversation_id,
+                        role,
+                        content,
+                        status,
+                        token_count,
+                        parent_message_id,
+                        meta_str,
+                        completed_at,
+                        now,
+                        now,
+                    ),
+                )
+                message_id = cursor.lastrowid
+                await cursor.execute(
+                    "UPDATE conversations SET updated_at = %s WHERE id = %s",
+                    (now, conversation_id),
+                )
+                await conn.commit()
+                logger.info(f"Message created, ID: {message_id}")
+                return await self.get_message(message_id)
+            except Exception as e:
+                logger.exception(f"Failed to create message: {e}")
+                return None
 
     async def create_streaming_message(
         self,
@@ -1356,40 +1411,41 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    now = tz_now()
-                    set_clauses = ["content = %s", "updated_at = %s"]
-                    params = [new_content, now]
-                    if token_count is not None:
-                        set_clauses.append("token_count = %s")
-                        params.append(token_count)
-                    if is_complete is True:
-                        set_clauses.append("status = %s")
-                        params.append("completed")
-                        set_clauses.append("completed_at = %s")
-                        params.append(now)
-                    elif is_complete is False:
-                        set_clauses.append("status = %s")
-                        params.append("streaming")
-                        set_clauses.append("completed_at = NULL")
-                    params.append(message_id)
-                    sql = f"UPDATE messages SET {', '.join(set_clauses)} WHERE id = %s"
-                    await cursor.execute(sql, params)
-                    await cursor.execute(
-                        "UPDATE conversations SET updated_at = %s WHERE id = (SELECT conversation_id FROM messages WHERE id = %s)",
-                        (now, message_id),
-                    )
-                    await conn.commit()
-                    if cursor.rowcount > 0:
-                        return await self.get_message(message_id)
-                    else:
-                        logger.warning(f"Failed to update message {message_id}, not found.")
-                        return None
-                except Exception as e:
-                    logger.exception(f"Failed to update message: {e}")
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                now = tz_now()
+                set_clauses = ["content = %s", "updated_at = %s"]
+                params = [new_content, now]
+                if token_count is not None:
+                    set_clauses.append("token_count = %s")
+                    params.append(token_count)
+                if is_complete is True:
+                    set_clauses.append("status = %s")
+                    params.append("completed")
+                    set_clauses.append("completed_at = %s")
+                    params.append(now)
+                elif is_complete is False:
+                    set_clauses.append("status = %s")
+                    params.append("streaming")
+                    set_clauses.append("completed_at = NULL")
+                params.append(message_id)
+                sql = f"UPDATE messages SET {', '.join(set_clauses)} WHERE id = %s"
+                await cursor.execute(sql, params)
+                await cursor.execute(
+                    "UPDATE conversations SET updated_at = %s "
+                    "WHERE id = (SELECT conversation_id "
+                    "FROM messages WHERE id = %s)",
+                    (now, message_id),
+                )
+                await conn.commit()
+                if cursor.rowcount > 0:
+                    return await self.get_message(message_id)
+                else:
+                    logger.warning(f"Failed to update message {message_id}, not found.")
                     return None
+            except Exception as e:
+                logger.exception(f"Failed to update message: {e}")
+                return None
 
     async def append_message_content(
         self, message_id: int, content_chunk: str, token_count: int = 0
@@ -1397,30 +1453,35 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        async with self._get_connection() as conn:
-            async with conn.cursor() as cursor:
-                try:
-                    now = tz_now()
-                    await cursor.execute(
-                        """
-                        UPDATE messages SET content = CONCAT(content, %s), token_count = token_count + %s,
-                            status = CASE WHEN status = 'pending' THEN 'streaming' ELSE status END, updated_at = %s
-                        WHERE id = %s
-                        """,
-                        (content_chunk, token_count, now, message_id),
-                    )
-                    if cursor.rowcount == 0:
-                        logger.warning(f"Failed to append message {message_id}, not found.")
-                        return False
-                    await cursor.execute(
-                        "UPDATE conversations SET updated_at = %s WHERE id = (SELECT conversation_id FROM messages WHERE id = %s)",
-                        (now, message_id),
-                    )
-                    await conn.commit()
-                    return True
-                except Exception as e:
-                    logger.exception(f"Failed to append message content: {e}")
+        async with self._get_connection() as conn, conn.cursor() as cursor:
+            try:
+                now = tz_now()
+                await cursor.execute(
+                    """
+                    UPDATE messages
+                    SET content = CONCAT(content, %s),
+                        token_count = token_count + %s,
+                        status = CASE WHEN status = 'pending'
+                            THEN 'streaming' ELSE status END,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (content_chunk, token_count, now, message_id),
+                )
+                if cursor.rowcount == 0:
+                    logger.warning(f"Failed to append message {message_id}, not found.")
                     return False
+                await cursor.execute(
+                    "UPDATE conversations SET updated_at = %s "
+                    "WHERE id = (SELECT conversation_id "
+                    "FROM messages WHERE id = %s)",
+                    (now, message_id),
+                )
+                await conn.commit()
+                return True
+            except Exception as e:
+                logger.exception(f"Failed to append message content: {e}")
+                return False
 
     async def update_message_metadata(self, message_id: int, metadata: dict[str, Any]) -> bool:
         if not self._initialized:
@@ -1450,40 +1511,43 @@ class MySQLBackend(IDocumentStorageBackend):
         if status not in ["completed", "failed", "cancelled"]:
             status = "completed"
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    now = tz_now()
-                    set_clauses = ["status = %s", "completed_at = %s", "updated_at = %s"]
-                    params = [status, now, now]
-                    if error_message:
-                        set_clauses.append("error_message = %s")
-                        params.append(error_message)
-                    params.append(message_id)
-                    params.append(status)
-                    sql = f"UPDATE messages SET {', '.join(set_clauses)} WHERE id = %s AND status != %s"
-                    await cursor.execute(sql, params)
-                    success = cursor.rowcount > 0
-                    if not success:
-                        await cursor.execute(
-                            "SELECT status FROM messages WHERE id = %s", (message_id,)
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                now = tz_now()
+                set_clauses = ["status = %s", "completed_at = %s", "updated_at = %s"]
+                params = [status, now, now]
+                if error_message:
+                    set_clauses.append("error_message = %s")
+                    params.append(error_message)
+                params.append(message_id)
+                params.append(status)
+                sql = f"UPDATE messages SET {', '.join(set_clauses)} WHERE id = %s AND status != %s"
+                await cursor.execute(sql, params)
+                success = cursor.rowcount > 0
+                if not success:
+                    await cursor.execute("SELECT status FROM messages WHERE id = %s", (message_id,))
+                    row = await cursor.fetchone()
+                    if row and row["status"] == status:
+                        success = True
+                    else:
+                        logger.warning(
+                            f"Failed to mark message {message_id} as {status}, "
+                            "not found or no change."
                         )
-                        row = await cursor.fetchone()
-                        if row and row["status"] == status:
-                            success = True
-                        else:
-                            logger.warning(
-                                f"Failed to mark message {message_id} as {status}, not found or no change."
-                            )
-                    await cursor.execute(
-                        "UPDATE conversations SET updated_at = %s WHERE id = (SELECT conversation_id FROM messages WHERE id = %s)",
-                        (now, message_id),
-                    )
-                    await conn.commit()
-                    return success
-                except Exception as e:
-                    logger.exception(f"Failed to mark message {status}: {e}")
-                    return False
+                await cursor.execute(
+                    "UPDATE conversations SET updated_at = %s "
+                    "WHERE id = (SELECT conversation_id "
+                    "FROM messages WHERE id = %s)",
+                    (now, message_id),
+                )
+                await conn.commit()
+                return success
+            except Exception as e:
+                logger.exception(f"Failed to mark message {status}: {e}")
+                return False
 
     async def interrupt_message(self, message_id: int) -> bool:
         return await self.mark_message_finished(
@@ -1494,23 +1558,25 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute(
-                        "SELECT * FROM messages WHERE conversation_id = %s ORDER BY created_at ASC",
-                        (conversation_id,),
-                    )
-                    rows = await cursor.fetchall()
-                    messages = []
-                    for row in rows:
-                        message = dict(row)
-                        message["thinking"] = await self.get_message_thinking(message["id"])
-                        messages.append(message)
-                    return messages
-                except Exception as e:
-                    logger.exception(f"Failed to get conversation messages: {e}")
-                    return []
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute(
+                    "SELECT * FROM messages WHERE conversation_id = %s ORDER BY created_at ASC",
+                    (conversation_id,),
+                )
+                rows = await cursor.fetchall()
+                messages = []
+                for row in rows:
+                    message = dict(row)
+                    message["thinking"] = await self.get_message_thinking(message["id"])
+                    messages.append(message)
+                return messages
+            except Exception as e:
+                logger.exception(f"Failed to get conversation messages: {e}")
+                return []
 
     async def delete_message(self, message_id: int) -> bool:
         if not self._initialized:
@@ -1540,51 +1606,60 @@ class MySQLBackend(IDocumentStorageBackend):
             logger.warning("Storage not initialized")
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    if sequence is None:
-                        await cursor.execute(
-                            "SELECT COALESCE(MAX(sequence), -1) + 1 as next_seq FROM message_thinking WHERE message_id = %s",
-                            (message_id,),
-                        )
-                        result = await cursor.fetchone()
-                        sequence = result["next_seq"] if result else 0
-                    meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                if sequence is None:
                     await cursor.execute(
-                        """
-                        INSERT INTO message_thinking (message_id, content, stage, progress, sequence, metadata)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (message_id, content, stage, progress, sequence, meta_str),
+                        "SELECT COALESCE(MAX(sequence), -1) + 1 as next_seq "
+                        "FROM message_thinking WHERE message_id = %s",
+                        (message_id,),
                     )
-                    thinking_id = cursor.lastrowid
-                    await conn.commit()
-                    logger.debug(f"Added thinking record {thinking_id} to message {message_id}")
-                    return thinking_id
-                except Exception as e:
-                    logger.exception(f"Failed to add thinking to message {message_id}: {e}")
-                    return None
+                    result = await cursor.fetchone()
+                    sequence = result["next_seq"] if result else 0
+                meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
+                await cursor.execute(
+                    """
+                    INSERT INTO message_thinking (message_id, content,
+                        stage, progress, sequence, metadata)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (message_id, content, stage, progress, sequence, meta_str),
+                )
+                thinking_id = cursor.lastrowid
+                await conn.commit()
+                logger.debug(f"Added thinking record {thinking_id} to message {message_id}")
+                return thinking_id
+            except Exception as e:
+                logger.exception(f"Failed to add thinking to message {message_id}: {e}")
+                return None
 
     async def get_message_thinking(self, message_id: int) -> list[dict[str, Any]]:
         if not self._initialized:
             return []
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute(
-                        """
-                        SELECT id, message_id, content, stage, progress, sequence, metadata, created_at
-                        FROM message_thinking WHERE message_id = %s ORDER BY sequence ASC, created_at ASC
-                        """,
-                        (message_id,),
-                    )
-                    rows = await cursor.fetchall()
-                    return list(rows)
-                except Exception as e:
-                    logger.exception(f"Failed to get thinking for message {message_id}: {e}")
-                    return []
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute(
+                    """
+                    SELECT id, message_id, content, stage, progress,
+                        sequence, metadata, created_at
+                    FROM message_thinking
+                    WHERE message_id = %s
+                    ORDER BY sequence ASC, created_at ASC
+                    """,
+                    (message_id,),
+                )
+                rows = await cursor.fetchall()
+                return list(rows)
+            except Exception as e:
+                logger.exception(f"Failed to get thinking for message {message_id}: {e}")
+                return []
 
     async def clear_message_thinking(self, message_id: int) -> bool:
         if not self._initialized:
@@ -1608,13 +1683,15 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return {}
         try:
-            async with self._get_connection() as conn:
-                async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                    await cursor.execute(
-                        "SELECT setting_key, setting_value FROM system_settings"
-                        " WHERE setting_key NOT LIKE '\\_%'"
-                    )
-                    rows = await cursor.fetchall()
+            async with (
+                self._get_connection() as conn,
+                conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+            ):
+                await cursor.execute(
+                    "SELECT setting_key, setting_value FROM system_settings"
+                    " WHERE setting_key NOT LIKE '\\_%'"
+                )
+                rows = await cursor.fetchall()
             result: dict[str, Any] = {}
             for row in rows:
                 value = row["setting_value"]
@@ -1641,17 +1718,18 @@ class MySQLBackend(IDocumentStorageBackend):
             return False
         try:
             json_value = json.dumps(value, ensure_ascii=False)
-            async with self._get_connection() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute(
-                        """
-                        INSERT INTO system_settings (setting_key, setting_value)
-                        VALUES (%s, %s) AS new_val
-                        ON DUPLICATE KEY UPDATE
-                            setting_value = JSON_MERGE_PATCH(system_settings.setting_value, new_val.setting_value)
-                        """,
-                        (key, json_value),
-                    )
+            async with self._get_connection() as conn, conn.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO system_settings (setting_key, setting_value)
+                    VALUES (%s, %s) AS new_val
+                    ON DUPLICATE KEY UPDATE
+                        setting_value = JSON_MERGE_PATCH(
+                            system_settings.setting_value, new_val.setting_value
+                        )
+                    """,
+                    (key, json_value),
+                )
                 await conn.commit()
             return True
         except Exception as e:
@@ -1663,11 +1741,10 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
         try:
-            async with self._get_connection() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute(
-                        "DELETE FROM system_settings WHERE setting_key NOT LIKE '\\_%'"
-                    )
+            async with self._get_connection() as conn, conn.cursor() as cursor:
+                await cursor.execute(
+                    "DELETE FROM system_settings WHERE setting_key NOT LIKE '\\_%'"
+                )
                 await conn.commit()
             logger.info("All settings deleted from DB")
             return True
@@ -1796,7 +1873,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 await cursor.execute(sql, params)
                 rows = await cursor.fetchall()
                 columns = [desc[0] for desc in cursor.description]
-                return [dict(zip(columns, row)) for row in rows]
+                return [dict(zip(columns, row, strict=False)) for row in rows]
             except Exception as e:
                 logger.error(f"list_chat_batches failed: {e}")
                 return []
@@ -1833,14 +1910,12 @@ class MySQLBackend(IDocumentStorageBackend):
 
         async with self._get_connection() as conn, conn.cursor() as cursor:
             try:
-                await cursor.execute(
-                    "SELECT * FROM chat_batches WHERE batch_id = %s", (batch_id,)
-                )
+                await cursor.execute("SELECT * FROM chat_batches WHERE batch_id = %s", (batch_id,))
                 row = await cursor.fetchone()
                 if not row:
                     return None
                 columns = [desc[0] for desc in cursor.description]
-                result = dict(zip(columns, row))
+                result = dict(zip(columns, row, strict=False))
                 if isinstance(result.get("messages"), str):
                     result["messages"] = json.loads(result["messages"])
                 return result
@@ -1872,35 +1947,39 @@ class MySQLBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute(
-                        "SELECT agent_id, name, description, created_at, updated_at "
-                        "FROM agent_registry WHERE agent_id = %s AND is_deleted = FALSE",
-                        (agent_id,),
-                    )
-                    return await cursor.fetchone()
-                except Exception as e:
-                    logger.error(f"get_agent failed: {e}")
-                    return None
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute(
+                    "SELECT agent_id, name, description, created_at, updated_at "
+                    "FROM agent_registry WHERE agent_id = %s AND is_deleted = FALSE",
+                    (agent_id,),
+                )
+                return await cursor.fetchone()
+            except Exception as e:
+                logger.error(f"get_agent failed: {e}")
+                return None
 
     async def list_agents(self) -> list[dict]:
         """List all active agents."""
         if not self._initialized:
             return []
 
-        async with self._get_connection() as conn:
-            async with conn.cursor(asyncmy.cursors.DictCursor) as cursor:
-                try:
-                    await cursor.execute(
-                        "SELECT agent_id, name, description, created_at, updated_at "
-                        "FROM agent_registry WHERE is_deleted = FALSE ORDER BY created_at DESC"
-                    )
-                    return await cursor.fetchall()
-                except Exception as e:
-                    logger.error(f"list_agents failed: {e}")
-                    return []
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute(
+                    "SELECT agent_id, name, description, created_at, updated_at "
+                    "FROM agent_registry WHERE is_deleted = FALSE ORDER BY created_at DESC"
+                )
+                return await cursor.fetchall()
+            except Exception as e:
+                logger.error(f"list_agents failed: {e}")
+                return []
 
     async def update_agent(
         self, agent_id: str, name: str | None = None, description: str | None = None

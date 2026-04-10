@@ -29,7 +29,8 @@ class BaseCaptureComponent(ICaptureComponent):
     """
     Base capture component class implementing common functionality from ICaptureComponent interface
 
-    All concrete capture components should inherit from this class and implement specific capture logic
+    All concrete capture components should inherit from this class
+    and implement specific capture logic
     """
 
     def __init__(self, name: str, description: str, source_type: ContextSource):
@@ -202,7 +203,10 @@ class BaseCaptureComponent(ICaptureComponent):
             # if elapsed > 2.0:  # If capture takes longer than 2 seconds, log warning
             #     logger.warning(f"{self._name}: Capture operation took too long: {elapsed:.2f}s")
             # else:
-            #     logger.debug(f"{self._name}: Capture operation completed, elapsed: {elapsed:.2f}s, got {len(result)} data items")
+            #     logger.debug(
+            #         f"{self._name}: Capture operation completed, "
+            #         f"elapsed: {elapsed:.2f}s, got {len(result)} data items"
+            #     )
 
             # If callback function is set and data was captured, call the callback function
             if self._callback and result:
@@ -297,7 +301,8 @@ class BaseCaptureComponent(ICaptureComponent):
                     interval = float(config["capture_interval"])
                     if interval < 0.1:
                         logger.error(
-                            f"{self._name}: capture_interval must be greater than or equal to 0.1 seconds"
+                            f"{self._name}: capture_interval must be"
+                            " greater than or equal to 0.1 seconds"
                         )
                         return False
                 except (ValueError, TypeError):
@@ -394,7 +399,8 @@ class BaseCaptureComponent(ICaptureComponent):
         Set callback function to be called when new data is captured
 
         Args:
-            callback (callable): Callback function that receives a list of RawContextProperties as parameter
+            callback (callable): Callback function that receives a list
+                of RawContextProperties as parameter
 
         Returns:
             bool: Whether setting was successful

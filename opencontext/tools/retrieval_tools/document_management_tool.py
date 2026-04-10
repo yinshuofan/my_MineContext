@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -124,7 +123,8 @@ class DocumentManagementTool:
             chunk_ids = [ctx.id for ctx, _ in results]
 
             # Execute deletion (storage backend support required)
-            # Note: This is a simplified implementation, actual implementation may need to call storage backend's delete method
+            # Note: Simplified implementation, actual implementation may need to
+            # call storage backend's delete method
             logger.info(
                 f"Preparing to delete {len(chunk_ids)} chunks for document {raw_type}:{raw_id}"
             )

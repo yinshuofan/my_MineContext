@@ -22,12 +22,13 @@ class ContextCaptureManager:
     """
     Context Capture Manager
 
-    Manages and coordinates multiple context capture components, providing a unified interface for context capture.
+    Manages and coordinates multiple context capture components,
+    providing a unified interface for context capture.
     """
 
     def __init__(self):
         """Initializes the context capture manager."""
-        # Dictionary of registered capture components, with component name as key and component instance as value
+        # Dict of registered capture components: name -> instance
         self._components: dict[str, ICaptureComponent] = {}
         self._component_configs: dict[str, dict[str, Any]] = {}
 
@@ -264,7 +265,8 @@ class ContextCaptureManager:
         Set the callback function, which is called when new data is captured.
 
         Args:
-            callback (callable): The callback function, which accepts a list of RawContextProperties as a parameter.
+            callback (callable): The callback function, which accepts a
+                list of RawContextProperties as a parameter.
         """
         self._callback = callback
 
@@ -310,7 +312,8 @@ class ContextCaptureManager:
     def capture(self, component_name: str) -> list[RawContextProperties]:
         """
         Manually trigger a capture from a specified component.
-        Note: This method is mainly used for manual or one-time captures. Regular automatic captures are handled by the component's internal thread.
+        Note: This method is mainly used for manual or one-time captures.
+        Regular automatic captures are handled by the component's internal thread.
 
         Args:
             component_name (str): Component name
@@ -340,7 +343,8 @@ class ContextCaptureManager:
         Manually trigger a capture from all running components.
 
         Returns:
-            Dict[str, List[RawContextProperties]]: A mapping from component name to the list of captured context data.
+            Dict[str, List[RawContextProperties]]: A mapping from component
+                name to the list of captured context data.
         """
         results = {}
         # Create a copy of the running components to iterate over safely
@@ -374,7 +378,8 @@ class ContextCaptureManager:
         Shutdown the manager, stopping all components and threads.
 
         Args:
-            graceful (bool): Whether to shut down gracefully, waiting for current captures to complete.
+            graceful (bool): Whether to shut down gracefully, waiting
+                for current captures to complete.
         """
         logger.info("Shutting down Context Capture Manager...")
         self.stop_all_components(graceful=graceful)

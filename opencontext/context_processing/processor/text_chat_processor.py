@@ -46,7 +46,9 @@ class TextChatProcessor(BaseContextProcessor):
     ) -> list[ProcessedContext]:
         """Process chat context asynchronously."""
         logger.debug(
-            f"[text_chat_processor] Processing: user={context.user_id}, agent={context.agent_id}, source={context.source}, content_length={len(context.content_text or '')}"
+            f"[text_chat_processor] Processing: user={context.user_id}, "
+            f"agent={context.agent_id}, source={context.source}, "
+            f"content_length={len(context.content_text or '')}"
         )
         try:
             processed_list = await self._process_async(context)
@@ -340,7 +342,10 @@ class TextChatProcessor(BaseContextProcessor):
         ark_input = [
             {
                 "type": "text",
-                "text": f"{extracted_data.title}\n{extracted_data.summary}\n{' '.join(extracted_data.keywords)}",
+                "text": (
+                    f"{extracted_data.title}\n{extracted_data.summary}\n"
+                    f"{' '.join(extracted_data.keywords)}"
+                ),
             }
         ]
         if vectorize_images:

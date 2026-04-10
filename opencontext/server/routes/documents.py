@@ -7,7 +7,6 @@
 Document upload API routes, managed through OpenContext class
 """
 
-
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -37,7 +36,7 @@ class UploadWebLinkRequest(BaseModel):
 @router.post("/api/documents/upload", response_class=JSONResponse)
 async def upload_document(
     request: UploadDocumentRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """
@@ -60,7 +59,7 @@ async def upload_document(
 @router.post("/api/weblinks/upload", response_class=JSONResponse)
 async def upload_weblink(
     request: UploadWebLinkRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """

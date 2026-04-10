@@ -1,4 +1,3 @@
-
 """AWS Signature Version 4 for S3-compatible object storage."""
 
 import hashlib

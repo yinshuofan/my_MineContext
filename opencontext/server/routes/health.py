@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -23,7 +22,7 @@ async def health_check():
 
 
 @router.get("/api/health")
-async def api_health_check(opencontext: OpenContext = Depends(get_context_lab)):
+async def api_health_check(opencontext: OpenContext = Depends(get_context_lab)):  # noqa: B008
     """Detailed health check with service status"""
     try:
         health_data = {
@@ -47,7 +46,7 @@ async def auth_status():
 
 
 @router.get("/api/ready")
-async def readiness_check(opencontext: OpenContext = Depends(get_context_lab)):
+async def readiness_check(opencontext: OpenContext = Depends(get_context_lab)):  # noqa: B008
     """Readiness probe - checks all dependencies are connectable."""
     try:
         health_data = await opencontext.check_components_health()

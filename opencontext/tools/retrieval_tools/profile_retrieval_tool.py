@@ -35,12 +35,15 @@ class ProfileRetrievalTool(BaseTool):
         return """Retrieve user profiles from the relational database.
 
 **Supported operations:**
-- **get_profile**: Fetch a user's profile by user_id (and optional agent_id). Returns the full profile dict including preferences, history, and metadata.
+- **get_profile**: Fetch a user's profile by user_id (and optional \
+agent_id). Returns the full profile dict including preferences, \
+history, and metadata.
 
 **When to use this tool:**
 - When you need user profile information (preferences, settings, identity)
 
-**Note:** This tool queries the relational DB directly and does NOT perform vector similarity search."""
+**Note:** This tool queries the relational DB directly and does \
+NOT perform vector similarity search."""
 
     @classmethod
     def get_parameters(cls) -> dict[str, Any]:
@@ -122,7 +125,10 @@ class ProfileRetrievalTool(BaseTool):
                 "success": False,
                 "data": None,
                 "operation": "get_profile",
-                "error": f"No profile found for user_id='{user_id}', device_id='{device_id}', agent_id='{agent_id}'",
+                "error": (
+                    f"No profile found for user_id='{user_id}', "
+                    f"device_id='{device_id}', agent_id='{agent_id}'"
+                ),
             }
 
         return {"success": True, "data": profile, "operation": "get_profile"}

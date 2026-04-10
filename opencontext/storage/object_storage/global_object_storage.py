@@ -1,4 +1,3 @@
-
 """
 Global object storage singleton
 """

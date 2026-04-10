@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,11 +9,10 @@ import os
 
 import yaml
 
+from opencontext.utils.dict_utils import deep_merge
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
-
-from opencontext.utils.dict_utils import deep_merge
 
 
 class PromptManager:

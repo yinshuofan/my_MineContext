@@ -2,7 +2,8 @@
 
 """
 LLM-based context collection strategy
-Use large language models to intelligently analyze user needs and decide which retrieval tools to call
+Use large language models to intelligently analyze user needs
+and decide which retrieval tools to call
 """
 
 import asyncio
@@ -76,9 +77,8 @@ class LLMContextStrategy:
         # Extract tool calls from the response
         tool_calls = self._extract_tool_calls_from_response(response)
 
-        self.logger.info(
-            f"LLM decided to call {len(tool_calls)} tools: {[call.get('function', {}).get('name') for call in tool_calls]}"
-        )
+        tool_names = [call.get("function", {}).get("name") for call in tool_calls]
+        self.logger.info(f"LLM decided to call {len(tool_calls)} tools: {tool_names}")
 
         # Build analysis message for conversation history
         tool_call_summary = [
@@ -90,7 +90,11 @@ class LLMContextStrategy:
         ]
         analysis_message = {
             "role": "assistant",
-            "content": f"Iteration {iteration} analysis: Planning to call {len(tool_calls)} tools:\n{json.dumps(tool_call_summary, ensure_ascii=False, indent=2)}",
+            "content": (
+                f"Iteration {iteration} analysis:"
+                f" Planning to call {len(tool_calls)} tools:\n"
+                f"{json.dumps(tool_call_summary, ensure_ascii=False, indent=2)}"
+            ),
         }
 
         return tool_calls, analysis_message
@@ -411,7 +415,9 @@ class LLMContextStrategy:
                 relevant_ids = set(validation_result.get("relevant_result_ids", []))
                 # Filter relevant context items
                 relevant_items = [item for item in tool_results if item.id in relevant_ids]
-                # self.logger.info(f"Filtered to {len(relevant_items)}/{len(tool_results)} relevant items")
+                # self.logger.info(
+                #     f"Filtered to {len(relevant_items)}/{len(tool_results)} relevant items"
+                # )
 
             # Build validation message for conversation history
             validation_message = {

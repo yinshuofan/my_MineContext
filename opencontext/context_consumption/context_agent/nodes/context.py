@@ -5,7 +5,6 @@ Context Collection Node
 Intelligently collects and judges context information
 """
 
-
 from ..core.llm_context_strategy import LLMContextStrategy
 from ..core.state import StreamEvent, WorkflowState
 from ..models.enums import ContextSufficiency, EventType, NodeType, WorkflowStage
@@ -90,7 +89,10 @@ class ContextNode(BaseNode):
                 await self.streaming_manager.emit(
                     StreamEvent(
                         type=EventType.DONE,
-                        content=f"Context is sufficient, collected {len(state.contexts.items)} items in total",
+                        content=(
+                            "Context is sufficient, collected"
+                            f" {len(state.contexts.items)} items in total"
+                        ),
                         stage=WorkflowStage.CONTEXT_GATHERING,
                         progress=1.0,
                     )
@@ -106,7 +108,10 @@ class ContextNode(BaseNode):
                 await self.streaming_manager.emit(
                     StreamEvent(
                         type=EventType.DONE,
-                        content=f"No more tools to call, ending collection with {len(state.contexts.items)} items",
+                        content=(
+                            "No more tools to call, ending collection"
+                            f" with {len(state.contexts.items)} items"
+                        ),
                         stage=WorkflowStage.CONTEXT_GATHERING,
                         progress=1.0,
                     )
@@ -142,7 +147,11 @@ class ContextNode(BaseNode):
             await self.streaming_manager.emit(
                 StreamEvent(
                     type=EventType.DONE,
-                    content=f"Round {iteration}: Added {len(validated_items)} relevant context items (filtered from {len(new_context_items)} total)",
+                    content=(
+                        f"Round {iteration}: Added {len(validated_items)}"
+                        " relevant context items (filtered from"
+                        f" {len(new_context_items)} total)"
+                    ),
                     stage=WorkflowStage.CONTEXT_GATHERING,
                 )
             )
@@ -153,7 +162,11 @@ class ContextNode(BaseNode):
                 await self.streaming_manager.emit(
                     StreamEvent(
                         type=EventType.DONE,
-                        content=f"Maximum collection rounds reached, currently have {len(state.contexts.items)} context items",
+                        content=(
+                            "Maximum collection rounds reached,"
+                            f" currently have {len(state.contexts.items)}"
+                            " context items"
+                        ),
                         stage=WorkflowStage.CONTEXT_GATHERING,
                         progress=1.0,
                     )

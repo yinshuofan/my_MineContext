@@ -22,7 +22,8 @@ class GlobalStorage:
     """
     Global storage manager (singleton pattern)
 
-    Provides global access to UnifiedStorage instance, avoiding passing Storage objects between components.
+    Provides global access to UnifiedStorage instance, avoiding passing
+    Storage objects between components.
     All components can access UnifiedStorage through GlobalStorage.get_instance().
     """
 

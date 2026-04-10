@@ -42,7 +42,9 @@ class WebSearchTool(BaseTool):
 
     @classmethod
     def get_description(cls) -> str:
-        return """Internet search tool for retrieving real-time information from the web. Returns relevant webpage titles, snippets, and URLs based on search queries.
+        return """Internet search tool for retrieving real-time \
+information from the web. Returns relevant webpage titles, \
+snippets, and URLs based on search queries.
 
 **When to use this tool:**
 - When you need current, real-time information not in the local knowledge base
@@ -167,9 +169,11 @@ class WebSearchTool(BaseTool):
 
             return results
 
-        except ImportError:
+        except ImportError as e:
             logger.error("ddgs library not installed")
-            raise Exception("ddgs library not installed. Please install with: pip install ddgs")
+            raise Exception(
+                "ddgs library not installed. Please install with: pip install ddgs"
+            ) from e
         except Exception as e:
             logger.error(f"DuckDuckGo search failed: {e}")
             raise

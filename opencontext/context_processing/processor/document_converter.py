@@ -38,7 +38,10 @@ class PageInfo:
         self.doc_images = doc_images or []  # Embedded images list (for DOCX only)
 
     def __repr__(self):
-        return f"PageInfo(page={self.page_number}, text_len={len(self.text)}, visual={self.has_visual_elements}, images={len(self.doc_images)})"
+        return (
+            f"PageInfo(page={self.page_number}, text_len={len(self.text)}, "
+            f"visual={self.has_visual_elements}, images={len(self.doc_images)})"
+        )
 
 
 class DocumentConverter:
@@ -132,7 +135,7 @@ class DocumentConverter:
             logger.error(
                 "LibreOffice conversion failed. Install with: sudo apt-get install libreoffice"
             )
-            raise RuntimeError(f"PPTX conversion failed: {e}")
+            raise RuntimeError(f"PPTX conversion failed: {e}") from e
         except Exception as e:
             logger.exception(f"Error converting PPTX: {e}")
             raise
@@ -499,7 +502,7 @@ class DocumentConverter:
         current_lines = []
         current_text_length = 0
 
-        for i, line in enumerate(lines):
+        for _i, line in enumerate(lines):
             match = re.match(header_pattern, line)
             is_header = match is not None
 

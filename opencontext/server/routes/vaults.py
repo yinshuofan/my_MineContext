@@ -51,7 +51,7 @@ async def vaults_workspace(request: Request):
         )
     except Exception as e:
         logger.exception(f"Failed to render document collaboration page: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/vaults/editor", response_class=HTMLResponse)
@@ -66,7 +66,7 @@ async def note_editor_page(request: Request):
         )
     except Exception as e:
         logger.exception(f"Failed to render note editor page: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/api/vaults/list")
@@ -144,7 +144,8 @@ async def create_document(
                 "message": "Document created successfully",
                 "doc_id": doc_id,
                 "table_name": "vaults",
-                "context_processing": "triggered",  # Indicates context processing has been triggered
+                # Indicates context processing has been triggered
+                "context_processing": "triggered",
             }
         )
 

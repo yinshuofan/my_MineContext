@@ -115,7 +115,8 @@ class StorageBackendFactory:
 
 class UnifiedStorage:
     """
-    Unified storage system - manages multiple storage backends, supports automatic routing based on data type and storage requirements
+    Unified storage system - manages multiple storage backends,
+    supports automatic routing based on data type and storage requirements
     """
 
     def __init__(self):
@@ -190,14 +191,16 @@ class UnifiedStorage:
                     ):
                         if self._vector_backend is None or config.get("default", False):
                             self._vector_backend = backend
-                    elif storage_type == StorageType.DOCUMENT_DB and isinstance(
-                        backend, IDocumentStorageBackend
+                    elif (
+                        storage_type == StorageType.DOCUMENT_DB
+                        and isinstance(backend, IDocumentStorageBackend)
+                        and (self._document_backend is None or config.get("default", False))
                     ):
-                        if self._document_backend is None or config.get("default", False):
-                            self._document_backend = backend
+                        self._document_backend = backend
 
                     logger.info(
-                        f"Storage backend {config['name']} ({storage_type.value}) initialized successfully"
+                        f"Storage backend {config['name']} "
+                        f"({storage_type.value}) initialized successfully"
                     )
                 else:
                     logger.error(

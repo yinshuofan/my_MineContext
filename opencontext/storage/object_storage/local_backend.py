@@ -1,4 +1,3 @@
-
 """
 Local filesystem object storage backend
 """

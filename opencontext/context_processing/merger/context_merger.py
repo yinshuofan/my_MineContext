@@ -26,7 +26,12 @@ from opencontext.context_processing.merger.merge_strategies import (
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
 from opencontext.llm.global_embedding_client import do_vectorize
 from opencontext.llm.global_vlm_client import generate_with_messages
-from opencontext.models.context import *
+from opencontext.models.context import (
+    ContextProperties,
+    ExtractedData,
+    ProcessedContext,
+    Vectorize,
+)
 from opencontext.models.enums import ContextType
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.json_parser import parse_json_from_response
@@ -115,9 +120,7 @@ class ContextMerger(BaseContextProcessor):
         # Fallback to legacy logic
         return self._find_legacy_merge_target(context)
 
-    def _find_intelligent_merge_target(
-        self, context: ProcessedContext
-    ) -> ProcessedContext | None:
+    def _find_intelligent_merge_target(self, context: ProcessedContext) -> ProcessedContext | None:
         """Find merge target using intelligent strategies"""
         context_type = context.extracted_data.context_type
         strategy = self.strategies.get(context_type)
@@ -386,9 +389,12 @@ class ContextMerger(BaseContextProcessor):
                     logger.info(
                         f"Successfully merged {len(sources)} sources into context {target.id}"
                     )
-                    logger.debug(
-                        f"sources:\n{json.dumps([s.extracted_data.summary for s in sources], ensure_ascii=False, indent=2)}"
+                    sources_json = json.dumps(
+                        [s.extracted_data.summary for s in sources],
+                        ensure_ascii=False,
+                        indent=2,
                     )
+                    logger.debug(f"sources:\n{sources_json}")
                     logger.debug(f"target:\n  {target.extracted_data.summary}")
                     logger.debug(f"merged_context:\n  {merged_context.extracted_data.summary}")
                     return merged_context
@@ -619,7 +625,7 @@ class ContextMerger(BaseContextProcessor):
         if emb1 is None or emb2 is None or not emb1 or not emb2:
             return 0.0
 
-        dot_product = sum(a * b for a, b in zip(emb1, emb2))
+        dot_product = sum(a * b for a, b in zip(emb1, emb2, strict=False))
         norm_emb1 = math.sqrt(sum(a * a for a in emb1))
         norm_emb2 = math.sqrt(sum(b * b for b in emb2))
 
@@ -807,7 +813,7 @@ class ContextMerger(BaseContextProcessor):
         stats = {
             "merge_statistics": self._statistics,
             "strategy_count": len(self.strategies),
-            "supported_types": [ct.value for ct in self.strategies.keys()],
+            "supported_types": [ct.value for ct in self.strategies],
             "config": {
                 "use_intelligent_merging": self.use_intelligent_merging,
                 "enable_memory_management": self.enable_memory_management,

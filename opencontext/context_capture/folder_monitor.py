@@ -29,7 +29,8 @@ logger = get_logger(__name__)
 
 class FolderMonitorCapture(BaseCaptureComponent):
     """
-    Folder monitoring component that monitors local folder changes and generates context capture events.
+    Folder monitoring component that monitors local folder changes
+    and generates context capture events.
     """
 
     def __init__(self):
@@ -77,7 +78,9 @@ class FolderMonitorCapture(BaseCaptureComponent):
             self._last_scan_time = tz_now()
 
             logger.info(
-                f"Watching folders: {self._watch_folder_paths}, recursive: {self._recursive}, max file size: {self._max_file_size} bytes"
+                f"Watching folders: {self._watch_folder_paths}, "
+                f"recursive: {self._recursive}, "
+                f"max file size: {self._max_file_size} bytes"
             )
             return True
         except Exception as e:
@@ -186,7 +189,9 @@ class FolderMonitorCapture(BaseCaptureComponent):
             if new_files or updated_files or deleted_files:
                 self._last_activity_time = current_time
                 logger.info(
-                    f"File scan completed: {len(new_files)} new, {len(updated_files)} updated, {len(deleted_files)} deleted."
+                    f"File scan completed: {len(new_files)} new, "
+                    f"{len(updated_files)} updated, "
+                    f"{len(deleted_files)} deleted."
                 )
         except Exception as e:
             logger.exception(f"Folder scan failed: {e}")
@@ -291,12 +296,11 @@ class FolderMonitorCapture(BaseCaptureComponent):
                         getattr(ctx, "id", None) if not isinstance(ctx, dict) else ctx.get("id")
                     )
 
-                    if ctx_id:
-                        # Delete using id and the correct context_type
-                        if await self._storage.delete_processed_context(
-                            id=ctx_id, context_type=context_type
-                        ):
-                            count += 1
+                    # Delete using id and the correct context_type
+                    if ctx_id and await self._storage.delete_processed_context(
+                        id=ctx_id, context_type=context_type
+                    ):
+                        count += 1
             return count
         except Exception as e:
             logger.exception(f"Failed to clean up context for file {file_path}: {e}")

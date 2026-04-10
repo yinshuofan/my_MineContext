@@ -32,9 +32,11 @@ class BaseContextProcessor(IContextProcessor, ABC):
         Initialize the base processor.
 
         Args:
-            config: Configuration dictionary for the processor (if not provided, will be loaded from global config)
+            config: Configuration dictionary for the processor
+                (if not provided, will be loaded from global config)
         """
-        # If no config is passed, use an empty dictionary (subclasses should get it from the global config themselves)
+        # If no config is passed, use an empty dictionary
+        # (subclasses should get it from the global config themselves)
         self.config = config or {}
         self._is_initialized = False
         self._callback: Callable | None = None

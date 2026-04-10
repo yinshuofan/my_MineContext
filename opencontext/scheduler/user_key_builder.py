@@ -6,7 +6,6 @@ User Key Builder Implementation
 Builds user identification keys based on configurable dimensions.
 """
 
-
 from opencontext.scheduler.base import IUserKeyBuilder, UserKeyConfig
 
 

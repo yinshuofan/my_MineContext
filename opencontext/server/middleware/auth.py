@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -53,13 +52,7 @@ def get_excluded_paths() -> list[str]:
 def is_path_excluded(path: str) -> bool:
     """Check if a path is excluded from authentication."""
     excluded_paths = get_excluded_paths()
-
-    for excluded_path in excluded_paths:
-        # Support wildcard matching
-        if fnmatch.fnmatch(path, excluded_path):
-            return True
-
-    return False
+    return any(fnmatch.fnmatch(path, excluded_path) for excluded_path in excluded_paths)
 
 
 def verify_api_key(

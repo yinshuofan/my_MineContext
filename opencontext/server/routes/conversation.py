@@ -8,7 +8,6 @@ Conversation Management API Routes
 Handles CRUD operations for chat conversations.
 """
 
-
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -30,9 +29,7 @@ class CreateConversationRequest(BaseModel):
     """Request model for 4.1.1 Create Conversation"""
 
     page_name: str = Field(..., description="Page name, e.g., 'home' or 'creation'")
-    document_id: str | None = Field(
-        None, description="Optional document ID to store in metadata"
-    )
+    document_id: str | None = Field(None, description="Optional document ID to store in metadata")
 
 
 class ConversationResponse(BaseModel):
@@ -110,7 +107,7 @@ async def create_conversation(
 
     except Exception as e:
         logger.exception(f"Failed to create conversation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/conversations/list", response_model=GetConversationListResponse)
@@ -138,7 +135,7 @@ async def get_conversation_list(
 
     except Exception as e:
         logger.exception(f"Failed to get conversation list: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/conversations/{cid}", response_model=ConversationResponse)
@@ -162,7 +159,7 @@ async def get_conversation_detail(
         raise
     except Exception as e:
         logger.exception(f"Failed to get conversation detail: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.patch("/conversations/{cid}/update", response_model=ConversationResponse)
@@ -190,7 +187,7 @@ async def update_conversation_title(
         raise
     except Exception as e:
         logger.exception(f"Failed to update conversation title: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/conversations/{cid}/update", response_model=DeleteConversationResponse)
@@ -218,4 +215,4 @@ async def delete_conversation(
         raise
     except Exception as e:
         logger.exception(f"Failed to delete conversation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

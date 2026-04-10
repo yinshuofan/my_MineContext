@@ -210,7 +210,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
         """Format search results into text for the LLM prompt."""
 
         all_contexts = {}
-        for ctx, score in search_result.hits:
+        for ctx, _score in search_result.hits:
             all_contexts[ctx.id] = ctx
         for ctx_id, ctx in search_result.ancestors.items():
             if ctx_id not in all_contexts:

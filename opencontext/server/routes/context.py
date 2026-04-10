@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -76,7 +75,7 @@ class VectorSearchRequest(BaseModel):
 @router.post("/contexts/delete")
 async def delete_context(
     detail_request: ContextDetailRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """Delete a processed context by its ID and context_type."""
@@ -90,7 +89,7 @@ async def delete_context(
 async def read_context_detail(
     detail_request: ContextDetailRequest,
     request: Request,
-    opencontext: OpenContext = Depends(get_context_lab),
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     context = await opencontext.get_context(detail_request.id, detail_request.context_type)
@@ -111,8 +110,8 @@ async def read_context_detail(
 @router.get("/api/contexts/{context_id}")
 async def get_context_api(
     context_id: str,
-    context_type: str = Query(..., description="Context type (event, knowledge, etc.)"),
-    opencontext: OpenContext = Depends(get_context_lab),
+    context_type: str = Query(..., description="Context type (event, knowledge, etc.)"),  # noqa: B008
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """Get a single context by ID as JSON (used for tree lazy loading)."""
@@ -125,7 +124,8 @@ async def get_context_api(
 
 @router.get("/api/context_types")
 async def get_context_types(
-    opencontext: OpenContext = Depends(get_context_lab), _auth: str = auth_dependency
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
+    _auth: str = auth_dependency,
 ):
     """Get all available context types."""
     try:
@@ -133,13 +133,13 @@ async def get_context_types(
         return context_types
     except Exception as e:
         logger.exception(f"Error getting context types: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get context types: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get context types: {str(e)}") from e
 
 
 @router.post("/api/vector_search")
 async def vector_search(
     request: VectorSearchRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """Directly search vector database without using LLM.

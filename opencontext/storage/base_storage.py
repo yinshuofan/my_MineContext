@@ -249,7 +249,8 @@ class IVectorStorageBackend(IStorageBackend):
         Args:
             context_type: Context type to search
             hierarchy_level: Hierarchy level to search (0=original, 1=daily, 2=weekly, 3=monthly)
-            time_start: Start of query time range as UTC timestamp (inclusive), or None for unbounded
+            time_start: Start of query time range as UTC timestamp (inclusive),
+                or None for unbounded
             time_end: End of query time range as UTC timestamp (inclusive), or None for unbounded
             user_id: User identifier for multi-user filtering
             device_id: Device identifier for multi-device isolation
@@ -390,7 +391,9 @@ class IDocumentStorageBackend(IStorageBackend):
         refs: dict | None = None,
         context_type: str = "profile",
     ) -> bool:
-        """Insert or update user profile (composite key: user_id + device_id + agent_id + context_type)
+        """Insert or update user profile.
+
+        Composite key: user_id + device_id + agent_id + context_type.
 
         Args:
             user_id: User identifier

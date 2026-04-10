@@ -7,6 +7,7 @@
 SQLite document note storage backend implementation
 """
 
+import contextlib
 import json
 import os
 from datetime import datetime, timedelta
@@ -56,17 +57,13 @@ class SQLiteBackend(IDocumentStorageBackend):
             await self._create_tables()
 
             # Migration: owner_type → context_type on profiles table
-            try:
+            with contextlib.suppress(Exception):
                 await self._connection.execute(
                     "ALTER TABLE profiles ADD COLUMN context_type TEXT NOT NULL DEFAULT 'profile'"
                 )
-            except Exception:
-                pass
 
-            try:
+            with contextlib.suppress(Exception):
                 await self._connection.execute("ALTER TABLE profiles ADD COLUMN refs JSON")
-            except Exception:
-                pass
 
             try:
                 await self._connection.execute(
@@ -144,7 +141,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
         """)
 
-        # Profiles table - user profiles (composite key: user_id + device_id + agent_id + context_type)
+        # Profiles table - user profiles
+        # (composite key: user_id + device_id + agent_id + context_type)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id TEXT NOT NULL,
@@ -262,22 +260,28 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         # Monitoring table indexes
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_monitoring_token_created ON monitoring_token_usage (created_at)"
+            "CREATE INDEX IF NOT EXISTS idx_monitoring_token_created "
+            "ON monitoring_token_usage (created_at)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_monitoring_token_model ON monitoring_token_usage (model)"
+            "CREATE INDEX IF NOT EXISTS idx_monitoring_token_model "
+            "ON monitoring_token_usage (model)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_monitoring_stage_created ON monitoring_stage_timing (created_at)"
+            "CREATE INDEX IF NOT EXISTS idx_monitoring_stage_created "
+            "ON monitoring_stage_timing (created_at)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_monitoring_stage_name ON monitoring_stage_timing (stage_name)"
+            "CREATE INDEX IF NOT EXISTS idx_monitoring_stage_name "
+            "ON monitoring_stage_timing (stage_name)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_monitoring_data_created ON monitoring_data_stats (created_at)"
+            "CREATE INDEX IF NOT EXISTS idx_monitoring_data_created "
+            "ON monitoring_data_stats (created_at)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_monitoring_data_type ON monitoring_data_stats (data_type)"
+            "CREATE INDEX IF NOT EXISTS idx_monitoring_data_type "
+            "ON monitoring_data_stats (data_type)"
         )
 
         # Conversation/Message indexes
@@ -289,10 +293,12 @@ class SQLiteBackend(IDocumentStorageBackend):
             "CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC)"
+            "CREATE INDEX IF NOT EXISTS idx_conversations_updated_at "
+            "ON conversations(updated_at DESC)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_conversations_user_page ON conversations(user_id, page_name)"
+            "CREATE INDEX IF NOT EXISTS idx_conversations_user_page "
+            "ON conversations(user_id, page_name)"
         )
 
         # Message thinking table (stores thinking process for messages)
@@ -312,13 +318,16 @@ class SQLiteBackend(IDocumentStorageBackend):
 
         # Message thinking indexes
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_message_thinking_message_id ON message_thinking(message_id)"
+            "CREATE INDEX IF NOT EXISTS idx_message_thinking_message_id "
+            "ON message_thinking(message_id)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_message_thinking_stage ON message_thinking(message_id, stage)"
+            "CREATE INDEX IF NOT EXISTS idx_message_thinking_stage "
+            "ON message_thinking(message_id, stage)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_message_thinking_sequence ON message_thinking(message_id, sequence)"
+            "CREATE INDEX IF NOT EXISTS idx_message_thinking_sequence "
+            "ON message_thinking(message_id, sequence)"
         )
 
         # System settings table (key-value, for user config overrides)
@@ -385,16 +394,25 @@ class SQLiteBackend(IDocumentStorageBackend):
             else:
                 # If file doesn't exist, use fallback content
                 logger.error(f"Quick Start document {quick_start_file} does not exist")
-                default_content = "Welcome to MineContext!\n\nYour Context-Aware AI Partner is ready to help you work, study, and create better."
+                default_content = (
+                    "Welcome to MineContext!\n\n"
+                    "Your Context-Aware AI Partner is ready to "
+                    "help you work, study, and create better."
+                )
 
         except Exception:
-            default_content = "Welcome to MineContext!\n\nYour Context-Aware AI Partner is ready to help you work, study, and create better."
+            default_content = (
+                "Welcome to MineContext!\n\n"
+                "Your Context-Aware AI Partner is ready to "
+                "help you work, study, and create better."
+            )
 
         # Insert default document
         try:
             cursor = await conn.execute(
                 """
-                INSERT INTO vaults (title, summary, content, document_type, tags, is_folder, is_deleted)
+                INSERT INTO vaults (title, summary, content,
+                    document_type, tags, is_folder, is_deleted)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
                 (
@@ -407,7 +425,6 @@ class SQLiteBackend(IDocumentStorageBackend):
                     False,
                 ),
             )
-            vault_id = cursor.lastrowid
             await conn.commit()
             logger.info("Default Quick Start document inserted")
 
@@ -434,7 +451,9 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor = await conn.execute(
                 """
-                INSERT INTO vaults (title, summary, content, tags, parent_id, is_folder, document_type, created_at, updated_at)
+                INSERT INTO vaults (title, summary, content, tags,
+                    parent_id, is_folder, document_type, created_at,
+                    updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
@@ -650,7 +669,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cursor = await conn.execute(
                 """
-                INSERT INTO todo (content, start_time, end_time, status, urgency, assignee, reason, created_at)
+                INSERT INTO todo (content, start_time, end_time,
+                    status, urgency, assignee, reason, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
@@ -702,7 +722,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             params.extend([limit, offset])
             cursor = await conn.execute(
                 f"""
-                SELECT id, content, created_at, start_time, end_time, status, urgency, assignee, reason
+                SELECT id, content, created_at, start_time, end_time,
+                       status, urgency, assignee, reason
                 FROM todo
                 WHERE {where_clause}
                 ORDER BY urgency DESC, created_at DESC
@@ -827,7 +848,10 @@ class SQLiteBackend(IDocumentStorageBackend):
         refs: dict | None = None,
         context_type: str = "profile",
     ) -> bool:
-        """Insert or update user profile (composite key: user_id + device_id + agent_id + context_type)"""
+        """Insert or update user profile.
+
+        Composite key: user_id + device_id + agent_id + context_type.
+        """
         if not self._initialized:
             return False
 
@@ -870,7 +894,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
             await conn.commit()
             logger.info(
-                f"Profile upserted for user_id={user_id}, device_id={device_id}, agent_id={agent_id}"
+                f"Profile upserted for user_id={user_id}, "
+                f"device_id={device_id}, agent_id={agent_id}"
             )
             return True
         except Exception as e:
@@ -930,7 +955,8 @@ class SQLiteBackend(IDocumentStorageBackend):
         conn = self._connection
         try:
             cursor = await conn.execute(
-                "DELETE FROM profiles WHERE user_id = ? AND device_id = ? AND agent_id = ? AND context_type = ?",
+                "DELETE FROM profiles WHERE user_id = ? AND device_id = ? "
+                "AND agent_id = ? AND context_type = ?",
                 (user_id, device_id, agent_id, context_type),
             )
             await conn.commit()
@@ -966,7 +992,9 @@ class SQLiteBackend(IDocumentStorageBackend):
             # Use INSERT ... ON CONFLICT to update or insert
             await conn.execute(
                 """
-                INSERT INTO monitoring_token_usage (time_bucket, model, prompt_tokens, completion_tokens, total_tokens, created_at)
+                INSERT INTO monitoring_token_usage
+                    (time_bucket, model, prompt_tokens,
+                     completion_tokens, total_tokens, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(time_bucket, model)
                 DO UPDATE SET
@@ -1074,7 +1102,9 @@ class SQLiteBackend(IDocumentStorageBackend):
             # Use INSERT ... ON CONFLICT to update or insert
             await conn.execute(
                 """
-                INSERT INTO monitoring_data_stats (time_bucket, data_type, count, context_type, metadata, created_at)
+                INSERT INTO monitoring_data_stats
+                    (time_bucket, data_type, count,
+                     context_type, metadata, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(time_bucket, data_type, context_type)
                 DO UPDATE SET count = count + ?
@@ -1136,7 +1166,10 @@ class SQLiteBackend(IDocumentStorageBackend):
             conn = self._connection
             cursor = await conn.execute(
                 """
-                SELECT stage_name, count, total_duration_ms, min_duration_ms, max_duration_ms, avg_duration_ms, success_count, error_count, time_bucket
+                SELECT stage_name, count, total_duration_ms,
+                    min_duration_ms, max_duration_ms,
+                    avg_duration_ms, success_count,
+                    error_count, time_bucket
                 FROM monitoring_stage_timing
                 WHERE time_bucket >= ?
                 ORDER BY time_bucket DESC
@@ -1339,7 +1372,8 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             cursor = await conn.execute(
                 """
-                INSERT INTO conversations (page_name, user_id, title, metadata, status, created_at, updated_at)
+                INSERT INTO conversations (page_name, user_id, title,
+                    metadata, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (page_name, user_id, title, meta_str, "active", now, now),
@@ -1575,8 +1609,9 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             cursor = await conn.execute(
                 """
-                INSERT INTO messages (conversation_id, role, content, status, token_count,
-                                      parent_message_id, metadata, completed_at, created_at, updated_at)
+                INSERT INTO messages (conversation_id, role, content,
+                    status, token_count, parent_message_id, metadata,
+                    completed_at, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -1924,7 +1959,8 @@ class SQLiteBackend(IDocumentStorageBackend):
             # Auto-increment sequence if not provided
             if sequence is None:
                 cursor = await conn.execute(
-                    "SELECT COALESCE(MAX(sequence), -1) + 1 FROM message_thinking WHERE message_id = ?",
+                    "SELECT COALESCE(MAX(sequence), -1) + 1 "
+                    "FROM message_thinking WHERE message_id = ?",
                     (message_id,),
                 )
                 row = await cursor.fetchone()
@@ -2047,10 +2083,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             if row:
                 raw = row["setting_value"]
                 existing = json.loads(raw) if isinstance(raw, str) else raw
-                if isinstance(existing, dict):
-                    merged = deep_merge(existing, value)
-                else:
-                    merged = value  # Replace non-dict values entirely
+                merged = deep_merge(existing, value) if isinstance(existing, dict) else value
                 json_value = json.dumps(merged, ensure_ascii=False)
                 await conn.execute(
                     "UPDATE system_settings SET setting_value = ?,"
@@ -2210,7 +2243,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             cursor = await conn.execute(sql, params)
             rows = await cursor.fetchall()
             columns = [desc[0] for desc in cursor.description]
-            return [dict(zip(columns, row)) for row in rows]
+            return [dict(zip(columns, row, strict=False)) for row in rows]
         except Exception as e:
             logger.error(f"list_chat_batches failed: {e}")
             return []
@@ -2254,7 +2287,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             if not row:
                 return None
             columns = [desc[0] for desc in cursor.description]
-            result = dict(zip(columns, row))
+            result = dict(zip(columns, row, strict=False))
             if isinstance(result.get("messages"), str):
                 result["messages"] = json.loads(result["messages"])
             return result
@@ -2302,7 +2335,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                         # Use proper parameterized query for tags
                         tag_placeholders = ",".join(["?"] * len(tags))
                         where_conditions.append(
-                            f"id IN (SELECT document_id FROM document_tags WHERE tag IN ({tag_placeholders}))"
+                            "id IN (SELECT document_id FROM document_tags "
+                            f"WHERE tag IN ({tag_placeholders}))"
                         )
                         for tag in tags:
                             params.append(tag.lower())
@@ -2341,10 +2375,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                 # Parse metadata
                 metadata = {}
                 if row["metadata"]:
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError):
                         metadata = json.loads(row["metadata"])
-                    except json.JSONDecodeError:
-                        pass
 
                 documents.append(
                     DocumentData(

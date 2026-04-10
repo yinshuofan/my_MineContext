@@ -66,7 +66,8 @@ class WebLinkCapture(BaseCaptureComponent):
         Converts a single URL to a Markdown file.
 
         Returns:
-            A dictionary containing the original URL and the path to the generated MD file, or None on failure.
+            A dictionary containing the original URL and the path to the
+        generated MD file, or None on failure.
         """
         try:
             from crawl4ai import AsyncWebCrawler
@@ -121,13 +122,15 @@ class WebLinkCapture(BaseCaptureComponent):
         Converts a single URL to a PDF file.
 
         Returns:
-            A dictionary containing the original URL and the path to the generated PDF, or None on failure.
+            A dictionary containing the original URL and the path to the
+        generated PDF, or None on failure.
         """
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
             logger.error(
-                "Playwright is not installed. Please install it with 'pip install playwright' and 'playwright install'."
+                "Playwright is not installed. Please install it with"
+                " 'pip install playwright' and 'playwright install'."
             )
             return None
         except Exception as e:
@@ -247,7 +250,8 @@ class WebLinkCapture(BaseCaptureComponent):
         self._urls_to_process = []
 
         logger.info(
-            f"Finished capture. Successfully converted {len(results)} out of {len(urls_to_process)} URLs."
+            f"Finished capture. Successfully converted {len(results)}"
+            f" out of {len(urls_to_process)} URLs."
         )
         return results
 

@@ -13,7 +13,7 @@ __all__ = ["SQLiteBackend"]
 
 # MySQL backend is optional, import only if pymysql is available
 try:
-    from .mysql_backend import MySQLBackend
+    from .mysql_backend import MySQLBackend  # noqa: F401
 
     __all__.append("MySQLBackend")
 except ImportError:
@@ -21,7 +21,7 @@ except ImportError:
 
 # Qdrant backend is optional
 try:
-    from .qdrant_backend import QdrantBackend
+    from .qdrant_backend import QdrantBackend  # noqa: F401
 
     __all__.append("QdrantBackend")
 except ImportError:
@@ -29,7 +29,7 @@ except ImportError:
 
 # VikingDB backend is optional
 try:
-    from .vikingdb_backend import VikingDBBackend
+    from .vikingdb_backend import VikingDBBackend  # noqa: F401
 
     __all__.append("VikingDBBackend")
 except ImportError:

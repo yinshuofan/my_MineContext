@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,6 +6,7 @@ OpenContext module: llm_client
 """
 
 import asyncio
+import contextlib
 import time as _time
 from enum import Enum
 from typing import Any
@@ -135,12 +135,10 @@ class LLMClient:
             except APIError as e:
                 logger.exception(f"OpenAI API async error: {e}")
                 # Record failure
-                try:
+                with contextlib.suppress(ImportError):
                     await record_processing_stage(
                         "chat_cost", int((time.time() - request_start) * 1000), status="failure"
                     )
-                except ImportError:
-                    pass
                 raise
         finally:
             self._sem.release()
@@ -425,7 +423,9 @@ class LLMClient:
 
             # 1. Check for specific Volcengine/Doubao error codes
             volcengine_errors = {
-                "AccessDenied": "Access denied. Please ensure the model is enabled in the Volcengine console.",
+                "AccessDenied": (
+                    "Access denied. Please ensure the model is enabled in the Volcengine console."
+                ),
                 "QuotaExceeded": "Quota exceeded. Please check your Volcengine account balance.",
                 "ModelAccountIpmRateLimitExceeded": "Model rate limit (IPM) exceeded.",
                 "AccountRateLimitExceeded": "Account rate limit exceeded.",

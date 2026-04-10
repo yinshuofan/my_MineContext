@@ -33,7 +33,7 @@ class BaseNode(ABC):
         start_time = tz_now()
         try:
             state = await self.process(state)
-            duration = (tz_now() - start_time).total_seconds()
+            _duration = (tz_now() - start_time).total_seconds()
             return state
         except Exception as e:
             self.logger.exception(f"Node execution failed: {e}")

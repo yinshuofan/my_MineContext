@@ -35,7 +35,9 @@ class CompletionRequest(BaseModel):
     document_id: int | None = Field(None, description="Document ID")
     completion_types: list | None = Field(
         default=None,
-        description="Specify completion types, e.g., ['semantic_continuation', 'template_completion']",
+        description=(
+            "Specify completion types, e.g., ['semantic_continuation', 'template_completion']"
+        ),
     )
     max_suggestions: int | None = Field(default=3, description="Maximum number of suggestions")
     context: dict[str, Any] | None = Field(
@@ -102,7 +104,8 @@ async def get_completion_suggestions(request: CompletionRequest, _auth: str = au
         suggestion_dicts = [s.to_dict() for s in suggestions]
 
         logger.info(
-            f"Returned {len(suggestion_dicts)} completion suggestions, processing time: {processing_time:.2f}ms"
+            f"Returned {len(suggestion_dicts)} completion suggestions, "
+            f"processing time: {processing_time:.2f}ms"
         )
 
         return JSONResponse(
@@ -158,7 +161,11 @@ async def get_completion_suggestions_stream(
 
             for comp_type in completion_types:
                 # Send processing status
-                yield f"data: {json.dumps({'type': 'processing', 'completion_type': comp_type.value})}\n\n"
+                processing_data = {
+                    "type": "processing",
+                    "completion_type": comp_type.value,
+                }
+                yield f"data: {json.dumps(processing_data)}\n\n"
 
                 # Get completions for this type
                 suggestions = await completion_service.get_completions(
@@ -176,13 +183,21 @@ async def get_completion_suggestions_stream(
 
                     # Send suggestions for this type
                     for suggestion in type_suggestions:
-                        yield f"data: {json.dumps({'type': 'suggestion', 'data': suggestion.to_dict()})}\n\n"
+                        suggestion_data = {
+                            "type": "suggestion",
+                            "data": suggestion.to_dict(),
+                        }
+                        yield f"data: {json.dumps(suggestion_data)}\n\n"
 
                 # Small delay to simulate processing time
                 await asyncio.sleep(0.1)
 
             # Send completion event
-            yield f"data: {json.dumps({'type': 'complete', 'total_suggestions': len(all_suggestions)})}\n\n"
+            complete_data = {
+                "type": "complete",
+                "total_suggestions": len(all_suggestions),
+            }
+            yield f"data: {json.dumps(complete_data)}\n\n"
             yield "data: [DONE]\n\n"
 
         except Exception as e:

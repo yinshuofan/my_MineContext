@@ -183,9 +183,7 @@ def create_cleanup_handler(
         context_merger=context_merger, storage=storage, retention_days=retention_days
     )
 
-    async def handler(
-        user_id: str | None, device_id: str | None, agent_id: str | None
-    ) -> bool:
+    async def handler(user_id: str | None, device_id: str | None, agent_id: str | None) -> bool:
         # Global task, user info is not used
         context = TaskContext(
             user_id=user_id or "global",

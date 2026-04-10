@@ -8,10 +8,10 @@
 Context type and constant enumeration definitions
 """
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class ContextSource(str, Enum):
+class ContextSource(StrEnum):
     """Context source enumeration"""
 
     VAULT = "vault"
@@ -21,7 +21,7 @@ class ContextSource(str, Enum):
     CHAT_LOG = "chat_log"
 
 
-class FileType(str, Enum):
+class FileType(StrEnum):
     """File type enumeration"""
 
     # 文档类型
@@ -52,7 +52,8 @@ class FileType(str, Enum):
     TXT = "txt"
 
 
-# Structured document type constants - these document types should be processed by specialized structured chunkers
+# Structured document type constants — these document types should be
+# processed by specialized structured chunkers
 
 STRUCTURED_FILE_TYPES = {
     FileType.XLSX,
@@ -64,7 +65,7 @@ STRUCTURED_FILE_TYPES = {
 }
 
 
-class ContentFormat(str, Enum):
+class ContentFormat(StrEnum):
     """Content format enumeration"""
 
     TEXT = "text"
@@ -74,7 +75,7 @@ class ContentFormat(str, Enum):
     FILE = "file"
 
 
-class ContextType(str, Enum):
+class ContextType(StrEnum):
     """Context type enumeration — core types with clear update strategy and storage location"""
 
     PROFILE = "profile"
@@ -92,7 +93,7 @@ class ContextType(str, Enum):
     AGENT_BASE_PROFILE = "agent_base_profile"
 
 
-class UpdateStrategy(str, Enum):
+class UpdateStrategy(StrEnum):
     """Update strategy enumeration"""
 
     OVERWRITE = "overwrite"  # profile, document
@@ -151,7 +152,7 @@ MEMORY_OWNER_TYPES = {
 # index 0=L0, 1=L1, 2=L2, 3=L3
 
 
-class VaultType(str, Enum):
+class VaultType(StrEnum):
     """Document type enumeration"""
 
     DAILY_REPORT = "DailyReport"
@@ -163,22 +164,35 @@ ContextSimpleDescriptions = {
     ContextType.PROFILE: {
         "name": ContextType.PROFILE.value,
         "description": "User profile and preferences management",
-        "purpose": "Store and maintain user's personal information, preferences, habits, and communication style. Supports overwrite-based updates.",
+        "purpose": (
+            "Store and maintain user's personal information, preferences,"
+            " habits, and communication style. Supports overwrite-based updates."
+        ),
     },
     ContextType.DOCUMENT: {
         "name": ContextType.DOCUMENT.value,
         "description": "Document and file content management",
-        "purpose": "Store and retrieve content from uploaded documents, files, and web links. Chunks are vector-searchable and overwritten when source is re-uploaded.",
+        "purpose": (
+            "Store and retrieve content from uploaded documents, files, and web links."
+            " Chunks are vector-searchable and overwritten when source is re-uploaded."
+        ),
     },
     ContextType.EVENT: {
         "name": ContextType.EVENT.value,
         "description": "Event and activity history records",
-        "purpose": "Immutable records of behavioral activities, status changes, chat summaries, meetings, and other time-stamped events.",
+        "purpose": (
+            "Immutable records of behavioral activities, status changes,"
+            " chat summaries, meetings, and other time-stamped events."
+        ),
     },
     ContextType.KNOWLEDGE: {
         "name": ContextType.KNOWLEDGE.value,
         "description": "Knowledge concepts and operational procedures",
-        "purpose": "Reusable knowledge including concepts, technical principles, operation workflows, and learning patterns. Similar entries are merged to avoid duplication.",
+        "purpose": (
+            "Reusable knowledge including concepts, technical principles,"
+            " operation workflows, and learning patterns."
+            " Similar entries are merged to avoid duplication."
+        ),
     },
     ContextType.DAILY_SUMMARY: {
         "name": "Daily Summary",
@@ -198,17 +212,25 @@ ContextSimpleDescriptions = {
     ContextType.AGENT_PROFILE: {
         "name": "Agent Profile",
         "description": "Agent's perception and knowledge about a specific user",
-        "purpose": "Stores the agent's subjective understanding of user personality, preferences, and relationship",
+        "purpose": (
+            "Stores the agent's subjective understanding of"
+            " user personality, preferences, and relationship"
+        ),
     },
     ContextType.AGENT_BASE_EVENT: {
         "name": "Agent Base Event",
         "description": "Pre-configured base event for an agent, not tied to any specific user.",
-        "purpose": "Provides foundational event knowledge that the agent can reference across all user interactions.",
+        "purpose": (
+            "Provides foundational event knowledge that the agent"
+            " can reference across all user interactions."
+        ),
     },
     ContextType.AGENT_BASE_L1_SUMMARY: {
         "name": "Agent Base L1 Summary",
         "description": "Level 1 summary of agent base events.",
-        "purpose": "Groups related base events into a higher-level summary for efficient retrieval.",
+        "purpose": (
+            "Groups related base events into a higher-level summary for efficient retrieval."
+        ),
     },
     ContextType.AGENT_BASE_L2_SUMMARY: {
         "name": "Agent Base L2 Summary",
@@ -223,14 +245,22 @@ ContextSimpleDescriptions = {
     ContextType.AGENT_BASE_PROFILE: {
         "name": "Agent Base Profile",
         "description": "Pre-configured base profile for an agent, not tied to any specific user.",
-        "purpose": "Provides the agent's foundational personality, knowledge, and behavioral traits that apply across all user interactions.",
+        "purpose": (
+            "Provides the agent's foundational personality, knowledge,"
+            " and behavioral traits that apply across all user interactions."
+        ),
     },
 }
 
 ContextDescriptions = {
     ContextType.PROFILE: {
         "name": ContextType.PROFILE.value,
-        "description": """User profile and preferences — Store the user's own personal information, preferences, habits, communication style, and self-descriptions. This type answers "who is this user" and is overwritten (merged) with each update.""",
+        "description": (
+            "User profile and preferences — Store the user's own personal"
+            " information, preferences, habits, communication style, and"
+            ' self-descriptions. This type answers "who is this user" and'
+            " is overwritten (merged) with each update."
+        ),
         "key_indicators": [
             "Contains the user's own personal information or self-description",
             "Describes user preferences, habits, or communication style",
@@ -246,7 +276,12 @@ ContextDescriptions = {
     },
     ContextType.DOCUMENT: {
         "name": ContextType.DOCUMENT.value,
-        "description": """Document and file content — Content extracted from uploaded documents, files, and web links. Stored as vector-searchable chunks. When the same source is re-uploaded, old chunks are replaced.""",
+        "description": (
+            "Document and file content — Content extracted from uploaded"
+            " documents, files, and web links. Stored as vector-searchable"
+            " chunks. When the same source is re-uploaded, old chunks"
+            " are replaced."
+        ),
         "key_indicators": [
             "Content originates from an uploaded file or web link",
             "Contains structured document content (paragraphs, tables, code)",
@@ -261,7 +296,12 @@ ContextDescriptions = {
     },
     ContextType.EVENT: {
         "name": ContextType.EVENT.value,
-        "description": """Event and activity records — Immutable records of specific actions, activities, status changes, meetings, and conversations. This type answers "what happened" and is never modified after creation.""",
+        "description": (
+            "Event and activity records — Immutable records of specific"
+            " actions, activities, status changes, meetings, and"
+            ' conversations. This type answers "what happened" and is'
+            " never modified after creation."
+        ),
         "key_indicators": [
             "Describes a specific action or activity that occurred",
             "Records participation in meetings, discussions, or events",
@@ -279,7 +319,12 @@ ContextDescriptions = {
     },
     ContextType.KNOWLEDGE: {
         "name": ContextType.KNOWLEDGE.value,
-        "description": """Knowledge and procedures — Reusable knowledge including concept definitions, technical principles, operation workflows, and learned patterns. Similar entries are merged to avoid duplication.""",
+        "description": (
+            "Knowledge and procedures — Reusable knowledge including"
+            " concept definitions, technical principles, operation"
+            " workflows, and learned patterns. Similar entries are"
+            " merged to avoid duplication."
+        ),
         "key_indicators": [
             "Contains definitions or explanations of concepts",
             "Describes system architectures, design patterns, or technical stacks",

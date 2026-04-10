@@ -163,10 +163,7 @@ class CompletionService:
             return False
 
         # Check if in the middle of a word
-        if cursor_pos < len(text) and text[cursor_pos].isalnum():
-            return False
-
-        return True
+        return not (cursor_pos < len(text) and text[cursor_pos].isalnum())
 
     def _extract_context(self, text: str, cursor_pos: int) -> dict[str, Any]:
         """Extract context information"""

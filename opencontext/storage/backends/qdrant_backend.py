@@ -3,6 +3,7 @@
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib
 import datetime
 import json
 from collections.abc import AsyncGenerator
@@ -52,7 +53,8 @@ class QdrantBackend(IVectorStorageBackend):
 
             self._initialized = True
             logger.info(
-                f"Qdrant vector backend initialized successfully, created {len(self._collections)} collections"
+                f"Qdrant vector backend initialized successfully, "
+                f"created {len(self._collections)} collections"
             )
             return True
 
@@ -512,7 +514,7 @@ class QdrantBackend(IVectorStorageBackend):
                 vectorize_dict["vector"] = vector
 
             metadata_field_names = set()
-            context_type_value = payload.get("context_type")
+            payload.get("context_type")
 
             for key, value in payload.items():
                 if key.endswith("_ts"):
@@ -520,10 +522,8 @@ class QdrantBackend(IVectorStorageBackend):
 
                 val = value
                 if isinstance(value, str) and value.startswith(("{", "[")):
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError, TypeError):
                         val = json.loads(value)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
 
                 if key in extracted_data_field_names:
                     extracted_data_dict[key] = val
@@ -666,7 +666,7 @@ class QdrantBackend(IVectorStorageBackend):
             return {}
 
         result = {}
-        for context_type in self._collections.keys():
+        for context_type in self._collections:
             result[context_type] = await self.get_processed_context_count(context_type)
 
         return result
@@ -784,7 +784,7 @@ class QdrantBackend(IVectorStorageBackend):
 
         results = []
 
-        for ct, collection_name in target_collections.items():
+        for _ct, collection_name in target_collections.items():
             try:
                 points = await self._client.retrieve(
                     collection_name=collection_name,

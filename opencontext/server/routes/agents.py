@@ -196,11 +196,11 @@ def _parse_event_time(
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=get_timezone())
         return dt
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:
         raise HTTPException(
             status_code=400,
             detail=f"{node_path}: invalid ISO 8601 format for {field_name}: '{value}'",
-        )
+        ) from e
 
 
 def _flatten_base_event_tree(
@@ -358,7 +358,8 @@ async def set_base_profile(
 ):
     """Set or overwrite the agent's base profile.
 
-    The base profile is stored with ``context_type="agent_base_profile"`` to distinguish it from per-user profiles.
+    The base profile is stored with ``context_type="agent_base_profile"``
+    to distinguish it from per-user profiles.
     """
     storage = get_storage()
     agent = await storage.get_agent(agent_id)

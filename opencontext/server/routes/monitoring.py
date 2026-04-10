@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -21,7 +20,8 @@ router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 
 @router.get("/overview")
 async def get_system_overview(
-    opencontext: OpenContext = Depends(get_context_lab), _auth: str = auth_dependency
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
+    _auth: str = auth_dependency,
 ):
     """
     Get system monitoring overview
@@ -31,13 +31,15 @@ async def get_system_overview(
         overview = await monitor.get_system_overview()
         return {"success": True, "data": overview}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get system overview: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get system overview: {str(e)}"
+        ) from e
 
 
 @router.get("/context-types")
 async def get_context_type_stats(
-    force_refresh: bool = Query(False, description="Whether to force refresh cache"),
-    opencontext: OpenContext = Depends(get_context_lab),
+    force_refresh: bool = Query(False, description="Whether to force refresh cache"),  # noqa: B008
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """
@@ -49,8 +51,9 @@ async def get_context_type_stats(
         return {"success": True, "data": stats}
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get context type statistics: {str(e)}"
-        )
+            status_code=500,
+            detail=f"Failed to get context type statistics: {str(e)}",
+        ) from e
 
 
 @router.get("/token-usage")
@@ -67,8 +70,9 @@ async def get_token_usage_summary(
         return {"success": True, "data": summary}
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get token usage statistics: {str(e)}"
-        )
+            status_code=500,
+            detail=f"Failed to get token usage statistics: {str(e)}",
+        ) from e
 
 
 @router.get("/processing")
@@ -85,8 +89,9 @@ async def get_processing_metrics(
         return {"success": True, "data": metrics}
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get processing performance metrics: {str(e)}"
-        )
+            status_code=500,
+            detail=f"Failed to get processing performance metrics: {str(e)}",
+        ) from e
 
 
 @router.get("/stage-timing")
@@ -102,7 +107,10 @@ async def get_stage_timing_metrics(
         metrics = await monitor.get_stage_timing_summary(hours=hours)
         return {"success": True, "data": metrics}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get stage timing metrics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get stage timing metrics: {str(e)}",
+        ) from e
 
 
 @router.get("/data-stats")
@@ -118,7 +126,10 @@ async def get_data_stats(
         stats = await monitor.get_data_stats_summary(hours=hours)
         return {"success": True, "data": stats}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get data statistics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get data statistics: {str(e)}",
+        ) from e
 
 
 @router.get("/data-stats-trend")
@@ -135,14 +146,15 @@ async def get_data_stats_trend(
         return {"success": True, "data": trend}
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get data statistics trend: {str(e)}"
-        )
+            status_code=500,
+            detail=f"Failed to get data statistics trend: {str(e)}",
+        ) from e
 
 
 @router.get("/data-stats-range")
 async def get_data_stats_by_range(
-    start_time: datetime = Query(..., description="Start time of the query range (ISO format)"),
-    end_time: datetime = Query(..., description="End time of the query range (ISO format)"),
+    start_time: datetime = Query(..., description="Start time of the query range (ISO format)"),  # noqa: B008
+    end_time: datetime = Query(..., description="End time of the query range (ISO format)"),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """
@@ -160,13 +172,15 @@ async def get_data_stats_by_range(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get data statistics by range: {str(e)}"
-        )
+            status_code=500,
+            detail=f"Failed to get data statistics by range: {str(e)}",
+        ) from e
 
 
 @router.post("/refresh-context-stats")
 async def refresh_context_type_stats(
-    opencontext: OpenContext = Depends(get_context_lab), _auth: str = auth_dependency
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
+    _auth: str = auth_dependency,
 ):
     """
     Refresh context type statistics cache
@@ -176,7 +190,10 @@ async def refresh_context_type_stats(
         stats = await monitor.get_context_type_stats(force_refresh=True)
         return {"success": True, "data": stats, "message": "Statistics data refreshed"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to refresh statistics data: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh statistics data: {str(e)}",
+        ) from e
 
 
 @router.get("/health")
@@ -208,7 +225,10 @@ async def get_processing_errors(
         errors = monitor.get_processing_errors(hours=hours, top_n=top)
         return {"success": True, "data": errors}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get processing errors: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get processing errors: {str(e)}",
+        ) from e
 
 
 @router.get("/scheduler")
@@ -222,14 +242,18 @@ async def get_scheduler_metrics(
         summary = monitor.get_scheduler_summary(hours=hours)
         return {"success": True, "data": summary}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get scheduler metrics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get scheduler metrics: {str(e)}",
+        ) from e
 
 
 @router.get("/scheduler/queues")
 async def get_scheduler_queue_depths(
     _auth: str = auth_dependency,
 ):
-    """Get current queue depths and enabled status for all scheduler task types (real-time from Redis)"""
+    """Get current queue depths and enabled status for all scheduler
+    task types (real-time from Redis)."""
     try:
         import json
 
@@ -267,7 +291,7 @@ async def get_scheduler_queue_depths(
         queues = await read_scheduler_queue_status(redis_cache, all_task_types)
         return {"success": True, "data": {"queues": queues}}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get queue depths: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get queue depths: {str(e)}") from e
 
 
 @router.get("/scheduler/failures")
@@ -298,7 +322,10 @@ async def get_scheduler_failures(
 
         return {"success": True, "data": failure_data}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get scheduler failures: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get scheduler failures: {str(e)}",
+        ) from e
 
 
 @router.post("/trigger-task")
@@ -375,4 +402,4 @@ async def trigger_task(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Task execution failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Task execution failed: {str(e)}") from e

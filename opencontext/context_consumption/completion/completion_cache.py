@@ -378,7 +378,7 @@ class CompletionCache:
                 self._hot_keys.clear()
                 logger.info("All local cache cleared")
             else:
-                keys_to_remove = [key for key in self._local_cache.keys() if pattern in key]
+                keys_to_remove = [key for key in self._local_cache if pattern in key]
                 for key in keys_to_remove:
                     self._evict_local(key)
                 logger.info(

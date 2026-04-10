@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -47,7 +46,7 @@ async def read_contexts(
     hierarchy_level: int | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    opencontext: OpenContext = Depends(get_context_lab),
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
 ):
     storage = get_storage()
     if storage is None:

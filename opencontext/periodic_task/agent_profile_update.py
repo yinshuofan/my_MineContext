@@ -1,6 +1,5 @@
 """Agent Profile Update Task — updates agent_profile from daily events."""
 
-
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.enums import ContextType

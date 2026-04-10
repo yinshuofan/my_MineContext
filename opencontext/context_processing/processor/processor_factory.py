@@ -8,7 +8,6 @@ Processor component factory implementing the Factory design pattern.
 Provides centralized creation and management of processor instances.
 """
 
-
 from opencontext.config import GlobalConfig
 from opencontext.context_processing.processor.agent_memory_processor import AgentMemoryProcessor
 from opencontext.context_processing.processor.document_processor import DocumentProcessor

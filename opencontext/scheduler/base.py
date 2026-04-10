@@ -10,18 +10,18 @@ import abc
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class TriggerMode(str, Enum):
+class TriggerMode(StrEnum):
     """Task trigger mode"""
 
     USER_ACTIVITY = "user_activity"  # Triggered by user activity, delayed execution
     PERIODIC = "periodic"  # Fixed interval execution
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Task execution status"""
 
     PENDING = "pending"  # Waiting to be executed
@@ -207,7 +207,8 @@ class ITaskScheduler(abc.ABC):
 
         Args:
             task_type: Name of the task type
-            handler: Async function that takes (user_id, device_id, agent_id) and returns success bool
+            handler: Async function that takes (user_id, device_id,
+                agent_id) and returns success bool
 
         Returns:
             True if registration successful

@@ -1,4 +1,3 @@
-
 """
 Event Search Service — reusable search logic for routes and processors.
 
@@ -196,11 +195,11 @@ class EventSearchService:
         ]
         if levels:
             result = []
-            for l in levels:
-                if l < len(user_types):
-                    result.append(user_types[l].value)
-                if l < len(base_types):
-                    result.append(base_types[l].value)
+            for level in levels:
+                if level < len(user_types):
+                    result.append(user_types[level].value)
+                if level < len(base_types):
+                    result.append(base_types[level].value)
             return result
         return [t.value for t in user_types + base_types]
 
@@ -250,7 +249,7 @@ class EventSearchService:
         seen = set()
         current_batch = []
 
-        for ctx, score in results:
+        for ctx, _score in results:
             seen.add(ctx.id)
             if not ctx.properties or not ctx.properties.refs:
                 continue

@@ -5,10 +5,10 @@ Enum Definition Module
 Defines all enumeration types to avoid magic strings
 """
 
-from enum import Enum
+from enum import StrEnum
 
 
-class NodeType(str, Enum):
+class NodeType(StrEnum):
     """Node type enumeration"""
 
     INTENT = "intent"
@@ -17,7 +17,7 @@ class NodeType(str, Enum):
     REFLECT = "reflect"
 
 
-class WorkflowStage(str, Enum):
+class WorkflowStage(StrEnum):
     """Workflow stage enumeration"""
 
     INIT = "init"
@@ -30,7 +30,7 @@ class WorkflowStage(str, Enum):
     NEXT = "next"
 
 
-class DataSource(str, Enum):
+class DataSource(StrEnum):
     """Data source type enumeration"""
 
     DOCUMENT = "document"  # Document library
@@ -42,7 +42,7 @@ class DataSource(str, Enum):
     UNKNOWN = "unknown"  # Unknown source
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Task status enumeration"""
 
     PENDING = "pending"
@@ -53,7 +53,7 @@ class TaskStatus(str, Enum):
     INSUFFICIENT_INFO = "insufficient_info"
 
 
-class ActionType(str, Enum):
+class ActionType(StrEnum):
     """Action type enumeration"""
 
     ANSWER = "answer"
@@ -62,7 +62,7 @@ class ActionType(str, Enum):
     GENERATE = "generate"
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """Event type enumeration"""
 
     THINKING = "thinking"
@@ -75,12 +75,14 @@ class EventType(str, Enum):
     STREAM_COMPLETE = "stream_complete"
 
 
-class QueryType(str, Enum):
+class QueryType(StrEnum):
     """Query type enumeration - five categories"""
 
     SIMPLE_CHAT = "simple_chat"  # Simple chat (daily greetings, small talk, etc.)
-    DOCUMENT_EDIT = "document_edit"  # Document editing and rewriting (preserving existing facts/not introducing new information)
-    QA_ANALYSIS = "qa_analysis"  # Q&A (covering summarization, analysis, and dialogue based on documents and complex context)
+    # Document editing and rewriting (preserving existing facts/not introducing new info)
+    DOCUMENT_EDIT = "document_edit"
+    # Q&A (covering summarization, analysis, and dialogue based on documents and complex context)
+    QA_ANALYSIS = "qa_analysis"
     CONTENT_GENERATION = (
         "content_generation"  # Document content generation/expansion (allowing new information)
     )
@@ -89,7 +91,7 @@ class QueryType(str, Enum):
     )
 
 
-class ContextSufficiency(str, Enum):
+class ContextSufficiency(StrEnum):
     """Context sufficiency enumeration"""
 
     SUFFICIENT = "sufficient"  # Sufficient
@@ -98,7 +100,7 @@ class ContextSufficiency(str, Enum):
     UNKNOWN = "unknown"  # Unknown
 
 
-class ReflectionType(str, Enum):
+class ReflectionType(StrEnum):
     """Reflection type enumeration"""
 
     SUCCESS = "success"  # Successfully completed

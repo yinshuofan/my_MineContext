@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -51,8 +50,10 @@ class DocumentRetrievalTool(BaseContextRetrievalTool):
 - When needing to locate references, definitions, or details stored in files
 
 **Two modes of operation:**
-1. **With query** (semantic search): Provide a natural language query to find semantically relevant document chunks
-   - Example: "API authentication requirements", "project budget estimates", "deployment instructions"
+1. **With query** (semantic search): Provide a natural language query \
+to find semantically relevant document chunks
+   - Example: "API authentication requirements", \
+"project budget estimates", "deployment instructions"
 2. **Without query** (filter-only): Retrieve document chunks based on time range and/or entities
    - Example: Get all documents added this week, or documents mentioning specific topics
 

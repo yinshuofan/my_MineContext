@@ -242,16 +242,17 @@ async def update_model_settings(
                 return convert_resp(code=500, status=500, message="Failed to save settings")
 
             # Reinitialize clients that were updated
-            if "vlm_model" in new_settings:
-                if not GlobalVLMClient.get_instance().reinitialize():
-                    return convert_resp(
-                        code=500, status=500, message="Failed to reinitialize VLM client"
-                    )
-            if "embedding_model" in new_settings:
-                if not GlobalEmbeddingClient.get_instance().reinitialize():
-                    return convert_resp(
-                        code=500, status=500, message="Failed to reinitialize embedding client"
-                    )
+            if "vlm_model" in new_settings and not GlobalVLMClient.get_instance().reinitialize():
+                return convert_resp(
+                    code=500, status=500, message="Failed to reinitialize VLM client"
+                )
+            if (
+                "embedding_model" in new_settings
+                and not GlobalEmbeddingClient.get_instance().reinitialize()
+            ):
+                return convert_resp(
+                    code=500, status=500, message="Failed to reinitialize embedding client"
+                )
 
             logger.info("Model settings updated successfully")
             return convert_resp(
@@ -453,7 +454,10 @@ async def update_prompts(request: PromptsUpdateRequest, _auth: str = auth_depend
 
 
 @router.post("/api/settings/prompts/import")
-async def import_prompts(file: UploadFile = File(...), _auth: str = auth_dependency):
+async def import_prompts(
+    file: UploadFile = File(...),  # noqa: B008
+    _auth: str = auth_dependency,
+):
     """Import prompts from YAML file"""
     try:
         prompt_mgr = GlobalConfig.get_instance().get_prompt_manager()
@@ -550,15 +554,13 @@ async def reset_settings(_auth: str = auth_dependency):
 
             success = True
 
-            if config_mgr:
-                if not await config_mgr.reset_user_settings_async():
-                    success = False
-                    logger.error("Failed to reset user settings")
+            if config_mgr and not await config_mgr.reset_user_settings_async():
+                success = False
+                logger.error("Failed to reset user settings")
 
-            if prompt_mgr:
-                if not prompt_mgr.reset_user_prompts():
-                    success = False
-                    logger.error("Failed to reset user prompts")
+            if prompt_mgr and not prompt_mgr.reset_user_prompts():
+                success = False
+                logger.error("Failed to reset user prompts")
 
             if not success:
                 return convert_resp(code=500, status=500, message="Failed to reset some settings")

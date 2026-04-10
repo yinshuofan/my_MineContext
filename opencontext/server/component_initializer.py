@@ -96,7 +96,8 @@ class ComponentInitializer:
             module_path = f"opencontext.context_capture.{name}"
             class_name = f"{self._to_camel_case(name)}Capture"
             logger.info(
-                f"Auto-inferred capture component '{name}' module='{module_path}' and class='{class_name}'"
+                f"Auto-inferred capture component '{name}' "
+                f"module='{module_path}' and class='{class_name}'"
             )
 
         module = importlib.import_module(module_path)
@@ -133,7 +134,8 @@ class ComponentInitializer:
                     if processor:
                         processor_manager.register_processor(processor)
                         logger.info(
-                            f"Processor component '{processor_type}' created and registered successfully"
+                            f"Processor component '{processor_type}' "
+                            "created and registered successfully"
                         )
                     else:
                         logger.error(f"Failed to create processor component '{processor_type}'")
@@ -179,7 +181,9 @@ class ComponentInitializer:
         """
         scheduler_config = self.config.get("scheduler", {})
         logger.debug(
-            f"initialize_task_scheduler: scheduler.enabled={scheduler_config.get('enabled')}, type={type(scheduler_config.get('enabled')).__name__}"
+            f"initialize_task_scheduler: scheduler.enabled="
+            f"{scheduler_config.get('enabled')}, "
+            f"type={type(scheduler_config.get('enabled')).__name__}"
         )
         if not scheduler_config.get("enabled", False):
             logger.info("Task scheduler not enabled in configuration")

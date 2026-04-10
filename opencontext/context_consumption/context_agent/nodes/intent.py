@@ -58,7 +58,8 @@ class IntentNode(BaseNode):
         return state
 
     async def _classify_query(self, query: str, chat_history: list[dict[str, str]]) -> QueryType:
-        """Use LLM to classify query types, including confidence assessment and fallback strategies"""
+        """Use LLM to classify query types, including confidence
+        assessment and fallback strategies"""
         prompt_group = get_prompt_group("chat_workflow.query_classification")
         messages = [
             {"role": "system", "content": prompt_group["system"]},

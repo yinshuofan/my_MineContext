@@ -1,4 +1,3 @@
-
 """
 Event Search API - Request/Response Models
 """
@@ -58,7 +57,10 @@ class EventSearchRequest(BaseModel):
         default=None,
         ge=0.0,
         le=1.0,
-        description="Minimum similarity score (0-1). Results below this score are filtered out. Default: no threshold.",
+        description=(
+            "Minimum similarity score (0-1). Results below this "
+            "score are filtered out. Default: no threshold."
+        ),
     )
     user_id: str | None = Field(
         default=None, description="User identifier for multi-user filtering"
@@ -78,7 +80,8 @@ class EventSearchRequest(BaseModel):
         has_levels = bool(self.hierarchy_levels)
         if not any([has_query, has_ids, has_time, has_levels]):
             raise ValueError(
-                "At least one search criterion required: query, event_ids, time_range, or hierarchy_levels"
+                "At least one search criterion required: "
+                "query, event_ids, time_range, or hierarchy_levels"
             )
         return self
 

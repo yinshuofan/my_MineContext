@@ -8,6 +8,7 @@ Command-line interface - provides the entry point for command-line tools
 
 import argparse
 import asyncio
+import contextlib
 import os
 import signal
 import sys
@@ -292,7 +293,7 @@ app.add_middleware(
 )
 
 # Add Request ID middleware (added after CORS so it runs first due to LIFO ordering)
-from opencontext.server.middleware.request_id import RequestIDMiddleware
+from opencontext.server.middleware.request_id import RequestIDMiddleware  # noqa: E402
 
 app.add_middleware(RequestIDMiddleware)
 
@@ -378,10 +379,9 @@ def _run_headless_mode(*, enable_capture: bool, enable_scheduler: bool) -> int:
             logger.info("Running in headless mode. Waiting for shutdown signal...")
             stop_event = asyncio.Event()
             loop = asyncio.get_running_loop()
-            try:
+            with contextlib.suppress(NotImplementedError):
+                # Windows: rely on KeyboardInterrupt via asyncio.run()
                 loop.add_signal_handler(signal.SIGTERM, stop_event.set)
-            except NotImplementedError:
-                pass  # Windows: rely on KeyboardInterrupt via asyncio.run()
 
             await stop_event.wait()
         finally:

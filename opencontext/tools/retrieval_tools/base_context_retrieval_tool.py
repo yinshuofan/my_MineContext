@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -95,7 +94,8 @@ class BaseContextRetrievalTool(BaseTool):
         Args:
             query: Optional search query. If provided, performs semantic search.
                   If None, performs filter-only retrieval.
-            filters: Filter conditions (includes user_id, device_id, agent_id for multi-user filtering)
+            filters: Filter conditions (includes user_id, device_id,
+                agent_id for multi-user filtering)
             top_k: Number of results to return
             image_url: Optional image URL for multimodal search
             video_url: Optional video URL for multimodal search
@@ -203,45 +203,85 @@ class BaseContextRetrievalTool(BaseTool):
         """
         context_desc = ContextSimpleDescriptions.get(cls.CONTEXT_TYPE, {})
 
+        ctx_type_val = cls.CONTEXT_TYPE.value
+        ctx_desc_text = context_desc.get("description", "")
+        time_range_desc = (
+            f"Time range filter for {ctx_type_val}. "
+            f"Context: {ctx_desc_text}. "
+            "Start and end must be pre-calculated integer timestamps."
+        )
+
         return {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Optional natural language query for semantic search. If not provided, will perform filter-only retrieval.",
+                    "description": (
+                        "Optional natural language query for semantic "
+                        "search. If not provided, will perform "
+                        "filter-only retrieval."
+                    ),
                 },
                 "image_url": {
                     "type": "string",
-                    "description": "Optional image URL for multimodal search. Can be an HTTP URL or data:image/...;base64,... string.",
+                    "description": (
+                        "Optional image URL for multimodal search. "
+                        "Can be an HTTP URL or "
+                        "data:image/...;base64,... string."
+                    ),
                 },
                 "video_url": {
                     "type": "string",
-                    "description": "Optional video URL for multimodal search. Can be an HTTP URL or data:video/...;base64,... string.",
+                    "description": (
+                        "Optional video URL for multimodal search. "
+                        "Can be an HTTP URL or "
+                        "data:video/...;base64,... string."
+                    ),
                 },
                 "entities": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Entity list for filtering records containing specific entities (e.g., person names, project names). For current user, use 'current_user'",
+                    "description": (
+                        "Entity list for filtering records containing "
+                        "specific entities (e.g., person names, project "
+                        "names). For current user, use 'current_user'"
+                    ),
                 },
                 "time_range": {
                     "type": "object",
                     "properties": {
                         "start": {
                             "type": "integer",
-                            "description": "Start timestamp in seconds (Unix epoch). MUST be a calculated integer, not a string or expression",
+                            "description": (
+                                "Start timestamp in seconds (Unix epoch). "
+                                "MUST be a calculated integer, not a "
+                                "string or expression"
+                            ),
                         },
                         "end": {
                             "type": "integer",
-                            "description": "End timestamp in seconds (Unix epoch). MUST be a calculated integer, not a string or expression",
+                            "description": (
+                                "End timestamp in seconds (Unix epoch). "
+                                "MUST be a calculated integer, not a "
+                                "string or expression"
+                            ),
                         },
                         "time_type": {
                             "type": "string",
-                            "enum": ["create_time_ts", "update_time_ts", "event_time_start_ts"],
+                            "enum": [
+                                "create_time_ts",
+                                "update_time_ts",
+                                "event_time_start_ts",
+                            ],
                             "default": "event_time_start_ts",
-                            "description": "Time type: create_time_ts (creation time), update_time_ts (update time), event_time_start_ts (event start time)",
+                            "description": (
+                                "Time type: create_time_ts (creation "
+                                "time), update_time_ts (update time), "
+                                "event_time_start_ts (event start time)"
+                            ),
                         },
                     },
-                    "description": f"Time range filter for {cls.CONTEXT_TYPE.value}. Context: {context_desc.get('description', '')}. Start and end must be pre-calculated integer timestamps.",
+                    "description": time_range_desc,
                 },
                 "top_k": {
                     "type": "integer",
@@ -253,15 +293,24 @@ class BaseContextRetrievalTool(BaseTool):
                 # Multi-user support parameters
                 "user_id": {
                     "type": "string",
-                    "description": "User identifier for multi-user filtering. Filter results to this specific user.",
+                    "description": (
+                        "User identifier for multi-user filtering. "
+                        "Filter results to this specific user."
+                    ),
                 },
                 "device_id": {
                     "type": "string",
-                    "description": "Device identifier for multi-user filtering. Filter results to this specific device.",
+                    "description": (
+                        "Device identifier for multi-user filtering. "
+                        "Filter results to this specific device."
+                    ),
                 },
                 "agent_id": {
                     "type": "string",
-                    "description": "Agent identifier for multi-user filtering. Filter results to this specific agent.",
+                    "description": (
+                        "Agent identifier for multi-user filtering. "
+                        "Filter results to this specific agent."
+                    ),
                 },
             },
             "required": [],

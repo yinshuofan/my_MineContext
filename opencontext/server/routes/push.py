@@ -78,15 +78,11 @@ class PushChatRequest(BaseModel):
         max_length=100,
         description="Chat messages (OpenAI format: [{role, content}])",
     )
-    user_id: str | None = Field(
-        None, min_length=1, max_length=255, description="User identifier"
-    )
+    user_id: str | None = Field(None, min_length=1, max_length=255, description="User identifier")
     device_id: str | None = Field(
         None, min_length=1, max_length=100, description="Device identifier"
     )
-    agent_id: str | None = Field(
-        None, min_length=1, max_length=100, description="Agent identifier"
-    )
+    agent_id: str | None = Field(None, min_length=1, max_length=100, description="Agent identifier")
     processors: list[str] = Field(
         default=["user_memory"],
         description="Processors to run: 'user_memory', 'agent_memory', etc.",
@@ -101,9 +97,7 @@ class PushDocumentRequest(BaseModel):
     base64_data: str | None = Field(None, description="Base64 encoded document data")
     filename: str | None = Field(None, description="Filename for base64 uploads")
     content_type: str | None = Field(None, description="MIME type of the document")
-    user_id: str | None = Field(
-        None, min_length=1, max_length=255, description="User identifier"
-    )
+    user_id: str | None = Field(None, min_length=1, max_length=255, description="User identifier")
     device_id: str | None = Field(
         None, min_length=1, max_length=100, description="Device identifier"
     )
@@ -150,7 +144,7 @@ def _save_base64_to_temp_file(base64_data: str, filename: str, storage_dir: str 
         return file_path
     except Exception as e:
         logger.exception(f"Failed to save base64 data to file: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid base64 data: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid base64 data: {e}") from e
 
 
 # ============================================================================
@@ -214,14 +208,19 @@ def _save_media_base64(data_uri: str, media_type: str) -> str:
     if ext.lower() not in allowed_formats:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported {media_type} format: .{ext}. Allowed: {', '.join(sorted(allowed_formats))}",
+            detail=(
+                f"Unsupported {media_type} format: .{ext}. "
+                f"Allowed: {', '.join(sorted(allowed_formats))}"
+            ),
         )
 
     # Decode and validate size
     try:
         file_data = base64.b64decode(base64_data)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid base64 data for {media_type}: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid base64 data for {media_type}: {e}"
+        ) from e
 
     max_size = _MAX_IMAGE_SIZE_BYTES if media_type == "image" else _MAX_VIDEO_SIZE_BYTES
     if len(file_data) > max_size:
@@ -330,13 +329,18 @@ async def _upload_or_save_media(obj_storage, data_uri: str, media_type: str, use
     if ext.lower() not in allowed_formats:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported {media_type} format: .{ext}. Allowed: {', '.join(sorted(allowed_formats))}",
+            detail=(
+                f"Unsupported {media_type} format: .{ext}. "
+                f"Allowed: {', '.join(sorted(allowed_formats))}"
+            ),
         )
 
     try:
         file_data = base64.b64decode(base64_data)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid base64 data for {media_type}: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid base64 data for {media_type}: {e}"
+        ) from e
 
     max_size = _MAX_IMAGE_SIZE_BYTES if media_type == "image" else _MAX_VIDEO_SIZE_BYTES
     if len(file_data) > max_size:
@@ -385,7 +389,7 @@ async def _upload_or_save_media(obj_storage, data_uri: str, media_type: str, use
 async def push_chat(
     request: PushChatRequest,
     background_tasks: BackgroundTasks,
-    opencontext: OpenContext = Depends(get_context_lab),
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """
@@ -413,8 +417,11 @@ async def push_chat(
             if not agent:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Agent '{request.agent_id}' is not registered. "
-                    f"Please register the agent via POST /api/agents before using agent_memory processor.",
+                    detail=(
+                        f"Agent '{request.agent_id}' is not registered. "
+                        "Please register the agent via POST /api/agents "
+                        "before using agent_memory processor."
+                    ),
                 )
 
         # Process multimodal messages: upload to object storage or save locally
@@ -527,7 +534,7 @@ async def push_chat(
 @router.post("/document", response_class=JSONResponse)
 async def push_document(
     request: PushDocumentRequest,
-    opencontext: OpenContext = Depends(get_context_lab),
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """
@@ -566,10 +573,10 @@ async def push_document(
 
 @router.post("/document/upload", response_class=JSONResponse)
 async def upload_document_file(
-    file: UploadFile = File(...),
-    user_id: str | None = Form(None),
-    device_id: str | None = Form(None),
-    opencontext: OpenContext = Depends(get_context_lab),
+    file: UploadFile = File(...),  # noqa: B008
+    user_id: str | None = Form(None),  # noqa: B008
+    device_id: str | None = Form(None),  # noqa: B008
+    opencontext: OpenContext = Depends(get_context_lab),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """

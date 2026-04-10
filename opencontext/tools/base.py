@@ -19,14 +19,17 @@ class BaseTool(ABC):
     """Base class for entity tools"""
 
     @classmethod
+    @abstractmethod
     def get_name(cls) -> str:
         """Get tool name"""
 
     @classmethod
+    @abstractmethod
     def get_description(cls) -> str:
         """Get tool description"""
 
     @classmethod
+    @abstractmethod
     def get_parameters(cls) -> dict[str, Any]:
         """Get tool parameters definition"""
 

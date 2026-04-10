@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -112,7 +111,8 @@ class MetricsCollector:
                     )
 
                     logger.debug(
-                        f"Retrieval {operation} completed in {duration_ms}ms, {snippets_count} snippets"
+                        f"Retrieval {operation} completed in"
+                        f" {duration_ms}ms, {snippets_count} snippets"
                     )
 
             return wrapper
@@ -120,9 +120,7 @@ class MetricsCollector:
         return decorator
 
     @staticmethod
-    def manual_timing_context(
-        processor_name: str, operation: str, context_type: str | None = None
-    ):
+    def manual_timing_context(processor_name: str, operation: str, context_type: str | None = None):
         """
         手动时间测量上下文管理器
 

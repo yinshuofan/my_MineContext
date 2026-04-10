@@ -125,7 +125,7 @@ async def create_message(
 
     except Exception as e:
         logger.exception(f"Failed to create message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/message/stream/{mid}/create", response_model=int)
@@ -155,7 +155,7 @@ async def create_streaming_message(
 
     except Exception as e:
         logger.exception(f"Failed to create streaming message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/message/{mid}/update", response_model=bool)
@@ -186,7 +186,7 @@ async def update_message(
 
     except Exception as e:
         logger.exception(f"Failed to update message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/message/{mid}/append", response_model=bool)
@@ -216,7 +216,7 @@ async def append_message(
 
     except Exception as e:
         logger.exception(f"Failed to append message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/message/{mid}/finished", response_model=bool)
@@ -240,7 +240,7 @@ async def mark_message_finished_route(
 
     except Exception as e:
         logger.exception(f"Failed to mark message finished: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/conversations/{cid}/messages", response_model=list[ConversationMessage])
@@ -264,7 +264,7 @@ async def get_conversation_messages(
 
     except Exception as e:
         logger.exception(f"Failed to get conversation messages: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/messages/{mid}/interrupt", response_model=MessageInterruptResponse)
@@ -295,4 +295,4 @@ async def interrupt_message_generation(
 
     except Exception as e:
         logger.exception(f"Failed to interrupt message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

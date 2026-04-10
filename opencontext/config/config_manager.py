@@ -222,10 +222,12 @@ class ConfigManager:
                 if key in SAVEABLE_KEYS:
                     raw_value = settings[key]
                     value = self._strip_none_values(raw_value)
+                    raw_en = raw_value.get("enabled") if isinstance(raw_value, dict) else "N/A"
+                    stripped_en = value.get("enabled") if isinstance(value, dict) else "N/A"
                     logger.debug(
                         f"save_user_settings: key={key}, "
-                        f"raw_enabled={raw_value.get('enabled') if isinstance(raw_value, dict) else 'N/A'}, "
-                        f"stripped_enabled={value.get('enabled') if isinstance(value, dict) else 'N/A'}"
+                        f"raw_enabled={raw_en}, "
+                        f"stripped_enabled={stripped_en}"
                     )
                     if value is not None and (not isinstance(value, dict) or value):
                         await storage.save_setting(key, value)

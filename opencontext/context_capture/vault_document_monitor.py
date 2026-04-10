@@ -4,7 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Vault document monitoring component that monitors changes in the vaults table and generates context capture events
+Vault document monitoring component that monitors changes in the vaults table
+and generates context capture events
 """
 
 import asyncio
@@ -25,7 +26,8 @@ logger = get_logger(__name__)
 
 class VaultDocumentMonitor(BaseCaptureComponent):
     """
-    Vault document monitoring component that monitors changes in the vaults table and generates context capture events
+    Vault document monitoring component that monitors changes in the
+    vaults table and generates context capture events
     """
 
     def __init__(self):
@@ -81,7 +83,8 @@ class VaultDocumentMonitor(BaseCaptureComponent):
             self._last_scan_time = tz_now()
 
             logger.info(
-                f"Vault document monitoring component initialized successfully, monitor interval: {self._monitor_interval}s"
+                "Vault document monitoring component initialized"
+                f" successfully, monitor interval: {self._monitor_interval}s"
             )
             return True
         except Exception as e:
@@ -257,7 +260,8 @@ class VaultDocumentMonitor(BaseCaptureComponent):
 
             if new_documents or updated_documents:
                 logger.info(
-                    f"Scan completed: {len(new_documents)} new documents, {len(updated_documents)} updated documents"
+                    f"Scan completed: {len(new_documents)} new documents, "
+                    f"{len(updated_documents)} updated documents"
                 )
 
         except Exception as e:

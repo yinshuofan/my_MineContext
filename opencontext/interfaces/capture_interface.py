@@ -18,7 +18,8 @@ class ICaptureComponent(abc.ABC):
     """
     Context capture component interface
 
-    Defines common behaviors for context capture components. All capture components should implement this interface.
+    Defines common behaviors for context capture components.
+    All capture components should implement this interface.
     """
 
     @abc.abstractmethod
@@ -144,7 +145,8 @@ class ICaptureComponent(abc.ABC):
         Set callback function to be called when new data is captured
 
         Args:
-            callback (callable): Callback function that accepts a list of RawContextProperties as parameter
+            callback (callable): Callback function that accepts a list
+                of RawContextProperties as parameter
 
         Returns:
             bool: Whether setting was successful

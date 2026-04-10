@@ -72,11 +72,15 @@ class ReflectionNode(BaseNode):
 
         except Exception as e:
             self.logger.exception(f"Reflection failed: {e}")
-            # Reflection failure should not cause the entire process to fail, create a default reflection
+            # Reflection failure should not cause the entire process to fail,
+            # create a default reflection
             state.reflection = ReflectionResult(
                 reflection_type=ReflectionType.PARTIAL_SUCCESS,
                 success_rate=0.5,
-                summary="An error occurred during the reflection process, but the task has been executed",
+                summary=(
+                    "An error occurred during the reflection process,"
+                    " but the task has been executed"
+                ),
                 issues=[str(e)],
                 improvements=[],
                 should_retry=False,
@@ -146,7 +150,8 @@ class ReflectionNode(BaseNode):
         if state.contexts and state.contexts.sufficiency == ContextSufficiency.INSUFFICIENT:
             missing_sources = [s.value for s in state.contexts.missing_sources]
             issues.append(
-                f"Insufficient context information, missing data sources: {', '.join(missing_sources)}"
+                "Insufficient context information, missing data"
+                f" sources: {', '.join(missing_sources)}"
             )
 
         # Check execution time
@@ -174,10 +179,10 @@ class ReflectionNode(BaseNode):
 
             prompt = f"""
             Evaluate whether the following output adequately answers the user's query.
-            
+
             User query: {query}
             Output result: {output_summary}
-            
+
             Please list the existing issues (if any). If there are no issues, return "None".
             """
 
@@ -224,12 +229,12 @@ class ReflectionNode(BaseNode):
             try:
                 prompt = f"""
                 Based on the following issues, provide specific improvement suggestions:
-                
+
                 List of issues:
                 {chr(10).join(f"- {issue}" for issue in issues)}
-                
+
                 Original query: {state.query.text}
-                
+
                 Please provide 3-5 specific and feasible improvement suggestions.
                 """
 

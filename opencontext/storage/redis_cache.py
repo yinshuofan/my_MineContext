@@ -160,7 +160,8 @@ class RedisCache:
             await self._async_client.ping()
             self._async_connected = True
             logger.info(
-                f"Redis async client connected: {self.config.host}:{self.config.port}/{self.config.db}"
+                f"Redis async client connected: "
+                f"{self.config.host}:{self.config.port}/{self.config.db}"
             )
             return True
 
@@ -1017,16 +1018,15 @@ class InMemoryCache:
 
     def _check_expiry(self, key: str) -> bool:
         """Check if key is expired and remove if so."""
-        if key in self._expiry:
-            if tz_now() > self._expiry[key]:
-                # Remove expired key from all storages
-                self._data.pop(key, None)
-                self._lists.pop(key, None)
-                self._hashes.pop(key, None)
-                self._sets.pop(key, None)
-                self._sorted_sets.pop(key, None)
-                del self._expiry[key]
-                return True
+        if key in self._expiry and tz_now() > self._expiry[key]:
+            # Remove expired key from all storages
+            self._data.pop(key, None)
+            self._lists.pop(key, None)
+            self._hashes.pop(key, None)
+            self._sets.pop(key, None)
+            self._sorted_sets.pop(key, None)
+            del self._expiry[key]
+            return True
         return False
 
     # Basic Key-Value Operations

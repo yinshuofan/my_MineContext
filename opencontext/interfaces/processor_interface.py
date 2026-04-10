@@ -19,7 +19,8 @@ class IContextProcessor(ABC):
     """
     Context processor component interface
 
-    Defines basic behaviors for context processor components, including initialization, configuration, processing, and information retrieval.
+    Defines basic behaviors for context processor components, including
+    initialization, configuration, processing, and information retrieval.
     """
 
     @abstractmethod
@@ -121,7 +122,8 @@ class IContextProcessor(ABC):
         Set callback function to be called when processing is complete
 
         Args:
-            callback (callable): Callback function that accepts a list of ProcessedContext as parameter
+            callback (callable): Callback function that accepts a list
+                of ProcessedContext as parameter
 
         Returns:
             bool: Whether setting was successful

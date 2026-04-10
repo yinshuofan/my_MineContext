@@ -98,7 +98,6 @@ class GlobalVLMClient:
                     logger.error("No vlm config found during reinitialize")
                     raise ValueError("No vlm config found")
                 new_client = LLMClient(llm_type=LLMType.CHAT, config=vlm_config)
-                old_client = self._vlm_client
                 self._vlm_client = new_client
                 logger.info("GlobalVLMClient reinitialized successfully")
 
@@ -118,7 +117,12 @@ class GlobalVLMClient:
                 messages.append(
                     {
                         "role": "system",
-                        "content": f"System notice: Maximum tool call limit ({max_calls}) reached. Cannot execute more tool calls. Please answer the user's question directly without attempting more tool calls.",
+                        "content": (
+                            f"System notice: Maximum tool call limit"
+                            f" ({max_calls}) reached. Cannot execute more"
+                            " tool calls. Please answer the user's question"
+                            " directly without attempting more tool calls."
+                        ),
                     }
                 )
                 response = await self._vlm_client.generate_with_messages(messages, **kwargs)
@@ -147,7 +151,7 @@ class GlobalVLMClient:
             results = await asyncio.gather(*tasks)
 
             # Collect results and add to message list
-            for result, (tool_id, function_name) in zip(results, tool_call_info):
+            for result, (tool_id, function_name) in zip(results, tool_call_info, strict=False):
                 messages.append(
                     {
                         "role": "tool",

@@ -9,6 +9,7 @@ Follows the StreamInterruptManager pattern.
 """
 
 import asyncio
+import contextlib
 from collections.abc import Callable, Coroutine
 from typing import Optional
 
@@ -41,10 +42,8 @@ class ConfigReloadManager:
         """Cancel the subscriber task."""
         if self._subscriber_task is not None and not self._subscriber_task.done():
             self._subscriber_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._subscriber_task
-            except asyncio.CancelledError:
-                pass
         logger.info("ConfigReloadManager stopped")
 
     async def trigger_reload(self) -> int:

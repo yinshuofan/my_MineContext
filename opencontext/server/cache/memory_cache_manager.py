@@ -1,4 +1,3 @@
-
 """
 MemoryCacheManager
 
@@ -6,7 +5,8 @@ Builds and maintains per-user (or per-agent) memory cache snapshots in Redis.
 Four response sections: profile, recently accessed, today events, daily summaries.
 
 Snapshot is cached in Redis with a short TTL (internally stores full data for all types).
-Response assembly (_merge_response) simplifies to: SimpleProfile, SimpleTodayEvent, SimpleDailySummary.
+Response assembly (_merge_response) simplifies to: SimpleProfile,
+SimpleTodayEvent, SimpleDailySummary.
 Recently accessed items are stored in a separate Redis Hash and always read in real-time.
 
 Snapshots automatically include both user interaction events and agent base memories.
@@ -343,7 +343,7 @@ class MemoryCacheManager:
             return []
 
         items: list[RecentlyAccessedItem] = []
-        for field, value in all_data.items():
+        for _field, value in all_data.items():
             try:
                 data = json.loads(value) if isinstance(value, str) else value
                 if not isinstance(data, dict):
@@ -408,7 +408,6 @@ class MemoryCacheManager:
         now = tz_now()
         today_start_val = tz_today_start()
         today_start_ts = int(today_start_val.timestamp())
-        yesterday_start = today_start_val - timedelta(days=1)
         yesterday_end_ts = float(today_start_ts - 1)  # end of yesterday
         week_start = today_start_val - timedelta(days=days)
         week_start_ts = int(week_start.timestamp())
@@ -475,7 +474,7 @@ class MemoryCacheManager:
 
         task_names = list(tasks.keys())
         raw_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        results_map = dict(zip(task_names, raw_results))
+        results_map = dict(zip(task_names, raw_results, strict=True))
 
         # Log errors
         for name, result in results_map.items():
@@ -524,7 +523,7 @@ class MemoryCacheManager:
         today_data = results_map.get("today_events")
         if today_data and not isinstance(today_data, Exception):
             today_items = []
-            for ctx_type, contexts in today_data.items():
+            for _ctx_type, contexts in today_data.items():
                 for ctx in contexts:
                     today_items.append(self._ctx_to_recent_item(ctx))
             today_items.sort(
@@ -536,15 +535,12 @@ class MemoryCacheManager:
         summaries_data = results_map.get("daily_summaries")
         if summaries_data and not isinstance(summaries_data, Exception):
             daily_items = []
-            for ctx, score in summaries_data:
+            for ctx, _score in summaries_data:
                 # Derive event_time_start string from properties
                 ets = ""
                 if ctx.properties and ctx.properties.event_time_start:
                     ets_val = ctx.properties.event_time_start
-                    if hasattr(ets_val, "isoformat"):
-                        ets = ets_val.isoformat()
-                    else:
-                        ets = str(ets_val)
+                    ets = ets_val.isoformat() if hasattr(ets_val, "isoformat") else str(ets_val)
                 daily_items.append(
                     {
                         "id": ctx.id,
@@ -561,7 +557,7 @@ class MemoryCacheManager:
         docs_data = results_map.get("recent_docs")
         if docs_data and not isinstance(docs_data, Exception):
             doc_items = []
-            for ctx_type, contexts in docs_data.items():
+            for _ctx_type, contexts in docs_data.items():
                 for ctx in contexts:
                     doc_items.append(self._ctx_to_recent_item(ctx))
             doc_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
@@ -571,7 +567,7 @@ class MemoryCacheManager:
         knowledge_data = results_map.get("recent_knowledge")
         if knowledge_data and not isinstance(knowledge_data, Exception):
             knowledge_items = []
-            for ctx_type, contexts in knowledge_data.items():
+            for _ctx_type, contexts in knowledge_data.items():
                 for ctx in contexts:
                     knowledge_items.append(self._ctx_to_recent_item(ctx))
             knowledge_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
@@ -581,7 +577,7 @@ class MemoryCacheManager:
         base_data = results_map.get("base_events")
         if base_data and not isinstance(base_data, Exception):
             base_items = []
-            for ctx_type, contexts in base_data.items():
+            for _ctx_type, contexts in base_data.items():
                 for ctx in contexts:
                     base_items.append(self._ctx_to_recent_item(ctx))
             base_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)

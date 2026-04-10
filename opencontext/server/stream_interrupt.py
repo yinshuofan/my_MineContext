@@ -6,6 +6,7 @@ Falls back to local dict when Redis is unavailable.
 """
 
 import asyncio
+import contextlib
 from typing import Optional
 
 from opencontext.storage.redis_cache import get_redis_cache
@@ -63,10 +64,8 @@ class StreamInterruptManager:
         """Cancel the subscriber task and clean up."""
         if self._subscriber_task is not None and not self._subscriber_task.done():
             self._subscriber_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._subscriber_task
-            except asyncio.CancelledError:
-                pass
         self._local_flags.clear()
 
     async def _ensure_subscriber(self) -> None:

@@ -76,57 +76,78 @@ def _estimate_tokens(text: str) -> int:
 _FALLBACK_PROMPTS = {
     # ── Normal summary prompts ──
     "daily_summary": (
-        "Please summarize the following user activities for the time period: {time_period}\n\n"
+        "Please summarize the following user activities"
+        " for the time period: {time_period}\n\n"
         "**Activity Records**:\n{activity_records}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
     "weekly_summary": (
-        "Please summarize the following user activities for the time period: {time_period}\n\n"
+        "Please summarize the following user activities"
+        " for the time period: {time_period}\n\n"
         "**Activity Records**:\n{activity_records}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
     "monthly_summary": (
-        "Please summarize the following user activities for the time period: {time_period}\n\n"
+        "Please summarize the following user activities"
+        " for the time period: {time_period}\n\n"
         "**Activity Records**:\n{activity_records}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
     # ── Partial (batch sub-summary) prompts ──
     "daily_partial_summary": (
-        "Please summarize this PARTIAL batch of user activities for {time_period}. "
-        "This is batch {batch_info} — summarize only these events, preserving key details.\n\n"
+        "Please summarize this PARTIAL batch of user activities"
+        " for {time_period}. "
+        "This is batch {batch_info} — summarize only these events,"
+        " preserving key details.\n\n"
         "**Activity Records**:\n{activity_records}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
     "weekly_partial_summary": (
-        "Please summarize this PARTIAL batch of user activities for {time_period}. "
-        "This is batch {batch_info} — summarize only these days, preserving key details.\n\n"
+        "Please summarize this PARTIAL batch of user activities"
+        " for {time_period}. "
+        "This is batch {batch_info} — summarize only these days,"
+        " preserving key details.\n\n"
         "**Activity Records**:\n{activity_records}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
     "monthly_partial_summary": (
-        "Please summarize this PARTIAL batch of user activities for {time_period}. "
-        "This is batch {batch_info} — summarize only these weeks, preserving key details.\n\n"
+        "Please summarize this PARTIAL batch of user activities"
+        " for {time_period}. "
+        "This is batch {batch_info} — summarize only these weeks,"
+        " preserving key details.\n\n"
         "**Activity Records**:\n{activity_records}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
     # ── Merge prompts ──
     "daily_merge": (
-        "Please merge the following partial daily summaries into a single cohesive daily summary "
+        "Please merge the following partial daily summaries into"
+        " a single cohesive daily summary "
         "for {time_period}.\n\n"
         "**Partial Summaries**:\n{partial_summaries}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
     "weekly_merge": (
-        "Please merge the following partial weekly summaries into a single cohesive weekly summary "
+        "Please merge the following partial weekly summaries into"
+        " a single cohesive weekly summary "
         "for {time_period}.\n\n"
         "**Partial Summaries**:\n{partial_summaries}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
     "monthly_merge": (
-        "Please merge the following partial monthly summaries into a single cohesive monthly summary "
+        "Please merge the following partial monthly summaries into"
+        " a single cohesive monthly summary "
         "for {time_period}.\n\n"
         "**Partial Summaries**:\n{partial_summaries}\n\n"
-        "Please generate a JSON summary object with: title, summary, keywords, entities, importance."
+        "Please generate a JSON summary object with:"
+        " title, summary, keywords, entities, importance."
     ),
 }
 
@@ -199,7 +220,8 @@ class HierarchySummaryTask(BasePeriodicTask):
 
         Determines which summaries need to be generated based on the current date:
         根据当前日期判断需要生成哪些摘要：
-        - Daily summaries for recent N days (回溯最近 N 天补全缺失的日摘要, configurable via backfill_days)
+        - Daily summaries for recent N days (回溯最近 N 天补全缺失的日摘要,
+          configurable via backfill_days)
         - Weekly summary for the most recent completed week (生成上一个完整周的周摘要)
         - Monthly summary for the most recent completed month (生成上一个完整月的月摘要)
 
@@ -1084,7 +1106,8 @@ class HierarchySummaryTask(BasePeriodicTask):
         agent_id: str | None = None,
     ) -> ProcessedContext | None:
         """
-        Generate a monthly summary (Level 3) from Level 2 weekly summaries + Level 1 daily summaries.
+        Generate a monthly summary (Level 3) from Level 2 weekly
+        summaries + Level 1 daily summaries.
         从 Level 2 周摘要 + Level 1 日摘要生成月摘要 (Level 3)。
 
         Higher-level summaries now include content from both immediate children (L2) and
@@ -1303,10 +1326,7 @@ class HierarchySummaryTask(BasePeriodicTask):
         prompt_group = get_prompt_group("hierarchy_summary")
 
         # Determine which prompt key to use
-        if is_partial:
-            prompt_key = f"{level_name}_partial_summary"
-        else:
-            prompt_key = f"{level_name}_summary"
+        prompt_key = f"{level_name}_partial_summary" if is_partial else f"{level_name}_summary"
 
         # Build messages: system + user
         messages = []

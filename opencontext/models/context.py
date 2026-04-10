@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -17,12 +16,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from opencontext.models.enums import ContentFormat, ContextSource, ContextType
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import now as _tz_now
 
 logger = get_logger(__name__)
-
-from opencontext.models.enums import ContentFormat, ContextSource, ContextType
 
 
 class Chunk(BaseModel):
@@ -453,9 +451,7 @@ def _is_local_path(url: str) -> bool:
     """Check if a URL is a local file path (not HTTP/HTTPS/data URI)."""
     if not url:
         return False
-    if url.startswith(("http://", "https://", "data:")):
-        return False
-    return True
+    return not url.startswith(("http://", "https://", "data:"))
 
 
 def _file_to_data_uri(file_path: str) -> str:

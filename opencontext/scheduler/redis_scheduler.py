@@ -8,14 +8,10 @@ supporting multi-instance deployment. All Redis operations are async.
 """
 
 import asyncio
+import contextlib
 import json
 import time
 from typing import Any
-
-from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.time_utils import now as tz_now
-
-logger = get_logger(__name__)
 
 from opencontext.scheduler.base import (
     ITaskScheduler,
@@ -28,6 +24,10 @@ from opencontext.scheduler.base import (
 )
 from opencontext.scheduler.user_key_builder import UserKeyBuilder
 from opencontext.storage.redis_cache import RedisCache
+from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import now as tz_now
+
+logger = get_logger(__name__)
 
 # Lua script: atomically pop lowest-score member only if score <= max_score.
 # Returns {member, score} if a due task exists, nil otherwise.
@@ -784,23 +784,17 @@ class RedisTaskScheduler(ITaskScheduler):
                 except TimeoutError:
                     logger.warning(f"Scheduler did not stop within {timeout}s, cancelling")
                     self._executor_task.cancel()
-                    try:
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
                         await self._executor_task
-                    except (asyncio.CancelledError, Exception):
-                        pass
                 except asyncio.CancelledError:
                     self._executor_task.cancel()
-                    try:
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
                         await self._executor_task
-                    except (asyncio.CancelledError, Exception):
-                        pass
                     raise
             else:
                 self._executor_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await self._executor_task
-                except (asyncio.CancelledError, Exception):
-                    pass
 
         # Await any remaining in-flight task executions to ensure lock cleanup
         if self._in_flight:

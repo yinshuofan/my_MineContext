@@ -1,4 +1,3 @@
-
 """
 Event Search API Route
 

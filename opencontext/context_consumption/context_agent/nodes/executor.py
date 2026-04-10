@@ -82,7 +82,9 @@ class ExecutorNode(BaseNode):
         await self.streaming_manager.emit(
             StreamEvent(
                 type=EventType.DONE,
-                content=f"Task execution completed, {len(outputs)} successful, {len(errors)} failed",
+                content=(
+                    f"Task execution completed, {len(outputs)} successful, {len(errors)} failed"
+                ),
                 stage=WorkflowStage.EXECUTION,
                 progress=1.0,
             )
@@ -218,11 +220,17 @@ class ExecutorNode(BaseNode):
     #         return {"success": False, "error": "No content available to create a document"}
 
     #     # Create document
-    #     title = params.get("title", f"Document_{tz_now().strftime('%Y%m%d_%H%M%S')}")
+    #     title = params.get(
+    #         "title", f"Document_{tz_now().strftime('%Y%m%d_%H%M%S')}"
+    #     )
     #     doc_id = self.storage.insert_vaults(
     #         title=title,
     #         content=generated_content,
-    #         summary=generated_content[:200] if len(generated_content) > 200 else generated_content,
+    #         summary=(
+    #             generated_content[:200]
+    #             if len(generated_content) > 200
+    #             else generated_content
+    #         ),
     #         document_type=VaultType.NOTE.value,
     #         tags=params.get("tags", [])
     #     )
@@ -237,7 +245,8 @@ class ExecutorNode(BaseNode):
     #     }
 
     async def _execute_answer(self, state: WorkflowState) -> dict[str, Any]:
-        """Execute answer task - intelligently handle Q&A, summarization, analysis, etc. with streaming"""
+        """Execute answer task - intelligently handle Q&A, summarization,
+        analysis, etc. with streaming"""
         context = state.contexts.prepare_context()
         prompt_group = get_prompt_group("chat_workflow.executor.answer")
         system_prompt = prompt_group["system"]

@@ -40,8 +40,10 @@ class DocumentTextChunker(BaseChunker):
         Split text list into multiple semantic chunks (intelligent semantic chunking)
 
         Strategy:
-        1. Short documents (<10000 characters): Global semantic chunking - LLM analyzes entire document at once
-        2. Long documents (≥10000 characters): Fallback to original paragraph-based chunking strategy
+        1. Short documents (<10000 characters): Global semantic chunking -
+           LLM analyzes entire document at once
+        2. Long documents (>=10000 characters): Fallback to original
+           paragraph-based chunking strategy
         """
         if not texts or all(not t.strip() for t in texts):
             logger.warning("Empty texts provided for chunking document")
@@ -67,9 +69,12 @@ class DocumentTextChunker(BaseChunker):
 
         Returns:
             (buffers_to_split, direct_chunks, oversized_elements)
-            - buffers_to_split: [(buffer_text, position), ...] buffers that need LLM
-            - direct_chunks: [(text, position), ...] text that can be used directly as chunks
-            - oversized_elements: [(text, position), ...] oversized elements that need mechanical splitting
+            - buffers_to_split: [(buffer_text, position), ...]
+              buffers that need LLM
+            - direct_chunks: [(text, position), ...]
+              text that can be used directly as chunks
+            - oversized_elements: [(text, position), ...]
+              oversized elements that need mechanical splitting
         """
         buffers_to_split = []
         direct_chunks = []
@@ -98,10 +103,7 @@ class DocumentTextChunker(BaseChunker):
             current_text = processed_texts[i]
 
             # Calculate accumulated length
-            if buffer:
-                potential_buffer = buffer + "\n\n" + current_text
-            else:
-                potential_buffer = current_text
+            potential_buffer = buffer + "\n\n" + current_text if buffer else current_text
 
             # Case 1: Accumulated length does not exceed threshold, continue accumulating
             if len(potential_buffer) <= self.config.max_chunk_size:
@@ -120,7 +122,8 @@ class DocumentTextChunker(BaseChunker):
                 buffer = ""
                 # Don't increment i, reprocess current element in next iteration
             else:
-                # Buffer is empty but still oversized (theoretically shouldn't happen, as already preprocessed)
+                # Buffer is empty but still oversized
+                # (theoretically shouldn't happen, as already preprocessed)
                 i += 1
 
         # Process last buffer
@@ -162,7 +165,7 @@ class DocumentTextChunker(BaseChunker):
         chunk_idx = 0
 
         # Create chunks from LLM results
-        for (buffer, position), split_chunks in zip(buffers_to_split, llm_results):
+        for (_buffer, _position), split_chunks in zip(buffers_to_split, llm_results, strict=False):
             for text_chunk in split_chunks:
                 if len(text_chunk.strip()) >= self.config.min_chunk_size:
                     chunk = Chunk(

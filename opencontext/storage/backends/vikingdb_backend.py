@@ -10,6 +10,7 @@ Uses a single collection with context_type field filtering to reduce operational
 """
 
 import asyncio
+import contextlib
 import datetime
 import hashlib
 import hmac
@@ -362,9 +363,12 @@ class VikingDBHTTPClient:
                         try:
                             return json.loads(response_text)
                         except Exception:
-                            error_msg = f"API request failed with status {response.status}: {response_text[:500]}"
+                            error_msg = (
+                                f"API request failed with status "
+                                f"{response.status}: {response_text[:500]}"
+                            )
                             logger.error(error_msg)
-                            raise Exception(error_msg)
+                            raise Exception(error_msg) from None
 
                     if response.status in (429, 500, 502, 503, 504) and attempt < self._max_retries:
                         await asyncio.sleep(self._retry_delay * (attempt + 1))
@@ -381,7 +385,10 @@ class VikingDBHTTPClient:
                         continue
 
                     if response.status != 200:
-                        error_msg = f"API request failed with status {response.status}: {response_text[:500]}"
+                        error_msg = (
+                            f"API request failed with status "
+                            f"{response.status}: {response_text[:500]}"
+                        )
                         logger.error(error_msg)
                         raise Exception(error_msg)
 
@@ -891,7 +898,8 @@ class VikingDBBackend(IVectorStorageBackend):
                 )
             else:
                 logger.error(
-                    f"[VikingDB] Failed to upsert to {self._collection_name}: {result.get('message')}"
+                    f"[VikingDB] Failed to upsert to "
+                    f"{self._collection_name}: {result.get('message')}"
                 )
 
         except Exception as e:
@@ -955,10 +963,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
         result = {}
 
-        if context_types:
-            target_types = context_types
-        else:
-            target_types = [ct.value for ct in ContextType]
+        target_types = context_types or [ct.value for ct in ContextType]
 
         for ctx_type in target_types:
             try:
@@ -1224,20 +1229,17 @@ class VikingDBBackend(IVectorStorageBackend):
                     and value.startswith(("{", "["))
                     and key not in STRING_ONLY_FIELDS
                 ):
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError, TypeError):
                         val = json.loads(value)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
 
-                if key in TIME_FIELDS:
-                    if isinstance(val, str):
-                        if val in ("default", "", "null", "None"):
-                            continue
-                        try:
-                            val = datetime.datetime.fromisoformat(val.replace("Z", "+00:00"))
-                        except (ValueError, TypeError):
-                            logger.warning(f"Invalid datetime value for field '{key}': {val}")
-                            continue
+                if key in TIME_FIELDS and isinstance(val, str):
+                    if val in ("default", "", "null", "None"):
+                        continue
+                    try:
+                        val = datetime.datetime.fromisoformat(val.replace("Z", "+00:00"))
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid datetime value for field '{key}': {val}")
+                        continue
 
                 if key in extracted_data_field_names:
                     extracted_data_dict[key] = val
@@ -1400,7 +1402,7 @@ class VikingDBBackend(IVectorStorageBackend):
                         if any(op in value for op in range_ops):
                             logger.warning(
                                 f"Field '{filter_key}' does not support range operator. "
-                                f"Only fields in ScalarIndex with int64/float32 type support range. "
+                                "Only fields in ScalarIndex with int64/float32 type support range. "
                                 f"Skipping range filter for this field."
                             )
 
@@ -1447,10 +1449,7 @@ class VikingDBBackend(IVectorStorageBackend):
         if not conditions:
             return None
 
-        if len(conditions) == 1:
-            filter_dict = conditions[0]
-        else:
-            filter_dict = {"op": "and", "conds": conditions}
+        filter_dict = conditions[0] if len(conditions) == 1 else {"op": "and", "conds": conditions}
         logger.debug(f"Built VikingDB filter: {filter_dict}")
         return filter_dict
 

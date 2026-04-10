@@ -108,7 +108,7 @@ async def chat(request: ChatRequest, _auth: str = auth_dependency) -> ChatRespon
 
     except Exception as e:
         logger.exception(f"Chat failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/chat/stream")
@@ -137,7 +137,8 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                     is_complete=True,
                 )
                 logger.info(
-                    f"Created user message {user_message_id} in conversation {request.conversation_id}"
+                    f"Created user message {user_message_id} "
+                    f"in conversation {request.conversation_id}"
                 )
 
                 # Update conversation title with user's question only if not already set
@@ -149,7 +150,8 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                             conversation_id=request.conversation_id, title=title
                         )
                         logger.info(
-                            f"Set conversation {request.conversation_id} title from user query: {title}"
+                            f"Set conversation {request.conversation_id} "
+                            f"title from user query: {title}"
                         )
 
             # Create streaming assistant message if conversation_id is provided
@@ -162,7 +164,12 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                 await interrupt_mgr.register(assistant_message_id)
 
             # Send session start event with assistant_message_id
-            yield f"data: {json.dumps({'type': 'session_start', 'session_id': request.session_id, 'assistant_message_id': assistant_message_id}, ensure_ascii=False)}\n\n"
+            session_start_data = {
+                "type": "session_start",
+                "session_id": request.session_id,
+                "assistant_message_id": assistant_message_id,
+            }
+            yield f"data: {json.dumps(session_start_data, ensure_ascii=False)}\n\n"
 
             args = {
                 "query": request.query,
@@ -181,7 +188,11 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                 if assistant_message_id and interrupt_mgr.is_interrupted(assistant_message_id):
                     logger.info(f"Message {assistant_message_id} was interrupted, stopping stream")
                     interrupted = True
-                    yield f"data: {json.dumps({'type': 'interrupted', 'content': 'Message generation was interrupted'}, ensure_ascii=False)}\n\n"
+                    interrupt_data = {
+                        "type": "interrupted",
+                        "content": "Message generation was interrupted",
+                    }
+                    yield f"data: {json.dumps(interrupt_data, ensure_ascii=False)}\n\n"
                     break
 
                 converted_event = event.to_dict()
@@ -198,8 +209,12 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                             progress=event.progress if hasattr(event, "progress") else 0.0,
                             metadata=event.metadata if hasattr(event, "metadata") else None,
                         )
+                        stage_val = event.stage.value if event.stage else "unknown"
                         logger.debug(
-                            f"Saved thinking to message {assistant_message_id}: stage={event.stage.value if event.stage else 'unknown'}, content_len={len(event.content)}"
+                            f"Saved thinking to message "
+                            f"{assistant_message_id}: "
+                            f"stage={stage_val}, "
+                            f"content_len={len(event.content)}"
                         )
                     elif event.type == EventType.STREAM_CHUNK:
                         # Only stream_chunk content goes to message.content
@@ -210,7 +225,9 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                             token_count=1,  # Approximate token count
                         )
                         logger.debug(
-                            f"Appended stream_chunk to message {assistant_message_id}: content_len={len(event.content)}"
+                            f"Appended stream_chunk to message "
+                            f"{assistant_message_id}: "
+                            f"content_len={len(event.content)}"
                         )
                     else:
                         # Other event types (running, done, etc.) go to metadata as lists
@@ -230,7 +247,8 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                             }
                         )
                         logger.debug(
-                            f"Added {event_type_key} event to metadata for message {assistant_message_id}"
+                            f"Added {event_type_key} event to metadata "
+                            f"for message {assistant_message_id}"
                         )
 
                 yield f"data: {json.dumps(converted_event, ensure_ascii=False)}\n\n"
@@ -242,7 +260,9 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                             message_id=assistant_message_id, metadata=event_metadata
                         )
                         logger.info(
-                            f"Updated message {assistant_message_id} metadata with {len(event_metadata)} event types"
+                            f"Updated message {assistant_message_id} "
+                            f"metadata with {len(event_metadata)} "
+                            "event types"
                         )
 
                     # Mark assistant message as finished
@@ -266,12 +286,15 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                         message_id=assistant_message_id, metadata=event_metadata
                     )
                     logger.info(
-                        f"Updated interrupted message {assistant_message_id} metadata with {len(event_metadata)} event types"
+                        f"Updated interrupted message "
+                        f"{assistant_message_id} metadata with "
+                        f"{len(event_metadata)} event types"
                     )
 
                 # Mark message as cancelled (status already set by interrupt endpoint)
                 logger.info(
-                    f"Message {assistant_message_id} interrupted with {len(accumulated_content)} characters saved"
+                    f"Message {assistant_message_id} interrupted "
+                    f"with {len(accumulated_content)} characters saved"
                 )
 
         except Exception as e:
@@ -286,7 +309,8 @@ async def chat_stream(request: ChatRequest, _auth: str = auth_dependency):
                 except Exception as mark_error:
                     logger.exception(f"Failed to mark message as failed: {mark_error}")
 
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
+            error_data = {"type": "error", "content": str(e)}
+            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
         finally:
             # Clean up the interrupt flag when stream ends
@@ -331,7 +355,7 @@ async def resume_workflow(workflow_id: str, request: ResumeRequest, _auth: str =
 
     except Exception as e:
         logger.exception(f"Resume workflow failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/state/{workflow_id}")

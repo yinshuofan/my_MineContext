@@ -1,4 +1,3 @@
-
 """
 User Memory Cache API Route
 
@@ -37,17 +36,21 @@ def _parse_include(include: str | None) -> set[str]:
 
 @router.get("/memory-cache")
 async def get_user_memory_cache(
-    user_id: str = Query(..., description="User identifier (required)"),
-    device_id: str = Query(default="default", description="Device identifier"),
-    agent_id: str = Query(default="default", description="Agent identifier"),
-    include: str | None = Query(
+    user_id: str = Query(..., description="User identifier (required)"),  # noqa: B008
+    device_id: str = Query(default="default", description="Device identifier"),  # noqa: B008
+    agent_id: str = Query(default="default", description="Agent identifier"),  # noqa: B008
+    include: str | None = Query(  # noqa: B008
         default=None,
-        description="Comma-separated response sections: profile,events,accessed,all. Default: profile,events,accessed",
+        description=(
+            "Comma-separated response sections: "
+            "profile,events,accessed,all. "
+            "Default: profile,events,accessed"
+        ),
     ),
-    recent_days: int = Query(default=None, description="Recent memory window in days"),
-    max_recent_events_today: int = Query(default=None, description="Max today L0 events"),
-    max_accessed: int = Query(default=5, ge=1, le=100, description="Max recently accessed items"),
-    force_refresh: bool = Query(default=False, description="Force rebuild cache"),
+    recent_days: int = Query(default=None, description="Recent memory window in days"),  # noqa: B008
+    max_recent_events_today: int = Query(default=None, description="Max today L0 events"),  # noqa: B008
+    max_accessed: int = Query(default=5, ge=1, le=100, description="Max recently accessed items"),  # noqa: B008
+    force_refresh: bool = Query(default=False, description="Force rebuild cache"),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """
@@ -94,9 +97,9 @@ async def get_user_memory_cache(
 
 @router.delete("/memory-cache")
 async def invalidate_user_memory_cache(
-    user_id: str = Query(..., description="User identifier"),
-    device_id: str = Query(default="default", description="Device identifier"),
-    agent_id: str = Query(default="default", description="Agent identifier"),
+    user_id: str = Query(..., description="User identifier"),  # noqa: B008
+    device_id: str = Query(default="default", description="Device identifier"),  # noqa: B008
+    agent_id: str = Query(default="default", description="Agent identifier"),  # noqa: B008
     _auth: str = auth_dependency,
 ):
     """Manually invalidate a user's memory cache snapshot."""

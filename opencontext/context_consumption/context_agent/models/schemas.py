@@ -159,7 +159,11 @@ class ContextCollection:
             source_counts[item.source] = source_counts.get(item.source, 0) + 1
 
         summary_parts = [f"{source.value}: {count}" for source, count in source_counts.items()]
-        return f"Collected {len(self.items)} context items ({', '.join(summary_parts)}), sufficiency: {self.sufficiency.value}"
+        return (
+            f"Collected {len(self.items)} context items"
+            f" ({', '.join(summary_parts)}),"
+            f" sufficiency: {self.sufficiency.value}"
+        )
 
     def get_chat_history(self) -> list[dict[str, str]]:
         """Get chat history as a list of dictionaries"""

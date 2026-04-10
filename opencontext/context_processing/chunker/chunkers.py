@@ -77,8 +77,9 @@ class BaseChunker(ABC):
         """
         return list(self.chunk(context))
 
+    @staticmethod
     @lru_cache(maxsize=128)
-    def _get_sentence_boundaries(self, text: str) -> list[int]:
+    def _get_sentence_boundaries(text: str) -> list[int]:
         """
         Get sentence boundary positions with caching for performance.
 
@@ -221,7 +222,9 @@ class StructuredFileChunker(BaseChunker):
                     chunk_index=chunk_idx,
                     source_document_id=context.object_id,
                     title=f"CSV Chunk {chunk_idx + 1}",
-                    summary=f"CSV data with {len(df_chunk)} rows and {len(df_chunk.columns)} columns",
+                    summary=(
+                        f"CSV data with {len(df_chunk)} rows and {len(df_chunk.columns)} columns"
+                    ),
                     semantic_type="structured_data",
                     keywords=list(df_chunk.columns),  # Column names as keywords
                     metadata=metadata,

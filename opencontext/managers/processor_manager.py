@@ -34,7 +34,8 @@ class ContextProcessorManager:
     """
     Context processing manager
 
-    Manages and coordinates multiple context processing components, providing unified interface for context processing
+    Manages and coordinates multiple context processing components,
+    providing unified interface for context processing
 
     Note: Periodic compression tasks are now managed by the task scheduler (opencontext.scheduler),
     not by this manager. The merger is still set here for use by other components.
@@ -90,8 +91,9 @@ class ContextProcessorManager:
         """
         Set merger component
 
-        Note: The merger is set here for use by other components (e.g., Push API triggered compression).
-        Periodic compression is now managed by the task scheduler.
+        Note: The merger is set here for use by other components
+        (e.g., Push API triggered compression). Periodic compression
+        is now managed by the task scheduler.
         """
         self._merger = merger
         logger.info(f"Merger component '{merger.get_name()}' has been set")
@@ -118,18 +120,24 @@ class ContextProcessorManager:
         """
         Process single input through processing chain
         """
-        # 1. Dynamically select preprocessing chain based on input type (excluding merger and embedding)
+        # 1. Dynamically select preprocessing chain based on input type
+        # (excluding merger and embedding)
         processor_name = self._routing_table.get(initial_input.source)
         if not processor_name:
             logger.error(
-                f"No processing component defined for source_type='{initial_input.source}' or content_format='{initial_input.content_format}', no processing will be performed"
+                f"No processing component defined for"
+                f" source_type='{initial_input.source}' or"
+                f" content_format='{initial_input.content_format}',"
+                " no processing will be performed"
             )
             return False
 
         processor = self._processors.get(processor_name)
         if not processor or not processor.can_process(initial_input):
             logger.error(
-                f"Processor '{processor_name}' in processing chain not registered or does not support processing input type {initial_input.source}"
+                f"Processor '{processor_name}' in processing chain"
+                " not registered or does not support processing"
+                f" input type {initial_input.source}"
             )
             return False
 
@@ -140,7 +148,8 @@ class ContextProcessorManager:
             return bool(processed_contexts)
         except Exception as e:
             logger.exception(
-                f"Processing component '{processor_name}' encountered exception while processing data: {e}"
+                f"Processing component '{processor_name}' encountered"
+                f" exception while processing data: {e}"
             )
             return False
 
@@ -201,7 +210,7 @@ class ContextProcessorManager:
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            for name, result in zip(task_names, results):
+            for name, result in zip(task_names, results, strict=False):
                 if isinstance(result, Exception):
                     logger.error(f"Processor '{name}' failed: {result}")
                     continue
@@ -276,7 +285,7 @@ class ContextProcessorManager:
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         results = {}
-        for initial_input, result in zip(initial_inputs, raw_results):
+        for initial_input, result in zip(initial_inputs, raw_results, strict=False):
             if isinstance(result, Exception):
                 logger.exception(f"'{initial_input.object_id}' generated an exception: {result}")
                 results[initial_input.object_id] = False

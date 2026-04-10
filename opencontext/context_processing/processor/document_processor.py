@@ -24,8 +24,22 @@ from opencontext.context_processing.chunker import (
 from opencontext.context_processing.processor.base_processor import BaseContextProcessor
 from opencontext.context_processing.processor.document_converter import DocumentConverter, PageInfo
 from opencontext.llm.global_vlm_client import generate_with_messages
-from opencontext.models.context import *
-from opencontext.models.enums import *
+from opencontext.models.context import (
+    Chunk,
+    ContextProperties,
+    ExtractedData,
+    KnowledgeContextMetadata,
+    ProcessedContext,
+    RawContextProperties,
+    Vectorize,
+)
+from opencontext.models.enums import (
+    STRUCTURED_FILE_TYPES,
+    ContentFormat,
+    ContextSource,
+    ContextType,
+    FileType,
+)
 from opencontext.monitoring.monitor import record_processing_error
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import now as tz_now
@@ -85,7 +99,10 @@ class DocumentProcessor(BaseContextProcessor):
         return "document_processor"
 
     def get_description(self) -> str:
-        return "Stateless document processor with async support: structured (CSV/XLSX), text, and visual (PDF/DOCX/images)"
+        return (
+            "Stateless document processor with async support: "
+            "structured (CSV/XLSX), text, and visual (PDF/DOCX/images)"
+        )
 
     def set_vlm_batch_size(self, vlm_batch_size: int) -> bool:
         if not isinstance(vlm_batch_size, int) or vlm_batch_size < 1:
@@ -196,7 +213,8 @@ class DocumentProcessor(BaseContextProcessor):
                 contexts = self._process_visual_document(raw_context)
             all_processed_contexts.extend(contexts)
             logger.info(
-                f"Successfully processed document {raw_context.object_id}: {len(contexts)} contexts created"
+                f"Successfully processed document {raw_context.object_id}: "
+                f"{len(contexts)} contexts created"
             )
             self._record_metrics(start_time, len(all_processed_contexts))
             return all_processed_contexts
@@ -275,7 +293,8 @@ class DocumentProcessor(BaseContextProcessor):
         Process visual documents (PDF/DOCX/images) - page-by-page intelligent detection
 
         Strategy (page_level_detection=True):
-        1. PDF/DOCX: Analyze page by page, use VLM for pages with charts, extract text directly for pure text pages
+        1. PDF/DOCX: Analyze page by page, use VLM for pages with
+           charts, extract text directly for pure text pages
         2. Images/PPT: Direct VLM (inherently visual content)
         """
         file_path = raw_context.content_path
@@ -335,7 +354,7 @@ class DocumentProcessor(BaseContextProcessor):
         if vlm_pages:
             vlm_text_list = self._extract_vlm_pages(file_path, vlm_pages)
             # Associate extracted text with page numbers
-            for page_info, text in zip(vlm_pages, vlm_text_list):
+            for page_info, text in zip(vlm_pages, vlm_text_list, strict=False):
                 vlm_texts[page_info.page_number] = text
 
         # 4. Merge all pages in original order
@@ -366,15 +385,13 @@ class DocumentProcessor(BaseContextProcessor):
         self, tasks: list[Any], start_index: int, total_count: int
     ) -> list[Any]:
         results: list[Any] = []
-        completed = 0
-        for coro in asyncio.as_completed(tasks):
+        for completed, coro in enumerate(asyncio.as_completed(tasks)):
             try:
                 r = await coro
                 results.append(r)
             except Exception as e:
                 results.append(e)
-            completed += 1
-            logger.info(f"images {start_index + completed}/{total_count} processed")
+            logger.info(f"images {start_index + completed + 1}/{total_count} processed")
         return results
 
     def _extract_vlm_pages(self, file_path: str, page_infos: list[PageInfo]) -> list[str]:
@@ -399,7 +416,7 @@ class DocumentProcessor(BaseContextProcessor):
 
             tasks = [
                 self._analyze_image_with_vlm(img, page_num)
-                for img, page_num in zip(batch, batch_page_nums)
+                for img, page_num in zip(batch, batch_page_nums, strict=False)
             ]
 
             # Run async tasks
@@ -428,7 +445,8 @@ class DocumentProcessor(BaseContextProcessor):
 
     def _process_vlm_pages_with_doc_images(self, page_infos: list[PageInfo]) -> list[str]:
         """
-        Process DOCX pages using embedded images (instead of converting entire page to image), returns extracted text list
+        Process DOCX pages using embedded images (instead of converting
+        entire page to image), returns extracted text list.
         """
         # Collect all embedded images
         all_doc_images = []
@@ -452,12 +470,13 @@ class DocumentProcessor(BaseContextProcessor):
                 total_batches = (total + self._vlm_batch_size - 1) // self._vlm_batch_size
                 batch_index = i // self._vlm_batch_size + 1
                 logger.info(
-                    f"batch {batch_index}/{total_batches}, images {i + 1}-{i + len(batch_images)} of {total}"
+                    f"batch {batch_index}/{total_batches}, "
+                    f"images {i + 1}-{i + len(batch_images)} of {total}"
                 )
 
                 tasks = [
                     self._analyze_image_with_vlm(img, page_num)
-                    for img, page_num in zip(batch_images, batch_page_nums)
+                    for img, page_num in zip(batch_images, batch_page_nums, strict=False)
                 ]
 
                 batch_results = self._run_async_tasks(tasks)
