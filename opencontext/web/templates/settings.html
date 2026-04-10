@@ -544,6 +544,36 @@
                             </div>
                         </div>
 
+                        <!-- Agent Profile 更新任务 -->
+                        <div class="card settings-card mb-4">
+                            <div class="card-header">
+                                <strong>Agent Profile 更新 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="根据当天交互事件定期更新 agent 对用户的认知画像，以 base_profile 为锚点防止性格漂移"></i></strong>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="task_apu_enabled">
+                                    <label class="form-check-label" for="task_apu_enabled">启用</label>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="task_apu_trigger" class="form-label">触发模式 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动：推送数据后延迟执行（仅在使用 agent_memory 处理器且 agent 已注册时触发）"></i></label>
+                                        <select class="form-select" id="task_apu_trigger">
+                                            <option value="user_activity">用户活动触发</option>
+                                            <option value="periodic">定时触发</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="task_apu_interval" class="form-label">间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动模式下为推送后的延迟秒数（默认86400=24小时）"></i></label>
+                                        <input type="number" class="form-control" id="task_apu_interval" min="1">
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="task_apu_ttl" class="form-label">任务 TTL (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="任务状态过期时间（默认14400=4小时）"></i></label>
+                                        <input type="number" class="form-control" id="task_apu_ttl" min="1">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
                             <button type="button" class="btn btn-secondary" onclick="loadSchedulerSettings()"><i class="bi bi-arrow-clockwise"></i> 重置</button>

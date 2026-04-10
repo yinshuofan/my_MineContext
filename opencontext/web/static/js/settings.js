@@ -389,6 +389,13 @@ function populateSchedulerSettings(allData) {
     setVal('task_hs_interval', hs.interval);
     setVal('task_hs_timeout', hs.timeout);
     setVal('task_hs_ttl', hs.task_ttl);
+
+    // agent_profile_update
+    const apu = tasks.agent_profile_update || {};
+    setChecked('task_apu_enabled', apu.enabled);
+    setVal('task_apu_trigger', apu.trigger_mode);
+    setVal('task_apu_interval', apu.interval);
+    setVal('task_apu_ttl', apu.task_ttl);
 }
 
 async function loadSchedulerSettings() {
@@ -433,6 +440,12 @@ document.getElementById('schedulerForm')?.addEventListener('submit', async (e) =
                     interval: getInt('task_hs_interval'),
                     timeout: getInt('task_hs_timeout'),
                     task_ttl: getInt('task_hs_ttl'),
+                },
+                agent_profile_update: {
+                    enabled: getChecked('task_apu_enabled'),
+                    trigger_mode: getVal('task_apu_trigger'),
+                    interval: getInt('task_apu_interval'),
+                    task_ttl: getInt('task_apu_ttl'),
                 },
             },
         },
