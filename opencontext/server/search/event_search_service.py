@@ -98,7 +98,8 @@ class EventSearchService:
         # Drill-up
         ancestors: Dict[str, ProcessedContext] = {}
         if drill_up and raw_results:
-            ancestors = await self.collect_ancestors(raw_results, max_level=3)
+            max_level = max(hierarchy_levels) if hierarchy_levels else 3
+            ancestors = await self.collect_ancestors(raw_results, max_level=max_level)
 
         logger.debug(
             f"[EventSearchService] search results: "
