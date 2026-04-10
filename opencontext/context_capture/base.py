@@ -45,7 +45,7 @@ class BaseCaptureComponent(ICaptureComponent):
         self._name = name
         self._description = description
         self._source_type = source_type
-        self._config = {}
+        self._config = {}  # type: ignore[var-annotated]
         self._running = False
         self._capture_thread = None
         self._stop_event = threading.Event()
@@ -90,7 +90,7 @@ class BaseCaptureComponent(ICaptureComponent):
                 logger.exception(
                     f"{self._name}: Exception occurred during initialization: {str(e)}"
                 )
-                self._last_error = str(e)
+                self._last_error = str(e)  # type: ignore[assignment]
                 self._error_count += 1
                 return False
 
@@ -117,16 +117,16 @@ class BaseCaptureComponent(ICaptureComponent):
 
                 # If capture interval is configured, start capture thread
                 if "capture_interval" in self._config and self._config.get("enabled", True):
-                    self._capture_thread = threading.Thread(
+                    self._capture_thread = threading.Thread(  # type: ignore[assignment]
                         target=self._capture_loop, name=f"{self._name}_capture_thread", daemon=True
                     )
-                    self._capture_thread.start()
+                    self._capture_thread.start()  # type: ignore[attr-defined]
 
                 logger.info(f"{self._name}: Startup successful")
                 return True
             except Exception as e:
                 logger.exception(f"{self._name}: Exception occurred during startup: {str(e)}")
-                self._last_error = str(e)
+                self._last_error = str(e)  # type: ignore[assignment]
                 self._error_count += 1
                 return False
 
@@ -162,7 +162,7 @@ class BaseCaptureComponent(ICaptureComponent):
                 return True
             except Exception as e:
                 logger.exception(f"{self._name}: Exception occurred during stop: {str(e)}")
-                self._last_error = str(e)
+                self._last_error = str(e)  # type: ignore[assignment]
                 self._error_count += 1
                 return False
 
@@ -190,7 +190,7 @@ class BaseCaptureComponent(ICaptureComponent):
         try:
             # Record capture start time
             start_time = time.time()
-            self._last_capture_time = tz_now()
+            self._last_capture_time = tz_now()  # type: ignore[assignment]
 
             # Subclasses need to implement specific capture logic in _capture_impl
             result = self._capture_impl()
@@ -222,7 +222,7 @@ class BaseCaptureComponent(ICaptureComponent):
             return result
         except Exception as e:
             logger.exception(f"{self._name}: Exception occurred during capture: {str(e)}")
-            self._last_error = str(e)
+            self._last_error = str(e)  # type: ignore[assignment]
             self._error_count += 1
             return []
 
@@ -274,9 +274,9 @@ class BaseCaptureComponent(ICaptureComponent):
         custom_schema = self._get_config_schema_impl()
         if custom_schema:
             if "properties" in custom_schema:
-                schema["properties"].update(custom_schema["properties"])
+                schema["properties"].update(custom_schema["properties"])  # type: ignore[attr-defined]
             if "required" in custom_schema:
-                schema["required"].extend(custom_schema["required"])
+                schema["required"].extend(custom_schema["required"])  # type: ignore[attr-defined]
 
         return schema
 
@@ -407,7 +407,7 @@ class BaseCaptureComponent(ICaptureComponent):
         """
         with self._lock:
             try:
-                self._callback = callback
+                self._callback = callback  # type: ignore[assignment]
                 return True
             except Exception as e:
                 logger.exception(

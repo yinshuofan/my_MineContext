@@ -168,7 +168,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
                 self._processing_stats["error_count"] += 1
                 logger.error(f"Error processing context in {self.get_name()}: {result}")
                 continue
-            object_id, processed_contexts = result
+            object_id, processed_contexts = result  # type: ignore[misc]
             if object_id is None:
                 continue
             if object_id not in processed_by_object_id:
@@ -256,7 +256,7 @@ class BaseContextProcessor(IContextProcessor, ABC):
             except Exception as e:
                 logger.error(f"Error invoking callback in {self.get_name()}: {e}")
 
-    def shutdown(self) -> bool:
+    def shutdown(self) -> bool:  # type: ignore[override]
         """
         Shutdown the processor and clean up resources.
 

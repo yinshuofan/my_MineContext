@@ -34,8 +34,8 @@ class PromptManager:
                 value = value[key]
             else:
                 logger.warning(f"Prompt '{name}' not found.")
-                return default
-        return value if isinstance(value, str) else default
+                return default  # type: ignore[return-value]
+        return value if isinstance(value, str) else default  # type: ignore[return-value]
 
     def get_prompt_group(self, name: str) -> dict[str, str]:
         keys = name.split(".")

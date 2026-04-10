@@ -32,8 +32,8 @@ class StreamEvent:
         return cls(
             type=EventType(data["type"]),
             content=data["content"],
-            stage=WorkflowStage(data.get("stage")) if data.get("stage") else None,
-            node=NodeType(data.get("node")) if data.get("node") else None,
+            stage=WorkflowStage(data.get("stage")) if data.get("stage") else None,  # type: ignore[arg-type]
+            node=NodeType(data.get("node")) if data.get("node") else None,  # type: ignore[arg-type]
             progress=data.get("progress", 0.0),
             timestamp=datetime.fromisoformat(data["timestamp"]),
             metadata=data.get("metadata", {}),
@@ -52,7 +52,7 @@ class StreamEvent:
         if self.node:
             result["node"] = self.node.value
         if self.metadata:
-            result["metadata"] = self.metadata
+            result["metadata"] = self.metadata  # type: ignore[assignment]
 
         return result
 

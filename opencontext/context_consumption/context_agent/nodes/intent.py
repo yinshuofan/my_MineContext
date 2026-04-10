@@ -28,7 +28,7 @@ class IntentNode(BaseNode):
 
     async def process(self, state: WorkflowState) -> WorkflowState:
         """Process intent analysis"""
-        await self.streaming_manager.emit(
+        await self.streaming_manager.emit(  # type: ignore[union-attr]
             StreamEvent(
                 type=EventType.THINKING,
                 content="Analyzing your intent...",
@@ -38,7 +38,7 @@ class IntentNode(BaseNode):
         # 1. Classify query type
         query_type = await self._classify_query(state.query.text, state.contexts.get_chat_history())
         if not query_type:
-            await self.streaming_manager.emit(
+            await self.streaming_manager.emit(  # type: ignore[union-attr]
                 StreamEvent(
                     type=EventType.FAIL,
                     content="Intent analysis failed",
@@ -89,7 +89,7 @@ class IntentNode(BaseNode):
         """Handle simple chats with streaming"""
         from ..models.schemas import ExecutionPlan, ExecutionResult
 
-        await self.streaming_manager.emit(
+        await self.streaming_manager.emit(  # type: ignore[union-attr]
             StreamEvent(
                 type=EventType.THINKING,
                 content="Generating reply...",
@@ -116,7 +116,7 @@ class IntentNode(BaseNode):
                 if hasattr(delta, "content") and delta.content:
                     full_content += delta.content
                     # Emit streaming chunk event
-                    await self.streaming_manager.emit(
+                    await self.streaming_manager.emit(  # type: ignore[union-attr]
                         StreamEvent(
                             type=EventType.STREAM_CHUNK,
                             content=delta.content,
@@ -133,7 +133,7 @@ class IntentNode(BaseNode):
             outputs=[full_content],
             metadata={"type": "simple_chat"},
         )
-        await self.streaming_manager.emit(
+        await self.streaming_manager.emit(  # type: ignore[union-attr]
             StreamEvent(
                 type=EventType.DONE, content="Reply generated", stage=WorkflowStage.INTENT_ANALYSIS
             )

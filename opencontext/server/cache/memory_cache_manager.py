@@ -416,10 +416,10 @@ class MemoryCacheManager:
 
         # Parallel queries — always include docs/knowledge and base events
         tasks = {
-            "profile": storage.get_profile(
+            "profile": storage.get_profile(  # type: ignore[union-attr]
                 user_id, device_id, agent_id, context_type=profile_context_type
             ),
-            "today_events": storage.get_all_processed_contexts(
+            "today_events": storage.get_all_processed_contexts(  # type: ignore[union-attr]
                 context_types=[l0_type],
                 limit=max_events_today,
                 offset=0,
@@ -432,7 +432,7 @@ class MemoryCacheManager:
                 device_id=device_id,
                 agent_id=agent_id,
             ),
-            "daily_summaries": storage.search_hierarchy(
+            "daily_summaries": storage.search_hierarchy(  # type: ignore[union-attr]
                 context_type=l1_type,
                 hierarchy_level=1,  # L1
                 time_start=period_start_ts,
@@ -442,7 +442,7 @@ class MemoryCacheManager:
                 agent_id=agent_id,
                 top_k=days,
             ),
-            "recent_docs": storage.get_all_processed_contexts(
+            "recent_docs": storage.get_all_processed_contexts(  # type: ignore[union-attr]
                 context_types=[ContextType.DOCUMENT.value],
                 limit=self._config["max_recent_documents"],
                 offset=0,
@@ -452,7 +452,7 @@ class MemoryCacheManager:
                 device_id=device_id,
                 agent_id=agent_id,
             ),
-            "recent_knowledge": storage.get_all_processed_contexts(
+            "recent_knowledge": storage.get_all_processed_contexts(  # type: ignore[union-attr]
                 context_types=[ContextType.KNOWLEDGE.value],
                 limit=self._config["max_recent_knowledge"],
                 offset=0,
@@ -463,7 +463,7 @@ class MemoryCacheManager:
                 agent_id=agent_id,
             ),
             # Backend skips user_id filter for agent_base_* types automatically
-            "base_events": storage.get_all_processed_contexts(
+            "base_events": storage.get_all_processed_contexts(  # type: ignore[union-attr]
                 context_types=[ContextType.AGENT_BASE_EVENT.value],
                 limit=20,
                 user_id=user_id,
@@ -498,7 +498,7 @@ class MemoryCacheManager:
         if isinstance(profile_data, Exception):
             profile_data = None
         if not profile_data and agent_id and agent_id != "default":
-            profile_data = await storage.get_profile(
+            profile_data = await storage.get_profile(  # type: ignore[union-attr]
                 "__base__", device_id, agent_id, context_type="agent_base_profile"
             )
             if profile_data:
@@ -511,9 +511,9 @@ class MemoryCacheManager:
                 "user_id": user_id,
                 "device_id": device_id,
                 "agent_id": agent_id,
-                "factual_profile": profile_data.get("factual_profile", ""),
-                "behavioral_profile": profile_data.get("behavioral_profile"),
-                "metadata": profile_data.get("metadata", {}),
+                "factual_profile": profile_data.get("factual_profile", ""),  # type: ignore[union-attr]
+                "behavioral_profile": profile_data.get("behavioral_profile"),  # type: ignore[union-attr]
+                "metadata": profile_data.get("metadata", {}),  # type: ignore[union-attr]
             }
 
         # Recent memories — hierarchical
@@ -523,7 +523,7 @@ class MemoryCacheManager:
         today_data = results_map.get("today_events")
         if today_data and not isinstance(today_data, Exception):
             today_items = []
-            for _ctx_type, contexts in today_data.items():
+            for _ctx_type, contexts in today_data.items():  # type: ignore[union-attr]
                 for ctx in contexts:
                     today_items.append(self._ctx_to_recent_item(ctx))
             today_items.sort(
@@ -535,7 +535,7 @@ class MemoryCacheManager:
         summaries_data = results_map.get("daily_summaries")
         if summaries_data and not isinstance(summaries_data, Exception):
             daily_items = []
-            for ctx, _score in summaries_data:
+            for ctx, _score in summaries_data:  # type: ignore[union-attr]
                 # Derive event_time_start string from properties
                 ets = ""
                 if ctx.properties and ctx.properties.event_time_start:
@@ -557,7 +557,7 @@ class MemoryCacheManager:
         docs_data = results_map.get("recent_docs")
         if docs_data and not isinstance(docs_data, Exception):
             doc_items = []
-            for _ctx_type, contexts in docs_data.items():
+            for _ctx_type, contexts in docs_data.items():  # type: ignore[union-attr]
                 for ctx in contexts:
                     doc_items.append(self._ctx_to_recent_item(ctx))
             doc_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
@@ -567,7 +567,7 @@ class MemoryCacheManager:
         knowledge_data = results_map.get("recent_knowledge")
         if knowledge_data and not isinstance(knowledge_data, Exception):
             knowledge_items = []
-            for _ctx_type, contexts in knowledge_data.items():
+            for _ctx_type, contexts in knowledge_data.items():  # type: ignore[union-attr]
                 for ctx in contexts:
                     knowledge_items.append(self._ctx_to_recent_item(ctx))
             knowledge_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
@@ -577,7 +577,7 @@ class MemoryCacheManager:
         base_data = results_map.get("base_events")
         if base_data and not isinstance(base_data, Exception):
             base_items = []
-            for _ctx_type, contexts in base_data.items():
+            for _ctx_type, contexts in base_data.items():  # type: ignore[union-attr]
                 for ctx in contexts:
                     base_items.append(self._ctx_to_recent_item(ctx))
             base_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
@@ -639,7 +639,7 @@ class MemoryCacheManager:
         # Include media_refs from metadata if present (multimodal content)
         media_refs = normalize_media_refs(ctx.metadata.get("media_refs") if ctx.metadata else None)
         if media_refs:
-            result["media_refs"] = media_refs
+            result["media_refs"] = media_refs  # type: ignore[assignment]
 
         return result
 

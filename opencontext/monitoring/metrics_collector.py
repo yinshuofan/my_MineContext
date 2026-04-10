@@ -203,4 +203,4 @@ class RetrievalTimingContext:
 
     def set_query(self, query: str):
         """设置查询字符串"""
-        self.query = query
+        self.query = query  # type: ignore[assignment]

@@ -137,7 +137,7 @@ class CompletionCache:
         try:
             from opencontext.storage.redis_cache import get_redis_cache
 
-            self._redis_cache = get_redis_cache()
+            self._redis_cache = get_redis_cache()  # type: ignore[assignment]
             self._redis_configured = True
             logger.info("CompletionCache: Redis configured for multi-instance cache sharing")
         except Exception as e:
@@ -171,7 +171,7 @@ class CompletionCache:
             await self._increment_stat("total_requests")
 
             cache_key = self._make_cache_key(key)
-            data = await self._redis_cache.get_json(cache_key)
+            data = await self._redis_cache.get_json(cache_key)  # type: ignore[attr-defined]
 
             if data is None:
                 await self._increment_stat("misses")
@@ -182,8 +182,8 @@ class CompletionCache:
             # Check TTL expiration
             created_at = datetime.fromisoformat(entry.created_at)
             if tz_now() - created_at > self.ttl:
-                await self._redis_cache.delete(cache_key)
-                await self._redis_cache.zrem(self.ACCESS_ORDER_KEY, key)
+                await self._redis_cache.delete(cache_key)  # type: ignore[attr-defined]
+                await self._redis_cache.zrem(self.ACCESS_ORDER_KEY, key)  # type: ignore[attr-defined]
                 await self._increment_stat("misses")
                 return None
 
@@ -196,14 +196,14 @@ class CompletionCache:
             now = tz_now()
             entry.last_accessed = now.isoformat()
             entry.access_count += 1
-            await self._redis_cache.set_json(cache_key, entry.to_dict(), ttl=self.ttl_seconds)
+            await self._redis_cache.set_json(cache_key, entry.to_dict(), ttl=self.ttl_seconds)  # type: ignore[attr-defined]
 
             # Update access order (sorted set — score is timestamp)
-            await self._redis_cache.zadd(self.ACCESS_ORDER_KEY, {key: now.timestamp()})
+            await self._redis_cache.zadd(self.ACCESS_ORDER_KEY, {key: now.timestamp()})  # type: ignore[attr-defined]
 
             # Mark as hot key if frequently accessed
             if entry.access_count > 5:
-                await self._redis_cache.sadd(self.HOT_KEYS_KEY, key)
+                await self._redis_cache.sadd(self.HOT_KEYS_KEY, key)  # type: ignore[attr-defined]
 
             await self._increment_stat("hits")
             logger.debug(f"Cache hit (Redis): {key[:20]}...")
@@ -279,7 +279,7 @@ class CompletionCache:
             now = tz_now()
 
             # Check cache size and evict if needed (O(1) via zcard)
-            cache_size = await self._redis_cache.zcard(self.ACCESS_ORDER_KEY)
+            cache_size = await self._redis_cache.zcard(self.ACCESS_ORDER_KEY)  # type: ignore[attr-defined]
             if cache_size >= self.max_size:
                 await self._evict_entries_redis()
 
@@ -296,10 +296,10 @@ class CompletionCache:
 
             # Store in Redis
             cache_key = self._make_cache_key(key)
-            await self._redis_cache.set_json(cache_key, entry.to_dict(), ttl=self.ttl_seconds)
+            await self._redis_cache.set_json(cache_key, entry.to_dict(), ttl=self.ttl_seconds)  # type: ignore[attr-defined]
 
             # Add to access order (sorted set — score is timestamp)
-            await self._redis_cache.zadd(self.ACCESS_ORDER_KEY, {key: now.timestamp()})
+            await self._redis_cache.zadd(self.ACCESS_ORDER_KEY, {key: now.timestamp()})  # type: ignore[attr-defined]
 
             logger.debug(f"Cache add (Redis): {key[:20]}... ({len(suggestions)} suggestions)")
 
@@ -350,21 +350,21 @@ class CompletionCache:
         try:
             if pattern is None:
                 # Clear all cache
-                keys = await self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*")
+                keys = await self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*")  # type: ignore[attr-defined]
                 if keys:
-                    await self._redis_cache.delete(*keys)
-                await self._redis_cache.delete(self.ACCESS_ORDER_KEY)
-                await self._redis_cache.delete(self.HOT_KEYS_KEY)
+                    await self._redis_cache.delete(*keys)  # type: ignore[attr-defined]
+                await self._redis_cache.delete(self.ACCESS_ORDER_KEY)  # type: ignore[attr-defined]
+                await self._redis_cache.delete(self.HOT_KEYS_KEY)  # type: ignore[attr-defined]
                 logger.info("All Redis cache cleared")
             else:
                 # Invalidate by pattern
-                keys = await self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*{pattern}*")
+                keys = await self._redis_cache.keys(f"{self.CACHE_KEY_PREFIX}*{pattern}*")  # type: ignore[attr-defined]
                 if keys:
-                    await self._redis_cache.delete(*keys)
+                    await self._redis_cache.delete(*keys)  # type: ignore[attr-defined]
                     # Clean up sorted set entries to prevent orphaned members
                     for key in keys:
                         short_key = key.removeprefix(self.CACHE_KEY_PREFIX)
-                        await self._redis_cache.zrem(self.ACCESS_ORDER_KEY, short_key)
+                        await self._redis_cache.zrem(self.ACCESS_ORDER_KEY, short_key)  # type: ignore[attr-defined]
                 logger.info(f"Invalidated Redis cache by pattern: {pattern} ({len(keys)} items)")
         except Exception as e:
             logger.error(f"Redis invalidate error: {e}")
@@ -455,7 +455,7 @@ class CompletionCache:
         """Increment a statistic (thread-safe)"""
         if self._redis_configured:
             try:
-                await self._redis_cache.incr(f"{self.STATS_KEY}:{stat_name}", amount)
+                await self._redis_cache.incr(f"{self.STATS_KEY}:{stat_name}", amount)  # type: ignore[attr-defined]
             except Exception as e:
                 logger.debug(f"Redis stat increment failed: {e}")
         with self._lock:
@@ -494,7 +494,7 @@ class CompletionCache:
 
             if self._redis_configured:
                 try:
-                    await self._redis_cache.set_json(
+                    await self._redis_cache.set_json(  # type: ignore[attr-defined]
                         f"{self.PRECOMPUTED_KEY_PREFIX}{document_id}",
                         precomputed,
                         ttl=3600,  # 1 hour
@@ -513,7 +513,7 @@ class CompletionCache:
         # Try Redis first
         if self._redis_configured:
             try:
-                data = await self._redis_cache.get_json(
+                data = await self._redis_cache.get_json(  # type: ignore[attr-defined]
                     f"{self.PRECOMPUTED_KEY_PREFIX}{document_id}"
                 )
                 if data:
@@ -620,13 +620,13 @@ class CompletionCache:
             stats["local_cache_size"] = len(self._local_cache)
             stats["local_hot_keys_count"] = len(self._hot_keys)
             stats["precomputed_contexts"] = len(self._precomputed_contexts)
-            stats["memory_usage_estimate"] = self._estimate_memory_usage()
+            stats["memory_usage_estimate"] = self._estimate_memory_usage()  # type: ignore[assignment]
 
         # Redis calls OUTSIDE the lock
         if self._redis_configured:
             try:
-                stats["redis_cache_size"] = await self._redis_cache.zcard(self.ACCESS_ORDER_KEY)
-                stats["redis_hot_keys_count"] = await self._redis_cache.scard(self.HOT_KEYS_KEY)
+                stats["redis_cache_size"] = await self._redis_cache.zcard(self.ACCESS_ORDER_KEY)  # type: ignore[attr-defined]
+                stats["redis_hot_keys_count"] = await self._redis_cache.scard(self.HOT_KEYS_KEY)  # type: ignore[attr-defined]
             except Exception as e:
                 logger.debug(f"Failed to get Redis cache statistics: {e}")
 
@@ -665,7 +665,7 @@ class CompletionCache:
         hot_keys = self._hot_keys.copy()
         if self._redis_configured:
             try:
-                redis_hot_keys = await self._redis_cache.smembers(self.HOT_KEYS_KEY)
+                redis_hot_keys = await self._redis_cache.smembers(self.HOT_KEYS_KEY)  # type: ignore[attr-defined]
                 hot_keys.update(redis_hot_keys)
             except Exception as e:
                 logger.debug(f"Redis hot key access failed: {e}")
@@ -683,7 +683,7 @@ class CompletionCache:
         # Fetch remaining entries from Redis OUTSIDE the lock
         for key in keys_needing_redis:
             try:
-                data = await self._redis_cache.get_json(self._make_cache_key(key))
+                data = await self._redis_cache.get_json(self._make_cache_key(key))  # type: ignore[attr-defined]
                 if data:
                     local_entries[key] = CacheEntry.from_dict(data)
             except Exception as e:

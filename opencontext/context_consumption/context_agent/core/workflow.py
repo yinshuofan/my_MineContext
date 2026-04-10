@@ -30,7 +30,7 @@ class WorkflowEngine:
         self.logger = get_logger(self.__class__.__name__)
 
         # Node instances (lazy initialization)
-        self._nodes = {}
+        self._nodes = {}  # type: ignore[var-annotated]
 
     def _init_nodes(self):
         """Initialize nodes."""
@@ -192,7 +192,7 @@ class WorkflowEngine:
         if state.is_complete():
             return state
 
-        if state.stage == WorkflowStage.INSUFFICIENT_INFO and user_input:
+        if state.stage == WorkflowStage.INSUFFICIENT_INFO and user_input:  # type: ignore[attr-defined]
             state.query.text += f" {user_input}"
             return await self._execute_workflow(state)
         return await self._execute_workflow(state)

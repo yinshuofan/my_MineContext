@@ -110,7 +110,7 @@ class S3CompatibleBackend(IObjectStorage):
         path = f"/{key}"
         payload_hash = hashlib.sha256(b"").hexdigest()
 
-        headers = {}
+        headers = {}  # type: ignore[var-annotated]
         signed_headers = self._auth.sign_request(
             method="DELETE",
             host=self.host,

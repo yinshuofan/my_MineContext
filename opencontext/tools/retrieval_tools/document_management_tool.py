@@ -173,7 +173,7 @@ class DocumentManagementTool:
     ) -> dict[str, Any]:
         """Aggregate complete information for a single document"""
         if not results:
-            return None
+            return None  # type: ignore[return-value]
 
         # Use first context as base information
         first_context, _ = results[0]
@@ -219,7 +219,7 @@ class DocumentManagementTool:
     ) -> dict[str, Any]:
         """Format single context result"""
         result = {"similarity_score": score}
-        result["context"] = context.get_llm_context_string()
+        result["context"] = context.get_llm_context_string()  # type: ignore[assignment]
 
         # Add additional fields
         if additional_fields:

@@ -23,7 +23,7 @@ class ReflectionNode(BaseNode):
 
     async def process(self, state: WorkflowState) -> WorkflowState:
         """Process reflection"""
-        await self.emit_stream_event(EventType.REFLECTING, "Evaluating task execution results...")
+        await self.emit_stream_event(EventType.REFLECTING, "Evaluating task execution results...")  # type: ignore[attr-defined]
 
         # Update stage
         state.update_stage(WorkflowStage.REFLECTION)
@@ -56,8 +56,8 @@ class ReflectionNode(BaseNode):
             )
 
             # Send completion event
-            await self.emit_stream_event(
-                EventType.NODE_COMPLETE,
+            await self.emit_stream_event(  # type: ignore[attr-defined]
+                EventType.NODE_COMPLETE,  # type: ignore[attr-defined]
                 f"Reflection complete: {evaluation['type'].value}",
                 progress=1.0,
                 data={

@@ -103,7 +103,7 @@ def _nest_llm_config(flat: LLMModelConfig) -> dict:
         "model": flat.model,
     }
     if flat.max_concurrent is not None:
-        inner["max_concurrent"] = flat.max_concurrent
+        inner["max_concurrent"] = flat.max_concurrent  # type: ignore[assignment]
     return {"provider": flat.provider, "config": inner}
 
 
@@ -116,9 +116,9 @@ def _flat_to_dict(cfg: LLMModelConfig) -> dict:
         "api_key": cfg.api_key,
     }
     if cfg.max_concurrent is not None:
-        d["max_concurrent"] = cfg.max_concurrent
+        d["max_concurrent"] = cfg.max_concurrent  # type: ignore[assignment]
     if isinstance(cfg, EmbeddingModelConfig) and cfg.output_dim is not None:
-        d["output_dim"] = cfg.output_dim
+        d["output_dim"] = cfg.output_dim  # type: ignore[assignment]
     return d
 
 

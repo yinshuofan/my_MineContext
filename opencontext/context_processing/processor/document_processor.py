@@ -142,10 +142,10 @@ class DocumentProcessor(BaseContextProcessor):
             return FileType(suffix)
         except ValueError:
             logger.warning(f"Unknown file type for suffix '{suffix}' in path {file_path}")
-            return None
+            return None  # type: ignore[return-value]
 
     def _is_structured_document(self, context: RawContextProperties) -> bool:
-        file_type = self._get_file_type(context.content_path)
+        file_type = self._get_file_type(context.content_path)  # type: ignore[arg-type]
         return file_type in STRUCTURED_FILE_TYPES
 
     def _is_text_content(self, context: RawContextProperties) -> bool:
@@ -154,7 +154,7 @@ class DocumentProcessor(BaseContextProcessor):
     def _is_visual_document(self, context: RawContextProperties) -> bool:
         if context.source not in [ContextSource.LOCAL_FILE, ContextSource.WEB_LINK]:
             return False
-        file_ext = Path(context.content_path).suffix.lower()
+        file_ext = Path(context.content_path).suffix.lower()  # type: ignore[arg-type]
         visual_formats = {
             ".pdf",
             ".png",
@@ -229,7 +229,7 @@ class DocumentProcessor(BaseContextProcessor):
         self, raw_context: RawContextProperties
     ) -> list[ProcessedContext]:
         """Process structured documents (CSV/XLSX/JSONL)"""
-        file_type = self._get_file_type(raw_context.content_path)
+        file_type = self._get_file_type(raw_context.content_path)  # type: ignore[arg-type]
         if file_type == FileType.FAQ_XLSX:
             chunker = self._faq_chunker
         elif file_type in STRUCTURED_FILE_TYPES:
@@ -253,7 +253,7 @@ class DocumentProcessor(BaseContextProcessor):
         )
         for chunk in chunks:
             ctx = ProcessedContext(
-                properties=ContextProperties(
+                properties=ContextProperties(  # type: ignore[call-arg]
                     raw_properties=[raw_context],
                     create_time=now,
                     update_time=now,
@@ -298,7 +298,7 @@ class DocumentProcessor(BaseContextProcessor):
         2. Images/PPT: Direct VLM (inherently visual content)
         """
         file_path = raw_context.content_path
-        file_ext = Path(file_path).suffix.lower()
+        file_ext = Path(file_path).suffix.lower()  # type: ignore[arg-type]
 
         # Image files and PPT files: Direct VLM
         if file_ext in [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".pptx", ".ppt"]:
@@ -312,7 +312,7 @@ class DocumentProcessor(BaseContextProcessor):
 
         # PDF/DOCX: Choose strategy based on config
         if file_ext in [".pdf", ".docx", ".doc", ".md", ".txt"]:
-            return self._process_document_page_by_page(raw_context, file_path, file_ext)
+            return self._process_document_page_by_page(raw_context, file_path, file_ext)  # type: ignore[arg-type]
 
         raise ValueError(f"Unsupported file type for page-by-page: {file_ext}")
 
@@ -441,7 +441,7 @@ class DocumentProcessor(BaseContextProcessor):
 
     def _run_async_tasks(self, tasks: list[Any]) -> list[Any]:
         """Run async tasks from sync context (called inside asyncio.to_thread)."""
-        return asyncio.run(asyncio.gather(*tasks, return_exceptions=True))
+        return asyncio.run(asyncio.gather(*tasks, return_exceptions=True))  # type: ignore[arg-type]
 
     def _process_vlm_pages_with_doc_images(self, page_infos: list[PageInfo]) -> list[str]:
         """

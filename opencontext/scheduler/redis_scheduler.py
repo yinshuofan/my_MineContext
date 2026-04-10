@@ -528,7 +528,7 @@ class RedisTaskScheduler(ITaskScheduler):
             try:
                 while self._running:
                     try:
-                        await asyncio.wait_for(self._concurrency_sem.acquire(), timeout=1.0)
+                        await asyncio.wait_for(self._concurrency_sem.acquire(), timeout=1.0)  # type: ignore[union-attr]
                     except TimeoutError:
                         continue  # re-check _running
 
@@ -537,11 +537,11 @@ class RedisTaskScheduler(ITaskScheduler):
                     try:
                         task_info = await self.get_pending_task(task_type)
                     except Exception:
-                        self._concurrency_sem.release()
+                        self._concurrency_sem.release()  # type: ignore[union-attr]
                         raise
 
                     if not task_info:
-                        self._concurrency_sem.release()
+                        self._concurrency_sem.release()  # type: ignore[union-attr]
                         break  # queue empty, go to sleep
 
                     # Fire-and-forget: task runs concurrently.
@@ -566,7 +566,7 @@ class RedisTaskScheduler(ITaskScheduler):
         try:
             await self._execute_task(task_type, task_info)
         finally:
-            self._concurrency_sem.release()
+            self._concurrency_sem.release()  # type: ignore[union-attr]
 
     async def _execute_task(self, task_type: str, task_info: TaskInfo) -> None:
         """
@@ -723,7 +723,7 @@ class RedisTaskScheduler(ITaskScheduler):
 
                 # Execute async handler directly
                 logger.info(f"Executing periodic task: {task_type}")
-                await handler(None, None, None)
+                await handler(None, None, None)  # type: ignore[arg-type]
 
                 await self._redis.hset(periodic_key, "status", "idle")
                 await self._redis.expire(periodic_key, interval * 3)

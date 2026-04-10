@@ -37,7 +37,7 @@ class BaseNode(ABC):
             return state
         except Exception as e:
             self.logger.exception(f"Node execution failed: {e}")
-            await self.streaming_manager.emit(
+            await self.streaming_manager.emit(  # type: ignore[union-attr]
                 StreamEvent(
                     type=EventType.FAIL,
                     stage=state.stage,

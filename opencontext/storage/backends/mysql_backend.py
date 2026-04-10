@@ -443,21 +443,21 @@ class MySQLBackend(IDocumentStorageBackend):
 
                 if document_type:
                     where_clauses.append("document_type = %s")
-                    params.append(document_type)
+                    params.append(document_type)  # type: ignore[arg-type]
                 if created_after:
                     where_clauses.append("created_at >= %s")
-                    params.append(created_after)
+                    params.append(created_after)  # type: ignore[arg-type]
                 if created_before:
                     where_clauses.append("created_at <= %s")
-                    params.append(created_before)
+                    params.append(created_before)  # type: ignore[arg-type]
                 if updated_after:
                     where_clauses.append("updated_at >= %s")
-                    params.append(updated_after)
+                    params.append(updated_after)  # type: ignore[arg-type]
                 if updated_before:
                     where_clauses.append("updated_at <= %s")
-                    params.append(updated_before)
+                    params.append(updated_before)  # type: ignore[arg-type]
 
-                params.extend([limit, offset])
+                params.extend([limit, offset])  # type: ignore[list-item]
                 where_clause = " AND ".join(where_clauses)
                 sql = f"""
                     SELECT id, title, summary, content, tags, parent_id, is_folder, is_deleted,
@@ -596,9 +596,9 @@ class MySQLBackend(IDocumentStorageBackend):
                     params.append(end_time)
                 if status is not None:
                     where_conditions.append("status = %s")
-                    params.append(status)
+                    params.append(status)  # type: ignore[arg-type]
                 where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-                params.extend([limit, offset])
+                params.extend([limit, offset])  # type: ignore[list-item]
                 await cursor.execute(
                     f"""
                     SELECT id, content, created_at, start_time, end_time,
@@ -655,7 +655,7 @@ class MySQLBackend(IDocumentStorageBackend):
                 logger.exception(f"Failed to insert tip: {e}")
                 raise
 
-    async def get_tips(
+    async def get_tips(  # type: ignore[override]
         self,
         start_time: datetime = None,
         end_time: datetime = None,
@@ -679,7 +679,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     where_conditions.append("created_at <= %s")
                     params.append(end_time)
                 where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-                params.extend([limit, offset])
+                params.extend([limit, offset])  # type: ignore[list-item]
                 await cursor.execute(
                     f"""
                     SELECT id, content, created_at FROM tips
@@ -1286,7 +1286,7 @@ class MySQLBackend(IDocumentStorageBackend):
                     params.append("deleted" if status == "delected" else status)
                 if not set_clauses:
                     return await self.get_conversation(conversation_id)
-                params.append(conversation_id)
+                params.append(conversation_id)  # type: ignore[arg-type]
                 sql = f"UPDATE conversations SET {', '.join(set_clauses)} WHERE id = %s"
                 await cursor.execute(sql, params)
                 await conn.commit()
@@ -1837,12 +1837,12 @@ class MySQLBackend(IDocumentStorageBackend):
             parsed = self._parse_date(start_date)
             if parsed:
                 conditions.append("created_at >= %s")
-                params.append(parsed)
+                params.append(parsed)  # type: ignore[arg-type]
         if end_date is not None:
             parsed = self._parse_date(end_date)
             if parsed:
                 conditions.append("created_at < %s")
-                params.append(parsed)
+                params.append(parsed)  # type: ignore[arg-type]
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         return where, params
 

@@ -80,7 +80,7 @@ async def get_documents_list(
     """
     try:
         storage = get_storage()
-        documents = await storage.get_vaults(limit=limit, offset=offset, is_deleted=False)
+        documents = await storage.get_vaults(limit=limit, offset=offset, is_deleted=False)  # type: ignore[union-attr]
 
         # Format return data
         result = []
@@ -120,7 +120,7 @@ async def create_document(
         storage = get_storage()
 
         # Create new document - use insert_vaults method
-        doc_id = await storage.insert_vaults(
+        doc_id = await storage.insert_vaults(  # type: ignore[union-attr]
             title=document.title,
             summary=document.summary,
             content=document.content,  # insert_vaults will automatically handle None
@@ -162,7 +162,7 @@ async def get_document(document_id: int, _auth: str = auth_dependency):
     try:
         storage = get_storage()
         # Get all documents to find the document with specified ID
-        documents = await storage.get_vaults(limit=100, offset=0, is_deleted=False)
+        documents = await storage.get_vaults(limit=100, offset=0, is_deleted=False)  # type: ignore[union-attr]
 
         # Find the document with specified ID
         document = None
@@ -214,7 +214,7 @@ async def save_document(
         background_tasks.add_task(cleanup_document_context, document_id)
 
         # Update existing document
-        success = await storage.update_vault(
+        success = await storage.update_vault(  # type: ignore[union-attr]
             vault_id=document_id,
             title=document.title,
             content=document.content,
@@ -265,7 +265,7 @@ async def delete_document(
         storage = get_storage()
 
         # Soft delete document
-        success = await storage.update_vault(vault_id=document_id, is_deleted=True)
+        success = await storage.update_vault(vault_id=document_id, is_deleted=True)  # type: ignore[union-attr]
 
         if success:
             # Asynchronously clean up related context data
@@ -346,7 +346,7 @@ async def trigger_document_processing(
         processed_contexts = await processor.process(context_data)
 
         if processed_contexts:
-            await get_storage().batch_upsert_processed_context(processed_contexts)
+            await get_storage().batch_upsert_processed_context(processed_contexts)  # type: ignore[union-attr]
             logger.info(f"Context processing triggered for document {doc_id} ({event_type})")
         else:
             logger.warning(

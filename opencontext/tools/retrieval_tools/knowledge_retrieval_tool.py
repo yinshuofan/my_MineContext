@@ -124,9 +124,9 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             has_multimodal = bool(image_url or video_url)
             ark_input = [{"type": "text", "text": query}]
             if image_url:
-                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})
+                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})  # type: ignore[dict-item]
             if video_url:
-                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})
+                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})  # type: ignore[dict-item]
             vectorize = Vectorize(
                 input=ark_input,
                 content_format=(ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT),
@@ -145,7 +145,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             logger.warning(f"L0 event search failed: {e}")
             return []
 
-    async def execute(self, **kwargs) -> list[dict[str, Any]]:
+    async def execute(self, **kwargs) -> list[dict[str, Any]]:  # type: ignore[override]
         """
         Execute knowledge retrieval with supplementary L0 event search.
 
@@ -208,7 +208,7 @@ class KnowledgeRetrievalTool(BaseContextRetrievalTool):
             event_results: list[tuple[ProcessedContext, float]] = []
             if query or image_url or video_url:
                 event_results = await self._search_l0_events(
-                    query=query,
+                    query=query,  # type: ignore[arg-type]
                     filters=filters,
                     top_k=top_k,
                     image_url=image_url,

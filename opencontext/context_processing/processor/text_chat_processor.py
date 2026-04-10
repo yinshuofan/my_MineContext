@@ -71,12 +71,12 @@ class TextChatProcessor(BaseContextProcessor):
         # Build media index for mapping LLM-returned related_media indices back to URLs
         media_index = []  # Ordered list of {"type": "image"|"video", "url": "..."}
         if is_multimodal:
-            media_index = self._build_media_index(chat_history_str)
+            media_index = self._build_media_index(chat_history_str)  # type: ignore[arg-type]
 
         if is_multimodal:
             # For multimodal messages, pass the original messages directly to the LLM
             # so it can see images and videos, producing more accurate memory extraction
-            messages = self._build_multimodal_llm_messages(prompt_group, chat_history_str)
+            messages = self._build_multimodal_llm_messages(prompt_group, chat_history_str)  # type: ignore[arg-type]
         else:
             messages = [
                 {"role": "system", "content": prompt_group.get("system", "")},
@@ -336,7 +336,7 @@ class TextChatProcessor(BaseContextProcessor):
                 modalities.append("image")
             if vectorize_videos:
                 modalities.append("video")
-            metadata["content_modalities"] = ",".join(modalities)
+            metadata["content_modalities"] = ",".join(modalities)  # type: ignore[assignment]
 
         # Build content parts list for Vectorize
         ark_input = [
@@ -350,13 +350,13 @@ class TextChatProcessor(BaseContextProcessor):
         ]
         if vectorize_images:
             for img_url in vectorize_images:
-                ark_input.append({"type": "image_url", "image_url": {"url": img_url}})
+                ark_input.append({"type": "image_url", "image_url": {"url": img_url}})  # type: ignore[dict-item]
         if vectorize_videos:
             for vid_url in vectorize_videos:
-                ark_input.append({"type": "video_url", "video_url": {"url": vid_url, "fps": 1.0}})
+                ark_input.append({"type": "video_url", "video_url": {"url": vid_url, "fps": 1.0}})  # type: ignore[dict-item]
 
         return ProcessedContext(
-            properties=ContextProperties(
+            properties=ContextProperties(  # type: ignore[call-arg]
                 raw_properties=[raw_context],
                 create_time=raw_context.create_time,
                 update_time=tz_now(),

@@ -51,7 +51,7 @@ async def refresh_profile(
     storage = get_storage()
 
     try:
-        existing = await storage.get_profile(
+        existing = await storage.get_profile(  # type: ignore[union-attr]
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
@@ -60,7 +60,7 @@ async def refresh_profile(
 
         # Fallback: first interaction profile for an agent inherits from base profile
         if existing is None and context_type == "agent_profile" and user_id != "__base__":
-            existing = await storage.get_profile(
+            existing = await storage.get_profile(  # type: ignore[union-attr]
                 "__base__", device_id, agent_id, context_type="agent_base_profile"
             )
 
@@ -75,7 +75,7 @@ async def refresh_profile(
             )
 
             if merged:
-                return await storage.upsert_profile(
+                return await storage.upsert_profile(  # type: ignore[union-attr]
                     user_id=user_id,
                     device_id=device_id,
                     agent_id=agent_id,
@@ -89,7 +89,7 @@ async def refresh_profile(
                 logger.warning("LLM merge failed, falling back to direct overwrite")
 
         # No existing profile or LLM merge failed — direct write
-        return await storage.upsert_profile(
+        return await storage.upsert_profile(  # type: ignore[union-attr]
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,

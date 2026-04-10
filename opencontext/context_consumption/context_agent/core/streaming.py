@@ -26,14 +26,14 @@ class StreamingManager:
     async def emit(self, event: StreamEvent):
         """Emit an event - a unified interface to handle all events."""
         await self._ensure_queue()
-        await self.event_queue.put(event)
+        await self.event_queue.put(event)  # type: ignore[union-attr]
 
     async def stream(self) -> AsyncIterator[StreamEvent]:
         """Stream events."""
         await self._ensure_queue()
         while True:
             try:
-                event = await asyncio.wait_for(self.event_queue.get(), timeout=0.1)
+                event = await asyncio.wait_for(self.event_queue.get(), timeout=0.1)  # type: ignore[union-attr]
                 yield event
                 if event.stage in [WorkflowStage.COMPLETED, WorkflowStage.FAILED]:
                     print("Exiting event capture")

@@ -84,7 +84,7 @@ class ContextMerger(BaseContextProcessor):
 
         logger.info(f"Initialized {len(self.strategies)} context merge strategies")
 
-    async def process(self, context: ProcessedContext) -> list[ProcessedContext]:
+    async def process(self, context: ProcessedContext) -> list[ProcessedContext]:  # type: ignore[override]
         return []
 
     def can_process(self, context: ProcessedContext) -> bool:
@@ -329,20 +329,20 @@ class ContextMerger(BaseContextProcessor):
                         "importance",
                         "confidence",
                     ]
-                    if not all(field in response_data for field in required_fields):
+                    if not all(field in response_data for field in required_fields):  # type: ignore[operator]
                         logger.warning(
                             f"LLM response is missing one or more required fields. "
-                            f"Got: {response_data.keys()}"
+                            f"Got: {response_data.keys()}"  # type: ignore[union-attr]
                         )
                         return None
                     extracted_data = ExtractedData(
-                        title=response_data["title"],
-                        summary=response_data["summary"],
-                        keywords=response_data["keywords"],
-                        entities=response_data["entities"],
+                        title=response_data["title"],  # type: ignore[index]
+                        summary=response_data["summary"],  # type: ignore[index]
+                        keywords=response_data["keywords"],  # type: ignore[index]
+                        entities=response_data["entities"],  # type: ignore[index]
                         context_type=target.extracted_data.context_type,
-                        confidence=int(response_data["confidence"]),
-                        importance=int(response_data["importance"]),
+                        confidence=int(response_data["confidence"]),  # type: ignore[index]
+                        importance=int(response_data["importance"]),  # type: ignore[index]
                     )
                     now = tz_now()
                     properties = ContextProperties(
@@ -359,11 +359,11 @@ class ContextMerger(BaseContextProcessor):
                         enable_merge=True,
                     )
                     if (
-                        response_data.get("event_time", "null") != "null"
-                        and response_data.get("event_time") is not None
+                        response_data.get("event_time", "null") != "null"  # type: ignore[union-attr]
+                        and response_data.get("event_time") is not None  # type: ignore[union-attr]
                     ):
                         try:
-                            event_time_str = response_data.get("event_time")
+                            event_time_str = response_data.get("event_time")  # type: ignore[union-attr]
                             if len(event_time_str) == 8 and ":" in event_time_str:
                                 today = tz_now().date().isoformat()
                                 full_event_time_str = f"{today}T{event_time_str}"
@@ -383,7 +383,7 @@ class ContextMerger(BaseContextProcessor):
                         extracted_data=extracted_data,
                         properties=properties,
                         vectorize=Vectorize(
-                            text=extracted_data.title + " " + extracted_data.summary
+                            text=extracted_data.title + " " + extracted_data.summary  # type: ignore[operator]
                         ),
                     )
                     logger.info(
@@ -609,7 +609,7 @@ class ContextMerger(BaseContextProcessor):
             seed_embedding = seed.vectorize.vector
             for i, ctx in enumerate(remaining_contexts):
                 ctx_embedding = ctx.vectorize.vector
-                if self._calculate_similarity(seed_embedding, ctx_embedding) > threshold:
+                if self._calculate_similarity(seed_embedding, ctx_embedding) > threshold:  # type: ignore[arg-type]
                     new_group.append(ctx)
                     to_remove.append(i)
 

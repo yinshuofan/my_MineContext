@@ -77,7 +77,7 @@ class GlobalObjectStorage:
             from opencontext.storage.object_storage.local_backend import LocalBackend
 
             local_config = config.get("local", {})
-            instance = LocalBackend(base_dir=local_config.get("base_dir", "./uploads/media"))
+            instance = LocalBackend(base_dir=local_config.get("base_dir", "./uploads/media"))  # type: ignore[assignment]
             logger.info("Object storage initialized with local backend")
             return instance
         else:

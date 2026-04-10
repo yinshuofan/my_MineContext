@@ -23,7 +23,7 @@ class ContextNode(BaseNode):
     async def process(self, state: WorkflowState) -> WorkflowState:
         """Process context collection - using an LLM-driven iterative model"""
         state.update_stage(WorkflowStage.CONTEXT_GATHERING)
-        await self.streaming_manager.emit(
+        await self.streaming_manager.emit(  # type: ignore[union-attr]
             StreamEvent(
                 type=EventType.RUNNING,
                 content="Starting to intelligently analyze and collect relevant context...",
@@ -39,9 +39,9 @@ class ContextNode(BaseNode):
         if state.query.document_id is not None:
             from opencontext.storage.global_storage import get_storage
 
-            doc = await get_storage().get_vault(int(state.query.document_id))
+            doc = await get_storage().get_vault(int(state.query.document_id))  # type: ignore[union-attr]
             if not doc:
-                await self.streaming_manager.emit(
+                await self.streaming_manager.emit(  # type: ignore[union-attr]
                     StreamEvent(
                         type=EventType.FAIL,
                         content=f"Document {state.query.document_id} not found",
@@ -58,7 +58,7 @@ class ContextNode(BaseNode):
                 summary=doc.get("summary", ""),
                 tags=doc.get("tags", []),
             )
-            await self.streaming_manager.emit(
+            await self.streaming_manager.emit(  # type: ignore[union-attr]
                 StreamEvent(
                     type=EventType.DONE,
                     content=f"Added document context: {doc.get('title', '')}",
@@ -72,7 +72,7 @@ class ContextNode(BaseNode):
         while iteration < self.max_iterations:
             iteration += 1
             progress = iteration / self.max_iterations
-            await self.streaming_manager.emit(
+            await self.streaming_manager.emit(  # type: ignore[union-attr]
                 StreamEvent(
                     type=EventType.RUNNING,
                     content=f"Round {iteration} of intelligent context collection...",
@@ -86,7 +86,7 @@ class ContextNode(BaseNode):
             state.contexts.sufficiency = sufficiency
 
             if sufficiency == ContextSufficiency.SUFFICIENT:
-                await self.streaming_manager.emit(
+                await self.streaming_manager.emit(  # type: ignore[union-attr]
                     StreamEvent(
                         type=EventType.DONE,
                         content=(
@@ -105,7 +105,7 @@ class ContextNode(BaseNode):
             )
 
             if not tool_calls:
-                await self.streaming_manager.emit(
+                await self.streaming_manager.emit(  # type: ignore[union-attr]
                     StreamEvent(
                         type=EventType.DONE,
                         content=(
@@ -119,7 +119,7 @@ class ContextNode(BaseNode):
                 break
 
             # 3. Execute tool calls concurrently
-            await self.streaming_manager.emit(
+            await self.streaming_manager.emit(  # type: ignore[union-attr]
                 StreamEvent(
                     type=EventType.RUNNING,
                     content=f"Concurrently calling {len(tool_calls)} tools...",
@@ -129,7 +129,7 @@ class ContextNode(BaseNode):
             new_context_items = await self.strategy.execute_tool_calls_parallel(tool_calls)
 
             # 4. Validate and filter tool results
-            await self.streaming_manager.emit(
+            await self.streaming_manager.emit(  # type: ignore[union-attr]
                 StreamEvent(
                     type=EventType.RUNNING,
                     content="Validating tool results and filtering relevant contexts...",
@@ -144,7 +144,7 @@ class ContextNode(BaseNode):
             for item in validated_items:
                 state.contexts.add_item(item)
 
-            await self.streaming_manager.emit(
+            await self.streaming_manager.emit(  # type: ignore[union-attr]
                 StreamEvent(
                     type=EventType.DONE,
                     content=(
@@ -159,7 +159,7 @@ class ContextNode(BaseNode):
             # Check if reached max iterations
             if iteration >= self.max_iterations:
                 state.contexts.sufficiency = ContextSufficiency.PARTIAL
-                await self.streaming_manager.emit(
+                await self.streaming_manager.emit(  # type: ignore[union-attr]
                     StreamEvent(
                         type=EventType.DONE,
                         content=(

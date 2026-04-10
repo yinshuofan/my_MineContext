@@ -297,7 +297,7 @@ async def _process_multimodal_messages(
                     url = await _upload_or_save_media(obj_storage, url, "video", uid)
                     new_part = {"type": "video_url", "video_url": {"url": url}}
                     if "fps" in video_url_obj:
-                        new_part["video_url"]["fps"] = video_url_obj["fps"]
+                        new_part["video_url"]["fps"] = video_url_obj["fps"]  # type: ignore[index]
                     new_content_parts.append(new_part)
                 else:
                     new_content_parts.append(part)
@@ -413,7 +413,7 @@ async def push_chat(
             and request.agent_id != "default"
         ):
             storage = get_storage()
-            agent = await storage.get_agent(request.agent_id)
+            agent = await storage.get_agent(request.agent_id)  # type: ignore[union-attr]
             if not agent:
                 raise HTTPException(
                     status_code=400,
@@ -430,7 +430,7 @@ async def push_chat(
         # Persist to chat_batches
         batch_id = str(uuid.uuid4())
         storage = get_storage()
-        await storage.create_chat_batch(
+        await storage.create_chat_batch(  # type: ignore[union-attr]
             batch_id=batch_id,
             messages=messages,
             user_id=request.user_id,

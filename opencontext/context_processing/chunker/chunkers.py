@@ -50,7 +50,7 @@ class BaseChunker(ABC):
 
     def __init__(self, config: ChunkingConfig | None = None):
         self.config = config or ChunkingConfig()
-        self._chunk_cache = {} if self.config.enable_caching else None
+        self._chunk_cache = {} if self.config.enable_caching else None  # type: ignore[var-annotated]
 
     @abstractmethod
     def chunk(self, context: RawContextProperties) -> Iterator[Chunk]:

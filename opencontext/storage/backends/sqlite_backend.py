@@ -40,6 +40,12 @@ class SQLiteBackend(IDocumentStorageBackend):
         self._connection: aiosqlite.Connection | None = None
         self._initialized = False
 
+    @property
+    def _db(self) -> aiosqlite.Connection:
+        """Return the connection, asserting it is initialized."""
+        assert self._connection is not None, "SQLiteBackend not initialized"
+        return self._connection
+
     async def initialize(self, config: dict[str, Any]) -> bool:
         """Initialize SQLite database"""
         try:
@@ -83,7 +89,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     async def _create_tables(self):
         """Create database table structure"""
-        conn = self._connection
+        conn = self._db
 
         # vaults table - reports
         await conn.execute("""
@@ -374,7 +380,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
     async def _insert_default_vault_document(self):
         """Insert default Quick Start document"""
-        conn = self._connection
+        conn = self._db
 
         # Check if Quick Start document already exists
         cursor = await conn.execute(
@@ -447,7 +453,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -472,7 +478,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             vault_id = cursor.lastrowid
             await conn.commit()
             logger.info(f"Report inserted, ID: {vault_id}")
-            return vault_id
+            return vault_id  # type: ignore[return-value]
         except Exception as e:
             await conn.rollback()
             logger.exception(f"Failed to insert report: {e}")
@@ -485,7 +491,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -500,7 +506,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             )
 
             rows = await cursor.fetchall()
-            logger.info(f"Got report list successfully, {len(rows)} records")
+            logger.info(f"Got report list successfully, {len(rows)} records")  # type: ignore[arg-type]
             return [dict(row) for row in rows]
         except Exception as e:
             logger.exception(f"Failed to get report list: {e}")
@@ -536,7 +542,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        conn = self._connection
+        conn = self._db
         try:
             # Build WHERE conditions and parameters
             where_clauses = ["is_deleted = ?"]
@@ -544,26 +550,26 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             if document_type:
                 where_clauses.append("document_type = ?")
-                params.append(document_type)
+                params.append(document_type)  # type: ignore[arg-type]
 
             if created_after:
                 where_clauses.append("created_at >= ?")
-                params.append(created_after.isoformat())
+                params.append(created_after.isoformat())  # type: ignore[arg-type]
 
             if created_before:
                 where_clauses.append("created_at <= ?")
-                params.append(created_before.isoformat())
+                params.append(created_before.isoformat())  # type: ignore[arg-type]
 
             if updated_after:
                 where_clauses.append("updated_at >= ?")
-                params.append(updated_after.isoformat())
+                params.append(updated_after.isoformat())  # type: ignore[arg-type]
 
             if updated_before:
                 where_clauses.append("updated_at <= ?")
-                params.append(updated_before.isoformat())
+                params.append(updated_before.isoformat())  # type: ignore[arg-type]
 
             # Add LIMIT and OFFSET parameters
-            params.extend([limit, offset])
+            params.extend([limit, offset])  # type: ignore[list-item]
 
             where_clause = " AND ".join(where_clauses)
             sql = f"""
@@ -589,7 +595,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -614,7 +620,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             # Build dynamic update statement
             set_clauses = []
@@ -665,7 +671,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -688,7 +694,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             todo_id = cursor.lastrowid
             await conn.commit()
             logger.info(f"Todo item inserted, ID: {todo_id}")
-            return todo_id
+            return todo_id  # type: ignore[return-value]
         except Exception as e:
             await conn.rollback()
             logger.exception(f"Failed to insert todo item: {e}")
@@ -705,7 +711,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         """Get todo item list"""
         if not self._initialized:
             return []
-        conn = self._connection
+        conn = self._db
         try:
             where_conditions = []
             params = []
@@ -717,9 +723,9 @@ class SQLiteBackend(IDocumentStorageBackend):
                 params.append(end_time)
             if status is not None:
                 where_conditions.append("status = ?")
-                params.append(status)
+                params.append(status)  # type: ignore[arg-type]
             where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-            params.extend([limit, offset])
+            params.extend([limit, offset])  # type: ignore[list-item]
             cursor = await conn.execute(
                 f"""
                 SELECT id, content, created_at, start_time, end_time,
@@ -744,7 +750,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             if status == 1 and end_time is None:
                 end_time = tz_now()
@@ -771,7 +777,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -784,13 +790,13 @@ class SQLiteBackend(IDocumentStorageBackend):
             tip_id = cursor.lastrowid
             await conn.commit()
             logger.info(f"Tip inserted, ID: {tip_id}")
-            return tip_id
+            return tip_id  # type: ignore[return-value]
         except Exception as e:
             await conn.rollback()
             logger.exception(f"Failed to insert tip: {e}")
             raise
 
-    async def get_tips(
+    async def get_tips(  # type: ignore[override]
         self,
         start_time: datetime = None,
         end_time: datetime = None,
@@ -801,7 +807,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        conn = self._connection
+        conn = self._db
         try:
             where_conditions = []
             params = []
@@ -814,7 +820,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 params.append(end_time.isoformat())
 
             where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-            params.extend([limit, offset])
+            params.extend([limit, offset])  # type: ignore[list-item]
 
             cursor = await conn.execute(
                 f"""
@@ -855,7 +861,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             now = tz_now()
             entities_json = json.dumps(entities or [], ensure_ascii=False)
@@ -914,7 +920,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -952,7 +958,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 "DELETE FROM profiles WHERE user_id = ? AND device_id = ? "
@@ -983,7 +989,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
         try:
-            conn = self._connection
+            conn = self._db
 
             # Calculate time bucket (hour precision)
             now = tz_now()
@@ -1037,7 +1043,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
         try:
-            conn = self._connection
+            conn = self._db
             now = tz_now()
             time_bucket = now.strftime("%Y-%m-%d %H:00:00")
             success_inc = 1 if status == "success" else 0
@@ -1093,7 +1099,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             return False
 
         try:
-            conn = self._connection
+            conn = self._db
 
             # Calculate time bucket (hour precision)
             now = tz_now()
@@ -1130,7 +1136,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            conn = self._connection
+            conn = self._db
             cursor = await conn.execute(
                 """
                 SELECT model, prompt_tokens, completion_tokens, total_tokens, time_bucket
@@ -1163,7 +1169,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            conn = self._connection
+            conn = self._db
             cursor = await conn.execute(
                 """
                 SELECT stage_name, count, total_duration_ms,
@@ -1205,7 +1211,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            conn = self._connection
+            conn = self._db
             cursor = await conn.execute(
                 """
                 SELECT data_type, SUM(count) as total_count, context_type
@@ -1240,7 +1246,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             start_bucket = start_time.strftime("%Y-%m-%d %H:00:00")
             end_bucket = end_time.strftime("%Y-%m-%d %H:00:00")
 
-            conn = self._connection
+            conn = self._db
             cursor = await conn.execute(
                 """
                 SELECT data_type, SUM(count) as total_count, context_type
@@ -1281,7 +1287,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(hours=hours)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            conn = self._connection
+            conn = self._db
 
             # Query using time_bucket directly (already hourly grouped)
             cursor = await conn.execute(
@@ -1320,7 +1326,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         try:
             cutoff_time = tz_now() - timedelta(days=days)
             cutoff_bucket = cutoff_time.strftime("%Y-%m-%d %H:00:00")
-            conn = self._connection
+            conn = self._db
 
             # Clean up token usage data (use time_bucket)
             await conn.execute(
@@ -1365,7 +1371,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        conn = self._connection
+        conn = self._db
         try:
             now = tz_now()
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
@@ -1382,7 +1388,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             conversation_id = cursor.lastrowid
             await conn.commit()
             logger.info(f"Conversation created, ID: {conversation_id}")
-            return await self.get_conversation(conversation_id)
+            return await self.get_conversation(conversation_id)  # type: ignore[arg-type]
         except Exception as e:
             await conn.rollback()
             logger.exception(f"Failed to create conversation: {e}")
@@ -1395,7 +1401,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -1428,7 +1434,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return {"items": [], "total": 0}
 
-        conn = self._connection
+        conn = self._db
         try:
             where_clauses = []
             params = []
@@ -1456,7 +1462,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 count_params,
             )
             row = await cursor.fetchone()
-            total = row[0]
+            total = row[0]  # type: ignore[index]
 
             # Get items
             list_params = params + [limit, offset]
@@ -1491,7 +1497,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             set_clauses = []
             params = []
@@ -1509,8 +1515,8 @@ class SQLiteBackend(IDocumentStorageBackend):
                 return await self.get_conversation(conversation_id)
 
             set_clauses.append("updated_at = ?")
-            params.append(tz_now())
-            params.append(conversation_id)
+            params.append(tz_now())  # type: ignore[arg-type]
+            params.append(conversation_id)  # type: ignore[arg-type]
 
             sql = f"UPDATE conversations SET {', '.join(set_clauses)} WHERE id = ?"
             cursor = await conn.execute(sql, params)
@@ -1561,7 +1567,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -1599,7 +1605,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             raise RuntimeError("SQLite backend not initialized")
 
-        conn = self._connection
+        conn = self._db
         try:
             now = tz_now()
             # Map is_complete to status and completed_at
@@ -1637,7 +1643,7 @@ class SQLiteBackend(IDocumentStorageBackend):
 
             await conn.commit()
             logger.info(f"Message created, ID: {message_id}")
-            return await self.get_message(message_id)  # Return the created message
+            return await self.get_message(message_id)  # type: ignore[arg-type]  # Return the created message
         except Exception as e:
             await conn.rollback()
             logger.exception(f"Failed to create message: {e}")
@@ -1677,7 +1683,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             now = tz_now()
             set_clauses = ["content = ?", "updated_at = ?"]
@@ -1735,7 +1741,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             now = tz_now()
 
@@ -1780,7 +1786,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             now = tz_now()
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
@@ -1814,7 +1820,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if status not in ["completed", "failed", "cancelled"]:
             status = "completed"  # Default to completed
 
-        conn = self._connection
+        conn = self._db
         try:
             now = tz_now()
 
@@ -1878,7 +1884,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -1915,7 +1921,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.warning("Storage not initialized")
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
             await conn.commit()
@@ -1954,7 +1960,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.warning("Storage not initialized")
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             # Auto-increment sequence if not provided
             if sequence is None:
@@ -1964,7 +1970,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                     (message_id,),
                 )
                 row = await cursor.fetchone()
-                sequence = row[0]
+                sequence = row[0]  # type: ignore[index]
 
             meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
 
@@ -1998,7 +2004,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 """
@@ -2028,7 +2034,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             await conn.execute("DELETE FROM message_thinking WHERE message_id = ?", (message_id,))
             await conn.commit()
@@ -2044,7 +2050,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         """Load all settings rows and return as a dict keyed by setting_key."""
         if not self._initialized:
             return {}
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 "SELECT setting_key, setting_value FROM system_settings"
@@ -2071,7 +2077,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         """
         if not self._initialized:
             return False
-        conn = self._connection
+        conn = self._db
         try:
             # Fetch existing value for merge
             cursor = await conn.execute(
@@ -2108,7 +2114,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         """Delete every row from system_settings (excluding internal sentinel rows)."""
         if not self._initialized:
             return False
-        conn = self._connection
+        conn = self._db
         try:
             await conn.execute("DELETE FROM system_settings WHERE SUBSTR(setting_key, 1, 1) != '_'")
             await conn.commit()
@@ -2133,7 +2139,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             await conn.execute(
                 """INSERT INTO chat_batches
@@ -2160,7 +2166,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return 0
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 "DELETE FROM chat_batches WHERE created_at < datetime('now', '-' || ? || ' days')",
@@ -2230,7 +2236,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        conn = self._connection
+        conn = self._db
         try:
             where, params = self._build_chat_batches_where(
                 user_id, device_id, agent_id, start_date, end_date
@@ -2260,7 +2266,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return 0
 
-        conn = self._connection
+        conn = self._db
         try:
             where, params = self._build_chat_batches_where(
                 user_id, device_id, agent_id, start_date, end_date
@@ -2278,7 +2284,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 "SELECT * FROM chat_batches WHERE batch_id = ?", (batch_id,)
@@ -2302,7 +2308,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return QueryResult(documents=[], total_count=0)
 
-        conn = self._connection
+        conn = self._db
 
         try:
             # Build query conditions
@@ -2358,7 +2364,7 @@ class SQLiteBackend(IDocumentStorageBackend):
                 LIMIT ?
             """
             )
-            params.append(limit)
+            params.append(limit)  # type: ignore[arg-type]
 
             cursor = await conn.execute(sql, params)
             rows = await cursor.fetchall()
@@ -2397,7 +2403,7 @@ class SQLiteBackend(IDocumentStorageBackend):
             count_sql = count_base_sql + where_clause
             count_cursor = await conn.execute(count_sql, params[:-1])  # Exclude limit parameter
             count_row = await count_cursor.fetchone()
-            total_count = count_row[0]
+            total_count = count_row[0]  # type: ignore[index]
 
             return QueryResult(documents=documents, total_count=total_count)
 
@@ -2412,7 +2418,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             await conn.execute(
                 "INSERT INTO agent_registry (agent_id, name, description) VALUES (?, ?, ?)",
@@ -2429,7 +2435,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return None
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 "SELECT agent_id, name, description, created_at, updated_at "
@@ -2447,7 +2453,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return []
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 "SELECT agent_id, name, description, created_at, updated_at "
@@ -2466,7 +2472,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             updates = []
             params = []
@@ -2496,7 +2502,7 @@ class SQLiteBackend(IDocumentStorageBackend):
         if not self._initialized:
             return False
 
-        conn = self._connection
+        conn = self._db
         try:
             cursor = await conn.execute(
                 "UPDATE agent_registry SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP "

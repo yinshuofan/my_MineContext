@@ -201,7 +201,7 @@ class GlobalEmbeddingClient:
             return
 
         instruction = self._build_instruction(vectorize, role)
-        embedding = await self._embedding_client.generate_multimodal_embedding(
+        embedding = await self._embedding_client.generate_multimodal_embedding(  # type: ignore[union-attr]
             input_data=ark_input,
             instruction=instruction,
             dimensions=self._dimensions,
@@ -246,7 +246,7 @@ class GlobalEmbeddingClient:
             if v.vector is None:
                 logger.warning(
                     f"Failed to vectorize item {i} in batch "
-                    f"(text={v.get_text()[:50] if v.get_text() else 'N/A'}...)"
+                    f"(text={v.get_text()[:50] if v.get_text() else 'N/A'}...)"  # type: ignore[index]
                 )
 
 

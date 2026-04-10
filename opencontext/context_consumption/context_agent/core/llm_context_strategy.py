@@ -405,14 +405,14 @@ class LLMContextStrategy:
             # Extract relevant result IDs
 
             # Fallback: if no valid IDs found, return all results to avoid data loss
-            if "relevant_result_ids" not in validation_result:
+            if "relevant_result_ids" not in validation_result:  # type: ignore[operator]
                 self.logger.warning(
                     "No relevant_result_ids found in validation response. "
                     "Returning all results as fallback."
                 )
                 relevant_items = tool_results
             else:
-                relevant_ids = set(validation_result.get("relevant_result_ids", []))
+                relevant_ids = set(validation_result.get("relevant_result_ids", []))  # type: ignore[union-attr]
                 # Filter relevant context items
                 relevant_items = [item for item in tool_results if item.id in relevant_ids]
                 # self.logger.info(

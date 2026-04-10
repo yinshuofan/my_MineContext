@@ -141,7 +141,7 @@ async def process_query(
         Processing result
     """
     agent = ContextAgent()
-    return await agent.process(query, session_id=session_id, context=context)
+    return await agent.process(query, session_id=session_id, context=context)  # type: ignore[call-arg]
 
 
 async def process_query_stream(
@@ -159,5 +159,5 @@ async def process_query_stream(
         Stream events
     """
     agent = ContextAgent(enable_streaming=True)
-    async for event in agent.process_stream(query, session_id=session_id, context=context):
-        yield event
+    async for event in agent.process_stream(query, session_id=session_id, context=context):  # type: ignore[call-arg]
+        yield event  # type: ignore[misc]

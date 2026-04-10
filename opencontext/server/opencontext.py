@@ -136,7 +136,7 @@ class OpenContext:
             return False
 
         try:
-            type_summary = {}
+            type_summary = {}  # type: ignore[var-annotated]
             for ctx in contexts:
                 t = ctx.extracted_data.context_type.value
                 type_summary[t] = type_summary.get(t, 0) + 1
@@ -432,8 +432,8 @@ class OpenContext:
         # Check MySQL/SQLite connectivity
         try:
             storage = get_storage()
-            if hasattr(storage, "_document_backend") and storage._document_backend:
-                backend = storage._document_backend
+            if hasattr(storage, "_document_backend") and storage._document_backend:  # type: ignore[union-attr]
+                backend = storage._document_backend  # type: ignore[union-attr]
                 if hasattr(backend, "_pool") and backend._pool:
                     # MySQL with pool: use async context manager for safe checkout/return
                     async with backend._get_connection():

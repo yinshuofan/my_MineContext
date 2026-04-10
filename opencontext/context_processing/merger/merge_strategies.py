@@ -142,7 +142,7 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
         # Vector similarity check
         if target.vectorize and source.vectorize:
             vector_sim = self._calculate_cosine_similarity(
-                target.vectorize.vector, source.vectorize.vector
+                target.vectorize.vector, source.vectorize.vector  # type: ignore[arg-type]
             )
 
             if vector_sim > self.similarity_threshold:
@@ -249,7 +249,7 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
             properties=properties,
             vectorize=Vectorize(
                 input=[
-                    {"type": "text", "text": extracted_data.title + " " + extracted_data.summary}
+                    {"type": "text", "text": extracted_data.title + " " + extracted_data.summary}  # type: ignore[operator]
                 ],
             ),
         )

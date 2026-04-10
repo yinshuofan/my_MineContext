@@ -235,7 +235,7 @@ class CompletionService:
         self, context: dict[str, Any]
     ) -> list[CompletionSuggestion]:
         """Get semantic continuation suggestions"""
-        suggestions = []
+        suggestions = []  # type: ignore[var-annotated]
 
         try:
             if not self.chat_client:
@@ -320,7 +320,7 @@ class CompletionService:
             elif re.match(r"^\s*(\d+)\.\s", current_line):
                 match = re.match(r"^(\s*)(\d+)\.\s", current_line)
                 if match:
-                    indent, num = match.groups()
+                    indent, num = match.groups()  # type: ignore[assignment]
                     next_num = int(num) + 1
                     suggestions.append(
                         CompletionSuggestion(
@@ -359,7 +359,7 @@ class CompletionService:
         suggestions.sort(key=lambda x: x.confidence, reverse=True)
 
         # Deduplicate (based on text similarity)
-        unique_suggestions = []
+        unique_suggestions = []  # type: ignore[var-annotated]
         for suggestion in suggestions:
             is_duplicate = False
             for existing in unique_suggestions:

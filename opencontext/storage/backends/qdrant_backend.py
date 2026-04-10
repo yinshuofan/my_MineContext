@@ -63,10 +63,10 @@ class QdrantBackend(IVectorStorageBackend):
             return False
 
     async def _ensure_collection(self, collection_name: str, context_type: str) -> None:
-        if not await self._client.collection_exists(collection_name):
+        if not await self._client.collection_exists(collection_name):  # type: ignore[union-attr]
             vector_size = self._vector_size or 1536
 
-            await self._client.create_collection(
+            await self._client.create_collection(  # type: ignore[union-attr]
                 collection_name=collection_name,
                 vectors_config=models.VectorParams(
                     size=vector_size,
@@ -108,7 +108,7 @@ class QdrantBackend(IVectorStorageBackend):
         await do_vectorize(context.vectorize)
         if not self._vector_size and context.vectorize.vector:
             self._vector_size = len(context.vectorize.vector)
-        return context.vectorize.vector
+        return context.vectorize.vector  # type: ignore[return-value]
 
     def _context_to_qdrant_format(self, context: ProcessedContext) -> dict[str, Any]:
         payload = context.model_dump(
@@ -175,7 +175,7 @@ class QdrantBackend(IVectorStorageBackend):
         if not await self._check_connection():
             raise RuntimeError("Qdrant connection not available")
 
-        contexts_by_type = {}
+        contexts_by_type = {}  # type: ignore[var-annotated]
         for context in contexts:
             context_type = context.extracted_data.context_type.value
             if context_type not in contexts_by_type:
@@ -223,7 +223,7 @@ class QdrantBackend(IVectorStorageBackend):
                 continue
 
             try:
-                await self._client.upsert(
+                await self._client.upsert(  # type: ignore[union-attr]
                     collection_name=collection_name,
                     points=points,
                 )
@@ -235,7 +235,7 @@ class QdrantBackend(IVectorStorageBackend):
 
         return stored_ids
 
-    async def get_processed_context(
+    async def get_processed_context(  # type: ignore[override, return]
         self, id: str, context_type: str, need_vector: bool = False
     ) -> ProcessedContext | None:
         if not self._initialized:
@@ -246,7 +246,7 @@ class QdrantBackend(IVectorStorageBackend):
 
         collection_name = self._collections[context_type]
         try:
-            result = await self._client.retrieve(
+            result = await self._client.retrieve(  # type: ignore[union-attr]
                 collection_name=collection_name,
                 ids=[id],
                 with_payload=True,
@@ -302,7 +302,7 @@ class QdrantBackend(IVectorStorageBackend):
 
                 fetch_limit = limit + offset
 
-                records, _ = await self._client.scroll(
+                records, _ = await self._client.scroll(  # type: ignore[union-attr]
                     collection_name=collection_name,
                     scroll_filter=filter_condition,
                     limit=fetch_limit,
@@ -374,7 +374,7 @@ class QdrantBackend(IVectorStorageBackend):
                 next_offset = None
 
                 while True:
-                    records, next_offset = await self._client.scroll(
+                    records, next_offset = await self._client.scroll(  # type: ignore[union-attr]
                         collection_name=collection_name,
                         scroll_filter=filter_condition,
                         limit=batch_size,
@@ -401,7 +401,7 @@ class QdrantBackend(IVectorStorageBackend):
     async def delete_processed_context(self, id: str, context_type: str) -> bool:
         return await self.delete_contexts([id], context_type)
 
-    async def search(
+    async def search(  # type: ignore[override]
         self,
         query: Vectorize,
         top_k: int = 10,
@@ -446,7 +446,7 @@ class QdrantBackend(IVectorStorageBackend):
 
         for context_type, collection_name in target_collections.items():
             try:
-                collection_info = await self._client.get_collection(collection_name)
+                collection_info = await self._client.get_collection(collection_name)  # type: ignore[union-attr]
                 if collection_info.points_count == 0:
                     continue
 
@@ -462,7 +462,7 @@ class QdrantBackend(IVectorStorageBackend):
                 filter_condition = self._build_filter_condition(merged_filters)
 
                 results = (
-                    await self._client.query_points(
+                    await self._client.query_points(  # type: ignore[union-attr]
                         collection_name=collection_name,
                         query=query_vector,
                         query_filter=filter_condition,
@@ -474,7 +474,7 @@ class QdrantBackend(IVectorStorageBackend):
                 ).points
 
                 for scored_point in results:
-                    context = self._qdrant_result_to_context(scored_point, need_vector)
+                    context = self._qdrant_result_to_context(scored_point, need_vector)  # type: ignore[arg-type]
                     if context:
                         score = scored_point.score
                         all_results.append((context, score))
@@ -511,9 +511,9 @@ class QdrantBackend(IVectorStorageBackend):
             if document:
                 vectorize_dict["input"] = [{"type": "text", "text": document}]
             if vector:
-                vectorize_dict["vector"] = vector
+                vectorize_dict["vector"] = vector  # type: ignore[assignment]
 
-            metadata_field_names = set()
+            metadata_field_names = set()  # type: ignore[var-annotated]
             payload.get("context_type")
 
             for key, value in payload.items():
@@ -537,12 +537,12 @@ class QdrantBackend(IVectorStorageBackend):
                     metadata_dict[key] = val
 
             context_dict["id"] = str(point.id)
-            context_dict["extracted_data"] = ExtractedData.model_validate(extracted_data_dict)
-            context_dict["properties"] = ContextProperties.model_validate(properties_dict)
-            context_dict["vectorize"] = Vectorize.model_validate(vectorize_dict)
+            context_dict["extracted_data"] = ExtractedData.model_validate(extracted_data_dict)  # type: ignore[assignment]
+            context_dict["properties"] = ContextProperties.model_validate(properties_dict)  # type: ignore[assignment]
+            context_dict["vectorize"] = Vectorize.model_validate(vectorize_dict)  # type: ignore[assignment]
 
             if metadata_dict:
-                context_dict["metadata"] = metadata_dict
+                context_dict["metadata"] = metadata_dict  # type: ignore[assignment]
 
             context = ProcessedContext.model_validate(context_dict)
             if not need_vector:
@@ -625,7 +625,7 @@ class QdrantBackend(IVectorStorageBackend):
 
         collection_name = self._collections[context_type]
         try:
-            await self._client.delete(
+            await self._client.delete(  # type: ignore[union-attr]
                 collection_name=collection_name,
                 points_selector=models.PointIdsList(points=ids),
             )
@@ -659,7 +659,7 @@ class QdrantBackend(IVectorStorageBackend):
             merged_filter["agent_id"] = agent_id
 
         count_filter = self._build_filter_condition(merged_filter) if merged_filter else None
-        return (await self._client.count(collection_name, count_filter=count_filter)).count
+        return (await self._client.count(collection_name, count_filter=count_filter)).count  # type: ignore[union-attr]
 
     async def get_all_processed_context_counts(self) -> dict[str, int]:
         if not self._initialized:
@@ -741,7 +741,7 @@ class QdrantBackend(IVectorStorageBackend):
         filter_condition = models.Filter(must=must_conditions)
 
         try:
-            records, _ = await self._client.scroll(
+            records, _ = await self._client.scroll(  # type: ignore[union-attr]
                 collection_name=collection_name,
                 scroll_filter=filter_condition,
                 limit=top_k,
@@ -786,7 +786,7 @@ class QdrantBackend(IVectorStorageBackend):
 
         for _ct, collection_name in target_collections.items():
             try:
-                points = await self._client.retrieve(
+                points = await self._client.retrieve(  # type: ignore[union-attr]
                     collection_name=collection_name,
                     ids=ids,
                     with_payload=True,
@@ -821,7 +821,7 @@ class QdrantBackend(IVectorStorageBackend):
         updated = 0
         for ctx_id in context_ids:
             try:
-                points = await self._client.retrieve(
+                points = await self._client.retrieve(  # type: ignore[union-attr]
                     collection_name=collection_name,
                     ids=[ctx_id],
                     with_payload=True,
@@ -829,13 +829,13 @@ class QdrantBackend(IVectorStorageBackend):
                 if not points:
                     continue
 
-                existing_refs = json.loads(points[0].payload.get("refs", "{}"))
+                existing_refs = json.loads(points[0].payload.get("refs", "{}"))  # type: ignore[union-attr]
                 if ref_key not in existing_refs:
                     existing_refs[ref_key] = []
                 if ref_value not in existing_refs[ref_key]:
                     existing_refs[ref_key].append(ref_value)
 
-                await self._client.set_payload(
+                await self._client.set_payload(  # type: ignore[union-attr]
                     collection_name=collection_name,
                     payload={"refs": json.dumps(existing_refs)},
                     points=[ctx_id],

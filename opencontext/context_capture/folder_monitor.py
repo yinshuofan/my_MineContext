@@ -366,14 +366,14 @@ class FolderMonitorCapture(BaseCaptureComponent):
 
     def _scan_folder_files(self, folder_path: str, recursive: bool) -> list[str]:
         """Scan a folder for supported files."""
-        files = []
+        files = []  # type: ignore[var-annotated]
         try:
-            folder_path = Path(folder_path)
-            if not folder_path.exists() or not folder_path.is_dir():
+            folder_path = Path(folder_path)  # type: ignore[assignment]
+            if not folder_path.exists() or not folder_path.is_dir():  # type: ignore[attr-defined]
                 logger.warning(f"Folder does not exist or is not a directory: {folder_path}")
                 return files
 
-            iterator = folder_path.rglob("*") if recursive else folder_path.iterdir()
+            iterator = folder_path.rglob("*") if recursive else folder_path.iterdir()  # type: ignore[attr-defined]
             for file_path in iterator:
                 if file_path.is_file() and self._is_supported_file_type(str(file_path)):
                     try:

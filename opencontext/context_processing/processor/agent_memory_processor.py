@@ -80,7 +80,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
         chat_content = raw_context.content_text or ""
 
         # 2. Parallel: fetch persona + extract search query
-        profile_task = storage.get_profile(
+        profile_task = storage.get_profile(  # type: ignore[union-attr]
             user_id=raw_context.user_id,
             device_id=raw_context.device_id or "default",
             agent_id=raw_context.agent_id,
@@ -92,7 +92,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
 
         # Fallback to base profile if per-user profile doesn't exist
         if not profile_result:
-            profile_result = await storage.get_profile(
+            profile_result = await storage.get_profile(  # type: ignore[union-attr]
                 user_id="__base__",
                 device_id=raw_context.device_id or "default",
                 agent_id=raw_context.agent_id,

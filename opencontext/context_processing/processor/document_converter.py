@@ -96,7 +96,7 @@ class DocumentConverter:
         try:
             img = Image.open(image_path)
             if img.mode != "RGB":
-                img = img.convert("RGB")
+                img = img.convert("RGB")  # type: ignore[assignment]
             return [img]
         except Exception as e:
             logger.exception(f"Error loading image: {e}")
@@ -366,7 +366,7 @@ class DocumentConverter:
 
         Returns: [PIL.Image, ...]
         """
-        images = []
+        images = []  # type: ignore[var-annotated]
         try:
             if not hasattr(paragraph, "_element"):
                 return images
@@ -400,7 +400,7 @@ class DocumentConverter:
 
                                 img = Image.open(io.BytesIO(image_data))
                                 if img.mode != "RGB":
-                                    img = img.convert("RGB")
+                                    img = img.convert("RGB")  # type: ignore[assignment]
                                 images.append(img)
                                 logger.debug(f"Extracted image from paragraph: {img.size}")
 
@@ -410,7 +410,7 @@ class DocumentConverter:
         except Exception as e:
             logger.warning(f"Error extracting paragraph images: {e}")
 
-        return images
+        return images  # type: ignore[return-value]
 
     def _extract_all_images(self, doc) -> list[Image.Image]:
         """
@@ -499,7 +499,7 @@ class DocumentConverter:
         lines = md_content.split("\n")
 
         groups = []
-        current_lines = []
+        current_lines = []  # type: ignore[var-annotated]
         current_text_length = 0
 
         for _i, line in enumerate(lines):
@@ -574,7 +574,7 @@ class DocumentConverter:
                         image_data = response.read()
                         img = Image.open(io.BytesIO(image_data))
                         if img.mode != "RGB":
-                            img = img.convert("RGB")
+                            img = img.convert("RGB")  # type: ignore[assignment]
                         images.append(img)
                         logger.debug(
                             f"Successfully downloaded remote image: {img_path_str[:70]}..."
@@ -594,7 +594,7 @@ class DocumentConverter:
 
                     img = Image.open(img_path)
                     if img.mode != "RGB":
-                        img = img.convert("RGB")
+                        img = img.convert("RGB")  # type: ignore[assignment]
                     images.append(img)
                     logger.debug(f"Loaded local image: {img_path}")
 

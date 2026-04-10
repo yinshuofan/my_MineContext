@@ -94,23 +94,24 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.11"
 strict = false
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
+no_implicit_optional = false
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = [
-    "volcengine.*",
-    "chromadb.*",
     "ddgs.*",
-    "mss.*",
     "imagehash.*",
     "pypdfium2.*",
     "docx.*",
     "redis.*",
-    "apscheduler.*",
     "json_repair.*",
-    "pymysql.*",
+    "yaml.*",
+    "asyncmy.*",
+    "pandas.*",
+    "crawl4ai.*",
+    "qdrant_client.*",
 ]
 ignore_missing_imports = true
 

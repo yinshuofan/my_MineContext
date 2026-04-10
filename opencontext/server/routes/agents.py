@@ -301,7 +301,7 @@ async def create_agent(request: CreateAgentRequest, _auth: str = auth_dependency
         )
 
     storage = get_storage()
-    success = await storage.create_agent(request.agent_id, request.name, request.description)
+    success = await storage.create_agent(request.agent_id, request.name, request.description)  # type: ignore[union-attr]
     if not success:
         raise HTTPException(status_code=400, detail="Agent creation failed (ID may already exist)")
     return convert_resp(data={"agent_id": request.agent_id}, message="Agent created")
@@ -311,7 +311,7 @@ async def create_agent(request: CreateAgentRequest, _auth: str = auth_dependency
 async def list_agents(_auth: str = auth_dependency):
     """List all active agents."""
     storage = get_storage()
-    agents = await storage.list_agents()
+    agents = await storage.list_agents()  # type: ignore[union-attr]
     return convert_resp(data={"agents": agents})
 
 
@@ -319,7 +319,7 @@ async def list_agents(_auth: str = auth_dependency):
 async def get_agent(agent_id: str, _auth: str = auth_dependency):
     """Get a single agent by ID."""
     storage = get_storage()
-    agent = await storage.get_agent(agent_id)
+    agent = await storage.get_agent(agent_id)  # type: ignore[union-attr]
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return convert_resp(data={"agent": agent})
@@ -329,7 +329,7 @@ async def get_agent(agent_id: str, _auth: str = auth_dependency):
 async def update_agent(agent_id: str, request: UpdateAgentRequest, _auth: str = auth_dependency):
     """Update agent name and/or description."""
     storage = get_storage()
-    success = await storage.update_agent(
+    success = await storage.update_agent(  # type: ignore[union-attr]
         agent_id, name=request.name, description=request.description
     )
     if not success:
@@ -341,7 +341,7 @@ async def update_agent(agent_id: str, request: UpdateAgentRequest, _auth: str = 
 async def delete_agent(agent_id: str, _auth: str = auth_dependency):
     """Soft-delete an agent."""
     storage = get_storage()
-    success = await storage.delete_agent(agent_id)
+    success = await storage.delete_agent(agent_id)  # type: ignore[union-attr]
     if not success:
         raise HTTPException(status_code=404, detail="Agent not found")
     return convert_resp(message="Agent deleted")
@@ -362,11 +362,11 @@ async def set_base_profile(
     to distinguish it from per-user profiles.
     """
     storage = get_storage()
-    agent = await storage.get_agent(agent_id)
+    agent = await storage.get_agent(agent_id)  # type: ignore[union-attr]
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    success = await storage.upsert_profile(
+    success = await storage.upsert_profile(  # type: ignore[union-attr]
         user_id="__base__",
         device_id="default",
         agent_id=agent_id,
@@ -385,7 +385,7 @@ async def set_base_profile(
 async def get_base_profile(agent_id: str, _auth: str = auth_dependency):
     """Retrieve the agent's base profile."""
     storage = get_storage()
-    profile = await storage.get_profile(
+    profile = await storage.get_profile(  # type: ignore[union-attr]
         user_id="__base__",
         device_id="default",
         agent_id=agent_id,
@@ -410,7 +410,7 @@ async def push_base_events(agent_id: str, request: BaseEventsRequest, _auth: str
     bidirectional refs, and batch-writes to vector DB.
     """
     storage = get_storage()
-    agent = await storage.get_agent(agent_id)
+    agent = await storage.get_agent(agent_id)  # type: ignore[union-attr]
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -426,7 +426,7 @@ async def push_base_events(agent_id: str, request: BaseEventsRequest, _auth: str
     contexts = _flatten_base_event_tree(request.events, agent_id)
 
     # Batch write (vectorization happens inside batch_upsert via do_vectorize_batch)
-    result = await storage.batch_upsert_processed_context(contexts)
+    result = await storage.batch_upsert_processed_context(contexts)  # type: ignore[union-attr]
     success = result is not None
     return convert_resp(
         data={"count": len(contexts) if success else 0},
@@ -460,7 +460,7 @@ async def list_base_events(
     else:
         query_types = _ALL_AGENT_BASE_TYPES
 
-    result = await storage.get_all_processed_contexts(
+    result = await storage.get_all_processed_contexts(  # type: ignore[union-attr]
         context_types=query_types,
         user_id="__base__",
         agent_id=agent_id,
@@ -492,7 +492,7 @@ async def delete_base_event(agent_id: str, event_id: str, _auth: str = auth_depe
     storage = get_storage()
     # Try deleting from each AGENT_BASE_* type (we don't know which type it is)
     for ct_value in _ALL_AGENT_BASE_TYPES:
-        success = await storage.delete_processed_context(event_id, ct_value)
+        success = await storage.delete_processed_context(event_id, ct_value)  # type: ignore[union-attr]
         if success:
             return convert_resp(message="Event deleted")
     raise HTTPException(status_code=404, detail="Event not found")

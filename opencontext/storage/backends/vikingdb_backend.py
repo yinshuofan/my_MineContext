@@ -567,7 +567,7 @@ class VikingDBBackend(IVectorStorageBackend):
         """Ensure single collection and index exist, create if not."""
         try:
             # Check if collection exists
-            result = await self._client.async_console_request(
+            result = await self._client.async_console_request(  # type: ignore[union-attr]
                 action="GetVikingdbCollection",
                 data={"CollectionName": self._collection_name},
             )
@@ -585,7 +585,7 @@ class VikingDBBackend(IVectorStorageBackend):
             self._collection_ready = True
 
             # Check if index exists
-            result = await self._client.async_console_request(
+            result = await self._client.async_console_request(  # type: ignore[union-attr]
                 action="GetVikingdbIndex",
                 data={
                     "CollectionName": self._collection_name,
@@ -663,7 +663,7 @@ class VikingDBBackend(IVectorStorageBackend):
         }
 
         logger.info(f"Creating VikingDB collection: {self._collection_name}")
-        result = await self._client.async_console_request(
+        result = await self._client.async_console_request(  # type: ignore[union-attr]
             action="CreateVikingdbCollection",
             data=data,
         )
@@ -687,9 +687,9 @@ class VikingDBBackend(IVectorStorageBackend):
         }
 
         if index_type.lower() == "hnsw":
-            vector_index["HnswM"] = 32
-            vector_index["HnswCef"] = 64
-            vector_index["HnswSef"] = 800
+            vector_index["HnswM"] = 32  # type: ignore[assignment]
+            vector_index["HnswCef"] = 64  # type: ignore[assignment]
+            vector_index["HnswSef"] = 800  # type: ignore[assignment]
 
         data = {
             "CollectionName": self._collection_name,
@@ -723,7 +723,7 @@ class VikingDBBackend(IVectorStorageBackend):
         }
 
         logger.info(f"Creating VikingDB index: {self._index_name}")
-        result = await self._client.async_console_request(
+        result = await self._client.async_console_request(  # type: ignore[union-attr]
             action="CreateVikingdbIndex",
             data=data,
         )
@@ -882,7 +882,7 @@ class VikingDBBackend(IVectorStorageBackend):
         stored_ids = []
 
         try:
-            result = await self._client.async_data_request(
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/upsert",
                 data={
                     "collection_name": self._collection_name,
@@ -905,16 +905,16 @@ class VikingDBBackend(IVectorStorageBackend):
         except Exception as e:
             logger.exception(f"Failed to upsert contexts: {e}")
 
-        return stored_ids
+        return stored_ids  # type: ignore[return-value]
 
-    async def get_processed_context(
+    async def get_processed_context(  # type: ignore[override]
         self, id: str, context_type: str, need_vector: bool = False
     ) -> ProcessedContext | None:
         if not self._initialized:
             return None
 
         try:
-            result = await self._client.async_data_request(
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/fetch_in_collection",
                 data={
                     "collection_name": self._collection_name,
@@ -994,7 +994,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 if filter_dict:
                     data["filter"] = filter_dict
 
-                query_result = await self._client.async_data_request(
+                query_result = await self._client.async_data_request(  # type: ignore[union-attr]
                     path="/api/vikingdb/data/search/scalar", data=data
                 )
 
@@ -1028,7 +1028,7 @@ class VikingDBBackend(IVectorStorageBackend):
             return False
 
         try:
-            result = await self._client.async_data_request(
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/delete",
                 data={
                     "collection_name": self._collection_name,
@@ -1047,7 +1047,7 @@ class VikingDBBackend(IVectorStorageBackend):
             logger.exception(f"Failed to delete contexts: {e}")
             return False
 
-    async def search(
+    async def search(  # type: ignore[override]
         self,
         query: Vectorize,
         top_k: int = 10,
@@ -1066,7 +1066,7 @@ class VikingDBBackend(IVectorStorageBackend):
         if query.vector and len(query.vector) > 0:
             query_vector = list(query.vector)
         else:
-            if query.text:
+            if query.text:  # type: ignore[attr-defined]
                 await do_vectorize(query, role="query")
                 query_vector = list(query.vector) if query.vector else None
 
@@ -1144,7 +1144,7 @@ class VikingDBBackend(IVectorStorageBackend):
             if filter_dict:
                 data["filter"] = filter_dict
 
-            result = await self._client.async_data_request(
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/search/vector", data=data
             )
 
@@ -1390,13 +1390,13 @@ class VikingDBBackend(IVectorStorageBackend):
                                 if is_time_field:
                                     ts = self._parse_time_to_timestamp(op_value)
                                     if ts is not None:
-                                        range_filter[range_key] = ts
+                                        range_filter[range_key] = ts  # type: ignore[assignment]
                                         has_range = True
                                 else:
                                     range_filter[range_key] = op_value
                                     has_range = True
                         if has_range:
-                            conditions.append(range_filter)
+                            conditions.append(range_filter)  # type: ignore[arg-type]
                     else:
                         range_ops = {"$gte", "$lte", "$gt", "$lt"}
                         if any(op in value for op in range_ops):
@@ -1424,8 +1424,8 @@ class VikingDBBackend(IVectorStorageBackend):
                                 {
                                     "op": "range",
                                     "field": filter_key,
-                                    "gte": ts - 0.5,
-                                    "lte": ts + 0.5,
+                                    "gte": ts - 0.5,  # type: ignore[dict-item]
+                                    "lte": ts + 0.5,  # type: ignore[dict-item]
                                 }
                             )
                         else:
@@ -1433,14 +1433,14 @@ class VikingDBBackend(IVectorStorageBackend):
                     else:
                         conditions.append({"op": "must", "field": filter_key, "conds": [value]})
                 elif isinstance(value, bool):
-                    conditions.append({"op": "must", "field": filter_key, "conds": [value]})
+                    conditions.append({"op": "must", "field": filter_key, "conds": [value]})  # type: ignore[list-item]
                 elif isinstance(value, (int, float)) and filter_key in RANGE_SUPPORTED_FIELDS:
                     conditions.append(
                         {
                             "op": "range",
                             "field": filter_key,
-                            "gte": float(value),
-                            "lte": float(value),
+                            "gte": float(value),  # type: ignore[dict-item]
+                            "lte": float(value),  # type: ignore[dict-item]
                         }
                     )
                 else:
@@ -1485,7 +1485,7 @@ class VikingDBBackend(IVectorStorageBackend):
             if filter_dict:
                 data["filter"] = filter_dict
 
-            result = await self._client.async_data_request(
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/search/scalar", data=data
             )
 
@@ -1560,7 +1560,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 "order": "desc",
                 "filter": filter_dict,
             }
-            result = await self._client.async_data_request(
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/search/scalar", data=data
             )
             if result.get("code") != "Success":
@@ -1592,7 +1592,7 @@ class VikingDBBackend(IVectorStorageBackend):
             return []
 
         try:
-            result = await self._client.async_data_request(
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/fetch_in_collection",
                 data={
                     "collection_name": self._collection_name,
@@ -1636,7 +1636,7 @@ class VikingDBBackend(IVectorStorageBackend):
 
         # Fetch current refs for all context_ids
         try:
-            fetch_result = await self._client.async_data_request(
+            fetch_result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/fetch_in_collection",
                 data={
                     "collection_name": self._collection_name,
@@ -1682,7 +1682,7 @@ class VikingDBBackend(IVectorStorageBackend):
         for i in range(0, len(data_list), 100):
             batch = data_list[i : i + 100]
             try:
-                result = await self._client.async_data_request(
+                result = await self._client.async_data_request(  # type: ignore[union-attr]
                     path="/api/vikingdb/data/update",
                     data={
                         "collection_name": self._collection_name,

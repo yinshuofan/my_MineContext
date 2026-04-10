@@ -36,12 +36,12 @@ class LLMClient:
     def __init__(self, llm_type: LLMType, config: dict[str, Any]):
         self.llm_type = llm_type
         self.config = config
-        self.model = config.get("model")
-        self.api_key = config.get("api_key")
-        self.base_url = config.get("base_url")
-        self.timeout = config.get("timeout", 300)
-        self.max_retries = config.get("max_retries", 3)
-        self.provider = config.get("provider", LLMProvider.OPENAI.value)
+        self.model: str = config.get("model", "")
+        self.api_key: str = config.get("api_key", "")
+        self.base_url: str = config.get("base_url", "")
+        self.timeout: int = config.get("timeout", 300)
+        self.max_retries: int = config.get("max_retries", 3)
+        self.provider: str = config.get("provider", LLMProvider.OPENAI.value)
         if not self.api_key or not self.base_url or not self.model:
             raise ValueError("API key, base URL, and model must be provided")
         self._max_concurrent = int(config.get("max_concurrent", 10))
@@ -108,10 +108,10 @@ class LLMClient:
                         if thinking == "disabled":
                             create_params["reasoning_effort"] = "minimal"
                     elif self.provider == LLMProvider.DASHSCOPE.value:
-                        create_params["extra_body"] = {"thinking": {"type": thinking}}
+                        create_params["extra_body"] = {"thinking": {"type": thinking}}  # type: ignore[assignment]
                 # Stage: LLM API call
                 api_start = time.time()
-                response = await self.client.chat.completions.create(**create_params)
+                response = await self.client.chat.completions.create(**create_params)  # type: ignore[arg-type, call-overload]
 
                 await record_processing_stage(
                     "chat_cost", int((time.time() - api_start) * 1000), status="success"
@@ -167,10 +167,10 @@ class LLMClient:
                     elif self.provider == LLMProvider.DASHSCOPE.value:
                         create_params["extra_body"] = {"thinking": {"type": thinking}}
 
-                stream = await self.client.chat.completions.create(**create_params)
+                stream = await self.client.chat.completions.create(**create_params)  # type: ignore[arg-type, call-overload]
 
                 # Return stream object directly, it's already an async iterator
-                async for chunk in stream:
+                async for chunk in stream:  # type: ignore[union-attr, attr-defined]
                     yield chunk
             except APIError as e:
                 logger.error(f"OpenAI API async stream error: {e}")
@@ -489,7 +489,7 @@ class LLMClient:
             if self.llm_type == LLMType.CHAT:
                 messages = [{"role": "user", "content": "Hi"}]
                 response = await self.client.chat.completions.create(
-                    model=self.model, messages=messages
+                    model=self.model, messages=messages  # type: ignore[arg-type]
                 )
                 if response.choices and len(response.choices) > 0:
                     return True, "Chat model validation successful"

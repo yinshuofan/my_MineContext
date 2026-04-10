@@ -48,7 +48,7 @@ class BaseContextRetrievalTool(BaseTool):
     """
 
     # Subclasses should override this to specify their context type
-    CONTEXT_TYPE: ContextType = None
+    CONTEXT_TYPE: ContextType = None  # type: ignore[assignment]
 
     def __init__(self):
         super().__init__()
@@ -63,7 +63,7 @@ class BaseContextRetrievalTool(BaseTool):
 
     async def _build_filters(self, filters: ContextRetrievalFilter) -> dict[str, Any]:
         """Build filter conditions for storage backend"""
-        build_filter = {}
+        build_filter = {}  # type: ignore[var-annotated]
 
         # Time range filter
         if filters.time_range is not None and filters.time_range.time_type:
@@ -112,9 +112,9 @@ class BaseContextRetrievalTool(BaseTool):
             # Semantic search with query (with multi-user filtering)
             ark_input = [{"type": "text", "text": query}]
             if image_url:
-                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})
+                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})  # type: ignore[dict-item]
             if video_url:
-                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})
+                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})  # type: ignore[dict-item]
             vectorize = Vectorize(
                 input=ark_input,
                 content_format=(ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT),
@@ -316,7 +316,7 @@ class BaseContextRetrievalTool(BaseTool):
             "required": [],
         }
 
-    async def execute(self, **kwargs) -> list[dict[str, Any]]:
+    async def execute(self, **kwargs) -> list[dict[str, Any]]:  # type: ignore[override]
         """
         Execute context retrieval
 

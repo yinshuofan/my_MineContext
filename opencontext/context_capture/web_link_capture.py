@@ -150,7 +150,7 @@ class WebLinkCapture(BaseCaptureComponent):
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                page.goto(url, timeout=self._timeout, wait_until=self._wait_until)
+                page.goto(url, timeout=self._timeout, wait_until=self._wait_until)  # type: ignore[arg-type]
                 page.emulate_media(media="screen")
                 page.pdf(path=str(output_path), **self._pdf_options)
                 browser.close()

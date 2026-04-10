@@ -102,7 +102,7 @@ snippets, and URLs based on search queries.
             "required": ["query"],
         }
 
-    async def execute(
+    async def execute(  # type: ignore[override]
         self, query: str, max_results: int = None, lang: str = "zh-cn", **kwargs
     ) -> dict[str, Any]:
         """Execute web search with automatic fallback support"""

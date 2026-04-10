@@ -109,7 +109,7 @@ async def create_message(
         storage = get_storage()
 
         # Use create_message with is_complete parameter
-        message_id = await storage.create_message(
+        message_id = await storage.create_message(  # type: ignore[union-attr]
             conversation_id=request.conversation_id,
             role=request.role,
             content=request.content,
@@ -142,7 +142,7 @@ async def create_streaming_message(
         storage = get_storage()
 
         # Use create_streaming_message method
-        message_id = await storage.create_streaming_message(
+        message_id = await storage.create_streaming_message(  # type: ignore[union-attr]
             conversation_id=request.conversation_id,
             role=request.role,
             parent_message_id=mid,
@@ -172,7 +172,7 @@ async def update_message(
         storage = get_storage()
 
         # Use update_message which returns Optional[Dict] or None
-        result = await storage.update_message(
+        result = await storage.update_message(  # type: ignore[union-attr]
             message_id=mid,
             new_content=request.new_content,
             is_complete=request.is_complete,
@@ -203,7 +203,7 @@ async def append_message(
         storage = get_storage()
 
         # Use append_message_content with correct parameter name
-        success = await storage.append_message_content(
+        success = await storage.append_message_content(  # type: ignore[union-attr]
             message_id=mid,
             content_chunk=request.content_chunk,
             token_count=request.token_count or 0,
@@ -231,7 +231,7 @@ async def mark_message_finished_route(
         storage = get_storage()
 
         # Use mark_message_finished method
-        success = await storage.mark_message_finished(message_id=mid, status="completed")
+        success = await storage.mark_message_finished(message_id=mid, status="completed")  # type: ignore[union-attr]
 
         if not success:
             raise HTTPException(status_code=404, detail="Message not found or update failed")
@@ -256,7 +256,7 @@ async def get_conversation_messages(
         storage = get_storage()
 
         # Use get_conversation_messages method
-        messages = await storage.get_conversation_messages(conversation_id=cid)
+        messages = await storage.get_conversation_messages(conversation_id=cid)  # type: ignore[union-attr]
 
         # The response_model=List[ConversationMessage] will handle
         # validating and returning the list directly.
@@ -286,7 +286,7 @@ async def interrupt_message_generation(
         logger.info(f"Set interrupt flag for message {message_id}")
 
         # Also update database status
-        success = await storage.mark_message_finished(message_id=message_id, status="cancelled")
+        success = await storage.mark_message_finished(message_id=message_id, status="cancelled")  # type: ignore[union-attr]
 
         if not success:
             raise HTTPException(status_code=404, detail="Message not found or interrupt failed")

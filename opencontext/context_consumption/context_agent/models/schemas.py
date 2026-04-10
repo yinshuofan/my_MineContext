@@ -154,7 +154,7 @@ class ContextCollection:
 
     def get_summary(self) -> str:
         """Get a summary of the context"""
-        source_counts = {}
+        source_counts = {}  # type: ignore[var-annotated]
         for item in self.items:
             source_counts[item.source] = source_counts.get(item.source, 0) + 1
 

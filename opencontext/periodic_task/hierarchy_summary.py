@@ -776,7 +776,7 @@ class HierarchySummaryTask(BasePeriodicTask):
 
             bd = get_config("scheduler.tasks.hierarchy_summary.backfill_days")
             if bd is not None:
-                backfill_days = max(1, min(int(bd), 30))
+                backfill_days = max(1, min(int(bd), 30))  # type: ignore[call-overload]
         except Exception:
             pass
 

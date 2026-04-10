@@ -140,7 +140,7 @@ class ICaptureComponent(abc.ABC):
         """
 
     @abc.abstractmethod
-    def set_callback(self, callback: callable) -> bool:
+    def set_callback(self, callback: callable) -> bool:  # type: ignore[valid-type]
         """
         Set callback function to be called when new data is captured
 

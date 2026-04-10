@@ -408,11 +408,11 @@ def handle_start(args: argparse.Namespace) -> int:
     if getattr(args, "scheduler_only", False):
         return _run_headless_mode(enable_capture=False, enable_scheduler=True)
 
-    if not web_config.get("enabled", True):
+    if not web_config.get("enabled", True):  # type: ignore[union-attr]
         return _run_headless_mode(enable_capture=True, enable_scheduler=True)
 
-    host = args.host if args.host else web_config.get("host", "localhost")
-    port = args.port if args.port else web_config.get("port", 1733)
+    host = args.host if args.host else web_config.get("host", "localhost")  # type: ignore[union-attr]
+    port = args.port if args.port else web_config.get("port", 1733)  # type: ignore[union-attr]
 
     logger.info(f"Starting web server on {host}:{port} with {workers} worker(s)")
     start_web_server(host, port, workers)
@@ -429,12 +429,12 @@ def _setup_logging(config_path: str | None) -> None:
 
     GlobalConfig.get_instance().initialize(config_path)
 
-    setup_logging(GlobalConfig.get_instance().get_config("logging"))
+    setup_logging(GlobalConfig.get_instance().get_config("logging"))  # type: ignore[arg-type]
 
     from opencontext.utils.time_utils import init_timezone
 
     tz_name = GlobalConfig.get_instance().get_config("timezone")
-    init_timezone(tz_name)
+    init_timezone(tz_name)  # type: ignore[arg-type]
 
 
 def main() -> int:

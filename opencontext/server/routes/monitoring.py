@@ -275,7 +275,7 @@ async def get_scheduler_queue_depths(
         # Get all task types from config
         from opencontext.config import GlobalConfig
 
-        config = GlobalConfig.get_instance().config
+        config = GlobalConfig.get_instance().config  # type: ignore[attr-defined]
         all_task_types = list(config.get("scheduler", {}).get("tasks", {}).keys())
 
         if not all_task_types:

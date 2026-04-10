@@ -38,7 +38,7 @@ async def list_chat_batches(
     storage = get_storage()
     offset = (page - 1) * limit
 
-    batches = await storage.list_chat_batches(
+    batches = await storage.list_chat_batches(  # type: ignore[union-attr]
         user_id=user_id,
         device_id=device_id,
         agent_id=agent_id,
@@ -47,7 +47,7 @@ async def list_chat_batches(
         limit=limit,
         offset=offset,
     )
-    total = await storage.count_chat_batches(
+    total = await storage.count_chat_batches(  # type: ignore[union-attr]
         user_id=user_id,
         device_id=device_id,
         agent_id=agent_id,
@@ -70,7 +70,7 @@ async def list_chat_batches(
 async def get_chat_batch(batch_id: str, _auth: str = auth_dependency):
     """Get a single chat batch with its messages."""
     storage = get_storage()
-    batch = await storage.get_chat_batch(batch_id)
+    batch = await storage.get_chat_batch(batch_id)  # type: ignore[union-attr]
     if not batch:
         raise HTTPException(status_code=404, detail="Chat batch not found")
     return convert_resp(data={"batch": batch})
@@ -90,7 +90,7 @@ async def get_batch_contexts(batch_id: str, _auth: str = auth_dependency):
     ]
 
     filter_dict = {"raw_type": {"$eq": "chat_batch"}, "raw_id": {"$eq": batch_id}}
-    results = await storage.get_all_processed_contexts(
+    results = await storage.get_all_processed_contexts(  # type: ignore[union-attr]
         context_types=all_context_types,
         filter=filter_dict,
         limit=100,

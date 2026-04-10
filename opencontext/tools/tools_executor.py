@@ -89,10 +89,10 @@ class ToolsExecutor:
         tool_call_info = []
         tasks = []
         for tc in tool_calls:
-            function_name = tc.function.name
-            function_args = json.loads(tc.function.arguments)
+            function_name = tc.function.name  # type: ignore[attr-defined]
+            function_args = json.loads(tc.function.arguments)  # type: ignore[attr-defined]
             tasks.append(self.run_async(function_name, function_args))
-            tool_call_info.append((tc.id, function_name))
+            tool_call_info.append((tc.id, function_name))  # type: ignore[attr-defined]
 
         res = await asyncio.gather(*tasks)
         for i, r in enumerate(res):

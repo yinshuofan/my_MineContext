@@ -94,7 +94,7 @@ async def create_conversation(
             metadata = {"document_id": request.document_id}
 
         # user_id is optional in the backend and can be added later
-        conversation = await storage.create_conversation(
+        conversation = await storage.create_conversation(  # type: ignore[union-attr]
             page_name=request.page_name, metadata=metadata
         )
 
@@ -127,7 +127,7 @@ async def get_conversation_list(
 
         # The backend method returns a dict: {"items": [], "total": 0}
         # which directly matches the GetConversationListResponse model.
-        result = await storage.get_conversation_list(
+        result = await storage.get_conversation_list(  # type: ignore[union-attr]
             limit=limit, offset=offset, page_name=page_name, user_id=user_id, status=status
         )
 
@@ -148,7 +148,7 @@ async def get_conversation_detail(
     """
     try:
         storage = get_storage()
-        conversation = await storage.get_conversation(conversation_id=cid)
+        conversation = await storage.get_conversation(conversation_id=cid)  # type: ignore[union-attr]
 
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -176,7 +176,7 @@ async def update_conversation_title(
 
         # The backend's `update_conversation` calls `get_conversation`
         # on success, returning the updated object.
-        updated_convo = await storage.update_conversation(conversation_id=cid, title=request.title)
+        updated_convo = await storage.update_conversation(conversation_id=cid, title=request.title)  # type: ignore[union-attr]
 
         if not updated_convo:
             raise HTTPException(status_code=404, detail="Conversation not found or update failed")
@@ -204,7 +204,7 @@ async def delete_conversation(
         # The backend's `delete_conversation` method handles setting
         # the status to 'deleted' and returns the exact format
         # required by `DeleteConversationResponse`.
-        result = await storage.delete_conversation(conversation_id=cid)
+        result = await storage.delete_conversation(conversation_id=cid)  # type: ignore[union-attr]
 
         if not result.get("success"):
             raise HTTPException(status_code=404, detail="Conversation not found or delete failed")

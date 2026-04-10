@@ -86,7 +86,7 @@ class ComponentInitializer:
         """Create a capture component instance."""
         if name in CAPTURE_COMPONENTS:
             component_class = CAPTURE_COMPONENTS[name]
-            return component_class()
+            return component_class()  # type: ignore[abstract]
 
         # Fallback to dynamic import
         module_path = config.get("module")

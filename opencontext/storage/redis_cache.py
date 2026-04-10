@@ -121,7 +121,7 @@ class RedisCache:
             config: Redis configuration. If None, uses default config.
         """
         self.config = config or RedisCacheConfig()
-        self._async_client = None
+        self._async_client: Any = None
         self._async_lock = asyncio.Lock()
         self._async_connected = False
 

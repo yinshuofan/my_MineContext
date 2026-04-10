@@ -77,8 +77,8 @@ class DocumentTextChunker(BaseChunker):
               oversized elements that need mechanical splitting
         """
         buffers_to_split = []
-        direct_chunks = []
-        oversized_elements = []
+        direct_chunks = []  # type: ignore[var-annotated]
+        oversized_elements = []  # type: ignore[var-annotated]
 
         buffer = ""
         position = 0  # Record insert position
@@ -140,7 +140,7 @@ class DocumentTextChunker(BaseChunker):
         tasks = [self._split_with_llm_async(buf) for buf in buffers]
 
         # Execute all tasks concurrently
-        results = asyncio.run(asyncio.gather(*tasks, return_exceptions=True))
+        results = asyncio.run(asyncio.gather(*tasks, return_exceptions=True))  # type: ignore[arg-type, var-annotated]
 
         # Handle exceptions
         processed_results = []

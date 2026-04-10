@@ -297,9 +297,9 @@ class HierarchicalEventTool(BaseTool):
             has_multimodal = bool(image_url or video_url)
             ark_input = [{"type": "text", "text": query}]
             if image_url:
-                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})
+                ark_input.append({"type": "image_url", "image_url": {"url": image_url}})  # type: ignore[dict-item]
             if video_url:
-                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})
+                ark_input.append({"type": "video_url", "video_url": {"url": video_url}})  # type: ignore[dict-item]
             vectorize = Vectorize(
                 input=ark_input,
                 content_format=(ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT),
@@ -349,7 +349,7 @@ class HierarchicalEventTool(BaseTool):
 
     # ── Main execute ─────────────────────────────────────────────────
 
-    async def execute(self, **kwargs) -> list[dict[str, Any]]:
+    async def execute(self, **kwargs) -> list[dict[str, Any]]:  # type: ignore[override]
         """
         Execute hierarchical event retrieval.
 

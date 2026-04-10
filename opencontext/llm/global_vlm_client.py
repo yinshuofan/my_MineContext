@@ -109,7 +109,7 @@ class GlobalVLMClient:
     async def generate_with_messages(
         self, messages: list, enable_executor: bool = True, max_calls: int = 5, **kwargs
     ):
-        response = await self._vlm_client.generate_with_messages(messages, **kwargs)
+        response = await self._vlm_client.generate_with_messages(messages, **kwargs)  # type: ignore[union-attr]
         call_count = 0
         while enable_executor:
             call_count += 1
@@ -125,7 +125,7 @@ class GlobalVLMClient:
                         ),
                     }
                 )
-                response = await self._vlm_client.generate_with_messages(messages, **kwargs)
+                response = await self._vlm_client.generate_with_messages(messages, **kwargs)  # type: ignore[union-attr]
                 break
             message = response.choices[0].message
             if not message.tool_calls:
@@ -162,7 +162,7 @@ class GlobalVLMClient:
                 )
 
             # Call LLM again
-            response = await self._vlm_client.generate_with_messages(messages, **kwargs)
+            response = await self._vlm_client.generate_with_messages(messages, **kwargs)  # type: ignore[union-attr]
 
         message = response.choices[0].message
         return message.content
@@ -179,14 +179,14 @@ class GlobalVLMClient:
         Returns:
             Raw LLM response object, including possible tool_calls
         """
-        response = await self._vlm_client.generate_with_messages(messages, tools=tools, **kwargs)
+        response = await self._vlm_client.generate_with_messages(messages, tools=tools, **kwargs)  # type: ignore[union-attr]
         return response
 
     async def generate_stream_for_agent(self, messages: list, tools: list = None, **kwargs):
         """
         Agent-specific streaming generation method
         """
-        async for chunk in self._vlm_client.generate_with_messages_stream(
+        async for chunk in self._vlm_client.generate_with_messages_stream(  # type: ignore[union-attr]
             messages, tools=tools, **kwargs
         ):
             yield chunk

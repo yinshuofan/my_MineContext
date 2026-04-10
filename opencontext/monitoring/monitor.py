@@ -154,7 +154,7 @@ class Monitor:
     ):
         """Persist token usage to database"""
         try:
-            await get_storage().save_monitoring_token_usage(
+            await get_storage().save_monitoring_token_usage(  # type: ignore[union-attr]
                 model, prompt_tokens, completion_tokens, total_tokens
             )
         except Exception as e:
@@ -210,10 +210,10 @@ class Monitor:
 
         # Fetch latest statistics from storage
         try:
-            await get_storage().get_all_processed_context_counts()
+            await get_storage().get_all_processed_context_counts()  # type: ignore[union-attr]
             stats = {}
             for context_type in ContextType:
-                count = await get_storage().get_processed_context_count(context_type.value)
+                count = await get_storage().get_processed_context_count(context_type.value)  # type: ignore[union-attr]
                 stats[context_type.value] = count
             # Update cache
             for context_type_value, count in stats.items():
@@ -241,9 +241,9 @@ class Monitor:
         }
 
         try:
-            rows = await get_storage().query_monitoring_token_usage(hours)
+            rows = await get_storage().query_monitoring_token_usage(hours)  # type: ignore[union-attr]
 
-            model_stats = defaultdict(
+            model_stats = defaultdict(  # type: ignore[var-annotated]
                 lambda: {"count": 0, "total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0}
             )
 
@@ -288,10 +288,10 @@ class Monitor:
             if not recent_metrics:
                 return summary
 
-            processor_stats = defaultdict(
+            processor_stats = defaultdict(  # type: ignore[var-annotated]
                 lambda: {"count": 0, "total_duration": 0, "avg_duration": 0, "contexts": 0}
             )
-            context_stats = defaultdict(
+            context_stats = defaultdict(  # type: ignore[var-annotated]
                 lambda: {"count": 0, "total_duration": 0, "avg_duration": 0}
             )
 
@@ -316,11 +316,11 @@ class Monitor:
             # Calculate averages
             for stats in processor_stats.values():
                 if stats["count"] > 0:
-                    stats["avg_duration"] = stats["total_duration"] / stats["count"]
+                    stats["avg_duration"] = stats["total_duration"] / stats["count"]  # type: ignore[assignment]
 
             for stats in context_stats.values():
                 if stats["count"] > 0:
-                    stats["avg_duration"] = stats["total_duration"] / stats["count"]
+                    stats["avg_duration"] = stats["total_duration"] / stats["count"]  # type: ignore[assignment]
 
             summary["by_processor"] = dict(processor_stats)
             summary["by_context_type"] = dict(context_stats)
@@ -340,7 +340,7 @@ class Monitor:
     ):
         """Record processing stage timing"""
         try:
-            await get_storage().save_monitoring_stage_timing(
+            await get_storage().save_monitoring_stage_timing(  # type: ignore[union-attr]
                 stage_name, duration_ms, status, metadata
             )
         except Exception as e:
@@ -355,7 +355,7 @@ class Monitor:
     ):
         """Increment data count"""
         try:
-            await get_storage().save_monitoring_data_stats(data_type, count, context_type, metadata)
+            await get_storage().save_monitoring_data_stats(data_type, count, context_type, metadata)  # type: ignore[union-attr]
         except Exception as e:
             logger.error(f"Failed to increment data count: {e}")
 
@@ -368,9 +368,9 @@ class Monitor:
         }
 
         try:
-            rows = await get_storage().query_monitoring_stage_timing(hours)
+            rows = await get_storage().query_monitoring_stage_timing(hours)  # type: ignore[union-attr]
 
-            stage_stats = defaultdict(
+            stage_stats = defaultdict(  # type: ignore[var-annotated]
                 lambda: {
                     "count": 0,
                     "total_duration": 0,
@@ -420,7 +420,7 @@ class Monitor:
         }
 
         try:
-            rows = await get_storage().query_monitoring_data_stats(hours)
+            rows = await get_storage().query_monitoring_data_stats(hours)  # type: ignore[union-attr]
 
             # Process the grouped data
             for row in rows:
@@ -429,16 +429,16 @@ class Monitor:
                 context_type = row["context_type"]
 
                 # Aggregate by data type
-                if data_type not in summary["by_data_type"]:
-                    summary["by_data_type"][data_type] = 0
-                summary["by_data_type"][data_type] += count
+                if data_type not in summary["by_data_type"]:  # type: ignore[operator]
+                    summary["by_data_type"][data_type] = 0  # type: ignore[index]
+                summary["by_data_type"][data_type] += count  # type: ignore[index]
                 summary["total_data_processed"] += count
 
                 # Aggregate context stats (only for 'context' data_type with non-null context_type)
                 if data_type == "context" and context_type is not None:
-                    if context_type not in summary["by_context_type"]:
-                        summary["by_context_type"][context_type] = 0
-                    summary["by_context_type"][context_type] += count
+                    if context_type not in summary["by_context_type"]:  # type: ignore[operator]
+                        summary["by_context_type"][context_type] = 0  # type: ignore[index]
+                    summary["by_context_type"][context_type] += count  # type: ignore[index]
 
         except Exception as e:
             logger.error(f"Failed to get data stats summary: {e}")
@@ -460,7 +460,7 @@ class Monitor:
         }
 
         try:
-            rows = await get_storage().query_monitoring_data_stats_by_range(start_time, end_time)
+            rows = await get_storage().query_monitoring_data_stats_by_range(start_time, end_time)  # type: ignore[union-attr]
 
             # Process the grouped data
             for row in rows:
@@ -469,16 +469,16 @@ class Monitor:
                 context_type = row["context_type"]
 
                 # Aggregate by data type
-                if data_type not in summary["by_data_type"]:
-                    summary["by_data_type"][data_type] = 0
-                summary["by_data_type"][data_type] += count
+                if data_type not in summary["by_data_type"]:  # type: ignore[operator]
+                    summary["by_data_type"][data_type] = 0  # type: ignore[index]
+                summary["by_data_type"][data_type] += count  # type: ignore[index]
                 summary["total_data_processed"] += count
 
                 # Aggregate context stats (only for 'context' data_type with non-null context_type)
                 if data_type == "context" and context_type is not None:
-                    if context_type not in summary["by_context_type"]:
-                        summary["by_context_type"][context_type] = 0
-                    summary["by_context_type"][context_type] += count
+                    if context_type not in summary["by_context_type"]:  # type: ignore[operator]
+                        summary["by_context_type"][context_type] = 0  # type: ignore[index]
+                    summary["by_context_type"][context_type] += count  # type: ignore[index]
 
         except Exception as e:
             logger.error(f"Failed to get data stats by range: {e}")
@@ -488,11 +488,11 @@ class Monitor:
     async def get_data_stats_trend(self, hours: int = 24) -> dict[str, Any]:
         """Get data statistics trend with time series data"""
         try:
-            rows = await get_storage().query_monitoring_data_stats_trend(hours)
+            rows = await get_storage().query_monitoring_data_stats_trend(hours)  # type: ignore[union-attr]
 
             # Organize data by data_type for easy frontend consumption
             # Structure: { 'document': [{timestamp, count}, ...], 'context': [...] }
-            trend_data = {
+            trend_data = {  # type: ignore[var-annotated]
                 "document": [],
                 "context": [],
             }
@@ -708,7 +708,7 @@ class Monitor:
             if not recent_metrics:
                 return summary
 
-            operation_stats = defaultdict(
+            operation_stats = defaultdict(  # type: ignore[var-annotated]
                 lambda: {"count": 0, "total_duration": 0, "avg_duration": 0, "snippets": 0}
             )
 
@@ -726,7 +726,7 @@ class Monitor:
             # Calculate averages
             for stats in operation_stats.values():
                 if stats["count"] > 0:
-                    stats["avg_duration"] = stats["total_duration"] / stats["count"]
+                    stats["avg_duration"] = stats["total_duration"] / stats["count"]  # type: ignore[assignment]
 
             summary["by_operation"] = dict(operation_stats)
             summary["avg_duration_ms"] = (

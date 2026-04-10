@@ -45,7 +45,7 @@ class ProcessorFactory:
         }
 
         for name, processor_class in built_in_processors.items():
-            self.register_processor_type(name, processor_class)
+            self.register_processor_type(name, processor_class)  # type: ignore[type-abstract]
 
         logger.info(f"Registered {len(built_in_processors)} built-in processor types")
 

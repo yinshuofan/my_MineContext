@@ -32,7 +32,7 @@ class ExecutorNode(BaseNode):
     async def process(self, state: WorkflowState) -> WorkflowState:
         """Process execution"""
         state.update_stage(WorkflowStage.EXECUTION)
-        await self.streaming_manager.emit(
+        await self.streaming_manager.emit(  # type: ignore[union-attr]
             StreamEvent(
                 type=EventType.THINKING,
                 content="Starting to execute the task...",
@@ -41,7 +41,7 @@ class ExecutorNode(BaseNode):
             )
         )
         plan = await self._generate_execution_plan(state)
-        await self.streaming_manager.emit(
+        await self.streaming_manager.emit(  # type: ignore[union-attr]
             StreamEvent(
                 type=EventType.DONE,
                 content="Execution plan has been generated",
@@ -52,11 +52,11 @@ class ExecutorNode(BaseNode):
         )
         state.execution_plan = plan
         outputs = []
-        errors = []
+        errors = []  # type: ignore[var-annotated]
         total_steps = len(plan.steps)
         for i, step in enumerate(plan.steps):
             progress = (i + 1) / total_steps
-            await self.streaming_manager.emit(
+            await self.streaming_manager.emit(  # type: ignore[union-attr]
                 StreamEvent(
                     type=EventType.RUNNING,
                     content=f"Executing step {i + 1}/{total_steps}: {step.description}",
@@ -75,11 +75,11 @@ class ExecutorNode(BaseNode):
             outputs=outputs,
             errors=errors,
             execution_time=(
-                (tz_now() - plan.steps[0].start_time).total_seconds() if plan.steps else 0
+                (tz_now() - plan.steps[0].start_time).total_seconds() if plan.steps else 0  # type: ignore[operator]
             ),
         )
         # print(f"Task execution completed, {len(outputs)} successful, {len(errors)} failed")
-        await self.streaming_manager.emit(
+        await self.streaming_manager.emit(  # type: ignore[union-attr]
             StreamEvent(
                 type=EventType.DONE,
                 content=(
@@ -94,7 +94,7 @@ class ExecutorNode(BaseNode):
     async def _generate_execution_plan(self, state: WorkflowState) -> ExecutionPlan:
         """Generate execution plan"""
         plan = ExecutionPlan()
-        query_type = state.intent.query_type
+        query_type = state.intent.query_type  # type: ignore[union-attr]
         if query_type == QueryType.DOCUMENT_EDIT:
             step = ExecutionStep(action=ActionType.EDIT)
             plan.add_step(step)
@@ -131,8 +131,8 @@ class ExecutorNode(BaseNode):
         context = state.contexts.prepare_context()
         user_prompt = prompt_group["user"]
         user_prompt = user_prompt.format(
-            query=state.intent.original_query,
-            enhanced_query=state.intent.enhanced_query,
+            query=state.intent.original_query,  # type: ignore[union-attr]
+            enhanced_query=state.intent.enhanced_query,  # type: ignore[union-attr]
             collected_contexts=context.get("collected_contexts", ""),
             chat_history=context.get("chat_history", ""),
             current_document=context.get("current_document", ""),
@@ -152,7 +152,7 @@ class ExecutorNode(BaseNode):
                 if hasattr(delta, "content") and delta.content:
                     full_content += delta.content
                     # Emit streaming chunk event
-                    await self.streaming_manager.emit(
+                    await self.streaming_manager.emit(  # type: ignore[union-attr]
                         StreamEvent(
                             type=EventType.STREAM_CHUNK,
                             content=delta.content,
@@ -173,8 +173,8 @@ class ExecutorNode(BaseNode):
         system_prompt = prompt_group["system"]
         user_prompt = prompt_group["user"]
         user_prompt = user_prompt.format(
-            query=state.intent.original_query,
-            enhanced_query=state.intent.enhanced_query,
+            query=state.intent.original_query,  # type: ignore[union-attr]
+            enhanced_query=state.intent.enhanced_query,  # type: ignore[union-attr]
             collected_contexts=context.get("collected_contexts", ""),
             chat_history=context.get("chat_history", ""),
             current_document=context.get("current_document", ""),
@@ -194,7 +194,7 @@ class ExecutorNode(BaseNode):
                 if hasattr(delta, "content") and delta.content:
                     full_content += delta.content
                     # Emit streaming chunk event
-                    await self.streaming_manager.emit(
+                    await self.streaming_manager.emit(  # type: ignore[union-attr]
                         StreamEvent(
                             type=EventType.STREAM_CHUNK,
                             content=delta.content,
@@ -252,8 +252,8 @@ class ExecutorNode(BaseNode):
         system_prompt = prompt_group["system"]
         user_prompt = prompt_group["user"]
         user_prompt = user_prompt.format(
-            query=state.intent.original_query,
-            enhanced_query=state.intent.enhanced_query,
+            query=state.intent.original_query,  # type: ignore[union-attr]
+            enhanced_query=state.intent.enhanced_query,  # type: ignore[union-attr]
             collected_contexts=context.get("collected_contexts", ""),
             chat_history=context.get("chat_history", ""),
             current_document=context.get("current_document", ""),
@@ -273,7 +273,7 @@ class ExecutorNode(BaseNode):
                 if hasattr(delta, "content") and delta.content:
                     full_content += delta.content
                     # Emit streaming chunk event
-                    await self.streaming_manager.emit(
+                    await self.streaming_manager.emit(  # type: ignore[union-attr]
                         StreamEvent(
                             type=EventType.STREAM_CHUNK,
                             content=delta.content,

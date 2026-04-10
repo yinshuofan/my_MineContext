@@ -260,7 +260,7 @@ class ContextCaptureManager:
         """
         return {name: self._components[name] for name in self._running_components}
 
-    def set_callback(self, callback: callable) -> None:
+    def set_callback(self, callback: callable) -> None:  # type: ignore[valid-type]
         """
         Set the callback function, which is called when new data is captured.
 
@@ -303,7 +303,7 @@ class ContextCaptureManager:
         # Call the upper-level callback (e.g., pass to OpenContext for processing)
         if self._callback:
             try:
-                await self._callback(contexts)
+                await self._callback(contexts)  # type: ignore[misc]
             except Exception as e:
                 logger.exception(
                     f"An exception occurred when executing the upper-level callback function: {e}"

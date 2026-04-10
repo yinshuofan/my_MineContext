@@ -122,8 +122,10 @@ class UnifiedStorage:
     def __init__(self):
         self._factory = StorageBackendFactory()
         self._initialized = False
-        self._vector_backend: IVectorStorageBackend = None
-        self._document_backend: IDocumentStorageBackend = None
+        # Typed as Any because concrete backends implement many methods
+        # beyond the IVectorStorageBackend/IDocumentStorageBackend interfaces
+        self._vector_backend: Any = None
+        self._document_backend: Any = None
 
     async def close(self) -> None:
         """Close initialized backends and release resources."""
@@ -163,7 +165,7 @@ class UnifiedStorage:
             from opencontext.config.global_config import get_config
 
             storage_config = get_config("storage")
-            backend_configs = storage_config.get("backends", [])
+            backend_configs = storage_config.get("backends", [])  # type: ignore[union-attr]
             if not backend_configs:
                 logger.error("No storage backends configured")
                 return False
@@ -573,7 +575,7 @@ class UnifiedStorage:
         if tags is not None:
             kwargs["tags"] = tags
         if is_deleted is not None:
-            kwargs["is_deleted"] = is_deleted
+            kwargs["is_deleted"] = is_deleted  # type: ignore[assignment]
 
         return await self._document_backend.update_vault(vault_id, **kwargs)
 

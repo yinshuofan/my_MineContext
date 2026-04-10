@@ -142,8 +142,8 @@ class GlobalConfig:
         language = prompts_config.get("language", "zh")
         prompts_path = f"prompts_{language}.yaml"
 
-        base_dir = os.path.dirname(self._config_path)
-        absolute_prompts_path = os.path.join(base_dir, prompts_path)
+        base_dir = os.path.dirname(self._config_path)  # type: ignore[type-var]
+        absolute_prompts_path = os.path.join(base_dir, prompts_path)  # type: ignore[arg-type]
 
         if not os.path.exists(absolute_prompts_path):
             logger.warning(f"Prompt file not found: {absolute_prompts_path}")
@@ -212,8 +212,8 @@ class GlobalConfig:
 
             # Reload prompt manager with new language
             prompts_path = f"prompts_{language}.yaml"
-            base_dir = os.path.dirname(self._config_path)
-            absolute_prompts_path = os.path.join(base_dir, prompts_path)
+            base_dir = os.path.dirname(self._config_path)  # type: ignore[type-var]
+            absolute_prompts_path = os.path.join(base_dir, prompts_path)  # type: ignore[arg-type]
 
             if not os.path.exists(absolute_prompts_path):
                 logger.error(f"Prompt file not found: {absolute_prompts_path}")
@@ -317,7 +317,7 @@ def get_prompt_group(name: str) -> dict[str, str]:
 
 def get_prompt_manager() -> PromptManager:
     """Convenience function to get the prompt manager"""
-    return GlobalConfig.get_instance()._prompt_manager
+    return GlobalConfig.get_instance()._prompt_manager  # type: ignore[return-value]
 
 
 def is_initialized() -> bool:
