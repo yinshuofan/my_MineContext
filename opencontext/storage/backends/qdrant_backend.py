@@ -278,10 +278,8 @@ class QdrantBackend(IVectorStorageBackend):
         if not context_types:
             context_types = list(self._collections.keys())
 
-        # Merge multi-user fields into base filter (user_id applied per-collection below)
+        # Base filter (user_id and device_id applied per-collection below)
         base_filter = dict(filter) if filter else {}
-        if device_id:
-            base_filter["device_id"] = device_id
         if agent_id:
             base_filter["agent_id"] = agent_id
 
@@ -290,10 +288,13 @@ class QdrantBackend(IVectorStorageBackend):
                 continue
             collection_name = self._collections[context_type]
             try:
-                # Skip user_id filter for agent_base_* types
+                # Skip user_id and device_id for agent_base_* types
                 merged_filter = dict(base_filter)
-                if user_id and not context_type.startswith("agent_base"):
+                is_base = context_type.startswith("agent_base")
+                if user_id and not is_base:
                     merged_filter["user_id"] = user_id
+                if device_id and not is_base:
+                    merged_filter["device_id"] = device_id
 
                 filter_condition = self._build_filter_condition(merged_filter)
 
@@ -434,10 +435,8 @@ class QdrantBackend(IVectorStorageBackend):
             logger.warning("Unable to get query vector, search failed")
             return []
 
-        # Merge multi-user fields into base filters (user_id applied per-collection below)
+        # Base filters (user_id and device_id applied per-collection below)
         base_filters = dict(filters) if filters else {}
-        if device_id:
-            base_filters["device_id"] = device_id
         if agent_id:
             base_filters["agent_id"] = agent_id
 
@@ -449,11 +448,14 @@ class QdrantBackend(IVectorStorageBackend):
                 if collection_info.points_count == 0:
                     continue
 
-                # Skip user_id filter for agent_base_* types (they use user_id="__base__"
-                # internally but callers search with the real user_id)
+                # Skip user_id and device_id filters for agent_base_* types
+                # (base memories are agent-level, not scoped to a specific user or device)
                 merged_filters = dict(base_filters)
-                if user_id and not context_type.startswith("agent_base"):
+                is_base = context_type.startswith("agent_base")
+                if user_id and not is_base:
                     merged_filters["user_id"] = user_id
+                if device_id and not is_base:
+                    merged_filters["device_id"] = device_id
 
                 filter_condition = self._build_filter_condition(merged_filters)
 
@@ -696,15 +698,16 @@ class QdrantBackend(IVectorStorageBackend):
             )
         ]
 
-        # Skip user_id filter for agent_base_* types
-        if user_id and not context_type.startswith("agent_base"):
+        # Skip user_id and device_id filters for agent_base_* types
+        is_base = context_type.startswith("agent_base")
+        if user_id and not is_base:
             must_conditions.append(
                 models.FieldCondition(
                     key="user_id",
                     match=models.MatchValue(value=user_id),
                 )
             )
-        if device_id:
+        if device_id and not is_base:
             must_conditions.append(
                 models.FieldCondition(
                     key="device_id",

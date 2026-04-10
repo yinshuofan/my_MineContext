@@ -1301,14 +1301,15 @@ class VikingDBBackend(IVectorStorageBackend):
         if context_types and len(context_types) > 0:
             conditions.append({"op": "must", "field": FIELD_CONTEXT_TYPE, "conds": context_types})
 
-        # Skip user_id filter for agent_base_* types
+        # Skip user_id and device_id filters for agent_base_* types
+        # (base memories are agent-level, not scoped to a specific user or device)
         _ctx = context_type or (
             context_types[0] if context_types and len(context_types) == 1 else None
         )
-        skip_user_id = _ctx and _ctx.startswith("agent_base")
-        if user_id and not skip_user_id:
+        is_base = _ctx and _ctx.startswith("agent_base")
+        if user_id and not is_base:
             conditions.append({"op": "must", "field": FIELD_USER_ID, "conds": [user_id]})
-        if device_id:
+        if device_id and not is_base:
             conditions.append({"op": "must", "field": FIELD_DEVICE_ID, "conds": [device_id]})
         if agent_id:
             conditions.append({"op": "must", "field": FIELD_AGENT_ID, "conds": [agent_id]})
@@ -1488,10 +1489,11 @@ class VikingDBBackend(IVectorStorageBackend):
                 {"op": "must", "field": FIELD_CONTEXT_TYPE, "conds": [context_type]},
                 {"op": "must", "field": FIELD_HIERARCHY_LEVEL, "conds": [int(hierarchy_level)]},
             ]
-            # Skip user_id filter for agent_base_* types
-            if user_id and not context_type.startswith("agent_base"):
+            # Skip user_id and device_id for agent_base_* types
+            is_base = context_type.startswith("agent_base")
+            if user_id and not is_base:
                 conditions.append({"op": "must", "field": FIELD_USER_ID, "conds": [user_id]})
-            if device_id:
+            if device_id and not is_base:
                 conditions.append({"op": "must", "field": FIELD_DEVICE_ID, "conds": [device_id]})
             if agent_id:
                 conditions.append({"op": "must", "field": FIELD_AGENT_ID, "conds": [agent_id]})
