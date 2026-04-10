@@ -3,7 +3,6 @@
 from typing import List, Optional
 
 from opencontext.config.global_config import get_prompt_group
-from opencontext.context_processing.processor.profile_processor import refresh_profile
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.enums import ContextType
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
@@ -128,16 +127,17 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         if not response or not response.strip():
             return TaskResult.fail("LLM returned empty response")
 
-        # 5. Store updated profile
+        # 5. Store updated profile — direct upsert, no LLM merge
+        # (this task already produced the final profile via LLM, merging again would be redundant)
         updated_profile = response.strip()
-        success = await refresh_profile(
-            new_factual_profile=updated_profile,
-            new_entities=None,
-            new_importance=7,
-            new_metadata=None,
+        success = await storage.upsert_profile(
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
+            factual_profile=updated_profile,
+            entities=None,
+            importance=7,
+            metadata=None,
             context_type="agent_profile",
         )
 
