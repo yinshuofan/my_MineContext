@@ -3,8 +3,11 @@
 """
 Event Search Service — reusable search logic for routes and processors.
 
-The storage backends automatically skip user_id filtering for agent_base_* types,
-so all search methods can pass the caller's user_id directly with combined type lists.
+Unified search: builds filters from parameters (time_range, hierarchy_levels),
+resolves context types, and delegates to storage.search() (vector) or
+storage.get_all_processed_contexts() (filter-only) in a single call.
+
+Storage backends automatically skip user_id/device_id filtering for agent_base_* types.
 """
 
 from dataclasses import dataclass, field
@@ -21,7 +24,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class SearchResult:
-    """Return type for semantic_search."""
+    """Return type for search."""
 
     hits: List[Tuple[ProcessedContext, float]] = field(default_factory=list)
     ancestors: Dict[str, ProcessedContext] = field(default_factory=dict)
@@ -36,52 +39,61 @@ class EventSearchService:
 
     # ── Public API ──
 
-    async def semantic_search(
+    async def search(
         self,
-        query: List[Dict],
+        query: Optional[List[Dict]] = None,
         user_id: Optional[str] = None,
         device_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        hierarchy_levels: Optional[List[int]] = None,
         top_k: int = 20,
         score_threshold: Optional[float] = None,
         time_range: Optional[Any] = None,
         drill_up: bool = False,
     ) -> SearchResult:
-        """Semantic search with optional drill-up.
+        """Unified search — vector or filter-only, with optional drill-up.
 
-        Handles vectorization internally — caller provides raw query content
-        in OpenAI content parts format. Automatically includes agent base memories
-        (backend skips user_id filter for agent_base_* types).
+        If query is provided, performs vector similarity search.
+        If query is None, performs filter-only retrieval.
+        Both paths use the same filter construction from time_range and hierarchy_levels.
+        Storage backends skip user_id/device_id for agent_base_* types automatically.
         """
-        query_text = " ".join(item.get("text", "") for item in query if item.get("type") == "text")
+        query_text = ""
+        if query:
+            query_text = " ".join(
+                item.get("text", "") for item in query if item.get("type") == "text"
+            )
         logger.debug(
-            f"[EventSearchService] semantic_search: query='{query_text[:100]}', "
+            f"[EventSearchService] search: query='{query_text[:100]}', "
             f"user_id={user_id}, agent_id={agent_id}, "
-            f"top_k={top_k}, drill_up={drill_up}"
+            f"hierarchy_levels={hierarchy_levels}, top_k={top_k}, drill_up={drill_up}"
         )
 
-        # Vectorize query
-        query_types = {item.get("type") for item in query}
-        has_multimodal = bool(query_types & {"image_url", "video_url"})
-        vectorize = Vectorize(
-            input=query,
-            content_format=(ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT),
-        )
-        await do_vectorize(vectorize, role="query")
+        # Build unified filters and context types
+        filters = self._build_filters(time_range, hierarchy_levels)
+        context_types = self._get_context_types_for_levels(hierarchy_levels)
 
-        # Single search across all types (backend handles user_id skipping for base types)
-        filters = self._build_filters(time_range, None)
-        context_types = self._get_context_types_for_levels(None)
-        raw_results = await self.storage.search(
-            query=vectorize,
-            top_k=top_k,
-            context_types=context_types,
-            filters=filters,
-            user_id=user_id,
-            device_id=device_id,
-            agent_id=agent_id,
-            score_threshold=score_threshold,
-        )
+        # Execute search
+        if query:
+            raw_results = await self._vector_search(
+                query,
+                context_types,
+                filters,
+                user_id,
+                device_id,
+                agent_id,
+                top_k,
+                score_threshold,
+            )
+        else:
+            raw_results = await self._filter_search(
+                context_types,
+                filters,
+                user_id,
+                device_id,
+                agent_id,
+                top_k,
+            )
 
         # Drill-up
         ancestors: Dict[str, ProcessedContext] = {}
@@ -89,7 +101,7 @@ class EventSearchService:
             ancestors = await self.collect_ancestors(raw_results, max_level=3)
 
         logger.debug(
-            f"[EventSearchService] semantic_search results: "
+            f"[EventSearchService] search results: "
             f"{len(raw_results)} hits, {len(ancestors)} ancestors"
         )
         for ctx, score in raw_results:
@@ -103,77 +115,51 @@ class EventSearchService:
 
         return SearchResult(hits=raw_results, ancestors=ancestors)
 
-    async def filter_search(
+    # ── Internal search paths ──
+
+    async def _vector_search(
         self,
-        user_id: Optional[str] = None,
-        device_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        hierarchy_levels: Optional[List[int]] = None,
-        time_range: Optional[Any] = None,
-        top_k: int = 20,
+        query: List[Dict],
+        context_types: List[str],
+        filters: Dict[str, Any],
+        user_id: Optional[str],
+        device_id: Optional[str],
+        agent_id: Optional[str],
+        top_k: int,
+        score_threshold: Optional[float],
     ) -> List[Tuple[ProcessedContext, float]]:
-        """Filter-only search (no semantic vector).
+        """Vector similarity search — single storage.search() call."""
+        query_types = {item.get("type") for item in query}
+        has_multimodal = bool(query_types & {"image_url", "video_url"})
+        vectorize = Vectorize(
+            input=query,
+            content_format=(ContentFormat.MULTIMODAL if has_multimodal else ContentFormat.TEXT),
+        )
+        await do_vectorize(vectorize, role="query")
 
-        Backend handles user_id skipping for agent_base_* types automatically.
-        """
-        if hierarchy_levels:
-            time_start = time_range.start if time_range else None
-            time_end = time_range.end if time_range else None
+        return await self.storage.search(
+            query=vectorize,
+            top_k=top_k,
+            context_types=context_types,
+            filters=filters,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            score_threshold=score_threshold,
+        )
 
-            user_types = [
-                ContextType.EVENT,
-                ContextType.DAILY_SUMMARY,
-                ContextType.WEEKLY_SUMMARY,
-                ContextType.MONTHLY_SUMMARY,
-            ]
-            base_types = [
-                ContextType.AGENT_BASE_EVENT,
-                ContextType.AGENT_BASE_L1_SUMMARY,
-                ContextType.AGENT_BASE_L2_SUMMARY,
-                ContextType.AGENT_BASE_L3_SUMMARY,
-            ]
-            tasks = []
-            for level in hierarchy_levels:
-                for types in (user_types, base_types):
-                    if level < len(types):
-                        tasks.append(
-                            self.storage.search_hierarchy(
-                                context_type=types[level].value,
-                                hierarchy_level=level,
-                                time_start=time_start,
-                                time_end=time_end,
-                                user_id=user_id,
-                                device_id=device_id,
-                                agent_id=agent_id,
-                                top_k=top_k,
-                            )
-                        )
-
-            import asyncio
-
-            level_results = await asyncio.gather(*tasks)
-            merged: List[Tuple[ProcessedContext, float]] = []
-            for results in level_results:
-                merged.extend(results)
-            seen_ids = set()
-            deduped = []
-            for item in merged:
-                if item[0].id not in seen_ids:
-                    seen_ids.add(item[0].id)
-                    deduped.append(item)
-            return deduped[:top_k]
-
-        # Only time_range — single query across all types
-        filters: Dict[str, Any] = {}
-        if time_range:
-            if time_range.start is not None:
-                filters["event_time_end_ts"] = {"$gte": time_range.start}
-            if time_range.end is not None:
-                filters["event_time_start_ts"] = {"$lte": time_range.end}
-
-        all_types = self._get_context_types_for_levels(None)
+    async def _filter_search(
+        self,
+        context_types: List[str],
+        filters: Dict[str, Any],
+        user_id: Optional[str],
+        device_id: Optional[str],
+        agent_id: Optional[str],
+        top_k: int,
+    ) -> List[Tuple[ProcessedContext, float]]:
+        """Filter-only retrieval — single storage.get_all_processed_contexts() call."""
         result = await self.storage.get_all_processed_contexts(
-            context_types=all_types,
+            context_types=context_types,
             limit=top_k,
             filter=filters,
             user_id=user_id,
@@ -182,11 +168,11 @@ class EventSearchService:
         )
 
         contexts: List[ProcessedContext] = []
-        for ct in all_types:
+        for ct in context_types:
             contexts.extend(result.get(ct, []))
         return [(ctx, 1.0) for ctx in contexts[:top_k]]
 
-    # ── Helpers (public — used by route layer) ──
+    # ── Helpers ──
 
     @staticmethod
     def get_l0_type() -> str:

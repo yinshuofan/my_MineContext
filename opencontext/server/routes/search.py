@@ -159,13 +159,14 @@ async def _execute_search(
             max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
             all_ancestors = await _search_service.collect_ancestors(raw_results, max_level)
 
-    elif request.query:
-        # Path B: Semantic search → delegate to service
-        result = await _search_service.semantic_search(
+    else:
+        # Path B: Unified search (vector if query provided, filter-only otherwise)
+        result = await _search_service.search(
             query=request.query,
             user_id=request.user_id,
             device_id=request.device_id,
             agent_id=request.agent_id,
+            hierarchy_levels=request.hierarchy_levels,
             top_k=request.top_k,
             score_threshold=request.score_threshold,
             time_range=request.time_range,
@@ -173,21 +174,6 @@ async def _execute_search(
         )
         raw_results = result.hits
         all_ancestors = result.ancestors
-
-    else:
-        # Path C: Filters-only → delegate to service
-        raw_results = await _search_service.filter_search(
-            user_id=request.user_id,
-            device_id=request.device_id,
-            agent_id=request.agent_id,
-            hierarchy_levels=request.hierarchy_levels,
-            time_range=request.time_range,
-            top_k=request.top_k,
-        )
-
-        if request.drill_up and raw_results:
-            max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
-            all_ancestors = await _search_service.collect_ancestors(raw_results, max_level)
 
     # ── Step 2: Build node map (stays in route — EventNode is a response model) ──
     nodes: Dict[str, EventNode] = {}

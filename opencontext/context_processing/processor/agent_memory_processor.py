@@ -113,7 +113,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
         related_memories_text = ""
         if query_text:
             search_service = EventSearchService()
-            search_result = await search_service.semantic_search(
+            search_result = await search_service.search(
                 query=[{"type": "text", "text": query_text}],
                 user_id=raw_context.user_id,
                 device_id=raw_context.device_id or "default",
