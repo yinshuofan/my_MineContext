@@ -12,3 +12,4 @@ repos:
         name: Run frontend lint before commit
         entry: bash -c "cd frontend && pnpm run typecheck"
         language: system
+        files: ^frontend/

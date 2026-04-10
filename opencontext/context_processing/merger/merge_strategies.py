@@ -142,7 +142,8 @@ class KnowledgeMergeStrategy(ContextTypeAwareStrategy):
         # Vector similarity check
         if target.vectorize and source.vectorize:
             vector_sim = self._calculate_cosine_similarity(
-                target.vectorize.vector, source.vectorize.vector  # type: ignore[arg-type]
+                target.vectorize.vector,
+                source.vectorize.vector,  # type: ignore[arg-type]
             )
 
             if vector_sim > self.similarity_threshold:
