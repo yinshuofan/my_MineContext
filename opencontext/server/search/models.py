@@ -111,6 +111,9 @@ class EventNode(BaseModel):
     # Multimodal media references (L0 events carry media, summaries have empty list)
     media_refs: List[Dict[str, Any]] = Field(default_factory=list)
 
+    # Agent commentary (populated when agent annotated this event)
+    agent_commentary: Optional[str] = None
+
     # Search-hit fields (populated only when is_search_hit=True)
     keywords: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)

@@ -269,6 +269,7 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
         event_time_start=_format_timestamp(props.event_time_start if props else None),
         event_time_end=_format_timestamp(props.event_time_end if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
+        agent_commentary=extracted.agent_commentary if extracted else None,
         is_search_hit=False,
         media_refs=_extract_media_refs(ctx),
     )
@@ -291,6 +292,7 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         event_time_start=_format_timestamp(props.event_time_start if props else None),
         event_time_end=_format_timestamp(props.event_time_end if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
+        agent_commentary=extracted.agent_commentary if extracted else None,
         is_search_hit=True,
         media_refs=_extract_media_refs(ctx),
     )
