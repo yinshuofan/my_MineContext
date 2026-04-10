@@ -2,9 +2,11 @@
 
 """
 Event Search Service — reusable search logic for routes and processors.
+
+The storage backends automatically skip user_id filtering for agent_base_* types,
+so all search methods can pass the caller's user_id directly with combined type lists.
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -48,7 +50,8 @@ class EventSearchService:
         """Semantic search with optional drill-up.
 
         Handles vectorization internally — caller provides raw query content
-        in OpenAI content parts format.
+        in OpenAI content parts format. Automatically includes agent base memories
+        (backend skips user_id filter for agent_base_* types).
         """
         query_text = " ".join(item.get("text", "") for item in query if item.get("type") == "text")
         logger.debug(
@@ -66,62 +69,19 @@ class EventSearchService:
         )
         await do_vectorize(vectorize, role="query")
 
-        # Search — user events and base events need separate queries (different user_id)
+        # Single search across all types (backend handles user_id skipping for base types)
         filters = self._build_filters(time_range, None)
-        user_types = [
-            t.value
-            for t in [
-                ContextType.EVENT,
-                ContextType.DAILY_SUMMARY,
-                ContextType.WEEKLY_SUMMARY,
-                ContextType.MONTHLY_SUMMARY,
-            ]
-        ]
-        base_types = [
-            t.value
-            for t in [
-                ContextType.AGENT_BASE_EVENT,
-                ContextType.AGENT_BASE_L1_SUMMARY,
-                ContextType.AGENT_BASE_L2_SUMMARY,
-                ContextType.AGENT_BASE_L3_SUMMARY,
-            ]
-        ]
-
-        search_tasks = [
-            self.storage.search(
-                query=vectorize,
-                top_k=top_k,
-                context_types=user_types,
-                filters=filters,
-                user_id=user_id,
-                device_id=device_id,
-                agent_id=agent_id,
-                score_threshold=score_threshold,
-            ),
-            self.storage.search(
-                query=vectorize,
-                top_k=top_k,
-                context_types=base_types,
-                filters=filters,
-                user_id="__base__",
-                device_id=device_id,
-                agent_id=agent_id,
-                score_threshold=score_threshold,
-            ),
-        ]
-        user_results, base_results = await asyncio.gather(*search_tasks)
-
-        # Merge and deduplicate, keep top_k by score
-        combined = user_results + base_results
-        combined.sort(key=lambda x: x[1], reverse=True)
-        seen_ids = set()
-        raw_results = []
-        for item in combined:
-            if item[0].id not in seen_ids:
-                seen_ids.add(item[0].id)
-                raw_results.append(item)
-            if len(raw_results) >= top_k:
-                break
+        context_types = self._get_context_types_for_levels(None)
+        raw_results = await self.storage.search(
+            query=vectorize,
+            top_k=top_k,
+            context_types=context_types,
+            filters=filters,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            score_threshold=score_threshold,
+        )
 
         # Drill-up
         ancestors: Dict[str, ProcessedContext] = {}
@@ -152,7 +112,10 @@ class EventSearchService:
         time_range: Optional[Any] = None,
         top_k: int = 20,
     ) -> List[Tuple[ProcessedContext, float]]:
-        """Filter-only search (no semantic vector)."""
+        """Filter-only search (no semantic vector).
+
+        Backend handles user_id skipping for agent_base_* types automatically.
+        """
         if hierarchy_levels:
             time_start = time_range.start if time_range else None
             time_end = time_range.end if time_range else None
@@ -171,32 +134,22 @@ class EventSearchService:
             ]
             tasks = []
             for level in hierarchy_levels:
-                if level < len(user_types):
-                    tasks.append(
-                        self.storage.search_hierarchy(
-                            context_type=user_types[level].value,
-                            hierarchy_level=level,
-                            time_start=time_start,
-                            time_end=time_end,
-                            user_id=user_id,
-                            device_id=device_id,
-                            agent_id=agent_id,
-                            top_k=top_k,
+                for types in (user_types, base_types):
+                    if level < len(types):
+                        tasks.append(
+                            self.storage.search_hierarchy(
+                                context_type=types[level].value,
+                                hierarchy_level=level,
+                                time_start=time_start,
+                                time_end=time_end,
+                                user_id=user_id,
+                                device_id=device_id,
+                                agent_id=agent_id,
+                                top_k=top_k,
+                            )
                         )
-                    )
-                if level < len(base_types):
-                    tasks.append(
-                        self.storage.search_hierarchy(
-                            context_type=base_types[level].value,
-                            hierarchy_level=level,
-                            time_start=time_start,
-                            time_end=time_end,
-                            user_id="__base__",
-                            device_id=device_id,
-                            agent_id=agent_id,
-                            top_k=top_k,
-                        )
-                    )
+
+            import asyncio
 
             level_results = await asyncio.gather(*tasks)
             merged: List[Tuple[ProcessedContext, float]] = []
@@ -210,8 +163,7 @@ class EventSearchService:
                     deduped.append(item)
             return deduped[:top_k]
 
-        # Only time_range — fetch all events (range-overlap pattern)
-        # Separate queries for user types and base types (different user_id)
+        # Only time_range — single query across all types
         filters: Dict[str, Any] = {}
         if time_range:
             if time_range.start is not None:
@@ -219,43 +171,19 @@ class EventSearchService:
             if time_range.end is not None:
                 filters["event_time_start_ts"] = {"$lte": time_range.end}
 
-        user_type_values = [
-            ContextType.EVENT.value,
-            ContextType.DAILY_SUMMARY.value,
-            ContextType.WEEKLY_SUMMARY.value,
-            ContextType.MONTHLY_SUMMARY.value,
-        ]
-        base_type_values = [
-            ContextType.AGENT_BASE_EVENT.value,
-            ContextType.AGENT_BASE_L1_SUMMARY.value,
-            ContextType.AGENT_BASE_L2_SUMMARY.value,
-            ContextType.AGENT_BASE_L3_SUMMARY.value,
-        ]
-
-        user_result, base_result = await asyncio.gather(
-            self.storage.get_all_processed_contexts(
-                context_types=user_type_values,
-                limit=top_k,
-                filter=filters,
-                user_id=user_id,
-                device_id=device_id,
-                agent_id=agent_id,
-            ),
-            self.storage.get_all_processed_contexts(
-                context_types=base_type_values,
-                limit=top_k,
-                filter=filters,
-                user_id="__base__",
-                device_id=device_id,
-                agent_id=agent_id,
-            ),
+        all_types = self._get_context_types_for_levels(None)
+        result = await self.storage.get_all_processed_contexts(
+            context_types=all_types,
+            limit=top_k,
+            filter=filters,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
         )
 
         contexts: List[ProcessedContext] = []
-        for ct in user_type_values:
-            contexts.extend(user_result.get(ct, []))
-        for ct in base_type_values:
-            contexts.extend(base_result.get(ct, []))
+        for ct in all_types:
+            contexts.extend(result.get(ct, []))
         return [(ctx, 1.0) for ctx in contexts[:top_k]]
 
     # ── Helpers (public — used by route layer) ──

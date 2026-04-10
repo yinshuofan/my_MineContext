@@ -1301,7 +1301,12 @@ class VikingDBBackend(IVectorStorageBackend):
         if context_types and len(context_types) > 0:
             conditions.append({"op": "must", "field": FIELD_CONTEXT_TYPE, "conds": context_types})
 
-        if user_id:
+        # Skip user_id filter for agent_base_* types
+        _ctx = context_type or (
+            context_types[0] if context_types and len(context_types) == 1 else None
+        )
+        skip_user_id = _ctx and _ctx.startswith("agent_base")
+        if user_id and not skip_user_id:
             conditions.append({"op": "must", "field": FIELD_USER_ID, "conds": [user_id]})
         if device_id:
             conditions.append({"op": "must", "field": FIELD_DEVICE_ID, "conds": [device_id]})
@@ -1483,7 +1488,8 @@ class VikingDBBackend(IVectorStorageBackend):
                 {"op": "must", "field": FIELD_CONTEXT_TYPE, "conds": [context_type]},
                 {"op": "must", "field": FIELD_HIERARCHY_LEVEL, "conds": [int(hierarchy_level)]},
             ]
-            if user_id:
+            # Skip user_id filter for agent_base_* types
+            if user_id and not context_type.startswith("agent_base"):
                 conditions.append({"op": "must", "field": FIELD_USER_ID, "conds": [user_id]})
             if device_id:
                 conditions.append({"op": "must", "field": FIELD_DEVICE_ID, "conds": [device_id]})

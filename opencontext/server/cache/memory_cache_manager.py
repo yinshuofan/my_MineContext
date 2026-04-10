@@ -466,10 +466,11 @@ class MemoryCacheManager:
                 device_id=device_id,
                 agent_id=agent_id,
             ),
+            # Backend skips user_id filter for agent_base_* types automatically
             "base_events": storage.get_all_processed_contexts(
                 context_types=[ContextType.AGENT_BASE_EVENT.value],
                 limit=20,
-                user_id="__base__",
+                user_id=user_id,
                 device_id=device_id,
                 agent_id=agent_id,
             ),
