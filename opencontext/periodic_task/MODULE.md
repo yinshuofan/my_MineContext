@@ -44,7 +44,6 @@ Execution context passed to every task. Created by handler factory functions.
 |--------|-----------|-------------|
 | `name` | `@property -> str` | Unique task type name |
 | `description` | `@property -> str` | Human-readable description |
-| `default_config` | `@property -> TaskConfig` | Default `TaskConfig` for registration |
 | `execute` | `async (context: TaskContext) -> TaskResult` | Async execution (main entry) |
 | `validate_context` | `(context: TaskContext) -> bool` | Pre-execution validation (default: `True`) |
 
@@ -52,9 +51,8 @@ Execution context passed to every task. Created by handler factory functions.
 
 Concrete base implementing `IPeriodicTask`. Subclasses override `async execute()`.
 
-**Constructor**: `__init__(name, description="", trigger_mode=TriggerMode.USER_ACTIVITY, interval=1800, timeout=300, task_ttl=7200, max_retries=3)`
+**Constructor**: `__init__(name, description="", interval=1800, timeout=300, task_ttl=7200, max_retries=3)`
 
-- `default_config` property builds a `TaskConfig` from constructor args
 - `async execute()` raises `NotImplementedError`
 
 ### MemoryCompressionTask
@@ -64,7 +62,6 @@ Deduplicates similar knowledge contexts for a specific user.
 | Property | Value |
 |----------|-------|
 | `name` | `"memory_compression"` |
-| `trigger_mode` | `USER_ACTIVITY` |
 | `interval` | `172800` (48 hours) |
 | `timeout` | `300` |
 
@@ -82,7 +79,6 @@ Global retention-based cleanup. Delegates to `ContextMerger.intelligent_memory_c
 | Property | Value |
 |----------|-------|
 | `name` | `"data_cleanup"` |
-| `trigger_mode` | `PERIODIC` |
 | `interval` | `86400` (24 hours) |
 | `timeout` | `600` |
 
@@ -101,7 +97,6 @@ Generates hierarchical time-based summaries (L1 daily, L2 weekly, L3 monthly). S
 | Property | Value |
 |----------|-------|
 | `name` | `"hierarchy_summary"` |
-| `trigger_mode` | `USER_ACTIVITY` |
 | `interval` | `86400` (24 hours) |
 | `timeout` | `600` |
 | `task_ttl` | `14400` |
@@ -173,7 +168,6 @@ Updates the `agent_profile` for a specific user by aggregating `agent_commentary
 | Property | Value |
 |----------|-------|
 | `name` | `"agent_profile_update"` |
-| `trigger_mode` | `USER_ACTIVITY` |
 | `interval` | `86400` (24 hours) |
 | `timeout` | `300` |
 | `task_ttl` | `14400` |
@@ -270,7 +264,6 @@ Note: All `search_hierarchy()` calls in the flow above are **storage-level calls
 
 **Imports from**:
 - `loguru` -- `logger` imported directly in `memory_compression.py`, `data_cleanup.py`; `hierarchy_summary.py` uses `opencontext.utils.logging_utils.get_logger`
-- `opencontext.scheduler.base` -- `TaskConfig`, `TriggerMode` (used by all task classes)
 - `opencontext.storage.global_storage.get_storage` -- hierarchy_summary accesses storage directly
 - `opencontext.llm.global_vlm_client.generate_with_messages` -- hierarchy_summary LLM calls
 - `opencontext.llm.global_embedding_client.do_vectorize` -- hierarchy_summary embedding generation
@@ -298,14 +291,12 @@ Note: All `search_hierarchy()` calls in the flow above are **storage-level calls
 
 ```python
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
-from opencontext.scheduler.base import TriggerMode
 
 class MyTask(BasePeriodicTask):
     def __init__(self, interval: int = 3600, timeout: int = 300):
         super().__init__(
             name="my_task",                    # Must match config key in config.yaml
             description="What this task does",
-            trigger_mode=TriggerMode.USER_ACTIVITY,  # or PERIODIC for global tasks
             interval=interval,
             timeout=timeout,
         )

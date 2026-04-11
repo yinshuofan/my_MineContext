@@ -28,7 +28,6 @@ from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.context import ContextProperties, ExtractedData, ProcessedContext, Vectorize
 from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
-from opencontext.scheduler.base import TriggerMode
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import get_timezone
@@ -206,7 +205,6 @@ class HierarchySummaryTask(BasePeriodicTask):
         super().__init__(
             name="hierarchy_summary",
             description="Generate hierarchical time-based summaries for event contexts",
-            trigger_mode=TriggerMode.USER_ACTIVITY,
             interval=interval,
             timeout=timeout,
             task_ttl=14400,

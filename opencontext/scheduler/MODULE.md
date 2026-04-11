@@ -16,7 +16,7 @@ Stateless, async task scheduler that stores all state in Redis, supporting multi
 ### Enums
 
 ```python
-class TriggerMode(str, Enum):
+class TriggerMode(StrEnum):
     USER_ACTIVITY = "user_activity"  # Triggered per-user on data push, delayed execution
     PERIODIC = "periodic"            # Fixed interval, global (not user-specific)
 

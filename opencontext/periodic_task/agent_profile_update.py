@@ -4,7 +4,6 @@ from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.enums import ContextType
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
-from opencontext.scheduler.base import TriggerMode
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import now as tz_now
@@ -25,7 +24,6 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         super().__init__(
             name="agent_profile_update",
             description="Update agent profile from daily interaction events",
-            trigger_mode=TriggerMode.USER_ACTIVITY,
             interval=interval,
             timeout=timeout,
             task_ttl=14400,

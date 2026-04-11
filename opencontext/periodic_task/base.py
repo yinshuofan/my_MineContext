@@ -10,8 +10,6 @@ import abc
 from dataclasses import dataclass, field
 from typing import Any
 
-from opencontext.scheduler.base import TaskConfig, TriggerMode
-
 
 @dataclass
 class TaskResult:
@@ -73,17 +71,6 @@ class IPeriodicTask(abc.ABC):
         """
         pass
 
-    @property
-    @abc.abstractmethod
-    def default_config(self) -> TaskConfig:
-        """
-        Get the default configuration for this task type.
-
-        Returns:
-            Default TaskConfig
-        """
-        pass
-
     @abc.abstractmethod
     async def execute(self, context: TaskContext) -> TaskResult:
         """
@@ -126,7 +113,6 @@ class BasePeriodicTask(IPeriodicTask):
         self,
         name: str,
         description: str = "",
-        trigger_mode: TriggerMode = TriggerMode.USER_ACTIVITY,
         interval: int = 1800,
         timeout: int = 300,
         task_ttl: int = 7200,
@@ -134,7 +120,6 @@ class BasePeriodicTask(IPeriodicTask):
     ):
         self._name = name
         self._description = description
-        self._trigger_mode = trigger_mode
         self._interval = interval
         self._timeout = timeout
         self._task_ttl = task_ttl
@@ -147,19 +132,6 @@ class BasePeriodicTask(IPeriodicTask):
     @property
     def description(self) -> str:
         return self._description
-
-    @property
-    def default_config(self) -> TaskConfig:
-        return TaskConfig(
-            name=self._name,
-            enabled=True,
-            trigger_mode=self._trigger_mode,
-            interval=self._interval,
-            timeout=self._timeout,
-            task_ttl=self._task_ttl,
-            max_retries=self._max_retries,
-            description=self._description,
-        )
 
     async def execute(self, context: TaskContext) -> TaskResult:
         """

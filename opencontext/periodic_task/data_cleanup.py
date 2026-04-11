@@ -13,7 +13,6 @@ from typing import Any
 from loguru import logger
 
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
-from opencontext.scheduler.base import TriggerMode
 
 
 class DataCleanupTask(BasePeriodicTask):
@@ -50,7 +49,6 @@ class DataCleanupTask(BasePeriodicTask):
         super().__init__(
             name="data_cleanup",
             description="Periodically clean up expired data using intelligent strategies",
-            trigger_mode=TriggerMode.PERIODIC,
             interval=interval,
             timeout=timeout,
             task_ttl=86400,

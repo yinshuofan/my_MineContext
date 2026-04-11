@@ -11,7 +11,6 @@ import time
 from typing import Any
 
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
-from opencontext.scheduler.base import TriggerMode
 from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -43,7 +42,6 @@ class MemoryCompressionTask(BasePeriodicTask):
         super().__init__(
             name="memory_compression",
             description="Periodically compress user memory/context data",
-            trigger_mode=TriggerMode.USER_ACTIVITY,
             interval=interval,
             timeout=timeout,
             task_ttl=7200,
