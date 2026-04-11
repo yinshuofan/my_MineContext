@@ -456,11 +456,10 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="task_mc_trigger" class="form-label">触发模式 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动：推送数据后延迟执行（可去抖）；定时：全局固定间隔执行"></i></label>
-                                        <select class="form-select" id="task_mc_trigger">
-                                            <option value="user_activity">用户活动触发</option>
-                                            <option value="periodic">定时触发</option>
-                                        </select>
+                                        <label class="form-label">触发模式 <i class="bi bi-lock-fill settings-tip" data-bs-toggle="tooltip" title="触发模式是 handler 的调用契约，由代码在 register_handler() 时声明，不可在此修改"></i></label>
+                                        <div class="form-control-plaintext">
+                                            <span class="badge bg-secondary" id="task_mc_trigger"><i class="bi bi-lock-fill me-1"></i><span class="trigger-mode-text">—</span></span>
+                                        </div>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label for="task_mc_interval" class="form-label">间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动模式下为推送后的延迟秒数；定时模式下为执行间隔"></i></label>
@@ -486,11 +485,10 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label for="task_dc_trigger" class="form-label">触发模式 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="通常使用定时模式（全局系统任务，不依赖用户活动）"></i></label>
-                                        <select class="form-select" id="task_dc_trigger">
-                                            <option value="periodic">定时触发</option>
-                                            <option value="user_activity">用户活动触发</option>
-                                        </select>
+                                        <label class="form-label">触发模式 <i class="bi bi-lock-fill settings-tip" data-bs-toggle="tooltip" title="触发模式是 handler 的调用契约，由代码在 register_handler() 时声明，不可在此修改"></i></label>
+                                        <div class="form-control-plaintext">
+                                            <span class="badge bg-secondary" id="task_dc_trigger"><i class="bi bi-lock-fill me-1"></i><span class="trigger-mode-text">—</span></span>
+                                        </div>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label for="task_dc_interval" class="form-label">间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="两次清理之间的间隔时间"></i></label>
@@ -522,11 +520,10 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-3 mb-3">
-                                        <label for="task_hs_trigger" class="form-label">触发模式 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动：推送数据后延迟生成（通常延迟24小时）；定时：固定间隔生成"></i></label>
-                                        <select class="form-select" id="task_hs_trigger">
-                                            <option value="user_activity">用户活动触发</option>
-                                            <option value="periodic">定时触发</option>
-                                        </select>
+                                        <label class="form-label">触发模式 <i class="bi bi-lock-fill settings-tip" data-bs-toggle="tooltip" title="触发模式是 handler 的调用契约，由代码在 register_handler() 时声明，不可在此修改"></i></label>
+                                        <div class="form-control-plaintext">
+                                            <span class="badge bg-secondary" id="task_hs_trigger"><i class="bi bi-lock-fill me-1"></i><span class="trigger-mode-text">—</span></span>
+                                        </div>
                                     </div>
                                     <div class="col-md-3 mb-3">
                                         <label for="task_hs_interval" class="form-label">间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动模式下为推送后的延迟秒数（默认86400=24小时）"></i></label>
@@ -556,11 +553,10 @@
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="task_apu_trigger" class="form-label">触发模式 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动：推送数据后延迟执行（仅在使用 agent_memory 处理器且 agent 已注册时触发）"></i></label>
-                                        <select class="form-select" id="task_apu_trigger">
-                                            <option value="user_activity">用户活动触发</option>
-                                            <option value="periodic">定时触发</option>
-                                        </select>
+                                        <label class="form-label">触发模式 <i class="bi bi-lock-fill settings-tip" data-bs-toggle="tooltip" title="触发模式是 handler 的调用契约，由代码在 register_handler() 时声明，不可在此修改"></i></label>
+                                        <div class="form-control-plaintext">
+                                            <span class="badge bg-secondary" id="task_apu_trigger"><i class="bi bi-lock-fill me-1"></i><span class="trigger-mode-text">—</span></span>
+                                        </div>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label for="task_apu_interval" class="form-label">间隔 (秒) <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="用户活动模式下为推送后的延迟秒数（默认86400=24小时）"></i></label>

@@ -354,6 +354,23 @@ document.getElementById('processingForm')?.addEventListener('submit', async (e) 
 
 // ==================== Tab 4: 调度器 ====================
 
+// Map raw trigger_mode enum value → user-facing label.
+// Source of truth is the backend's `scheduler.runtime_trigger_modes` field
+// (populated from scheduler._task_config_cache). Display is read-only — the
+// trigger mode is a code-declared contract, not user config.
+const TRIGGER_MODE_LABELS = {
+    user_activity: '用户活动触发',
+    periodic: '定时触发',
+};
+
+function setTriggerModeDisplay(badgeId, mode) {
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+    const textEl = badge.querySelector('.trigger-mode-text');
+    if (!textEl) return;
+    textEl.textContent = TRIGGER_MODE_LABELS[mode] || '未注册';
+}
+
 function populateSchedulerSettings(allData) {
     const sched = allData.scheduler || {};
     setChecked('scheduler_enabled', sched.enabled);
@@ -367,17 +384,23 @@ function populateSchedulerSettings(allData) {
     // tasks
     const tasks = sched.tasks || {};
 
+    // Read-only trigger modes (authoritative values from the scheduler's
+    // in-memory cache — not from per-task config sections).
+    const runtimeModes = sched.runtime_trigger_modes || {};
+    setTriggerModeDisplay('task_mc_trigger', runtimeModes.memory_compression);
+    setTriggerModeDisplay('task_dc_trigger', runtimeModes.data_cleanup);
+    setTriggerModeDisplay('task_hs_trigger', runtimeModes.hierarchy_summary);
+    setTriggerModeDisplay('task_apu_trigger', runtimeModes.agent_profile_update);
+
     // memory_compression
     const mc = tasks.memory_compression || {};
     setChecked('task_mc_enabled', mc.enabled);
-    setVal('task_mc_trigger', mc.trigger_mode);
     setVal('task_mc_interval', mc.interval);
     setVal('task_mc_ttl', mc.task_ttl);
 
     // data_cleanup
     const dc = tasks.data_cleanup || {};
     setChecked('task_dc_enabled', dc.enabled);
-    setVal('task_dc_trigger', dc.trigger_mode);
     setVal('task_dc_interval', dc.interval);
     setVal('task_dc_timeout', dc.timeout);
     setVal('task_dc_retention', dc.retention_days);
@@ -385,7 +408,6 @@ function populateSchedulerSettings(allData) {
     // hierarchy_summary
     const hs = tasks.hierarchy_summary || {};
     setChecked('task_hs_enabled', hs.enabled);
-    setVal('task_hs_trigger', hs.trigger_mode);
     setVal('task_hs_interval', hs.interval);
     setVal('task_hs_timeout', hs.timeout);
     setVal('task_hs_ttl', hs.task_ttl);
@@ -393,7 +415,6 @@ function populateSchedulerSettings(allData) {
     // agent_profile_update
     const apu = tasks.agent_profile_update || {};
     setChecked('task_apu_enabled', apu.enabled);
-    setVal('task_apu_trigger', apu.trigger_mode);
     setVal('task_apu_interval', apu.interval);
     setVal('task_apu_ttl', apu.task_ttl);
 }
@@ -420,30 +441,30 @@ document.getElementById('schedulerForm')?.addEventListener('submit', async (e) =
                 max_concurrent: getInt('executor_max_concurrent'),
                 lock_timeout: getInt('executor_lock_timeout'),
             },
+            // trigger_mode is intentionally NOT in any task payload: it is a
+            // code-declared contract enforced by scheduler.register_handler(),
+            // not user config. See redis_scheduler._collect_task_types which
+            // strips it from YAML with a deprecation warning.
             tasks: {
                 memory_compression: {
                     enabled: getChecked('task_mc_enabled'),
-                    trigger_mode: getVal('task_mc_trigger'),
                     interval: getInt('task_mc_interval'),
                     task_ttl: getInt('task_mc_ttl'),
                 },
                 data_cleanup: {
                     enabled: getChecked('task_dc_enabled'),
-                    trigger_mode: getVal('task_dc_trigger'),
                     interval: getInt('task_dc_interval'),
                     timeout: getInt('task_dc_timeout'),
                     retention_days: getInt('task_dc_retention'),
                 },
                 hierarchy_summary: {
                     enabled: getChecked('task_hs_enabled'),
-                    trigger_mode: getVal('task_hs_trigger'),
                     interval: getInt('task_hs_interval'),
                     timeout: getInt('task_hs_timeout'),
                     task_ttl: getInt('task_hs_ttl'),
                 },
                 agent_profile_update: {
                     enabled: getChecked('task_apu_enabled'),
-                    trigger_mode: getVal('task_apu_trigger'),
                     interval: getInt('task_apu_interval'),
                     task_ttl: getInt('task_apu_ttl'),
                 },

@@ -181,3 +181,45 @@ class TestTaskConfigRoundtrip:
         )
         restored = TaskConfig.from_dict(original.to_dict())
         assert restored.trigger_mode == TriggerMode.PERIODIC
+
+
+@pytest.mark.unit
+class TestListTaskTriggerModes:
+    """Tests for RedisTaskScheduler.list_task_trigger_modes (read-only view for UI)."""
+
+    async def test_empty_before_init(self, fake_redis, base_scheduler_config):
+        # Nothing registered, cache is empty — returns empty dict.
+        scheduler = RedisTaskScheduler(redis_cache=fake_redis, config=base_scheduler_config)
+        assert scheduler.list_task_trigger_modes() == {}
+
+    async def test_returns_registered_modes_after_init(self, fake_redis, base_scheduler_config):
+        scheduler = RedisTaskScheduler(redis_cache=fake_redis, config=base_scheduler_config)
+        scheduler.register_handler(
+            "memory_compression", _noop_handler, trigger_mode=TriggerMode.USER_ACTIVITY
+        )
+        scheduler.register_handler("data_cleanup", _noop_handler, trigger_mode=TriggerMode.PERIODIC)
+
+        # _task_config_cache is populated by register_task_type, which runs
+        # inside init_task_types — we must flush the pending dicts through
+        # to the cache before the read-only snapshot has anything to show.
+        await scheduler.init_task_types()
+
+        modes = scheduler.list_task_trigger_modes()
+        assert modes == {
+            "memory_compression": "user_activity",
+            "data_cleanup": "periodic",
+        }
+
+    async def test_returned_values_are_strings_not_enums(self, fake_redis, base_scheduler_config):
+        # The snapshot must be JSON-serializable for the settings API, so
+        # the values should be the raw StrEnum .value strings, not the
+        # enum members themselves.
+        scheduler = RedisTaskScheduler(redis_cache=fake_redis, config=base_scheduler_config)
+        scheduler.register_handler(
+            "memory_compression", _noop_handler, trigger_mode=TriggerMode.USER_ACTIVITY
+        )
+        await scheduler.init_task_types()
+
+        modes = scheduler.list_task_trigger_modes()
+        assert isinstance(modes["memory_compression"], str)
+        assert modes["memory_compression"] == "user_activity"

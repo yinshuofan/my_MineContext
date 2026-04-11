@@ -6,6 +6,7 @@
 """Settings API routes — model settings, general settings, prompts"""
 
 import asyncio
+import copy
 import io
 
 from fastapi import APIRouter, File, UploadFile
@@ -355,13 +356,40 @@ _GENERAL_SETTINGS_KEYS = [
 
 @router.get("/api/settings/general")
 async def get_general_settings(_auth: str = auth_dependency):
-    """Get general system settings"""
+    """Get general system settings.
+
+    For the scheduler section, injects a `runtime_trigger_modes` field
+    containing the code-declared trigger mode per registered task type
+    (source: `RedisTaskScheduler._task_config_cache`). The frontend uses
+    this as the read-only display value — individual `tasks.<name>.trigger_mode`
+    entries may still appear in merged config if a stale DB record exists,
+    but they are stripped from the response so they cannot mislead the UI.
+    """
     try:
         config = GlobalConfig.get_instance().get_config()
         if not config:
             return convert_resp(code=500, status=500, message="Configuration not initialized")
 
-        settings = {key: config.get(key, {}) for key in _GENERAL_SETTINGS_KEYS}
+        # Deep-copy so we can safely mutate (stripping stale fields, injecting
+        # runtime state) without leaking into the shared GlobalConfig dict.
+        settings = copy.deepcopy({key: config.get(key, {}) for key in _GENERAL_SETTINGS_KEYS})
+
+        # Inject code-declared trigger modes + strip any stale trigger_mode
+        # entries so the frontend only ever sees the authoritative value.
+        from opencontext.scheduler import get_scheduler
+
+        scheduler = get_scheduler()
+        scheduler_section = settings.get("scheduler")
+        if isinstance(scheduler_section, dict):
+            tasks = scheduler_section.get("tasks")
+            if isinstance(tasks, dict):
+                for task_cfg in tasks.values():
+                    if isinstance(task_cfg, dict):
+                        task_cfg.pop("trigger_mode", None)
+            scheduler_section["runtime_trigger_modes"] = (
+                scheduler.list_task_trigger_modes() if scheduler is not None else {}
+            )
+
         return convert_resp(data=settings)
 
     except Exception as e:

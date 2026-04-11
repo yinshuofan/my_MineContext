@@ -491,6 +491,17 @@ class RedisTaskScheduler(ITaskScheduler):
         self._task_config_cache[task_type] = config
         return config
 
+    def list_task_trigger_modes(self) -> dict[str, str]:
+        """Return a snapshot of {task_type: trigger_mode.value} for registered handlers.
+
+        Used by read-only API surfaces (e.g. the settings page) that want to
+        show the code-declared trigger mode without letting the user edit it.
+        Reads from the in-memory cache — only task types already registered
+        via register_handler() (and thus run through init_task_types) are
+        included. Returns an empty dict if nothing has been registered yet.
+        """
+        return {name: config.trigger_mode.value for name, config in self._task_config_cache.items()}
+
     async def start(self) -> None:
         """Start the scheduler background executor"""
         if self._running:
