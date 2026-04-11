@@ -173,9 +173,11 @@ def loguru_capture():
 Run: `uv run pytest tests/ -v`
 Expected: all existing tests pass; the new `tests/scheduler/` dir is discovered but collects zero tests (which is fine).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Run ruff format + check, then commit**
 
 ```bash
+uv run ruff format tests/scheduler/conftest.py
+uv run ruff check tests/scheduler/conftest.py
 git add tests/scheduler/__init__.py tests/scheduler/conftest.py tests/server/__init__.py
 git commit -m "$(cat <<'EOF'
 test: add scheduler test scaffolding and fixtures
@@ -248,7 +250,7 @@ In `opencontext/scheduler/base.py`, replace the `register_handler` abstract meth
         task_type: str,
         handler: Callable[[str, str | None, str | None], Awaitable[bool]],
         *,
-        trigger_mode: "TriggerMode",
+        trigger_mode: TriggerMode,
     ) -> bool:
         """
         Register an async handler function for a task type.
@@ -641,7 +643,16 @@ Expected: 5 passed, 0 failed.
 Run: `uv run pytest -m unit -v`
 Expected: all previously-passing tests still pass; new 5 tests pass.
 
-- [ ] **Step 17: Commit**
+- [ ] **Step 17: Run ruff format + check, then commit**
+
+The repo runs `ruff` via pre-commit. Format and lint the touched Python files first so the commit doesn't get rejected or rewritten by the hook:
+
+```bash
+uv run ruff format opencontext/scheduler/base.py opencontext/scheduler/redis_scheduler.py opencontext/server/component_initializer.py tests/scheduler/test_redis_scheduler.py
+uv run ruff check opencontext/scheduler/base.py opencontext/scheduler/redis_scheduler.py opencontext/server/component_initializer.py tests/scheduler/test_redis_scheduler.py
+```
+
+Expected: `ruff check` reports no errors. If `ruff format` rewrote any file, re-run the failing test(s) from Steps 6/8/10/12/14/15 to confirm nothing broke, then proceed.
 
 ```bash
 git add opencontext/scheduler/base.py opencontext/scheduler/redis_scheduler.py opencontext/server/component_initializer.py tests/scheduler/test_redis_scheduler.py
@@ -743,9 +754,11 @@ Expected: **PASS**.
 Run: `uv run pytest tests/scheduler/test_redis_scheduler.py -v`
 Expected: 7 passed.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Run ruff format + check, then commit**
 
 ```bash
+uv run ruff format tests/scheduler/test_redis_scheduler.py
+uv run ruff check tests/scheduler/test_redis_scheduler.py
 git add tests/scheduler/test_redis_scheduler.py
 git commit -m "$(cat <<'EOF'
 test(scheduler): lock in YAML trigger_mode deprecation behavior
@@ -815,9 +828,11 @@ class TestInitTaskTypes:
 Run: `uv run pytest tests/scheduler/test_redis_scheduler.py::TestInitTaskTypes::test_warns_for_configured_but_unregistered_task -v`
 Expected: **PASS**.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Run ruff format + check, then commit**
 
 ```bash
+uv run ruff format tests/scheduler/test_redis_scheduler.py
+uv run ruff check tests/scheduler/test_redis_scheduler.py
 git add tests/scheduler/test_redis_scheduler.py
 git commit -m "$(cat <<'EOF'
 test(scheduler): verify init_task_types warns on unregistered tasks
@@ -928,9 +943,11 @@ Expected: **PASS** (2 tests).
 Run: `uv run pytest tests/scheduler/test_redis_scheduler.py -v`
 Expected: 11 passed (T1–T10, with T10 contributing 2 test methods).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Run ruff format + check, then commit**
 
 ```bash
+uv run ruff format tests/scheduler/test_redis_scheduler.py
+uv run ruff check tests/scheduler/test_redis_scheduler.py
 git add tests/scheduler/test_redis_scheduler.py
 git commit -m "$(cat <<'EOF'
 test(scheduler): verify Redis write + TaskConfig roundtrip preserves trigger_mode
@@ -1091,9 +1108,11 @@ If the test fails with a `ModuleNotFoundError` or `AttributeError` on a monkeypa
 Run: `uv run pytest tests/scheduler/ tests/server/test_component_initializer.py -v`
 Expected: 12 tests passed.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Run ruff format + check, then commit**
 
 ```bash
+uv run ruff format tests/server/test_component_initializer.py
+uv run ruff check tests/server/test_component_initializer.py
 git add tests/server/test_component_initializer.py
 git commit -m "$(cat <<'EOF'
 test(server): verify ComponentInitializer registers tasks with correct trigger modes
@@ -1332,18 +1351,28 @@ scheduler.register_handler(
 
 And remove any YAML example line that shows `trigger_mode: "..."`.
 
-- [ ] **Step 5: Add a pitfall entry in `CLAUDE.md`**
+- [ ] **Step 5: Add a new scheduler pitfall H3 in `CLAUDE.md`**
 
-In `CLAUDE.md`, find the `Scheduler pitfalls` subsection under `Pitfalls and Lessons Learned`. Append a new entry at the end of the subsection:
+The existing scheduler pitfalls live as three consecutive H3 sub-sections under the `## Pitfalls and Lessons Learned` heading:
+
+- `### Scheduler pitfalls` (around line 248 — two bullets about `periodic` mode + disabled tasks)
+- `### Scheduler task disable requires Redis \`enabled\` flag, not just config skip` (around line 252)
+- `### Hierarchy summary generation is idempotent, not day-gated` (around line 255)
+
+Insert a new H3 **immediately after the Hierarchy summary block (line ~256) and before the `## Extending the System` heading (line ~258)**. Use this exact content:
 
 ```markdown
 ### `trigger_mode` is code-determined, not user-configurable
 `trigger_mode` is declared via `scheduler.register_handler(..., trigger_mode=TriggerMode.XXX)` at handler registration time in `component_initializer.py`, NOT in YAML. YAML fields named `scheduler.tasks.<name>.trigger_mode` are deprecated: `_collect_task_types` detects them, logs a deprecation warning, and strips them from the internal raw config. The reason is that `trigger_mode` determines the handler's call contract — `user_activity` handlers receive `(user_id, device_id, agent_id)` from user push flows, `periodic` handlers receive `(None, None, None)` from the periodic worker. Letting users flip this via config silently breaks the handler.
 ```
 
-- [ ] **Step 6: Update the "New scheduler task" extension entry in `CLAUDE.md`**
+Leave a single blank line before and after the new H3 to match the existing sub-section spacing.
 
-In `CLAUDE.md`, find the `Extending the System` section. Update the "New scheduler task" bullet (or equivalent) to the new flow. Replace whatever the existing bullet says about scheduler tasks with:
+- [ ] **Step 6: Add a new `New scheduler task` bullet to the `Extending the System` list in `CLAUDE.md`**
+
+The `## Extending the System` section (around line 258) currently lists **only four** extension bullets: context type, processor, storage backend, retrieval tool (around lines 260–263). There is NO existing scheduler-task bullet to replace — you need to **add a new one** at the end of the list, after the `- **New retrieval tool**: ...` line and before the blank line that precedes `## Module Documentation`.
+
+Insert this new bullet:
 
 ```markdown
 - **New scheduler task**:
@@ -1352,10 +1381,8 @@ In `CLAUDE.md`, find the `Extending the System` section. Update the "New schedul
   3. Add the task's tunable fields under `scheduler.tasks.<name>` in `config/config.yaml` (NOT `trigger_mode` — that is set in code)
   4. Register the handler in `ComponentInitializer.initialize_task_scheduler()` with `scheduler.register_handler(name, handler, trigger_mode=TriggerMode.USER_ACTIVITY)` (or `TriggerMode.PERIODIC`)
   5. For `user_activity` tasks: call `scheduler.schedule_user_task(name, user_id, device_id, agent_id)` from the push endpoint that should trigger it (see `opencontext/server/routes/push.py`)
-  6. Add a corresponding branch to `tests/server/test_component_initializer.py::test_registers_four_tasks_with_correct_trigger_modes` (rename if needed) so the hardcoded mode is locked under test
+  6. Add a corresponding assertion to `tests/server/test_component_initializer.py::TestInitializeTaskScheduler::test_registers_four_tasks_with_correct_trigger_modes` (rename the test to reflect the new count) so the hardcoded mode is locked under test
 ```
-
-(If the existing bullet already follows a different format, preserve that format — just make sure the new content is there and `trigger_mode` is called out as code-declared.)
 
 - [ ] **Step 7: Verify docs compile (no broken markdown)**
 
@@ -1399,16 +1426,23 @@ Expected:
 
 Stop the server with Ctrl+C after startup completes.
 
-- [ ] **Step 2: Inspect Redis state for the 4 task types**
+- [ ] **Step 2: Inspect Redis state for the registered task types**
 
 Run:
 ```bash
 redis-cli HGETALL scheduler:task_type:memory_compression
-redis-cli HGETALL scheduler:task_type:data_cleanup
 redis-cli HGETALL scheduler:task_type:hierarchy_summary
 redis-cli HGETALL scheduler:task_type:agent_profile_update
 ```
-Expected: each hash has a `trigger_mode` field with the hardcoded value (`user_activity` for all except `data_cleanup` which is `periodic`).
+Expected: each hash has a `trigger_mode=user_activity` field plus the other TaskConfig fields (`interval`, `timeout`, `task_ttl`, etc.).
+
+**Note on `data_cleanup`**: this task has `enabled: false` in `config/config.yaml` by default, so `initialize_task_scheduler()` skips its `register_handler` call and no `scheduler:task_type:data_cleanup` hash is written. To smoke-check the `periodic` path, temporarily flip `scheduler.tasks.data_cleanup.enabled` to `true` in `config.yaml`, restart the server, then run:
+
+```bash
+redis-cli HGETALL scheduler:task_type:data_cleanup
+```
+
+Expected: `trigger_mode=periodic`. **Revert the YAML edit afterwards — do NOT commit it.**
 
 - [ ] **Step 3: Test deprecation warning with a re-added YAML field**
 
