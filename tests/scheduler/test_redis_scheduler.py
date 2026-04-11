@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from opencontext.scheduler.base import TriggerMode
+from opencontext.scheduler.base import TaskConfig, TriggerMode
 from opencontext.scheduler.redis_scheduler import RedisTaskScheduler
 
 
@@ -125,3 +125,59 @@ class TestInitTaskTypes:
             if "scheduler:task_type:data_cleanup" in str(c)
         ]
         assert len(data_cleanup_calls) == 0
+
+    async def test_writes_correct_trigger_mode_to_redis(self, fake_redis, base_scheduler_config):
+        scheduler = RedisTaskScheduler(redis_cache=fake_redis, config=base_scheduler_config)
+        scheduler.register_handler(
+            "memory_compression", _noop_handler, trigger_mode=TriggerMode.USER_ACTIVITY
+        )
+        scheduler.register_handler("data_cleanup", _noop_handler, trigger_mode=TriggerMode.PERIODIC)
+
+        await scheduler.init_task_types()
+
+        # hmset is called as hmset(key, mapping_dict). Extract the mapping for
+        # each task type and verify the trigger_mode field.
+        calls_by_key: dict[str, dict] = {}
+        for call in fake_redis.hmset.call_args_list:
+            args, kwargs = call
+            key = args[0] if args else kwargs.get("name")
+            mapping = args[1] if len(args) > 1 else kwargs.get("mapping")
+            calls_by_key[key] = mapping
+
+        mc_mapping = calls_by_key["scheduler:task_type:memory_compression"]
+        dc_mapping = calls_by_key["scheduler:task_type:data_cleanup"]
+        assert mc_mapping["trigger_mode"] == "user_activity"
+        assert dc_mapping["trigger_mode"] == "periodic"
+
+
+@pytest.mark.unit
+class TestTaskConfigRoundtrip:
+    """Tests for TaskConfig serialization to/from Redis hash dict."""
+
+    def test_roundtrip_preserves_user_activity(self):
+        original = TaskConfig(
+            name="memory_compression",
+            enabled=True,
+            trigger_mode=TriggerMode.USER_ACTIVITY,
+            interval=30,
+            timeout=300,
+            task_ttl=7200,
+            max_retries=3,
+        )
+        restored = TaskConfig.from_dict(original.to_dict())
+        assert restored.trigger_mode == TriggerMode.USER_ACTIVITY
+        assert restored.name == "memory_compression"
+        assert restored.interval == 30
+
+    def test_roundtrip_preserves_periodic(self):
+        original = TaskConfig(
+            name="data_cleanup",
+            enabled=True,
+            trigger_mode=TriggerMode.PERIODIC,
+            interval=60,
+            timeout=3600,
+            task_ttl=86400,
+            max_retries=3,
+        )
+        restored = TaskConfig.from_dict(original.to_dict())
+        assert restored.trigger_mode == TriggerMode.PERIODIC
