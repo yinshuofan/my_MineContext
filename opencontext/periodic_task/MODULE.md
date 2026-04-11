@@ -215,7 +215,8 @@ IPeriodicTask (ABC)
 cli.py / opencontext.py startup
   ├─ Create task instances (MemoryCompressionTask, DataCleanupTask, HierarchySummaryTask)
   ├─ create_*_handler() -> TaskHandler function (closure over task instance)
-  └─ scheduler.register_handler(task_type, handler)  -- wires handler into RedisTaskScheduler
+  └─ scheduler.register_handler(task_type, handler, trigger_mode=TriggerMode.XXX)
+        -- wires handler into RedisTaskScheduler; trigger_mode is a code-declared contract
 ```
 
 ### Task execution (triggered by scheduler)
@@ -330,23 +331,28 @@ def create_my_handler():
 
 2. **Register in `__init__.py`**: Add imports and `__all__` entries.
 
-3. **Add config** in `config/config.yaml` under `scheduler.tasks`:
+3. **Add config** in `config/config.yaml` under `scheduler.tasks`. Do NOT add a `trigger_mode` field — it is declared in code at registration time (`_collect_task_types` strips stale YAML values with a deprecation warning):
 
 ```yaml
 scheduler:
   tasks:
     my_task:
       enabled: true
-      trigger_mode: "user_activity"  # or "periodic"
       interval: 3600
       timeout: 300
 ```
 
-4. **Wire up in `component_initializer.py`** startup: create handler, register with scheduler:
+4. **Wire up in `component_initializer.py`** startup: create handler, register with scheduler, and declare the trigger mode explicitly via the required keyword-only `trigger_mode` parameter:
 
 ```python
+from opencontext.scheduler.base import TriggerMode
+
 handler = create_my_handler()
-scheduler.register_handler("my_task", handler)
+scheduler.register_handler(
+    "my_task",
+    handler,
+    trigger_mode=TriggerMode.USER_ACTIVITY,  # or TriggerMode.PERIODIC
+)
 ```
 
 5. **For `user_activity` tasks**: call `scheduler.schedule_user_task("my_task", user_id, ...)` from the appropriate push endpoint.
