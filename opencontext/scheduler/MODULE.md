@@ -90,6 +90,7 @@ Async interface for task scheduling. All methods except `register_handler()` and
 | `get_pending_task` | `async (task_type: str) -> Optional[TaskInfo]` | Get and lock a due task |
 | `complete_task` | `async (task_type: str, user_key: str, lock_token: str, success: bool) -> None` | Mark done, release lock |
 | `get_task_config` | `async (task_type: str) -> Optional[TaskConfig]` | Read task config from in-memory cache, falling back to Redis |
+| `list_task_trigger_modes` | `() -> dict[str, str]` | Read-only snapshot `{task_type: trigger_mode.value}` from `_task_config_cache`. Returns `{}` before any handlers are registered. Used by `GET /api/settings/general` to expose code-declared trigger modes as display-only values for the settings UI |
 | `start` | `async () -> None` | Start background executor loop |
 | `stop` | `async (timeout: float = 30.0) -> None` | Stop scheduler gracefully; waits up to `timeout` seconds, then force-cancels |
 | `is_running` | `() -> bool` | Check running state |

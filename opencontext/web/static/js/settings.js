@@ -368,7 +368,11 @@ function setTriggerModeDisplay(badgeId, mode) {
     if (!badge) return;
     const textEl = badge.querySelector('.trigger-mode-text');
     if (!textEl) return;
-    textEl.textContent = TRIGGER_MODE_LABELS[mode] || '未注册';
+    // Prefer the localized label; fall back to the raw enum string for
+    // unmapped modes (e.g. a future TriggerMode value the frontend does
+    // not know about yet); only show "未注册" when the backend returned
+    // nothing at all (scheduler not running, or task type not registered).
+    textEl.textContent = TRIGGER_MODE_LABELS[mode] || mode || '未注册';
 }
 
 function populateSchedulerSettings(allData) {
