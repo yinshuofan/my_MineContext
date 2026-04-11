@@ -303,7 +303,8 @@ tools:
 
 # ============================================================
 # 任务调度器配置
-# 基于 Redis 的分布式任务调度，支持 user_activity 和 periodic 两种触发模式
+# 基于 Redis 的分布式任务调度。触发模式（user_activity / periodic）由代码在
+# register_handler() 时声明，不在此处配置。
 # ============================================================
 scheduler:
   enabled: "${SCHEDULER_ENABLED:true}"
@@ -327,14 +328,12 @@ scheduler:
     # 记忆压缩任务 — 用户活动触发，合并相似知识条目
     memory_compression:
       enabled: "${MEMORY_COMPRESSION_TASK_ENABLED:true}"
-      trigger_mode: "user_activity" # 触发模式: user_activity（用户推送后延迟执行）, periodic（定时执行）
       interval: 30         # 用户活动后的延迟（秒）
       task_ttl: 7200       # 任务状态 TTL（秒）
 
     # 数据清理任务 — 定时清理过期数据
     data_cleanup:
       enabled: false
-      trigger_mode: "periodic"
       interval: 60         # 执行间隔（秒）
       timeout: 3600        # 执行超时 / Redis 锁 TTL（秒）
       retention_days: 30   # 数据保留天数
@@ -343,7 +342,6 @@ scheduler:
     # 用户推送数据后触发，每用户每 24h 最多执行一次
     hierarchy_summary:
       enabled: "${HIERARCHY_SUMMARY_ENABLED:true}"
-      trigger_mode: "user_activity"
       interval: 86400      # 用户活动后延迟 24h
       timeout: 600         # LLM 调用超时（秒）
       task_ttl: 172800     # 任务状态 TTL 48h
@@ -353,7 +351,6 @@ scheduler:
     # 仅当 push 请求包含 agent_memory 处理器且 agent_id 已注册时触发
     agent_profile_update:
       enabled: "${AGENT_PROFILE_UPDATE_ENABLED:true}"
-      trigger_mode: "user_activity"
       interval: 86400       # 用户活动后延迟 24h
       timeout: 300          # LLM 调用超时（秒）
       task_ttl: 14400       # 任务状态 TTL 4h

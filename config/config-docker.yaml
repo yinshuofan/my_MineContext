@@ -154,17 +154,14 @@ scheduler:
   tasks:
     memory_compression:
       enabled: true
-      trigger_mode: "user_activity"
       interval: 1800
     data_cleanup:
       enabled: true
-      trigger_mode: "periodic"
       interval: 86400
       timeout: 3600
       retention_days: 30
     hierarchy_summary:
       enabled: "${HIERARCHY_SUMMARY_ENABLED:true}"
-      trigger_mode: "user_activity"
       interval: 86400
       timeout: 600
       task_ttl: 172800
