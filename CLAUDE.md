@@ -36,10 +36,43 @@ pre-commit run --all-files
 docker-compose up
 ```
 
-There is no test suite in this project currently. To verify changes compile-check with:
+### Testing
+
+The project uses **pytest** with `pytest-asyncio` (`asyncio_mode = "auto"`) and `pytest-cov`. Tests live in `tests/`, mirroring the `opencontext/` package structure (e.g. `opencontext/models/enums.py` → `tests/models/test_enums.py`).
+
+Two pytest markers are declared in `pyproject.toml` and enforced via `--strict-markers`:
+
+- `@pytest.mark.unit` — no external dependencies (no Redis, no DB, no LLM)
+- `@pytest.mark.integration` — requires real Redis / MySQL / SQLite
+
+Common commands:
+
 ```bash
-python -m py_compile opencontext/path/to/file.py
+# Run the full suite
+uv run pytest
+
+# Unit tests only (fast, no infra needed)
+uv run pytest -m unit
+
+# Integration tests only
+uv run pytest -m integration
+
+# A single file / class / test
+uv run pytest tests/models/test_enums.py
+uv run pytest tests/models/test_enums.py::TestContextType
+uv run pytest tests/models/test_enums.py::TestContextType::test_profile_uses_overwrite_strategy
+
+# With coverage
+uv run pytest --cov=opencontext --cov-report=term-missing
 ```
+
+**Writing tests**:
+- Place tests under `tests/<module>/test_<name>.py` matching the source layout.
+- Every test class or function must carry a marker (`unit` or `integration`); strict-markers will fail otherwise.
+- Prefer `unit` tests with fakes/stubs for Redis/storage where possible — they must run without any running services.
+- For `async` code, just write `async def test_...` — `asyncio_mode = "auto"` handles the rest.
+
+Any non-trivial code change should add or update tests. If a change genuinely cannot be unit-tested (e.g. pure wiring in `cli.py` lifespan), state that explicitly in the PR / commit message rather than silently skipping.
 
 ## Planning Workflow
 
