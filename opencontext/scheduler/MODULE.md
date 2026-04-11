@@ -85,7 +85,7 @@ Async interface for task scheduling. All methods except `register_handler()` and
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `register_task_type` | `async (config: TaskConfig) -> bool` | Register a task type in Redis |
-| `register_handler` | `(task_type: str, handler: TaskHandler) -> bool` | Register in-memory handler function |
+| `register_handler` | `(task_type: str, handler: TaskHandler, *, trigger_mode: TriggerMode) -> bool` | Register in-memory handler function. `trigger_mode` is a keyword-only, required parameter — a code-declared contract (not user config) that determines the handler's calling convention: `USER_ACTIVITY` handlers receive `(user_id, device_id, agent_id)` from user push flows; `PERIODIC` handlers receive `(None, None, None)` from the periodic worker |
 | `schedule_user_task` | `async (task_type: str, user_id: str, device_id?: str, agent_id?: str) -> bool` | Schedule a user_activity task |
 | `get_pending_task` | `async (task_type: str) -> Optional[TaskInfo]` | Get and lock a due task |
 | `complete_task` | `async (task_type: str, user_key: str, lock_token: str, success: bool) -> None` | Mark done, release lock |
@@ -211,6 +211,22 @@ The scheduler writes a heartbeat hash to `scheduler:heartbeat` every `check_inte
 TaskHandler = Callable[[str, Optional[str], Optional[str]], Awaitable[bool]]
 # Signature: async (user_id, device_id, agent_id) -> success
 ```
+
+### Adding a new task (extension example)
+
+Implement the handler factory in `opencontext/periodic_task/<name>.py`, then wire it up in `ComponentInitializer.initialize_task_scheduler()`:
+
+```python
+from opencontext.scheduler.base import TriggerMode
+
+scheduler.register_handler(
+    "my_new_task",
+    create_my_new_task_handler(...),
+    trigger_mode=TriggerMode.USER_ACTIVITY,  # or TriggerMode.PERIODIC
+)
+```
+
+The task's tunable fields (e.g., `interval_seconds`, `max_retries`, `enabled`) go under `scheduler.tasks.my_new_task` in `config/config.yaml`. **Do not** add a `trigger_mode` field there — it is a code-declared contract, not user config, and will be stripped with a deprecation warning if present.
 
 ## Class Hierarchy
 
@@ -341,6 +357,7 @@ _periodic_worker (independent loop, runs alongside _type_workers)
 ## Conventions and Constraints
 
 - **Handlers are async**: The scheduler awaits them directly on the event loop. All `create_*_handler()` factories return async closures.
+- **`trigger_mode` is code-declared, not user-configurable**: Every `register_handler` call must pass a `TriggerMode` enum value as a keyword argument. YAML fields named `scheduler.tasks.<name>.trigger_mode` are deprecated — they are detected during `_collect_task_types`, logged as a deprecation warning, and stripped from the internal raw config. If you need to change a task's trigger mode you must edit `component_initializer.initialize_task_scheduler` and also update the handler implementation to match the new calling convention.
 - **Periodic handlers receive `(None, None, None)`**: Tasks that need `user_id` must use `user_activity` trigger mode, not `periodic`.
 - **Disabled tasks silently skip**: If `enabled: false` in config, `_collect_task_types()` skips registration, and `schedule_user_task()` returns `False` with a warning log. No error is raised.
 - **Runtime disable via Redis `enabled` flag**: When a task type is disabled via settings reload, `init_task_types()` marks it as `enabled: "false"` in Redis. Both `_type_worker()` and `_process_periodic_tasks()` check this flag each cycle before consuming tasks. This ensures all multi-instance workers stop executing disabled tasks within one `check_interval` (default 10s), without clearing the queue — pending tasks are preserved for re-enablement. The guard is **fail-open**: Redis errors do not block task execution.

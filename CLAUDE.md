@@ -255,12 +255,22 @@ Disabling a task type in config only prevents NEW registration and handler creat
 ### Hierarchy summary generation is idempotent, not day-gated
 `execute()` always tries to generate summaries for the most recent completed period. The existing dedup check (`search_hierarchy`) prevents regeneration. This allows generation whenever the user next becomes active.
 
+### `trigger_mode` is code-determined, not user-configurable
+`trigger_mode` is declared via `scheduler.register_handler(..., trigger_mode=TriggerMode.XXX)` at handler registration time in `component_initializer.py`, NOT in YAML. YAML fields named `scheduler.tasks.<name>.trigger_mode` are deprecated: `_collect_task_types` detects them, logs a deprecation warning, and strips them from the internal raw config. The reason is that `trigger_mode` determines the handler's call contract — `user_activity` handlers receive `(user_id, device_id, agent_id)` from user push flows, `periodic` handlers receive `(None, None, None)` from the periodic worker. Letting users flip this via config silently breaks the handler.
+
 ## Extending the System
 
 - **New context type**: Add to `ContextType` enum, `UpdateStrategy`, both mapping dicts, `ContextDescriptions`, `ContextSimpleDescriptions`, and update all prompt files
 - **New processor**: Extend `BaseContextProcessor`, implement `can_process()` and `process()`, register in `ProcessorFactory`
 - **New storage backend**: Implement `IVectorStorageBackend` or `IDocumentStorageBackend` from `base_storage.py`, register in factory
 - **New retrieval tool**: Extend `BaseTool`, register in `tool_definitions.py` and `tools_executor.py`
+- **New scheduler task**:
+  1. Implement `BasePeriodicTask` subclass in `opencontext/periodic_task/<name>.py`
+  2. Add a `create_<name>_handler(...)` factory in the same file that returns the async handler
+  3. Add the task's tunable fields under `scheduler.tasks.<name>` in `config/config.yaml` (NOT `trigger_mode` — that is set in code)
+  4. Register the handler in `ComponentInitializer.initialize_task_scheduler()` with `scheduler.register_handler(name, handler, trigger_mode=TriggerMode.USER_ACTIVITY)` (or `TriggerMode.PERIODIC`)
+  5. For `user_activity` tasks: call `scheduler.schedule_user_task(name, user_id, device_id, agent_id)` from the push endpoint that should trigger it (see `opencontext/server/routes/push.py`)
+  6. Add a corresponding assertion to `tests/server/test_component_initializer.py::TestInitializeTaskScheduler::test_registers_four_tasks_with_correct_trigger_modes` (rename the test to reflect the new count) so the hardcoded mode is locked under test
 
 ## Module Documentation
 
