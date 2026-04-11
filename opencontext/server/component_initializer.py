@@ -200,6 +200,7 @@ class ComponentInitializer:
                 create_hierarchy_handler,
             )
             from opencontext.scheduler import init_scheduler
+            from opencontext.scheduler.base import TriggerMode
             from opencontext.storage.redis_cache import peek_redis_cache
 
             # Get Redis cache (singleton already initialized by OpenContext.initialize())
@@ -230,7 +231,11 @@ class ComponentInitializer:
                     logger.info("Reusing merger from processor_manager for compression task")
 
                 compression_handler = create_compression_handler(merger)
-                scheduler.register_handler("memory_compression", compression_handler)
+                scheduler.register_handler(
+                    "memory_compression",
+                    compression_handler,
+                    trigger_mode=TriggerMode.USER_ACTIVITY,
+                )
                 logger.info("Registered memory_compression task handler")
 
             # Data cleanup handler
@@ -253,13 +258,21 @@ class ComponentInitializer:
                 cleanup_handler = create_cleanup_handler(
                     context_merger=cleanup_merger, storage=None, retention_days=retention_days
                 )
-                scheduler.register_handler("data_cleanup", cleanup_handler)
+                scheduler.register_handler(
+                    "data_cleanup",
+                    cleanup_handler,
+                    trigger_mode=TriggerMode.PERIODIC,
+                )
                 logger.info("Registered data_cleanup task handler with intelligent cleanup")
 
             # Hierarchy summary handler (event L0→L1→L2→L3 summaries)
             if tasks_config.get("hierarchy_summary", {}).get("enabled", False):
                 hierarchy_handler = create_hierarchy_handler()
-                scheduler.register_handler("hierarchy_summary", hierarchy_handler)
+                scheduler.register_handler(
+                    "hierarchy_summary",
+                    hierarchy_handler,
+                    trigger_mode=TriggerMode.USER_ACTIVITY,
+                )
                 logger.info("Registered hierarchy_summary task handler")
 
             # Agent profile update handler
@@ -267,7 +280,11 @@ class ComponentInitializer:
                 from opencontext.periodic_task import create_agent_profile_update_handler
 
                 agent_profile_handler = create_agent_profile_update_handler()
-                scheduler.register_handler("agent_profile_update", agent_profile_handler)
+                scheduler.register_handler(
+                    "agent_profile_update",
+                    agent_profile_handler,
+                    trigger_mode=TriggerMode.USER_ACTIVITY,
+                )
                 logger.info("Registered agent_profile_update task handler")
 
             logger.info("Task scheduler initialized successfully")

@@ -105,33 +105,61 @@ class RedisTaskScheduler(ITaskScheduler):
         # Heartbeat state
         self._started_at: str | None = None  # ISO 8601, set in start()
 
-        # Store pending task type configs for async initialization
-        self._pending_task_configs: list = []
+        # Two-phase pending state for async initialization:
+        #   raw configs are collected from YAML at __init__ time;
+        #   full TaskConfigs are built later when register_handler() is
+        #   called with a code-declared trigger_mode.
+        self._pending_raw_configs: dict[str, dict[str, Any]] = {}
+        self._pending_task_configs: dict[str, TaskConfig] = {}
         self._collect_task_types()
 
     def _collect_task_types(self) -> None:
-        """Collect task types from configuration for async initialization"""
+        """Collect task types from configuration for async initialization.
+
+        Stores raw config dicts keyed by task name. trigger_mode is NOT
+        read here — it must be supplied via register_handler() at
+        registration time. If YAML still contains a trigger_mode field
+        it is logged as deprecated and ignored.
+        """
         tasks_config = self._config.get("tasks", {})
         for task_name, task_config in tasks_config.items():
-            if task_config.get("enabled", False):
-                config = TaskConfig(
-                    name=task_name,
-                    enabled=True,
-                    trigger_mode=TriggerMode(task_config.get("trigger_mode", "user_activity")),
-                    interval=task_config.get("interval", 1800),
-                    timeout=task_config.get("timeout", 300),
-                    task_ttl=task_config.get("task_ttl", 7200),
-                    max_retries=task_config.get("max_retries", 3),
-                    description=task_config.get("description", ""),
+            if not task_config.get("enabled", False):
+                continue
+            if "trigger_mode" in task_config:
+                logger.warning(
+                    f"YAML field 'scheduler.tasks.{task_name}.trigger_mode' is "
+                    f"deprecated and ignored; trigger_mode is now defined in code "
+                    f"at register_handler() time. Please remove this field from "
+                    f"your config."
                 )
-                self._pending_task_configs.append(config)
+            # Shallow copy, stripping the deprecated field to keep raw_config clean.
+            raw = {k: v for k, v in task_config.items() if k != "trigger_mode"}
+            self._pending_raw_configs[task_name] = raw
 
     async def init_task_types(self) -> None:
-        """Initialize task types in Redis (async)"""
+        """Initialize task types in Redis (async).
+
+        Writes one Redis hash per registered task. Any task that is
+        declared in config but has no handler registered is logged as a
+        warning and skipped — the task type will not be usable at
+        runtime, but startup does not fail.
+        """
+        unregistered = set(self._pending_raw_configs.keys()) - set(
+            self._pending_task_configs.keys()
+        )
+        for name in sorted(unregistered):
+            logger.warning(
+                f"Task '{name}' is configured in scheduler.tasks but no handler "
+                f"was registered via register_handler(); it will not run. This is "
+                f"usually a code bug in component_initializer."
+            )
+
         enabled_names: set[str] = set()
-        for config in self._pending_task_configs:
+        for config in self._pending_task_configs.values():
             await self.register_task_type(config)
             enabled_names.add(config.name)
+
+        self._pending_raw_configs.clear()
         self._pending_task_configs.clear()
 
         # Mark disabled task types in Redis so other workers' runtime guards take effect
@@ -170,10 +198,55 @@ class RedisTaskScheduler(ITaskScheduler):
             logger.error(f"Failed to register task type {config.name}: {e}")
             return False
 
-    def register_handler(self, task_type: str, handler: TaskHandler) -> bool:
-        """Register a handler function for a task type"""
+    def register_handler(
+        self,
+        task_type: str,
+        handler: TaskHandler,
+        *,
+        trigger_mode: TriggerMode,
+    ) -> bool:
+        """Register an async handler function for a task type.
+
+        trigger_mode is a required code-declared contract: user_activity
+        handlers receive (user_id, device_id, agent_id) from a user push;
+        periodic handlers receive (None, None, None) from the periodic
+        worker. Mixing these up will make the handler crash or silently
+        no-op, so we force callers to state which contract this handler
+        fulfils.
+
+        Raises:
+            TypeError: If trigger_mode is not a TriggerMode enum value
+            ValueError: If task_type is not declared in config['tasks']
+        """
+        if not isinstance(trigger_mode, TriggerMode):
+            raise TypeError(
+                f"trigger_mode must be a TriggerMode enum value, "
+                f"got {type(trigger_mode).__name__}: {trigger_mode!r}"
+            )
+        if task_type not in self._pending_raw_configs:
+            raise ValueError(
+                f"Handler registered for unknown task type: {task_type!r}. "
+                f"Make sure it is declared (and enabled) under "
+                f"scheduler.tasks in config.yaml. Known task types: "
+                f"{sorted(self._pending_raw_configs.keys())}"
+            )
+
+        raw = self._pending_raw_configs[task_type]
+        task_config = TaskConfig(
+            name=task_type,
+            enabled=True,
+            trigger_mode=trigger_mode,
+            interval=int(raw.get("interval", 1800)),
+            timeout=int(raw.get("timeout", 300)),
+            task_ttl=int(raw.get("task_ttl", 7200)),
+            max_retries=int(raw.get("max_retries", 3)),
+            description=raw.get("description", ""),
+        )
+        self._pending_task_configs[task_type] = task_config
         self._task_handlers[task_type] = handler
-        logger.info(f"Registered handler for task type: {task_type}")
+        logger.info(
+            f"Registered handler for task type: {task_type} (trigger_mode={trigger_mode.value})"
+        )
         return True
 
     async def schedule_user_task(

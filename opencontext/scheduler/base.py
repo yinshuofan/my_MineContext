@@ -201,17 +201,28 @@ class ITaskScheduler(abc.ABC):
         self,
         task_type: str,
         handler: Callable[[str, str | None, str | None], Awaitable[bool]],
+        *,
+        trigger_mode: TriggerMode,
     ) -> bool:
         """
         Register an async handler function for a task type.
 
         Args:
-            task_type: Name of the task type
+            task_type: Name of the task type (must be present in the
+                scheduler's config under scheduler.tasks)
             handler: Async function that takes (user_id, device_id,
-                agent_id) and returns success bool
+                agent_id) and returns a success bool. For periodic tasks,
+                all three arguments will be None.
+            trigger_mode: Code-declared trigger mode for this handler.
+                This is a handler implementation contract and must be
+                provided at registration time; it is NOT read from YAML.
 
         Returns:
             True if registration successful
+
+        Raises:
+            TypeError: If trigger_mode is not a TriggerMode enum value
+            ValueError: If task_type is not declared in config['tasks']
         """
         pass
 
