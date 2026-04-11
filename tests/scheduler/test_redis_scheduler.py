@@ -89,3 +89,39 @@ class TestCollectTaskTypesDeprecation:
             scheduler._pending_task_configs["memory_compression"].trigger_mode
             == TriggerMode.USER_ACTIVITY
         )
+
+
+@pytest.mark.unit
+class TestInitTaskTypes:
+    """Tests for init_task_types warn-and-skip behavior."""
+
+    async def test_warns_for_configured_but_unregistered_task(
+        self, fake_redis, base_scheduler_config, loguru_capture
+    ):
+        # base_scheduler_config has 2 enabled tasks (memory_compression, data_cleanup).
+        # Only register one handler — the other should trigger a warning.
+        scheduler = RedisTaskScheduler(redis_cache=fake_redis, config=base_scheduler_config)
+        scheduler.register_handler(
+            "memory_compression", _noop_handler, trigger_mode=TriggerMode.USER_ACTIVITY
+        )
+
+        await scheduler.init_task_types()
+
+        assert any(
+            "data_cleanup" in m and "no handler was registered" in m for m in loguru_capture
+        ), f"Expected unregistered-task warning, got: {loguru_capture}"
+
+        # Only memory_compression should have been written to Redis — verify
+        # the Redis mock was called exactly once for register_task_type's hmset.
+        hmset_calls = [
+            c
+            for c in fake_redis.hmset.call_args_list
+            if "scheduler:task_type:memory_compression" in str(c)
+        ]
+        assert len(hmset_calls) == 1
+        data_cleanup_calls = [
+            c
+            for c in fake_redis.hmset.call_args_list
+            if "scheduler:task_type:data_cleanup" in str(c)
+        ]
+        assert len(data_cleanup_calls) == 0
