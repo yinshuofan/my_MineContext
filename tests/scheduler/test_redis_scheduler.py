@@ -56,3 +56,36 @@ class TestRegisterHandler:
                 _noop_handler,
                 trigger_mode="user_activity",  # type: ignore[arg-type]
             )
+
+
+@pytest.mark.unit
+class TestCollectTaskTypesDeprecation:
+    """Tests for the YAML trigger_mode deprecation path."""
+
+    def test_yaml_trigger_mode_fires_warning(
+        self, fake_redis, base_scheduler_config, loguru_capture
+    ):
+        # Inject a trigger_mode field into the YAML-style config dict.
+        base_scheduler_config["tasks"]["memory_compression"]["trigger_mode"] = "periodic"
+
+        scheduler = RedisTaskScheduler(redis_cache=fake_redis, config=base_scheduler_config)
+
+        assert any(
+            "memory_compression.trigger_mode" in m and "deprecated" in m for m in loguru_capture
+        ), f"Expected deprecation warning, got: {loguru_capture}"
+        # raw config should have the field stripped so it cannot leak through
+        assert "trigger_mode" not in scheduler._pending_raw_configs["memory_compression"]
+
+    def test_code_trigger_mode_wins_over_yaml(self, fake_redis, base_scheduler_config):
+        # YAML says periodic, code registers user_activity — code wins.
+        base_scheduler_config["tasks"]["memory_compression"]["trigger_mode"] = "periodic"
+
+        scheduler = RedisTaskScheduler(redis_cache=fake_redis, config=base_scheduler_config)
+        scheduler.register_handler(
+            "memory_compression", _noop_handler, trigger_mode=TriggerMode.USER_ACTIVITY
+        )
+
+        assert (
+            scheduler._pending_task_configs["memory_compression"].trigger_mode
+            == TriggerMode.USER_ACTIVITY
+        )
