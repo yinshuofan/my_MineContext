@@ -11,6 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from opencontext.config.global_config import get_config, get_prompt_group
 from opencontext.llm.global_vlm_client import generate_for_agent_async
 from opencontext.models.context import ProcessedContext
+from opencontext.models.enums import ContextType
 from opencontext.server.search.event_search_service import EventSearchService
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.json_parser import parse_json_from_response
@@ -149,13 +150,14 @@ def _format_time_range_str(ctx: ProcessedContext) -> str:
 
 
 # Summary context types whose refs key indicates an upward (parent) link.
-_SUMMARY_TYPE_VALUES = {
-    "daily_summary",
-    "weekly_summary",
-    "monthly_summary",
-    "agent_base_l1_summary",
-    "agent_base_l2_summary",
-    "agent_base_l3_summary",
+# Derived from ContextType enum to stay in sync if new types are added.
+_SUMMARY_TYPE_VALUES: set[str] = {
+    ContextType.DAILY_SUMMARY.value,
+    ContextType.WEEKLY_SUMMARY.value,
+    ContextType.MONTHLY_SUMMARY.value,
+    ContextType.AGENT_BASE_L1_SUMMARY.value,
+    ContextType.AGENT_BASE_L2_SUMMARY.value,
+    ContextType.AGENT_BASE_L3_SUMMARY.value,
 }
 
 
@@ -317,22 +319,22 @@ async def execute_search(state: RecallState) -> dict:
         time_range = None
         if isinstance(args, dict) and (args.get("time_start") or args.get("time_end")):
             from opencontext.server.search.models import TimeRange
+            from opencontext.utils.time_utils import get_timezone
 
+            tz = get_timezone()
             tr_start = None
             tr_end = None
             try:
                 if args.get("time_start"):
-                    tr_start = int(
-                        datetime.datetime.fromisoformat(args["time_start"])
-                        .replace(tzinfo=datetime.UTC)
-                        .timestamp()
-                    )
+                    parsed = datetime.datetime.fromisoformat(args["time_start"])
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=tz)
+                    tr_start = int(parsed.timestamp())
                 if args.get("time_end"):
-                    tr_end = int(
-                        datetime.datetime.fromisoformat(args["time_end"])
-                        .replace(tzinfo=datetime.UTC)
-                        .timestamp()
-                    )
+                    parsed = datetime.datetime.fromisoformat(args["time_end"])
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=tz)
+                    tr_end = int(parsed.timestamp())
             except (ValueError, TypeError):
                 pass  # ignore bad dates, search without time filter
             if tr_start is not None or tr_end is not None:
@@ -368,9 +370,11 @@ async def execute_search(state: RecallState) -> dict:
         new_ancestor_hits = [c for c in search_ancestors if c.id not in seen]
         seen.update(c.id for c in new_hits)
         seen.update(c.id for c in new_ancestor_hits)
+        # Only direct hits go into accumulated (for final output to commentary).
+        # Ancestors are shown to the LLM for context but not carried forward.
         new_accumulated.extend(new_hits)
-        new_accumulated.extend(new_ancestor_hits)
-        total_new_hits += len(new_hits) + len(new_ancestor_hits)
+        # Only direct hits count for the consecutive-empty brake.
+        total_new_hits += len(new_hits)
 
         # Format result text for the LLM
         result_text = _format_search_result(new_hits, new_ancestor_hits)

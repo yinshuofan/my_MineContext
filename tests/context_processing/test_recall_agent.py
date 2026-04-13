@@ -207,7 +207,7 @@ async def test_max_turns_hard_cap():
     """LLM always calls tool → loop stops at recursion limit."""
     agent = RecallAgent()
     # Each turn returns a different ctx ID so the empty-search brake doesn't fire
-    ctxs_per_turn = [[_make_ctx(f"c{i}", f"title{i}")] for i in range(10)]
+    ctxs_per_turn = [([_make_ctx(f"c{i}", f"title{i}")], []) for i in range(10)]
 
     call_count = {"n": 0}
 
@@ -656,3 +656,96 @@ async def test_format_map_groups_by_level():
     # Actual dates present
     assert "2026-01-15" in result
     assert "2026-04-12" in result
+
+
+# ---------------------------------------------------------------------------
+# Tests for _format_search_result and _format_time_range_str
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_format_search_result_hits_only():
+    """Hits without ancestors renders flat list with ★ markers."""
+    from opencontext.context_processing.processor.recall_agent import _format_search_result
+
+    ctx1 = _make_ctx("h1", "meeting", "Q2 plans", "2026-04-01")
+    ctx2 = _make_ctx("h2", "review", "auth module", "2026-04-03")
+    result = _format_search_result([ctx1, ctx2], [])
+    assert "2 hits" in result
+    assert "meeting" in result and "★" in result
+    assert "review" in result
+    assert "ancestors" not in result
+
+
+@pytest.mark.unit
+async def test_format_search_result_with_hierarchy_tree():
+    """Hits + ancestors build an indented tree via refs linkage."""
+    from opencontext.context_processing.processor.recall_agent import _format_search_result
+
+    # L0 hit has a ref pointing up to L1 ancestor
+    hit = SimpleNamespace(
+        id="h1",
+        extracted_data=SimpleNamespace(title="meeting", summary=""),
+        properties=SimpleNamespace(
+            event_time_start=datetime.datetime.fromisoformat("2026-04-01"),
+            event_time_end=None,
+            hierarchy_level=0,
+            refs={"daily_summary": ["a1"]},
+        ),
+    )
+    ancestor = SimpleNamespace(
+        id="a1",
+        extracted_data=SimpleNamespace(title="daily overview", summary=""),
+        properties=SimpleNamespace(
+            event_time_start=datetime.datetime.fromisoformat("2026-04-01"),
+            event_time_end=None,
+            hierarchy_level=1,
+            refs={},
+        ),
+    )
+    result = _format_search_result([hit], [ancestor])
+    assert "1 hits" in result
+    assert "1 ancestors" in result
+    # Ancestor is root (no indentation), hit is indented (child)
+    lines = result.split("\n")
+    ancestor_line = [ln for ln in lines if "daily overview" in ln][0]
+    hit_line = [ln for ln in lines if "meeting" in ln][0]
+    # Hit should be indented more than ancestor
+    assert len(hit_line) - len(hit_line.lstrip()) > len(ancestor_line) - len(ancestor_line.lstrip())
+    assert "★" in hit_line
+
+
+@pytest.mark.unit
+async def test_format_search_result_empty():
+    """No hits and no ancestors returns 'no new memories' message."""
+    from opencontext.context_processing.processor.recall_agent import _format_search_result
+
+    result = _format_search_result([], [])
+    assert "No new memories" in result
+
+
+@pytest.mark.unit
+async def test_format_time_range_str_same_day():
+    """Same-day start/end returns single date."""
+    from opencontext.context_processing.processor.recall_agent import _format_time_range_str
+
+    ctx = _make_ctx("t1", "test", date="2026-04-12")
+    assert _format_time_range_str(ctx) == "2026-04-12"
+
+
+@pytest.mark.unit
+async def test_format_time_range_str_multi_day():
+    """Different start/end returns range."""
+    from opencontext.context_processing.processor.recall_agent import _format_time_range_str
+
+    ctx = SimpleNamespace(
+        properties=SimpleNamespace(
+            event_time_start=datetime.datetime.fromisoformat("2026-04-01"),
+            event_time_end=datetime.datetime.fromisoformat("2026-04-07"),
+            hierarchy_level=2,
+            refs={},
+        ),
+        extracted_data=SimpleNamespace(title="", summary=""),
+        id="r1",
+    )
+    assert _format_time_range_str(ctx) == "2026-04-01~2026-04-07"
