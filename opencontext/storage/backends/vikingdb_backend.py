@@ -1579,6 +1579,100 @@ class VikingDBBackend(IVectorStorageBackend):
             logger.exception(f"Failed to search by hierarchy: {e}")
             return []
 
+    async def get_hierarchy_map(
+        self,
+        owner_type: str,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        l1_days: int = 7,
+    ) -> dict[int, list]:
+        """VikingDB optimized: single scalar search for all hierarchy levels."""
+        from opencontext.models.enums import MEMORY_OWNER_TYPES
+        from opencontext.utils.time_utils import now as tz_now
+
+        types = MEMORY_OWNER_TYPES.get(owner_type)
+        if not types or len(types) < 4:
+            return {3: [], 2: [], 1: []}
+
+        if not self._initialized:
+            return {3: [], 2: [], 1: []}
+
+        try:
+            context_types = [types[1].value, types[2].value, types[3].value]
+
+            # Build conditions — all 3 summary types in a single query
+            conditions = [
+                {"op": "must", "field": FIELD_DATA_TYPE, "conds": [DATA_TYPE_CONTEXT]},
+                {"op": "must", "field": FIELD_CONTEXT_TYPE, "conds": context_types},
+                {
+                    "op": "must",
+                    "field": FIELD_HIERARCHY_LEVEL,
+                    "conds": [1, 2, 3],
+                },
+            ]
+
+            # All types within one owner_type are consistently user or agent_base
+            is_base = context_types[0].startswith("agent_base")
+            if user_id and not is_base:
+                conditions.append({"op": "must", "field": FIELD_USER_ID, "conds": [user_id]})
+            if device_id and not is_base:
+                conditions.append({"op": "must", "field": FIELD_DEVICE_ID, "conds": [device_id]})
+            if agent_id:
+                conditions.append({"op": "must", "field": FIELD_AGENT_ID, "conds": [agent_id]})
+
+            filter_dict = (
+                {"op": "and", "conds": conditions} if len(conditions) > 1 else conditions[0]
+            )
+
+            # L1 needs the tightest time window; use it as the query-level floor
+            # so the DB doesn't return ancient L1 records we'd discard anyway.
+            now = tz_now()
+            from datetime import timedelta
+
+            l1_cutoff = now - timedelta(days=l1_days)
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+            # Single scalar search call — generous limit covers all 3 levels
+            data = {
+                "collection_name": self._collection_name,
+                "index_name": self._index_name,
+                "limit": 100 + 10 + l1_days,
+                "field": FIELD_CREATE_TIME_TS,
+                "order": "desc",
+                "filter": filter_dict,
+            }
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
+                path="/api/vikingdb/data/search/scalar", data=data
+            )
+            if result.get("code") != "Success":
+                logger.error(f"Failed to get hierarchy map: {result.get('message')}")
+                return {3: [], 2: [], 1: []}
+
+            output = result.get("result", {}).get("data", [])
+
+            # Parse results and group by hierarchy_level, filtering by time in memory
+            grouped: dict[int, list] = {3: [], 2: [], 1: []}
+            for item in output:
+                doc = {"id": item.get("id")}
+                doc.update(item.get("fields", {}))
+                ctx = self._doc_to_context(doc, need_vector=False)
+                if not ctx:
+                    continue
+                level = ctx.properties.hierarchy_level
+                ts = ctx.properties.event_time_start
+                if level == 3:
+                    grouped[3].append(ctx)
+                elif level == 2 and ts and ts >= month_start:
+                    grouped[2].append(ctx)
+                elif level == 1 and ts and ts >= l1_cutoff:
+                    grouped[1].append(ctx)
+            return grouped
+
+        except Exception as e:
+            logger.exception(f"Failed to get hierarchy map: {e}")
+            return {3: [], 2: [], 1: []}
+
     async def get_by_ids(
         self,
         ids: list[str],
