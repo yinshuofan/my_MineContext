@@ -49,7 +49,70 @@ class RecallAgent:
         aborts). Downstream commentary generation handles empty gracefully.
         """
         state = self._read_config()
-        # Loop body is filled in by subsequent tasks.
+        while state.turn < state.max_turns:
+            messages = self._build_turn_messages(
+                chat_content=chat_content,
+                agent_name=agent_name,
+                agent_persona=agent_persona,
+                max_turns=state.max_turns,
+                previous_actions=state.previous_actions,
+                accumulated=state.accumulated,
+            )
+            if messages is None:
+                logger.warning("[recall_agent] Prompt missing — aborting")
+                break
+
+            action = await self._decide_action(messages, state.recall_model)
+            if action is None:
+                logger.warning(f"[recall_agent] turn={state.turn}: action parse failed, breaking")
+                break
+
+            action_type = action.get("action")
+            if action_type == "done":
+                logger.info(
+                    f"[recall_agent] turn={state.turn}: agent stopped "
+                    f"(reason={action.get('reason')!r})"
+                )
+                break
+            if action_type != "search":
+                logger.warning(
+                    f"[recall_agent] turn={state.turn}: unknown action {action_type!r}, breaking"
+                )
+                break
+
+            query = action.get("query") or ""
+            if not query:
+                logger.warning(
+                    f"[recall_agent] turn={state.turn}: search action missing query, breaking"
+                )
+                break
+
+            try:
+                new_contexts = await self._execute_search(
+                    query=query,
+                    user_id=user_id,
+                    device_id=device_id,
+                    agent_id=agent_id,
+                )
+            except Exception:
+                logger.warning(f"[recall_agent] turn={state.turn}: search raised, breaking")
+                break
+
+            new_hits = [c for c in new_contexts if c.id not in state.seen_ids]
+            state.seen_ids.update(c.id for c in new_hits)
+            state.accumulated.extend(new_hits)
+
+            state.previous_actions.append(
+                {
+                    "turn": state.turn,
+                    "query": query,
+                    "reason": action.get("reason", ""),
+                    "new_hits": len(new_hits),
+                }
+            )
+
+            state.turn += 1
+
         return self._format_memories(state.accumulated)
 
     def _read_config(self) -> _RecallState:
