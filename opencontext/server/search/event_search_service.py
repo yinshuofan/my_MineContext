@@ -26,6 +26,7 @@ class SearchResult:
 
     hits: list[tuple[ProcessedContext, float]] = field(default_factory=list)
     ancestors: dict[str, ProcessedContext] = field(default_factory=dict)
+    descendants: dict[str, ProcessedContext] = field(default_factory=dict)
 
 
 class EventSearchService:
@@ -278,3 +279,46 @@ class EventSearchService:
             rounds += 1
 
         return all_ancestors
+
+    async def collect_descendants(
+        self,
+        results: list[tuple[ProcessedContext, float]],
+        min_level: int = 0,
+    ) -> dict[str, ProcessedContext]:
+        """Collect descendants by following refs downward (to lower hierarchy levels)."""
+        all_descendants: dict[str, ProcessedContext] = {}
+        seen: set[str] = set()
+        # Batch: list of (ref_id, parent_hierarchy_level)
+        current_batch: list[tuple[str, int]] = []
+
+        for ctx, _score in results:
+            seen.add(ctx.id)
+            level = ctx.properties.hierarchy_level if ctx.properties else 0
+            if level <= min_level or not ctx.properties or not ctx.properties.refs:
+                continue
+            for ref_ids in ctx.properties.refs.values():
+                for cid in ref_ids:
+                    if cid not in seen:
+                        seen.add(cid)
+                        current_batch.append((cid, level))
+
+        while current_batch:
+            batch_ids = [cid for cid, _ in current_batch]
+            parent_levels = {cid: plvl for cid, plvl in current_batch}
+            children = await self.storage.get_contexts_by_ids(batch_ids)
+            next_batch: list[tuple[str, int]] = []
+            for child in children:
+                child_level = child.properties.hierarchy_level if child.properties else 0
+                plvl = parent_levels.get(child.id, 0)
+                if child_level >= plvl:
+                    continue  # not a descendant (same level or upward ref)
+                all_descendants[child.id] = child
+                if child_level > min_level and child.properties and child.properties.refs:
+                    for ref_ids in child.properties.refs.values():
+                        for cid in ref_ids:
+                            if cid not in seen:
+                                seen.add(cid)
+                                next_batch.append((cid, child_level))
+            current_batch = next_batch
+
+        return all_descendants
