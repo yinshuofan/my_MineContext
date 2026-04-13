@@ -104,10 +104,15 @@ async def _do_search(
     agent_id: str,
     time_range: Any | None = None,
     hierarchy_levels: list[int] | None = None,
-) -> list[ProcessedContext]:
-    """Execute one search with optional filters. Exceptions propagate to caller."""
+) -> tuple[list[ProcessedContext], list[ProcessedContext]]:
+    """Execute one search with optional filters. Exceptions propagate to caller.
+
+    Returns (hits, ancestors) — both deduplicated, ancestors exclude any hit IDs.
+    """
+    from opencontext.server.search.event_search_service import SearchResult
+
     service = EventSearchService()
-    result = await service.search(
+    result: SearchResult | None = await service.search(
         query=[{"type": "text", "text": query}],
         user_id=user_id,
         device_id=device_id,
@@ -117,14 +122,55 @@ async def _do_search(
         drill_up=True,
     )
     if not result:
-        return []
-    collected: dict[str, ProcessedContext] = {}
+        return [], []
+    hits: list[ProcessedContext] = []
+    hit_ids: set[str] = set()
     for ctx, _score in result.hits:
-        collected[ctx.id] = ctx
+        if ctx.id not in hit_ids:
+            hits.append(ctx)
+            hit_ids.add(ctx.id)
+    ancestors: list[ProcessedContext] = []
     for ctx_id, ctx in result.ancestors.items():
-        if ctx_id not in collected:
-            collected[ctx_id] = ctx
-    return list(collected.values())
+        if ctx_id not in hit_ids:
+            ancestors.append(ctx)
+    return hits, ancestors
+
+
+def _format_ctx_entry(ctx: ProcessedContext) -> str:
+    """Format a single context as '[time_range L{level}] title\\n  summary'."""
+    level = ctx.properties.hierarchy_level if ctx.properties else 0
+    start = ctx.properties.event_time_start if ctx.properties else None
+    end = ctx.properties.event_time_end if ctx.properties else None
+    if start:
+        start_str = start.strftime("%Y-%m-%d")
+        if end and end.date() != start.date():
+            time_str = f"{start_str}~{end.strftime('%Y-%m-%d')}"
+        else:
+            time_str = start_str
+    else:
+        time_str = ""
+    title = (ctx.extracted_data.title if ctx.extracted_data else "") or ""
+    summary = (ctx.extracted_data.summary if ctx.extracted_data else "") or ""
+    entry = f"[{time_str} L{level}] {title}"
+    if summary:
+        entry += f"\n  {summary}"
+    return entry
+
+
+def _format_search_result(hits: list[ProcessedContext], ancestors: list[ProcessedContext]) -> str:
+    """Format search results separating direct hits from drill-up ancestors."""
+    if not hits and not ancestors:
+        return "No new memories found for this query."
+    parts: list[str] = []
+    if hits:
+        lines = [_format_ctx_entry(ctx) for ctx in hits]
+        parts.append(f"Found {len(hits)} direct hits:\n" + "\n".join(lines))
+    if ancestors:
+        lines = [_format_ctx_entry(ctx) for ctx in ancestors]
+        parts.append(f"Hierarchy context ({len(ancestors)} ancestors):\n" + "\n".join(lines))
+    if not parts:
+        return "No new memories found for this query."
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +282,7 @@ async def execute_search(state: RecallState) -> dict:
                 hierarchy_levels = [int(lv) for lv in args["hierarchy_levels"]]
 
         try:
-            new_contexts = await _do_search(
+            search_hits, search_ancestors = await _do_search(
                 query=query,
                 user_id=state["search_params"]["user_id"],
                 device_id=state["search_params"]["device_id"],
@@ -255,24 +301,17 @@ async def execute_search(state: RecallState) -> dict:
             )
             continue
 
-        new_hits = [c for c in new_contexts if c.id not in seen]
+        # Dedup hits against previously seen
+        new_hits = [c for c in search_hits if c.id not in seen]
+        new_ancestor_hits = [c for c in search_ancestors if c.id not in seen]
         seen.update(c.id for c in new_hits)
+        seen.update(c.id for c in new_ancestor_hits)
         new_accumulated.extend(new_hits)
-        total_new_hits += len(new_hits)
+        new_accumulated.extend(new_ancestor_hits)
+        total_new_hits += len(new_hits) + len(new_ancestor_hits)
 
-        if new_hits:
-            brief_lines = []
-            for ctx in new_hits:
-                title = (ctx.extracted_data.title if ctx.extracted_data else "") or "Untitled"
-                event_time = (
-                    ctx.properties.event_time_start.strftime("%Y-%m-%d")
-                    if ctx.properties and ctx.properties.event_time_start
-                    else ""
-                )
-                brief_lines.append(f"[{event_time}] {title}")
-            result_text = f"Found {len(new_hits)} new memories:\n" + "\n".join(brief_lines)
-        else:
-            result_text = "No new memories found for this query."
+        # Format result text for the LLM
+        result_text = _format_search_result(new_hits, new_ancestor_hits)
 
         new_messages.append(
             {
