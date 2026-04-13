@@ -169,3 +169,43 @@ async def test_two_consecutive_empty_searches_stops():
     assert search.await_count == 2
     assert llm.await_count == 2
     assert result == ""
+
+
+@pytest.mark.unit
+async def test_dedup_across_turns():
+    """Turn 1 and turn 2 return overlapping ctx IDs → final output dedupes."""
+    agent = RecallAgent()
+    ctx_a = _make_ctx("c1", "shared event", "sum", "2026-04-01")
+    ctx_b = _make_ctx("c2", "turn 1 extra", "sum", "2026-04-02")
+    ctx_c = _make_ctx("c3", "turn 2 extra", "sum", "2026-04-03")
+
+    llm_responses = [
+        '{"action": "search", "query": "first", "reason": "r"}',
+        '{"action": "search", "query": "second", "reason": "r"}',
+        '{"action": "done", "reason": "enough"}',
+    ]
+
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=_FAKE_CONFIG,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(side_effect=llm_responses),
+        ),
+        patch.object(
+            RecallAgent,
+            "_execute_search",
+            new=AsyncMock(side_effect=[[ctx_a, ctx_b], [ctx_a, ctx_c]]),
+        ),
+    ):
+        result = await _run_recall(agent)
+
+    assert result.count("shared event") == 1
+    assert "turn 1 extra" in result
+    assert "turn 2 extra" in result
