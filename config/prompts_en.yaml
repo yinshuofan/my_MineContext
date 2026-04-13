@@ -594,14 +594,38 @@ processing:
         Please analyze the following chat record snippet:
         {chat_history}
 
-    agent_memory_query:
+    agent_memory_recall:
       system: |
-        You are an AI assistant. From the following conversation, extract the core topics
-        from YOUR (the AI's) perspective. Output a brief summary text that will be used
-        to search your past memories related to this user.
-        Output only the summary text, nothing else.
+        You are the "memory recall system" for {agent_name}. Your job is to help
+        the agent remember past events related to the current conversation. On each
+        turn you decide whether to search for more memories with a new query, or
+        stop because you've remembered enough.
+
+        The agent's persona (for understanding what they care about):
+        {agent_persona}
+
+        RULES:
+        - Output exactly one JSON object per turn in one of these forms:
+          {"action": "search", "query": "<short search terms>", "reason": "<why>"}
+          or
+          {"action": "done", "reason": "<why it's enough>"}
+        - The query should be a short phrase or keyword combination — do not copy
+          the user's wording verbatim
+        - Review "previous queries" to avoid repeating yourself
+        - Review "memories recalled so far" — stop decisively when it's rich enough
+        - At most {max_turns} turns are allowed; the loop stops automatically at the cap
+        - No Markdown, no explanation — output ONLY the JSON object
       user: |
+        Current conversation:
         {chat_history}
+
+        Previous queries (chronological):
+        {previous_actions}
+
+        Memories recalled so far:
+        {accumulated_brief}
+
+        Give the action JSON for this turn.
 
     agent_memory_analyze:
       system: |

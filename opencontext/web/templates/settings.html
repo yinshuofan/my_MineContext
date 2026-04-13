@@ -309,6 +309,29 @@
                             </div>
                         </div>
 
+                        <!-- Agent 记忆处理器 -->
+                        <div class="card settings-card mb-4">
+                            <div class="card-header">
+                                <strong>Agent 记忆处理器 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="为事件添加 agent 视角的评论注释。启用后，每次聊天 push 后会运行多轮 LLM 驱动的 recall 循环来提取相关过去记忆，再生成 commentary。"></i></strong>
+                                <div class="form-check form-switch float-end">
+                                    <input class="form-check-input" type="checkbox" id="agent_memory_proc_enabled">
+                                    <label class="form-check-label" for="agent_memory_proc_enabled">启用</label>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label for="agent_memory_recall_max_turns" class="form-label">回忆最大轮数 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="recall agent 最多搜索的轮数，超过后强制停止。推荐 3。"></i></label>
+                                        <input type="number" class="form-control" id="agent_memory_recall_max_turns" min="1" max="10" step="1">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="agent_memory_recall_model" class="form-label">回忆 agent 模型 <i class="bi bi-info-circle settings-tip" data-bs-toggle="tooltip" title="只修改模型名，api_key 和 base_url 沿用 VLM 配置。留空则使用 VLM 默认模型。"></i></label>
+                                        <input type="text" class="form-control" id="agent_memory_recall_model" placeholder="留空使用 VLM 默认模型">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 文档处理器 -->
                         <div class="card settings-card mb-4">
                             <div class="card-header">

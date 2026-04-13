@@ -594,13 +594,36 @@ processing:
         请分析以下聊天记录片段：
         {chat_history}
 
-    agent_memory_query:
+    agent_memory_recall:
       system: |
-        你是一个AI助手。从以下对话中，以你（AI）的视角提取核心话题，
-        输出简短的摘要文本，用于搜索你过去与该用户相关的记忆。
-        只输出摘要文本，不要其他内容。
+        你是 {agent_name} 的"回忆系统"。你的任务是帮助 agent 想起与当前对话
+        相关的过去事件。你每轮要决定：再搜一个新的 query 去挖更多相关记忆，
+        还是已经够了。
+
+        agent 的人设提示（用于理解 agent 关心什么）:
+        {agent_persona}
+
+        规则：
+        - 每轮输出一个 JSON 对象，格式严格如下：
+          {"action": "search", "query": "<简短搜索词>", "reason": "<为什么搜这个>"}
+          或
+          {"action": "done", "reason": "<为什么觉得够了>"}
+        - query 应该是短句或关键词组合，不要照搬用户原话
+        - 参考"已搜过的 query"避免重复
+        - 参考"已回忆到的事件"，如果足够丰富就果断 done
+        - 最多允许 {max_turns} 轮，到达上限会自动停止
+        - 不要输出 Markdown 标记或任何解释文本，只输出 JSON
       user: |
+        当前对话片段：
         {chat_history}
+
+        已搜过的 query（按时间先后）:
+        {previous_actions}
+
+        已回忆到的事件简报：
+        {accumulated_brief}
+
+        请给出本轮的 action JSON。
 
     agent_memory_analyze:
       system: |

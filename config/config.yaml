@@ -91,6 +91,14 @@ processing:
   # Agent 记忆处理器（为事件添加 agent 视角的评论注释）
   agent_memory_processor:
     enabled: "${AGENT_MEMORY_PROCESSOR_ENABLED:true}"
+    # Recall agent: multi-turn LLM-driven search loop that collects past memories
+    # before commentary generation.
+    recall_agent:
+      max_turns: ${AGENT_MEMORY_RECALL_MAX_TURNS:3}
+      # Optional: override the model used for the recall step. Leave empty to
+      # use the VLM default. Only the model name is configurable; api_key,
+      # base_url, and provider are inherited from vlm_model.
+      model: "${AGENT_MEMORY_RECALL_MODEL:}"
   # 文档处理器（处理上传文件和网页链接）
   document_processor:
     enabled: "${DOCUMENT_PROCESSOR_ENABLED:false}"

@@ -268,6 +268,13 @@ function populateProcessingSettings(allData) {
     // text_chat_processor
     setChecked('text_chat_proc_enabled', proc.text_chat_processor?.enabled);
 
+    // agent_memory_processor
+    const agentMemProc = proc.agent_memory_processor || {};
+    setChecked('agent_memory_proc_enabled', agentMemProc.enabled !== false);
+    const recallAgent = agentMemProc.recall_agent || {};
+    setVal('agent_memory_recall_max_turns', recallAgent.max_turns ?? 3);
+    setVal('agent_memory_recall_model', recallAgent.model || '');
+
     // document_processor
     const dp = proc.document_processor || {};
     setChecked('doc_proc_enabled', dp.enabled);
@@ -310,6 +317,13 @@ document.getElementById('processingForm')?.addEventListener('submit', async (e) 
             enabled: getChecked('processing_enabled'),
             text_chat_processor: {
                 enabled: getChecked('text_chat_proc_enabled'),
+            },
+            agent_memory_processor: {
+                enabled: getChecked('agent_memory_proc_enabled'),
+                recall_agent: {
+                    max_turns: getInt('agent_memory_recall_max_turns') || 3,
+                    model: getVal('agent_memory_recall_model').trim(),
+                },
             },
             document_processor: {
                 enabled: getChecked('doc_proc_enabled'),

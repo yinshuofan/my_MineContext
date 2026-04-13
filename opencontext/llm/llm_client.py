@@ -96,7 +96,7 @@ class LLMClient:
                 thinking = kwargs.get("thinking")
 
                 create_params = {
-                    "model": self.model,
+                    "model": kwargs.get("model") or self.model,
                     "messages": messages,
                 }
                 if tools:
@@ -117,13 +117,13 @@ class LLMClient:
                     "chat_cost", int((time.time() - api_start) * 1000), status="success"
                 )
 
-                # Record token usage
+                # Record token usage (use create_params model to capture overrides)
                 if hasattr(response, "usage") and response.usage:
                     try:
                         from opencontext.monitoring import record_token_usage
 
                         await record_token_usage(
-                            model=self.model,
+                            model=create_params["model"],
                             prompt_tokens=response.usage.prompt_tokens,
                             completion_tokens=response.usage.completion_tokens,
                             total_tokens=response.usage.total_tokens,
