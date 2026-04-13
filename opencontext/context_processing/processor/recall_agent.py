@@ -294,6 +294,12 @@ class RecallAgent:
             "done": False,
         }
 
+        # Each search turn = 2 supersteps (call_llm + execute_search).
+        # +3 headroom covers the final call_llm that terminates, plus buffer.
+        # If GraphRecursionError fires, accumulated memories are lost (ainvoke
+        # does not return partial state). This is acceptable: with +3 headroom
+        # the normal exit paths (route_after_llm / route_after_search) fire
+        # before the limit in all expected scenarios.
         recursion_limit = (max_turns * 2) + 3
 
         try:

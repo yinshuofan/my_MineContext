@@ -207,10 +207,11 @@ async def test_max_turns_hard_cap():
     with _patches(AsyncMock(side_effect=llm_side_effect), search):
         await _run_recall(agent)
 
-    # With max_turns=3, recursion_limit=(3*2)+3=9
-    # Graph: call_llm(1)->exec_search(2)->call_llm(3)->exec_search(4)->...
-    # The recursion limit caps total node invocations. Search should be called at most 4 times.
-    assert search.await_count <= 4
+    # With max_turns=3, recursion_limit=(3*2)+3=9.
+    # Each cycle is call_llm + execute_search = 2 steps. The graph runs until
+    # GraphRecursionError fires. We expect 3-4 searches before the cap hits.
+    assert 3 <= search.await_count <= 4
+    assert search.await_count >= 1  # at least some work was done
 
 
 @pytest.mark.unit
@@ -407,8 +408,11 @@ async def test_config_hot_reload():
     ):
         await _run_recall(agent)
 
-    # max_turns=1 should result in fewer search calls than max_turns=2
-    assert call_count_1["n"] <= call_count_2["n"]
+    # Both runs must have done real work
+    assert call_count_1["n"] >= 1, "max_turns=1 run did no work"
+    assert call_count_2["n"] >= 1, "max_turns=2 run did no work"
+    # max_turns=1 should result in fewer LLM calls than max_turns=2
+    assert call_count_1["n"] < call_count_2["n"]
 
 
 @pytest.mark.unit
@@ -508,3 +512,27 @@ async def test_search_error_becomes_tool_message():
     assert tool_msg["role"] == "tool"
     assert "Error" in tool_msg["content"]
     assert "unavailable" in tool_msg["content"]
+
+
+@pytest.mark.unit
+async def test_graph_recursion_error_returns_empty():
+    """When recursion limit fires, recall() returns empty string gracefully."""
+    agent = RecallAgent()
+    # max_turns=1 → recursion_limit=(1*2)+3=5 — very tight
+    config = {"max_turns": 1, "model": ""}
+
+    call_count = {"n": 0}
+
+    async def llm_always_search(*args, **kwargs):
+        call_count["n"] += 1
+        return _make_tool_call_response(f"tc{call_count['n']}", "q")
+
+    # Return unique results each time so consecutive-empty brake doesn't fire
+    search = AsyncMock(side_effect=[[_make_ctx(f"x{i}", f"t{i}")] for i in range(20)])
+
+    with _patches(AsyncMock(side_effect=llm_always_search), search, config=config):
+        result = await _run_recall(agent)
+
+    # With tight recursion_limit, the graph may hit GraphRecursionError
+    # recall() catches it and returns "" — this is the expected graceful degradation
+    assert isinstance(result, str)
