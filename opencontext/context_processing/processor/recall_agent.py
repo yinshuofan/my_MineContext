@@ -277,7 +277,7 @@ class RecallAgent:
         if storage:
             user_map, agent_map = await asyncio.gather(
                 storage.get_hierarchy_map("user", user_id, device_id, agent_id),
-                storage.get_hierarchy_map("agent_base", "__base__", device_id, agent_id),
+                storage.get_hierarchy_map("agent_base", "__base__", None, agent_id),
             )
         else:
             user_map, agent_map = {3: [], 2: [], 1: []}, {3: [], 2: [], 1: []}
