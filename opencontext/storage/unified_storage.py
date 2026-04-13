@@ -948,6 +948,24 @@ class UnifiedStorage:
             top_k=top_k,
         )
 
+    @_require_backend("_vector_backend", default={3: [], 2: [], 1: []})
+    async def get_hierarchy_map(
+        self,
+        owner_type: str,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        l1_days: int = 7,
+    ) -> dict[int, list]:
+        """Fetch hierarchy summaries grouped by level. See IVectorStorageBackend."""
+        return await self._vector_backend.get_hierarchy_map(
+            owner_type=owner_type,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            l1_days=l1_days,
+        )
+
     @_require_backend("_vector_backend", default=[])
     async def get_contexts_by_ids(
         self,

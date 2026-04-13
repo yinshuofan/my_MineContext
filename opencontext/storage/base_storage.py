@@ -261,6 +261,73 @@ class IVectorStorageBackend(IStorageBackend):
             List of (context, score) tuples
         """
 
+    async def get_hierarchy_map(
+        self,
+        owner_type: str,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        l1_days: int = 7,
+    ) -> dict[int, list["ProcessedContext"]]:
+        """Fetch hierarchy summaries grouped by level for a memory map.
+
+        Returns {3: [L3 monthly], 2: [L2 weekly], 1: [L1 daily]}.
+        - L3: all available (no time limit)
+        - L2: current month only
+        - L1: recent l1_days days only
+
+        Default impl calls search_by_hierarchy 3 times in parallel.
+        Backends may override for single-call optimization (e.g. VikingDB).
+        """
+        import asyncio
+        from datetime import timedelta
+
+        from opencontext.models.enums import MEMORY_OWNER_TYPES
+        from opencontext.utils.time_utils import now as tz_now
+
+        types = MEMORY_OWNER_TYPES.get(owner_type)
+        if not types or len(types) < 4:
+            return {3: [], 2: [], 1: []}
+
+        now = tz_now()
+        month_start_ts = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
+        l1_start_ts = (now - timedelta(days=l1_days)).timestamp()
+
+        l3_task = self.search_by_hierarchy(
+            context_type=types[3].value,
+            hierarchy_level=3,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            top_k=100,
+        )
+        l2_task = self.search_by_hierarchy(
+            context_type=types[2].value,
+            hierarchy_level=2,
+            time_start=month_start_ts,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            top_k=10,
+        )
+        l1_task = self.search_by_hierarchy(
+            context_type=types[1].value,
+            hierarchy_level=1,
+            time_start=l1_start_ts,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            top_k=l1_days,
+        )
+
+        l3_results, l2_results, l1_results = await asyncio.gather(l3_task, l2_task, l1_task)
+
+        return {
+            3: [ctx for ctx, _ in l3_results],
+            2: [ctx for ctx, _ in l2_results],
+            1: [ctx for ctx, _ in l1_results],
+        }
+
     @abstractmethod
     async def get_by_ids(
         self,
