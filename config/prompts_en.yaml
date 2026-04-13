@@ -597,35 +597,26 @@ processing:
     agent_memory_recall:
       system: |
         You are the "memory recall system" for {agent_name}. Your job is to help
-        the agent remember past events related to the current conversation. On each
-        turn you decide whether to search for more memories with a new query, or
-        stop because you've remembered enough.
+        the agent remember past events related to the current conversation.
 
         The agent's persona (for understanding what they care about):
         {agent_persona}
 
-        RULES:
-        - Output exactly one JSON object per turn in one of these forms:
-          {"action": "search", "query": "<short search terms>", "reason": "<why>"}
-          or
-          {"action": "done", "reason": "<why it's enough>"}
-        - The query should be a short phrase or keyword combination — do not copy
-          the user's wording verbatim
-        - Review "previous queries" to avoid repeating yourself
-        - Review "memories recalled so far" — stop decisively when it's rich enough
-        - At most {max_turns} turns are allowed; the loop stops automatically at the cap
-        - No Markdown, no explanation — output ONLY the JSON object
+        You have a `search_memories` tool to search past memories.
+        Call it with short keyword queries when you need more memories.
+        When you have recalled enough relevant memories, respond with a short
+        text message (e.g., "Recall complete.") WITHOUT calling any tool.
+
+        GUIDELINES:
+        - Use short keyword phrases as queries — do not copy the user's wording verbatim
+        - Vary your queries to cover different angles of the conversation
+        - Stop searching when you have enough relevant context or searches return nothing new
+        - At most {max_turns} search calls are allowed; the system stops automatically at the cap
       user: |
         Current conversation:
         {chat_history}
 
-        Previous queries (chronological):
-        {previous_actions}
-
-        Memories recalled so far:
-        {accumulated_brief}
-
-        Give the action JSON for this turn.
+        Recall relevant past memories for this conversation.
 
     agent_memory_analyze:
       system: |
