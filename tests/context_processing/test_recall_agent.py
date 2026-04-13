@@ -43,6 +43,7 @@ def _make_ctx(ctx_id: str, title: str, summary: str = "", date: str = "2026-04-0
             event_time_start=datetime.datetime.fromisoformat(date),
             event_time_end=None,
             hierarchy_level=level,
+            refs={},
         ),
     )
 

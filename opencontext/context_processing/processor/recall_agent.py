@@ -136,41 +136,103 @@ async def _do_search(
     return hits, ancestors
 
 
-def _format_ctx_entry(ctx: ProcessedContext) -> str:
-    """Format a single context as '[time_range L{level}] title\\n  summary'."""
-    level = ctx.properties.hierarchy_level if ctx.properties else 0
+def _format_time_range_str(ctx: ProcessedContext) -> str:
+    """Format event time range as 'YYYY-MM-DD' or 'YYYY-MM-DD~YYYY-MM-DD'."""
     start = ctx.properties.event_time_start if ctx.properties else None
     end = ctx.properties.event_time_end if ctx.properties else None
-    if start:
-        start_str = start.strftime("%Y-%m-%d")
-        if end and end.date() != start.date():
-            time_str = f"{start_str}~{end.strftime('%Y-%m-%d')}"
-        else:
-            time_str = start_str
-    else:
-        time_str = ""
-    title = (ctx.extracted_data.title if ctx.extracted_data else "") or ""
-    summary = (ctx.extracted_data.summary if ctx.extracted_data else "") or ""
-    entry = f"[{time_str} L{level}] {title}"
-    if summary:
-        entry += f"\n  {summary}"
-    return entry
+    if not start:
+        return ""
+    start_str = start.strftime("%Y-%m-%d")
+    if end and end.date() != start.date():
+        return f"{start_str}~{end.strftime('%Y-%m-%d')}"
+    return start_str
+
+
+# Summary context types whose refs key indicates an upward (parent) link.
+_SUMMARY_TYPE_VALUES = {
+    "daily_summary",
+    "weekly_summary",
+    "monthly_summary",
+    "agent_base_l1_summary",
+    "agent_base_l2_summary",
+    "agent_base_l3_summary",
+}
 
 
 def _format_search_result(hits: list[ProcessedContext], ancestors: list[ProcessedContext]) -> str:
-    """Format search results separating direct hits from drill-up ancestors."""
+    """Build a hierarchy tree from hits + ancestors and render as indented text.
+
+    Replicates the tree-building logic from ``server/routes/search.py``:
+    link children to parents via ``refs``, collect roots, sort by time,
+    then render with indentation per hierarchy depth.
+    """
     if not hits and not ancestors:
         return "No new memories found for this query."
-    parts: list[str] = []
-    if hits:
-        lines = [_format_ctx_entry(ctx) for ctx in hits]
-        parts.append(f"Found {len(hits)} direct hits:\n" + "\n".join(lines))
+
+    hit_ids = {ctx.id for ctx in hits}
+
+    # Build node map
+    all_ctxs: dict[str, ProcessedContext] = {}
+    for ctx in hits:
+        all_ctxs[ctx.id] = ctx
+    for ctx in ancestors:
+        if ctx.id not in all_ctxs:
+            all_ctxs[ctx.id] = ctx
+
+    # Link children to parents via refs (same logic as search.py)
+    children_map: dict[str, list[ProcessedContext]] = {cid: [] for cid in all_ctxs}
+    linked: set[str] = set()
+    for node_id, ctx in all_ctxs.items():
+        refs = ctx.properties.refs if ctx.properties and ctx.properties.refs else {}
+        parent_id = None
+        for ref_key, ref_ids in refs.items():
+            if ref_key not in _SUMMARY_TYPE_VALUES:
+                continue
+            for pid in ref_ids:
+                if pid in all_ctxs:
+                    parent_id = pid
+                    break
+            if parent_id:
+                break
+        if parent_id and node_id not in linked:
+            children_map[parent_id].append(ctx)
+            linked.add(node_id)
+
+    # Collect roots (not linked as child to any parent)
+    roots = [ctx for cid, ctx in all_ctxs.items() if cid not in linked]
+
+    # Sort by event_time_start at each level
+    def _sort_key(c: ProcessedContext) -> str:
+        ts = c.properties.event_time_start if c.properties else None
+        return ts.isoformat() if ts else ""
+
+    roots.sort(key=_sort_key)
+    for children in children_map.values():
+        children.sort(key=_sort_key)
+
+    # Render tree with indentation
+    lines: list[str] = []
+
+    def _render(ctx_list: list[ProcessedContext], indent: int) -> None:
+        prefix = "  " * indent
+        for ctx in ctx_list:
+            level = ctx.properties.hierarchy_level if ctx.properties else 0
+            time_str = _format_time_range_str(ctx)
+            title = (ctx.extracted_data.title if ctx.extracted_data else "") or ""
+            summary = (ctx.extracted_data.summary if ctx.extracted_data else "") or ""
+            hit_marker = " ★" if ctx.id in hit_ids else ""
+            lines.append(f"{prefix}[{time_str} L{level}] {title}{hit_marker}")
+            if summary:
+                lines.append(f"{prefix}  {summary}")
+            if children_map.get(ctx.id):
+                _render(children_map[ctx.id], indent + 1)
+
+    _render(roots, 0)
+
+    header = f"Found {len(hits)} hits"
     if ancestors:
-        lines = [_format_ctx_entry(ctx) for ctx in ancestors]
-        parts.append(f"Hierarchy context ({len(ancestors)} ancestors):\n" + "\n".join(lines))
-    if not parts:
-        return "No new memories found for this query."
-    return "\n\n".join(parts)
+        header += f" (+ {len(ancestors)} ancestors)"
+    return header + ":\n" + "\n".join(lines) if lines else "No new memories found for this query."
 
 
 # ---------------------------------------------------------------------------
@@ -486,7 +548,7 @@ class RecallAgent:
                 ),
             )
             for ctx in sorted_ctxs:
-                time_range = RecallAgent._format_time_range(ctx)
+                time_range = _format_time_range_str(ctx)
                 title = (ctx.extracted_data.title if ctx.extracted_data else "") or ""
                 summary = (ctx.extracted_data.summary if ctx.extracted_data else "") or ""
                 if not title and not summary:
@@ -497,18 +559,6 @@ class RecallAgent:
                 lines.append(entry)
 
         return "\n".join(lines) if lines else "(no history available)"
-
-    @staticmethod
-    def _format_time_range(ctx: Any) -> str:
-        """Format event time range as 'YYYY-MM-DD' or 'YYYY-MM-DD~YYYY-MM-DD'."""
-        if not ctx.properties or not ctx.properties.event_time_start:
-            return ""
-        start = ctx.properties.event_time_start
-        end = ctx.properties.event_time_end
-        start_str = start.strftime("%Y-%m-%d")
-        if not end or end.date() == start.date():
-            return start_str
-        return f"{start_str}~{end.strftime('%Y-%m-%d')}"
 
     @staticmethod
     def _format_memories(contexts: list[ProcessedContext]) -> str:
