@@ -42,8 +42,12 @@ SEARCH_MEMORIES_TOOL = {
     "function": {
         "name": "search_memories",
         "description": (
-            "Search past memories/events by semantic query. Returns matching "
-            "memories with their hierarchy ancestors (drill-up enabled by default). "
+            "Search past memories/events by semantic query. Results include "
+            "matching events and their hierarchy ancestors automatically. "
+            "Events are organized in a 4-level hierarchy: "
+            "L0 (raw events), L1 (first-level summaries), "
+            "L2 (second-level summaries), L3 (top-level summaries) — "
+            "matching the levels shown in the memory maps. "
             "Use filters to narrow results by time range or hierarchy level."
         ),
         "parameters": {
@@ -75,8 +79,10 @@ SEARCH_MEMORIES_TOOL = {
                     "type": "array",
                     "items": {"type": "integer"},
                     "description": (
-                        "Filter: hierarchy levels to search (0=raw event, "
-                        "1=L1 summary, 2=L2 summary, 3=L3 summary). "
+                        "Filter: hierarchy levels to search. "
+                        "0=L0 raw events, 1=L1 summaries, "
+                        "2=L2 summaries, 3=L3 summaries "
+                        "(same L-levels as shown in the memory maps). "
                         "Default: [0] (raw events only). Optional."
                     ),
                 },
