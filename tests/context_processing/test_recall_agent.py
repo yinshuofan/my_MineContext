@@ -104,3 +104,35 @@ async def test_single_search_then_done():
     assert "2026-04-03" in result
     # Memories are sorted ascending by date, so alice appears before demo
     assert result.index("meeting with alice") < result.index("demo feedback")
+
+
+@pytest.mark.unit
+async def test_max_turns_hard_cap():
+    """Agent never says done → loop stops at max_turns (default 3)."""
+    agent = RecallAgent()
+    always_search = '{"action": "search", "query": "q", "reason": "more"}'
+    ctxs_per_turn = [[_make_ctx(f"c{i}", f"title{i}", "sum", "2026-04-01")] for i in range(10)]
+
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=_FAKE_CONFIG,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value=always_search),
+        ) as llm,
+        patch.object(
+            RecallAgent,
+            "_execute_search",
+            new=AsyncMock(side_effect=ctxs_per_turn),
+        ) as search,
+    ):
+        await _run_recall(agent)
+
+    assert llm.await_count == 3
+    assert search.await_count == 3
