@@ -11,6 +11,7 @@
 | `processor/text_chat_processor.py` | Extracts structured memories from chat logs via LLM analysis |
 | `processor/document_processor.py` | Processes documents (PDF, DOCX, images, CSV, XLSX, JSONL, MD, TXT) |
 | `processor/agent_memory_processor.py` | Extracts agent-perspective memories from conversations via LLM analysis |
+| `processor/recall_agent.py` | `RecallAgent` — multi-turn LLM-driven recall loop that gathers past memories before commentary generation |
 | `processor/profile_processor.py` | Standalone functions for LLM-driven profile merge-before-write to relational DB |
 | `processor/document_converter.py` | Converts documents to images and analyzes page structure (PDF, DOCX, PPTX, MD) |
 | **chunker/** | |
@@ -40,6 +41,7 @@ BaseChunker (ABC)                    (chunker/chunkers.py)
 ContextTypeAwareStrategy (ABC)       (merger/merge_strategies.py)
   +-- KnowledgeMergeStrategy         (merger/merge_strategies.py)
 
+RecallAgent                          (processor/recall_agent.py)
 DocumentConverter                    (processor/document_converter.py)
 PageInfo                             (processor/document_converter.py)
 
@@ -158,8 +160,9 @@ Pipeline:
 1. **Filter events from prior_results**: extracts `EVENT`-type contexts from the prior processor's output
 2. **Validate agent**: checks `agent_id` is non-default and agent exists in registry; returns empty if not
 3. **Fetch agent profile**: loads existing `agent_profile` from storage for persona context
-4. **Generate commentary** via LLM: calls LLM with the `agent_memory_analyze` prompt, substituting `{agent_name}`, `{agent_persona}`, and the event summaries. The LLM returns per-event commentary as a JSON map.
-5. **Annotate events**: sets `extracted_data.agent_commentary` on each matching event context from prior_results. Returns the modified event contexts (same IDs, with commentary populated).
+4. **Recall past memories** via `RecallAgent.recall()`: delegates to `RecallAgent` which runs a multi-turn LLM-driven recall loop to gather relevant past memories as context for commentary. `RecallAgent` reads `processing.agent_memory_processor.recall_agent.{max_turns, model}` from config on each call (supports hot reload). The `agent_memory_query` prompt has been removed; it is replaced by `agent_memory_recall` which drives the multi-turn recall interaction.
+5. **Generate commentary** via LLM: calls LLM with the `agent_memory_analyze` prompt, substituting `{agent_name}`, `{agent_persona}`, the event summaries, and recalled memories. The LLM returns per-event commentary as a JSON map.
+6. **Annotate events**: sets `extracted_data.agent_commentary` on each matching event context from prior_results. Returns the modified event contexts (same IDs, with commentary populated).
 
 Does NOT produce new contexts -- it modifies and returns the event contexts from `prior_results`. This means agent memory processing adds commentary to user events rather than creating separate agent-owned event types.
 
@@ -171,8 +174,8 @@ Returns early with empty list if:
 Key differences from the previous standalone design:
 - No longer produces `AGENT_EVENT` type (removed) or `AGENT_PROFILE` type (now updated by `AgentProfileUpdateTask` instead)
 - Does not create new contexts; annotates existing events with `agent_commentary` field
-- Two LLM calls: (1) query extraction for related memory search, (2) commentary generation
-- Uses `EventSearchService.search()` to fetch related past memories as context for commentary
+- Memory retrieval is now delegated to `RecallAgent.recall()` (multi-turn loop) instead of `_extract_search_query` + single search
+- `agent_memory_query` prompt removed; replaced by `agent_memory_recall` for the multi-turn recall loop
 - No embedding generation (`do_vectorize()` is not called since no new contexts are created)
 
 ### DocumentProcessor (`processor/document_processor.py`)
