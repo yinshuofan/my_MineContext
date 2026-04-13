@@ -378,3 +378,110 @@ async def test_model_override_omitted_when_not_configured():
 
     assert llm.await_count == 1
     assert "model" not in llm.await_args.kwargs
+
+
+@pytest.mark.unit
+async def test_config_hot_reload():
+    """Changing max_turns in config affects the next recall() call."""
+    agent = RecallAgent()
+    always_search = '{"action": "search", "query": "q", "reason": "r"}'
+
+    config_2_turns = {"max_turns": 2, "model": ""}
+    config_1_turn = {"max_turns": 1, "model": ""}
+
+    # Run with max_turns=2
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=config_2_turns,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value=always_search),
+        ) as llm2,
+        patch.object(
+            RecallAgent,
+            "_execute_search",
+            new=AsyncMock(side_effect=[[_make_ctx(f"a{i}", f"t{i}")] for i in range(5)]),
+        ),
+    ):
+        await _run_recall(agent)
+    assert llm2.await_count == 2
+
+    # Run with max_turns=1 — same agent instance, different config
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=config_1_turn,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value=always_search),
+        ) as llm1,
+        patch.object(
+            RecallAgent,
+            "_execute_search",
+            new=AsyncMock(side_effect=[[_make_ctx(f"b{i}", f"t{i}")] for i in range(5)]),
+        ),
+    ):
+        await _run_recall(agent)
+    assert llm1.await_count == 1
+
+
+@pytest.mark.unit
+async def test_search_action_empty_query_breaks():
+    """Search action with empty query → break immediately, no search executed."""
+    agent = RecallAgent()
+
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=_FAKE_CONFIG,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value='{"action": "search", "query": "", "reason": "empty"}'),
+        ),
+        patch.object(RecallAgent, "_execute_search", new=AsyncMock()) as search,
+    ):
+        result = await _run_recall(agent)
+
+    assert result == ""
+    assert search.await_count == 0
+
+
+@pytest.mark.unit
+async def test_format_memories_with_tz_aware_datetimes():
+    """_format_memories handles timezone-aware datetimes without TypeError."""
+    from opencontext.context_processing.processor.recall_agent import RecallAgent
+
+    tz_ctx = SimpleNamespace(
+        id="tz1",
+        extracted_data=SimpleNamespace(title="tz event", summary="tz sum"),
+        properties=SimpleNamespace(
+            event_time_start=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC)
+        ),
+    )
+    no_time_ctx = SimpleNamespace(
+        id="nt1",
+        extracted_data=SimpleNamespace(title="no time", summary=""),
+        properties=SimpleNamespace(event_time_start=None),
+    )
+
+    result = RecallAgent._format_memories([tz_ctx, no_time_ctx])
+    assert "tz event" in result
+    assert "no time" in result
+    # no-time context should sort first (min datetime)
+    assert result.index("no time") < result.index("tz event")

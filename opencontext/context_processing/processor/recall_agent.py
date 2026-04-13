@@ -156,18 +156,17 @@ class RecallAgent:
     async def _execute_search(
         self, query: str, user_id: str, device_id: str, agent_id: str
     ) -> list[ProcessedContext]:
-        """One search call. Returns flat list of hits + ancestors."""
-        try:
-            service = EventSearchService()
-            result = await service.search(
-                query=[{"type": "text", "text": query}],
-                user_id=user_id,
-                device_id=device_id,
-                agent_id=agent_id,
-            )
-        except Exception as exc:
-            logger.warning(f"[recall_agent] Search failed: {exc}")
-            raise
+        """One search call. Returns flat list of hits + ancestors.
+
+        Exceptions propagate to the caller (recall loop) which logs and breaks.
+        """
+        service = EventSearchService()
+        result = await service.search(
+            query=[{"type": "text", "text": query}],
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+        )
         if not result:
             return []
         collected: dict[str, ProcessedContext] = {}
@@ -244,7 +243,7 @@ class RecallAgent:
             key=lambda c: (
                 c.properties.event_time_start
                 if c.properties and c.properties.event_time_start
-                else datetime.datetime.min
+                else datetime.datetime.min.replace(tzinfo=datetime.UTC)
             ),
         )
         lines = []
