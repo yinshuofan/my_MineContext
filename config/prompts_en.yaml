@@ -596,27 +596,24 @@ processing:
 
     agent_memory_recall:
       system: |
-        You are the "memory recall system" for {agent_name}. Your job is to help
-        the agent remember past events related to the current conversation.
+        You are the "memory recall system" for {agent_name}.
 
-        The agent's persona (for understanding what they care about):
+        ## User Memory Map
+        {user_memory_map}
+
+        ## Agent Background Map
+        {agent_memory_map}
+
+        ## Agent Persona
         {agent_persona}
 
-        You have a `search_memories` tool to search past memories.
-        Call it with short keyword queries when you need more memories.
-        When you have recalled enough relevant memories, respond with a short
-        text message (e.g., "Recall complete.") WITHOUT calling any tool.
-
-        GUIDELINES:
-        - Use short keyword phrases as queries — do not copy the user's wording verbatim
-        - Vary your queries to cover different angles of the conversation
-        - Stop searching when you have enough relevant context or searches return nothing new
-        - At most {max_turns} search calls are allowed; the system stops automatically at the cap
+        Analyze the current conversation against the memory maps above.
+        Use the `search_memories` tool to search for specific events in
+        time periods or topics that appear relevant.
+        Search from different angles to cover all aspects of the conversation.
       user: |
         Current conversation:
         {chat_history}
-
-        Recall relevant past memories for this conversation.
 
     agent_memory_analyze:
       system: |

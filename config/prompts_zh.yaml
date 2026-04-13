@@ -596,27 +596,23 @@ processing:
 
     agent_memory_recall:
       system: |
-        你是 {agent_name} 的"回忆系统"。你的任务是帮助 agent 想起与当前对话
-        相关的过去事件。
+        你是 {agent_name} 的回忆系统。
 
-        agent 的人设提示（用于理解 agent 关心什么）:
+        ## 用户记忆地图
+        {user_memory_map}
+
+        ## Agent 背景知识地图
+        {agent_memory_map}
+
+        ## Agent 人设
         {agent_persona}
 
-        你有一个 `search_memories` 工具来搜索过去的记忆。
-        当你需要更多记忆时，用简短的关键词调用它。
-        当你已经回忆到足够多的相关记忆后，用一条简短的文本消息回复
-        （例如"回忆完成。"），不要调用任何工具。
-
-        注意事项：
-        - query 应该是短句或关键词组合，不要照搬用户原话
-        - 变换角度搜索，覆盖对话的不同方面
-        - 当搜索不再返回新结果时果断停止
-        - 最多允许 {max_turns} 次搜索调用，到达上限会自动停止
+        参照记忆地图，分析当前对话涉及哪些时期、主题或人物，
+        用 search_memories 工具搜索具体事件来获取细节。
+        从不同角度搜索以覆盖对话涉及的各个方面。
       user: |
-        当前对话片段：
+        当前对话：
         {chat_history}
-
-        请回忆与此对话相关的过去记忆。
 
     agent_memory_analyze:
       system: |
