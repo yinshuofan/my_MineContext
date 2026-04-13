@@ -209,3 +209,115 @@ async def test_dedup_across_turns():
     assert result.count("shared event") == 1
     assert "turn 1 extra" in result
     assert "turn 2 extra" in result
+
+
+@pytest.mark.unit
+async def test_turn_one_invalid_json_returns_empty():
+    """Unparseable LLM output on turn 1 → abort with empty string."""
+    agent = RecallAgent()
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=_FAKE_CONFIG,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value="not json at all"),
+        ),
+        patch.object(RecallAgent, "_execute_search", new=AsyncMock()) as search,
+    ):
+        result = await _run_recall(agent)
+    assert result == ""
+    assert search.await_count == 0
+
+
+@pytest.mark.unit
+async def test_unknown_action_breaks():
+    """Unknown action type → break, return accumulated (empty here)."""
+    agent = RecallAgent()
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=_FAKE_CONFIG,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value='{"action": "fetch", "query": "x"}'),
+        ),
+        patch.object(RecallAgent, "_execute_search", new=AsyncMock()) as search,
+    ):
+        result = await _run_recall(agent)
+    assert result == ""
+    assert search.await_count == 0
+
+
+@pytest.mark.unit
+async def test_search_raises_returns_accumulated():
+    """Turn 1 search ok, turn 2 search raises → return turn 1's memories."""
+    agent = RecallAgent()
+    ctx1 = _make_ctx("c1", "first hit", "sum", "2026-04-01")
+    llm_responses = [
+        '{"action": "search", "query": "q1", "reason": "r"}',
+        '{"action": "search", "query": "q2", "reason": "r"}',
+    ]
+    call_count = {"n": 0}
+
+    async def search_side_effect(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return [ctx1]
+        raise RuntimeError("search down")
+
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=_FAKE_CONFIG,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(side_effect=llm_responses),
+        ),
+        patch.object(RecallAgent, "_execute_search", new=search_side_effect),
+    ):
+        result = await _run_recall(agent)
+    assert "first hit" in result
+
+
+@pytest.mark.unit
+async def test_turn_one_llm_raises_returns_empty():
+    """Turn 1 LLM raises → return empty string."""
+    agent = RecallAgent()
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("LLM outage")
+
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=_FAKE_CONFIG,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=boom,
+        ),
+        patch.object(RecallAgent, "_execute_search", new=AsyncMock()) as search,
+    ):
+        result = await _run_recall(agent)
+    assert result == ""
+    assert search.await_count == 0
