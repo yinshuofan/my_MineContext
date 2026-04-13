@@ -645,7 +645,10 @@ async def test_format_map_groups_by_level():
     assert result.index("February overview") < result.index("Week 14 report")
     # L2 before L1
     assert result.index("Week 14 report") < result.index("Yesterday daily")
-    # Labels present
-    assert "monthly" in result
-    assert "weekly" in result
-    assert "daily" in result
+    # Level labels present (L3/L2/L1, not monthly/weekly/daily)
+    assert "L3" in result
+    assert "L2" in result
+    assert "L1" in result
+    # Actual dates present
+    assert "2026-01-15" in result
+    assert "2026-04-12" in result

@@ -363,7 +363,6 @@ class RecallAgent:
         if not hierarchy_map or not any(hierarchy_map.values()):
             return "(no history available)"
 
-        level_labels = {3: "monthly", 2: "weekly", 1: "daily"}
         lines: list[str] = []
 
         for level in [3, 2, 1]:
@@ -376,25 +375,27 @@ class RecallAgent:
                     else datetime.datetime.min.replace(tzinfo=datetime.UTC)
                 ),
             )
-            label = level_labels[level]
             for ctx in sorted_ctxs:
-                date_str = ""
-                if ctx.properties and ctx.properties.event_time_start:
-                    ts = ctx.properties.event_time_start
-                    if level == 3:
-                        date_str = ts.strftime("%Y-%m")
-                    elif level == 2:
-                        date_str = f"W{ts.isocalendar().week:02d}"
-                    else:
-                        date_str = ts.strftime("%m-%d")
-
+                time_range = RecallAgent._format_time_range(ctx)
                 title = (ctx.extracted_data.title if ctx.extracted_data else "") or ""
                 summary = (ctx.extracted_data.summary if ctx.extracted_data else "") or ""
                 text = summary if summary else title
                 if text:
-                    lines.append(f"[{date_str} {label}] {text}")
+                    lines.append(f"[{time_range} L{level}] {text}")
 
         return "\n".join(lines) if lines else "(no history available)"
+
+    @staticmethod
+    def _format_time_range(ctx: Any) -> str:
+        """Format event time range as 'YYYY-MM-DD' or 'YYYY-MM-DD~YYYY-MM-DD'."""
+        if not ctx.properties or not ctx.properties.event_time_start:
+            return ""
+        start = ctx.properties.event_time_start
+        end = ctx.properties.event_time_end
+        start_str = start.strftime("%Y-%m-%d")
+        if not end or end.date() == start.date():
+            return start_str
+        return f"{start_str}~{end.strftime('%Y-%m-%d')}"
 
     @staticmethod
     def _format_memories(contexts: list[ProcessedContext]) -> str:
