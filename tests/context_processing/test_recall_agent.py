@@ -321,3 +321,60 @@ async def test_turn_one_llm_raises_returns_empty():
         result = await _run_recall(agent)
     assert result == ""
     assert search.await_count == 0
+
+
+@pytest.mark.unit
+async def test_model_override_passed_when_configured():
+    """Config.model set → generate_with_messages called with model kwarg."""
+    agent = RecallAgent()
+    config_with_model = {"max_turns": 3, "model": "cheap-model"}
+    done_once = '{"action": "done", "reason": "quick"}'
+
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=config_with_model,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value=done_once),
+        ) as llm,
+        patch.object(RecallAgent, "_execute_search", new=AsyncMock(return_value=[])),
+    ):
+        await _run_recall(agent)
+
+    assert llm.await_count == 1
+    call_kwargs = llm.await_args.kwargs
+    assert call_kwargs.get("model") == "cheap-model"
+    assert call_kwargs.get("enable_executor") is False
+
+
+@pytest.mark.unit
+async def test_model_override_omitted_when_not_configured():
+    """Config.model empty → generate_with_messages called WITHOUT model kwarg."""
+    agent = RecallAgent()
+    done_once = '{"action": "done", "reason": "quick"}'
+
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=_FAKE_CONFIG,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value=done_once),
+        ) as llm,
+        patch.object(RecallAgent, "_execute_search", new=AsyncMock(return_value=[])),
+    ):
+        await _run_recall(agent)
+
+    assert llm.await_count == 1
+    assert "model" not in llm.await_args.kwargs
