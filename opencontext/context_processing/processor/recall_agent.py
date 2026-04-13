@@ -1,5 +1,6 @@
 """Recall Agent — multi-turn LLM-driven memory recall using LangGraph StateGraph."""
 
+import asyncio
 import datetime
 from typing import Any, TypedDict
 
@@ -10,6 +11,7 @@ from opencontext.config.global_config import get_config, get_prompt_group
 from opencontext.llm.global_vlm_client import generate_for_agent_async
 from opencontext.models.context import ProcessedContext
 from opencontext.server.search.event_search_service import EventSearchService
+from opencontext.storage.global_storage import get_storage
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 
@@ -270,11 +272,25 @@ class RecallAgent:
         max_turns = int(cfg.get("max_turns", 3))
         recall_model = cfg.get("model") or ""
 
+        # Fetch memory maps for both user events and agent base events
+        storage = get_storage()
+        if storage:
+            user_map, agent_map = await asyncio.gather(
+                storage.get_hierarchy_map("user", user_id, device_id, agent_id),
+                storage.get_hierarchy_map("agent_base", "__base__", device_id, agent_id),
+            )
+        else:
+            user_map, agent_map = {3: [], 2: [], 1: []}, {3: [], 2: [], 1: []}
+
+        user_map_text = self._format_map(user_map)
+        agent_map_text = self._format_map(agent_map)
+
         messages = self._build_initial_messages(
             chat_content=chat_content,
             agent_name=agent_name,
             agent_persona=agent_persona,
-            max_turns=max_turns,
+            user_memory_map=user_map_text,
+            agent_memory_map=agent_map_text,
         )
         if messages is None:
             logger.warning("[recall_agent] Prompt missing — aborting")
@@ -321,7 +337,8 @@ class RecallAgent:
         chat_content: str,
         agent_name: str,
         agent_persona: str,
-        max_turns: int,
+        user_memory_map: str = "",
+        agent_memory_map: str = "",
     ) -> list[dict[str, Any]] | None:
         prompt_group = get_prompt_group("processing.extraction.agent_memory_recall")
         if not prompt_group:
@@ -330,7 +347,8 @@ class RecallAgent:
         system = (
             system_template.replace("{agent_name}", agent_name)
             .replace("{agent_persona}", agent_persona)
-            .replace("{max_turns}", str(max_turns))
+            .replace("{user_memory_map}", user_memory_map)
+            .replace("{agent_memory_map}", agent_memory_map)
         )
         user_template: str = prompt_group.get("user", "")
         user = user_template.replace("{chat_history}", chat_content)
@@ -338,6 +356,45 @@ class RecallAgent:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
+
+    @staticmethod
+    def _format_map(hierarchy_map: dict[int, list]) -> str:
+        """Format a hierarchy map into readable text for the system prompt."""
+        if not hierarchy_map or not any(hierarchy_map.values()):
+            return "(no history available)"
+
+        level_labels = {3: "monthly", 2: "weekly", 1: "daily"}
+        lines: list[str] = []
+
+        for level in [3, 2, 1]:
+            contexts = hierarchy_map.get(level, [])
+            sorted_ctxs = sorted(
+                contexts,
+                key=lambda c: (
+                    c.properties.event_time_start
+                    if c.properties and c.properties.event_time_start
+                    else datetime.datetime.min.replace(tzinfo=datetime.UTC)
+                ),
+            )
+            label = level_labels[level]
+            for ctx in sorted_ctxs:
+                date_str = ""
+                if ctx.properties and ctx.properties.event_time_start:
+                    ts = ctx.properties.event_time_start
+                    if level == 3:
+                        date_str = ts.strftime("%Y-%m")
+                    elif level == 2:
+                        date_str = f"W{ts.isocalendar().week:02d}"
+                    else:
+                        date_str = ts.strftime("%m-%d")
+
+                title = (ctx.extracted_data.title if ctx.extracted_data else "") or ""
+                summary = (ctx.extracted_data.summary if ctx.extracted_data else "") or ""
+                text = summary if summary else title
+                if text:
+                    lines.append(f"[{date_str} {label}] {text}")
+
+        return "\n".join(lines) if lines else "(no history available)"
 
     @staticmethod
     def _format_memories(contexts: list[ProcessedContext]) -> str:

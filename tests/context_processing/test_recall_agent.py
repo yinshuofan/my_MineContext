@@ -27,7 +27,7 @@ _FAKE_CONFIG = {"max_turns": 3, "model": ""}
 
 _FAKE_PROMPT_GROUP = {
     "system": (
-        "You are {agent_name}. Persona: {agent_persona}. Max turns: {max_turns}. "
+        "You are {agent_name}. Persona: {agent_persona}. "
         "User map: {user_memory_map}. Agent map: {agent_memory_map}."
     ),
     "user": "Chat: {chat_history}",

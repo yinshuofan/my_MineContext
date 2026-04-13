@@ -1637,7 +1637,7 @@ class VikingDBBackend(IVectorStorageBackend):
             data = {
                 "collection_name": self._collection_name,
                 "index_name": self._index_name,
-                "limit": 100 + 10 + l1_days,
+                "limit": max(200, 100 + 52 + l1_days),
                 "field": FIELD_CREATE_TIME_TS,
                 "order": "desc",
                 "filter": filter_dict,
