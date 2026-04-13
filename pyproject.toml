@@ -27,6 +27,7 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "openai",
+    "langgraph>=0.4,<2.0",
     "jinja2",
     "json-repair",
     "ddgs",
