@@ -111,6 +111,18 @@ class RecallAgent:
                 }
             )
 
+            if len(new_hits) == 0:
+                state.consecutive_empty += 1
+                if state.consecutive_empty >= 2:
+                    logger.info(
+                        f"[recall_agent] turn={state.turn}: two consecutive empty "
+                        "searches, stopping"
+                    )
+                    state.turn += 1
+                    break
+            else:
+                state.consecutive_empty = 0
+
             state.turn += 1
 
         return self._format_memories(state.accumulated)

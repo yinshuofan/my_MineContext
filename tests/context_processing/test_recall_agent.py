@@ -136,3 +136,36 @@ async def test_max_turns_hard_cap():
 
     assert llm.await_count == 3
     assert search.await_count == 3
+
+
+@pytest.mark.unit
+async def test_two_consecutive_empty_searches_stops():
+    """Two empty searches in a row → safety brake breaks the loop."""
+    agent = RecallAgent()
+    config_five_turns = {"max_turns": 5, "model": ""}
+    always_search = '{"action": "search", "query": "q", "reason": "more"}'
+
+    with (
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_config",
+            return_value=config_five_turns,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
+            return_value=_FAKE_PROMPT_GROUP,
+        ),
+        patch(
+            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
+            new=AsyncMock(return_value=always_search),
+        ) as llm,
+        patch.object(
+            RecallAgent,
+            "_execute_search",
+            new=AsyncMock(side_effect=[[], []]),
+        ) as search,
+    ):
+        result = await _run_recall(agent)
+
+    assert search.await_count == 2
+    assert llm.await_count == 2
+    assert result == ""
