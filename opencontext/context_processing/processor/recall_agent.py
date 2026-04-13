@@ -379,12 +379,9 @@ class RecallAgent:
                 time_range = RecallAgent._format_time_range(ctx)
                 title = (ctx.extracted_data.title if ctx.extracted_data else "") or ""
                 summary = (ctx.extracted_data.summary if ctx.extracted_data else "") or ""
-                if not title and not summary:
-                    continue
-                entry = f"[{time_range} L{level}] {title}"
-                if summary:
-                    entry += f"\n  {summary}"
-                lines.append(entry)
+                parts = [p for p in (title, summary) if p]
+                if parts:
+                    lines.append(f"[{time_range} L{level}] {' | '.join(parts)}")
 
         return "\n".join(lines) if lines else "(no history available)"
 
