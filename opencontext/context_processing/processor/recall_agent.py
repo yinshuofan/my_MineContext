@@ -1,6 +1,7 @@
 """Recall Agent — multi-turn LLM-driven memory recall using LangGraph StateGraph."""
 
 import asyncio
+import contextlib
 import datetime
 from typing import Any, TypedDict
 
@@ -41,8 +42,9 @@ SEARCH_MEMORIES_TOOL = {
     "function": {
         "name": "search_memories",
         "description": (
-            "Search past memories/events for the given query. "
-            "Returns a summary of matching memories."
+            "Search past memories/events by semantic query. Returns matching "
+            "memories with their hierarchy ancestors (drill-up enabled by default). "
+            "Use filters to narrow results by time range or hierarchy level."
         ),
         "parameters": {
             "type": "object",
@@ -54,6 +56,29 @@ SEARCH_MEMORIES_TOOL = {
                 "reason": {
                     "type": "string",
                     "description": "Brief explanation of why this search is needed",
+                },
+                "time_start": {
+                    "type": "string",
+                    "description": (
+                        "Filter: only events starting at or after this date "
+                        "(ISO 8601, e.g. '2026-03-01'). Optional."
+                    ),
+                },
+                "time_end": {
+                    "type": "string",
+                    "description": (
+                        "Filter: only events starting at or before this date "
+                        "(ISO 8601, e.g. '2026-03-31'). Optional."
+                    ),
+                },
+                "hierarchy_levels": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": (
+                        "Filter: hierarchy levels to search (0=raw event, "
+                        "1=L1 summary, 2=L2 summary, 3=L3 summary). "
+                        "Default: [0] (raw events only). Optional."
+                    ),
                 },
             },
             "required": ["query"],
@@ -67,15 +92,23 @@ SEARCH_MEMORIES_TOOL = {
 
 
 async def _do_search(
-    query: str, user_id: str, device_id: str, agent_id: str
+    query: str,
+    user_id: str,
+    device_id: str,
+    agent_id: str,
+    time_range: Any | None = None,
+    hierarchy_levels: list[int] | None = None,
 ) -> list[ProcessedContext]:
-    """Execute one search. Exceptions propagate to caller."""
+    """Execute one search with optional filters. Exceptions propagate to caller."""
     service = EventSearchService()
     result = await service.search(
         query=[{"type": "text", "text": query}],
         user_id=user_id,
         device_id=device_id,
         agent_id=agent_id,
+        time_range=time_range,
+        hierarchy_levels=hierarchy_levels,
+        drill_up=True,
     )
     if not result:
         return []
@@ -166,12 +199,44 @@ async def execute_search(state: RecallState) -> dict:
             )
             continue
 
+        # Parse optional filters
+        time_range = None
+        if isinstance(args, dict) and (args.get("time_start") or args.get("time_end")):
+            from opencontext.server.search.models import TimeRange
+
+            tr_start = None
+            tr_end = None
+            try:
+                if args.get("time_start"):
+                    tr_start = int(
+                        datetime.datetime.fromisoformat(args["time_start"])
+                        .replace(tzinfo=datetime.UTC)
+                        .timestamp()
+                    )
+                if args.get("time_end"):
+                    tr_end = int(
+                        datetime.datetime.fromisoformat(args["time_end"])
+                        .replace(tzinfo=datetime.UTC)
+                        .timestamp()
+                    )
+            except (ValueError, TypeError):
+                pass  # ignore bad dates, search without time filter
+            if tr_start is not None or tr_end is not None:
+                time_range = TimeRange(start=tr_start, end=tr_end)
+
+        hierarchy_levels = None
+        if isinstance(args, dict) and args.get("hierarchy_levels"):
+            with contextlib.suppress(ValueError, TypeError):
+                hierarchy_levels = [int(lv) for lv in args["hierarchy_levels"]]
+
         try:
             new_contexts = await _do_search(
                 query=query,
                 user_id=state["search_params"]["user_id"],
                 device_id=state["search_params"]["device_id"],
                 agent_id=state["search_params"]["agent_id"],
+                time_range=time_range,
+                hierarchy_levels=hierarchy_levels,
             )
         except Exception:
             logger.warning("[recall_agent] search raised, returning error to LLM")
