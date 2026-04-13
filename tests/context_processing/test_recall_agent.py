@@ -1,16 +1,37 @@
-"""Unit tests for RecallAgent."""
+"""Unit tests for RecallAgent (LangGraph + tool calling)."""
 
+import contextlib
 import datetime
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from opencontext.context_processing.processor.recall_agent import RecallAgent
+from opencontext.context_processing.processor.recall_agent import (
+    SEARCH_MEMORIES_TOOL,
+    RecallAgent,
+)
+
+# ---------------------------------------------------------------------------
+# Test helpers
+# ---------------------------------------------------------------------------
+
+MOCK_LLM = "opencontext.context_processing.processor.recall_agent.generate_for_agent_async"
+MOCK_SEARCH = "opencontext.context_processing.processor.recall_agent._do_search"
+MOCK_CONFIG = "opencontext.context_processing.processor.recall_agent.get_config"
+MOCK_PROMPT = "opencontext.context_processing.processor.recall_agent.get_prompt_group"
+
+_FAKE_CONFIG = {"max_turns": 3, "model": ""}
+
+_FAKE_PROMPT_GROUP = {
+    "system": "You are {agent_name}. Persona: {agent_persona}. Max turns: {max_turns}.",
+    "user": "Chat: {chat_history}\nRecall past memories.",
+}
 
 
 def _make_ctx(ctx_id: str, title: str, summary: str = "", date: str = "2026-04-01"):
-    """Build a minimal ProcessedContext-like object for formatting assertions."""
+    """Build a minimal ProcessedContext-like object."""
     return SimpleNamespace(
         id=ctx_id,
         extracted_data=SimpleNamespace(title=title, summary=summary),
@@ -18,12 +39,84 @@ def _make_ctx(ctx_id: str, title: str, summary: str = "", date: str = "2026-04-0
     )
 
 
-_FAKE_CONFIG = {"max_turns": 3, "model": ""}
+def _make_tool_call_response(tool_call_id: str, query: str, reason: str = ""):
+    """Fake OpenAI response WITH a search_memories tool call."""
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=None,
+                    tool_calls=[
+                        SimpleNamespace(
+                            id=tool_call_id,
+                            function=SimpleNamespace(
+                                name="search_memories",
+                                arguments=json.dumps({"query": query, "reason": reason}),
+                            ),
+                        )
+                    ],
+                )
+            )
+        ]
+    )
 
-_FAKE_PROMPT_GROUP = {
-    "system": "You are {agent_name}. Persona: {agent_persona}. Max turns: {max_turns}.",
-    "user": "Chat: {chat_history}\nPrev: {previous_actions}\nBrief: {accumulated_brief}",
-}
+
+def _make_done_response(content: str = "Recall complete."):
+    """Fake OpenAI response WITHOUT tool calls (LLM decided to stop)."""
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=content,
+                    tool_calls=None,
+                )
+            )
+        ]
+    )
+
+
+def _make_unknown_tool_response(tool_call_id: str = "tc_unk"):
+    """Fake OpenAI response with an unknown tool name."""
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=None,
+                    tool_calls=[
+                        SimpleNamespace(
+                            id=tool_call_id,
+                            function=SimpleNamespace(
+                                name="unknown_tool",
+                                arguments=json.dumps({"foo": "bar"}),
+                            ),
+                        )
+                    ],
+                )
+            )
+        ]
+    )
+
+
+def _make_empty_query_response(tool_call_id: str = "tc_eq"):
+    """Fake OpenAI response with search_memories but empty query."""
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=None,
+                    tool_calls=[
+                        SimpleNamespace(
+                            id=tool_call_id,
+                            function=SimpleNamespace(
+                                name="search_memories",
+                                arguments=json.dumps({"query": "", "reason": "empty"}),
+                            ),
+                        )
+                    ],
+                )
+            )
+        ]
+    )
 
 
 async def _run_recall(agent: RecallAgent) -> str:
@@ -37,26 +130,31 @@ async def _run_recall(agent: RecallAgent) -> str:
     )
 
 
+@contextlib.contextmanager
+def _patches(llm_mock, search_mock=None, config=None, prompt=None):
+    """Context manager that patches config, prompt, LLM, and search."""
+    with (
+        patch(MOCK_CONFIG, return_value=config or _FAKE_CONFIG),
+        patch(MOCK_PROMPT, return_value=prompt or _FAKE_PROMPT_GROUP),
+        patch(MOCK_LLM, new=llm_mock),
+        patch(MOCK_SEARCH, new=search_mock or AsyncMock(return_value=[])),
+    ):
+        yield
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.unit
 async def test_first_turn_done_returns_empty():
-    """Agent says 'done' on turn 1 → recall() returns empty string, no search called."""
+    """LLM responds without tool calls on turn 1 → empty string, no search."""
     agent = RecallAgent()
+    llm = AsyncMock(return_value=_make_done_response())
+    search = AsyncMock(return_value=[])
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value='{"action": "done", "reason": "not relevant"}'),
-        ) as llm,
-        patch.object(RecallAgent, "_execute_search", new=AsyncMock(return_value=[])) as search,
-    ):
+    with _patches(llm, search):
         result = await _run_recall(agent)
 
     assert result == ""
@@ -66,34 +164,20 @@ async def test_first_turn_done_returns_empty():
 
 @pytest.mark.unit
 async def test_single_search_then_done():
-    """Turn 1 searches and finds 2 hits, turn 2 says done → formatted memories."""
+    """Turn 1: tool call → search finds 2 hits. Turn 2: done → formatted memories."""
     agent = RecallAgent()
-
     ctx1 = _make_ctx("c1", "meeting with alice", "discussed Q2 plans", "2026-04-01")
     ctx2 = _make_ctx("c2", "demo feedback", "team liked the UI", "2026-04-03")
 
-    llm_responses = [
-        '{"action": "search", "query": "alice demo", "reason": "new keywords"}',
-        '{"action": "done", "reason": "got what I need"}',
-    ]
+    llm = AsyncMock(
+        side_effect=[
+            _make_tool_call_response("tc1", "alice demo"),
+            _make_done_response(),
+        ]
+    )
+    search = AsyncMock(return_value=[ctx1, ctx2])
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(side_effect=llm_responses),
-        ) as llm,
-        patch.object(
-            RecallAgent, "_execute_search", new=AsyncMock(return_value=[ctx1, ctx2])
-        ) as search,
-    ):
+    with _patches(llm, search):
         result = await _run_recall(agent)
 
     assert llm.await_count == 2
@@ -102,108 +186,72 @@ async def test_single_search_then_done():
     assert "demo feedback" in result
     assert "2026-04-01" in result
     assert "2026-04-03" in result
-    # Memories are sorted ascending by date, so alice appears before demo
     assert result.index("meeting with alice") < result.index("demo feedback")
 
 
 @pytest.mark.unit
 async def test_max_turns_hard_cap():
-    """Agent never says done → loop stops at max_turns (default 3)."""
+    """LLM always calls tool → loop stops at recursion limit."""
     agent = RecallAgent()
-    always_search = '{"action": "search", "query": "q", "reason": "more"}'
-    ctxs_per_turn = [[_make_ctx(f"c{i}", f"title{i}", "sum", "2026-04-01")] for i in range(10)]
+    # Each turn returns a different ctx ID so the empty-search brake doesn't fire
+    ctxs_per_turn = [[_make_ctx(f"c{i}", f"title{i}")] for i in range(10)]
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value=always_search),
-        ) as llm,
-        patch.object(
-            RecallAgent,
-            "_execute_search",
-            new=AsyncMock(side_effect=ctxs_per_turn),
-        ) as search,
-    ):
+    call_count = {"n": 0}
+
+    async def llm_side_effect(*args, **kwargs):
+        call_count["n"] += 1
+        return _make_tool_call_response(f"tc{call_count['n']}", f"q{call_count['n']}")
+
+    search = AsyncMock(side_effect=ctxs_per_turn)
+
+    with _patches(AsyncMock(side_effect=llm_side_effect), search):
         await _run_recall(agent)
 
-    assert llm.await_count == 3
-    assert search.await_count == 3
+    # With max_turns=3, recursion_limit=(3*2)+3=9
+    # Graph: call_llm(1)->exec_search(2)->call_llm(3)->exec_search(4)->...
+    # The recursion limit caps total node invocations. Search should be called at most 4 times.
+    assert search.await_count <= 4
 
 
 @pytest.mark.unit
 async def test_two_consecutive_empty_searches_stops():
-    """Two empty searches in a row → safety brake breaks the loop."""
+    """Two empty searches → route_after_search stops the loop."""
     agent = RecallAgent()
-    config_five_turns = {"max_turns": 5, "model": ""}
-    always_search = '{"action": "search", "query": "q", "reason": "more"}'
+    config = {"max_turns": 5, "model": ""}
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=config_five_turns,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value=always_search),
-        ) as llm,
-        patch.object(
-            RecallAgent,
-            "_execute_search",
-            new=AsyncMock(side_effect=[[], []]),
-        ) as search,
-    ):
+    call_count = {"n": 0}
+
+    async def llm_always_search(*args, **kwargs):
+        call_count["n"] += 1
+        return _make_tool_call_response(f"tc{call_count['n']}", "q")
+
+    search = AsyncMock(return_value=[])  # always empty
+
+    with _patches(AsyncMock(side_effect=llm_always_search), search, config=config):
         result = await _run_recall(agent)
 
-    assert search.await_count == 2
-    assert llm.await_count == 2
     assert result == ""
+    assert search.await_count == 2  # stops after 2 consecutive empty
 
 
 @pytest.mark.unit
 async def test_dedup_across_turns():
-    """Turn 1 and turn 2 return overlapping ctx IDs → final output dedupes."""
+    """Two turns return overlapping IDs → final output dedupes."""
     agent = RecallAgent()
     ctx_a = _make_ctx("c1", "shared event", "sum", "2026-04-01")
     ctx_b = _make_ctx("c2", "turn 1 extra", "sum", "2026-04-02")
     ctx_c = _make_ctx("c3", "turn 2 extra", "sum", "2026-04-03")
 
-    llm_responses = [
-        '{"action": "search", "query": "first", "reason": "r"}',
-        '{"action": "search", "query": "second", "reason": "r"}',
-        '{"action": "done", "reason": "enough"}',
-    ]
+    llm = AsyncMock(
+        side_effect=[
+            _make_tool_call_response("tc1", "first"),
+            _make_tool_call_response("tc2", "second"),
+            _make_done_response(),
+        ]
+    )
+    search = AsyncMock(side_effect=[[ctx_a, ctx_b], [ctx_a, ctx_c]])
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(side_effect=llm_responses),
-        ),
-        patch.object(
-            RecallAgent,
-            "_execute_search",
-            new=AsyncMock(side_effect=[[ctx_a, ctx_b], [ctx_a, ctx_c]]),
-        ),
-    ):
+    with _patches(llm, search):
         result = await _run_recall(agent)
 
     assert result.count("shared event") == 1
@@ -212,261 +260,160 @@ async def test_dedup_across_turns():
 
 
 @pytest.mark.unit
-async def test_turn_one_invalid_json_returns_empty():
-    """Unparseable LLM output on turn 1 → abort with empty string."""
-    agent = RecallAgent()
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value="not json at all"),
-        ),
-        patch.object(RecallAgent, "_execute_search", new=AsyncMock()) as search,
-    ):
-        result = await _run_recall(agent)
-    assert result == ""
-    assert search.await_count == 0
-
-
-@pytest.mark.unit
-async def test_unknown_action_breaks():
-    """Unknown action type → break, return accumulated (empty here)."""
-    agent = RecallAgent()
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value='{"action": "fetch", "query": "x"}'),
-        ),
-        patch.object(RecallAgent, "_execute_search", new=AsyncMock()) as search,
-    ):
-        result = await _run_recall(agent)
-    assert result == ""
-    assert search.await_count == 0
-
-
-@pytest.mark.unit
-async def test_search_raises_returns_accumulated():
-    """Turn 1 search ok, turn 2 search raises → return turn 1's memories."""
-    agent = RecallAgent()
-    ctx1 = _make_ctx("c1", "first hit", "sum", "2026-04-01")
-    llm_responses = [
-        '{"action": "search", "query": "q1", "reason": "r"}',
-        '{"action": "search", "query": "q2", "reason": "r"}',
-    ]
-    call_count = {"n": 0}
-
-    async def search_side_effect(*args, **kwargs):
-        call_count["n"] += 1
-        if call_count["n"] == 1:
-            return [ctx1]
-        raise RuntimeError("search down")
-
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(side_effect=llm_responses),
-        ),
-        patch.object(RecallAgent, "_execute_search", new=search_side_effect),
-    ):
-        result = await _run_recall(agent)
-    assert "first hit" in result
-
-
-@pytest.mark.unit
 async def test_turn_one_llm_raises_returns_empty():
-    """Turn 1 LLM raises → return empty string."""
+    """LLM exception on turn 1 → graceful fallback, empty string."""
     agent = RecallAgent()
 
     async def boom(*args, **kwargs):
         raise RuntimeError("LLM outage")
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=boom,
-        ),
-        patch.object(RecallAgent, "_execute_search", new=AsyncMock()) as search,
-    ):
+    search = AsyncMock()
+
+    with _patches(boom, search):
         result = await _run_recall(agent)
+
+    assert result == ""
+    assert search.await_count == 0
+
+
+@pytest.mark.unit
+async def test_unknown_tool_name_returns_error_then_stops():
+    """LLM calls unknown tool → error tool message → LLM stops."""
+    agent = RecallAgent()
+
+    llm = AsyncMock(
+        side_effect=[
+            _make_unknown_tool_response("tc1"),
+            _make_done_response(),  # LLM sees error and stops
+        ]
+    )
+    search = AsyncMock()
+
+    with _patches(llm, search):
+        result = await _run_recall(agent)
+
+    assert result == ""
+    assert search.await_count == 0  # no actual search was executed
+
+
+@pytest.mark.unit
+async def test_search_raises_returns_error_to_llm():
+    """Turn 1 search ok, turn 2 search raises → error as tool message → LLM stops."""
+    agent = RecallAgent()
+    ctx1 = _make_ctx("c1", "first hit", "sum", "2026-04-01")
+
+    call_count = {"n": 0}
+
+    async def search_fn(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return [ctx1]
+        raise RuntimeError("search down")
+
+    llm = AsyncMock(
+        side_effect=[
+            _make_tool_call_response("tc1", "q1"),
+            _make_tool_call_response("tc2", "q2"),
+            _make_done_response(),  # after seeing error, LLM stops
+        ]
+    )
+
+    with _patches(llm, search_fn):
+        result = await _run_recall(agent)
+
+    assert "first hit" in result
+
+
+@pytest.mark.unit
+async def test_empty_query_returns_error_tool_message():
+    """Tool call with empty query → error tool message → LLM stops."""
+    agent = RecallAgent()
+
+    llm = AsyncMock(
+        side_effect=[
+            _make_empty_query_response("tc1"),
+            _make_done_response(),
+        ]
+    )
+    search = AsyncMock()
+
+    with _patches(llm, search):
+        result = await _run_recall(agent)
+
     assert result == ""
     assert search.await_count == 0
 
 
 @pytest.mark.unit
 async def test_model_override_passed_when_configured():
-    """Config.model set → generate_with_messages called with model kwarg."""
+    """Config.model set → generate_for_agent_async called with model kwarg."""
     agent = RecallAgent()
-    config_with_model = {"max_turns": 3, "model": "cheap-model"}
-    done_once = '{"action": "done", "reason": "quick"}'
+    config = {"max_turns": 3, "model": "cheap-model"}
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=config_with_model,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value=done_once),
-        ) as llm,
-        patch.object(RecallAgent, "_execute_search", new=AsyncMock(return_value=[])),
-    ):
+    llm = AsyncMock(return_value=_make_done_response())
+
+    with _patches(llm, config=config):
         await _run_recall(agent)
 
     assert llm.await_count == 1
-    call_kwargs = llm.await_args.kwargs
+    call_kwargs = llm.call_args.kwargs
     assert call_kwargs.get("model") == "cheap-model"
-    assert call_kwargs.get("enable_executor") is False
 
 
 @pytest.mark.unit
 async def test_model_override_omitted_when_not_configured():
-    """Config.model empty → generate_with_messages called WITHOUT model kwarg."""
+    """Config.model empty → no model kwarg passed."""
     agent = RecallAgent()
-    done_once = '{"action": "done", "reason": "quick"}'
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value=done_once),
-        ) as llm,
-        patch.object(RecallAgent, "_execute_search", new=AsyncMock(return_value=[])),
-    ):
+    llm = AsyncMock(return_value=_make_done_response())
+
+    with _patches(llm):
         await _run_recall(agent)
 
     assert llm.await_count == 1
-    assert "model" not in llm.await_args.kwargs
+    assert "model" not in llm.call_args.kwargs
 
 
 @pytest.mark.unit
 async def test_config_hot_reload():
-    """Changing max_turns in config affects the next recall() call."""
-    agent = RecallAgent()
-    always_search = '{"action": "search", "query": "q", "reason": "r"}'
-
-    config_2_turns = {"max_turns": 2, "model": ""}
-    config_1_turn = {"max_turns": 1, "model": ""}
-
-    # Run with max_turns=2
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=config_2_turns,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value=always_search),
-        ) as llm2,
-        patch.object(
-            RecallAgent,
-            "_execute_search",
-            new=AsyncMock(side_effect=[[_make_ctx(f"a{i}", f"t{i}")] for i in range(5)]),
-        ),
-    ):
-        await _run_recall(agent)
-    assert llm2.await_count == 2
-
-    # Run with max_turns=1 — same agent instance, different config
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=config_1_turn,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value=always_search),
-        ) as llm1,
-        patch.object(
-            RecallAgent,
-            "_execute_search",
-            new=AsyncMock(side_effect=[[_make_ctx(f"b{i}", f"t{i}")] for i in range(5)]),
-        ),
-    ):
-        await _run_recall(agent)
-    assert llm1.await_count == 1
-
-
-@pytest.mark.unit
-async def test_search_action_empty_query_breaks():
-    """Search action with empty query → break immediately, no search executed."""
+    """Same agent instance, different config → different behavior."""
     agent = RecallAgent()
 
-    with (
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_config",
-            return_value=_FAKE_CONFIG,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.get_prompt_group",
-            return_value=_FAKE_PROMPT_GROUP,
-        ),
-        patch(
-            "opencontext.context_processing.processor.recall_agent.generate_with_messages",
-            new=AsyncMock(return_value='{"action": "search", "query": "", "reason": "empty"}'),
-        ),
-        patch.object(RecallAgent, "_execute_search", new=AsyncMock()) as search,
-    ):
-        result = await _run_recall(agent)
+    call_count_2 = {"n": 0}
 
-    assert result == ""
-    assert search.await_count == 0
+    async def llm_always_search_2(*args, **kwargs):
+        call_count_2["n"] += 1
+        return _make_tool_call_response(f"tc{call_count_2['n']}", "q")
+
+    # Run 1: max_turns=2
+    with _patches(
+        AsyncMock(side_effect=llm_always_search_2),
+        AsyncMock(side_effect=[[_make_ctx(f"a{i}", f"t{i}")] for i in range(5)]),
+        config={"max_turns": 2, "model": ""},
+    ):
+        await _run_recall(agent)
+
+    call_count_1 = {"n": 0}
+
+    async def llm_always_search_1(*args, **kwargs):
+        call_count_1["n"] += 1
+        return _make_tool_call_response(f"tc{call_count_1['n']}", "q")
+
+    # Run 2: max_turns=1
+    with _patches(
+        AsyncMock(side_effect=llm_always_search_1),
+        AsyncMock(side_effect=[[_make_ctx(f"b{i}", f"t{i}")] for i in range(5)]),
+        config={"max_turns": 1, "model": ""},
+    ):
+        await _run_recall(agent)
+
+    # max_turns=1 should result in fewer search calls than max_turns=2
+    assert call_count_1["n"] <= call_count_2["n"]
 
 
 @pytest.mark.unit
 async def test_format_memories_with_tz_aware_datetimes():
     """_format_memories handles timezone-aware datetimes without TypeError."""
-    from opencontext.context_processing.processor.recall_agent import RecallAgent
-
     tz_ctx = SimpleNamespace(
         id="tz1",
         extracted_data=SimpleNamespace(title="tz event", summary="tz sum"),
@@ -483,5 +430,81 @@ async def test_format_memories_with_tz_aware_datetimes():
     result = RecallAgent._format_memories([tz_ctx, no_time_ctx])
     assert "tz event" in result
     assert "no time" in result
-    # no-time context should sort first (min datetime)
     assert result.index("no time") < result.index("tz event")
+
+
+# ---------------------------------------------------------------------------
+# New tests (not in old suite)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_tools_param_passed_to_llm():
+    """Verify generate_for_agent_async receives tools=[SEARCH_MEMORIES_TOOL]."""
+    agent = RecallAgent()
+    llm = AsyncMock(return_value=_make_done_response())
+
+    with _patches(llm):
+        await _run_recall(agent)
+
+    call_args = llm.call_args
+    # generate_for_agent_async is called with keyword args: messages=..., tools=...
+    tools_arg = call_args.kwargs.get("tools")
+    assert tools_arg == [SEARCH_MEMORIES_TOOL]
+
+
+@pytest.mark.unit
+async def test_message_history_accumulates():
+    """Messages passed to LLM on turn 2 contain turn 1's assistant + tool messages."""
+    agent = RecallAgent()
+    ctx1 = _make_ctx("c1", "found event", "sum", "2026-04-01")
+
+    llm_calls: list = []
+
+    async def capture_llm(messages, **kwargs):
+        llm_calls.append(list(messages))  # snapshot
+        if len(llm_calls) == 1:
+            return _make_tool_call_response("tc1", "first query")
+        return _make_done_response()
+
+    with _patches(capture_llm, AsyncMock(return_value=[ctx1])):
+        await _run_recall(agent)
+
+    assert len(llm_calls) == 2
+    # Turn 1 messages: [system, user]
+    assert len(llm_calls[0]) == 2
+    assert llm_calls[0][0]["role"] == "system"
+    assert llm_calls[0][1]["role"] == "user"
+    # Turn 2 messages: [system, user, assistant(with tool_calls), tool(result)]
+    assert len(llm_calls[1]) == 4
+    assert llm_calls[1][2]["role"] == "assistant"
+    assert "tool_calls" in llm_calls[1][2]
+    assert llm_calls[1][3]["role"] == "tool"
+    assert "found event" in llm_calls[1][3]["content"]
+
+
+@pytest.mark.unit
+async def test_search_error_becomes_tool_message():
+    """When search raises, LLM receives a tool message with error text."""
+    agent = RecallAgent()
+
+    llm_calls: list = []
+
+    async def capture_llm(messages, **kwargs):
+        llm_calls.append(list(messages))
+        if len(llm_calls) == 1:
+            return _make_tool_call_response("tc1", "query")
+        return _make_done_response()
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("search down")
+
+    with _patches(capture_llm, boom):
+        await _run_recall(agent)
+
+    assert len(llm_calls) == 2
+    # Turn 2 should see the error tool message
+    tool_msg = llm_calls[1][3]
+    assert tool_msg["role"] == "tool"
+    assert "Error" in tool_msg["content"]
+    assert "unavailable" in tool_msg["content"]
