@@ -96,7 +96,7 @@ class LLMClient:
                 thinking = kwargs.get("thinking")
 
                 create_params = {
-                    "model": self.model,
+                    "model": kwargs.get("model") or self.model,
                     "messages": messages,
                 }
                 if tools:
