@@ -4,7 +4,7 @@ import contextlib
 import datetime
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -21,12 +21,16 @@ MOCK_LLM = "opencontext.context_processing.processor.recall_agent.generate_for_a
 MOCK_SEARCH = "opencontext.context_processing.processor.recall_agent._do_search"
 MOCK_CONFIG = "opencontext.context_processing.processor.recall_agent.get_config"
 MOCK_PROMPT = "opencontext.context_processing.processor.recall_agent.get_prompt_group"
+MOCK_STORAGE = "opencontext.context_processing.processor.recall_agent.get_storage"
 
 _FAKE_CONFIG = {"max_turns": 3, "model": ""}
 
 _FAKE_PROMPT_GROUP = {
-    "system": "You are {agent_name}. Persona: {agent_persona}. Max turns: {max_turns}.",
-    "user": "Chat: {chat_history}\nRecall past memories.",
+    "system": (
+        "You are {agent_name}. Persona: {agent_persona}. Max turns: {max_turns}. "
+        "User map: {user_memory_map}. Agent map: {agent_memory_map}."
+    ),
+    "user": "Chat: {chat_history}",
 }
 
 
@@ -35,7 +39,10 @@ def _make_ctx(ctx_id: str, title: str, summary: str = "", date: str = "2026-04-0
     return SimpleNamespace(
         id=ctx_id,
         extracted_data=SimpleNamespace(title=title, summary=summary),
-        properties=SimpleNamespace(event_time_start=datetime.datetime.fromisoformat(date)),
+        properties=SimpleNamespace(
+            event_time_start=datetime.datetime.fromisoformat(date),
+            event_time_end=None,
+        ),
     )
 
 
@@ -131,13 +138,17 @@ async def _run_recall(agent: RecallAgent) -> str:
 
 
 @contextlib.contextmanager
-def _patches(llm_mock, search_mock=None, config=None, prompt=None):
-    """Context manager that patches config, prompt, LLM, and search."""
+def _patches(llm_mock, search_mock=None, config=None, prompt=None, storage=None):
+    """Context manager that patches config, prompt, LLM, search, and storage."""
+    if storage is None:
+        storage = MagicMock()
+        storage.get_hierarchy_map = AsyncMock(return_value={3: [], 2: [], 1: []})
     with (
         patch(MOCK_CONFIG, return_value=config or _FAKE_CONFIG),
         patch(MOCK_PROMPT, return_value=prompt or _FAKE_PROMPT_GROUP),
         patch(MOCK_LLM, new=llm_mock),
         patch(MOCK_SEARCH, new=search_mock or AsyncMock(return_value=[])),
+        patch(MOCK_STORAGE, return_value=storage),
     ):
         yield
 
@@ -536,3 +547,105 @@ async def test_graph_recursion_error_returns_empty():
     # With tight recursion_limit, the graph may hit GraphRecursionError
     # recall() catches it and returns "" — this is the expected graceful degradation
     assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# Memory map tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_memory_map_injected_into_system_prompt():
+    """L3 summaries from memory map appear in the system message passed to LLM."""
+    agent = RecallAgent()
+
+    ctx_l3 = _make_ctx("l3_1", "March project kickoff", "Started the new project", "2026-03-15")
+    fake_storage = MagicMock()
+    fake_storage.get_hierarchy_map = AsyncMock(
+        side_effect=[
+            {3: [ctx_l3], 2: [], 1: []},  # user map
+            {3: [], 2: [], 1: []},  # agent map
+        ]
+    )
+
+    llm_calls: list = []
+
+    async def capture_llm(messages, **kwargs):
+        llm_calls.append(list(messages))
+        return _make_done_response()
+
+    with _patches(capture_llm, storage=fake_storage):
+        await _run_recall(agent)
+
+    assert len(llm_calls) == 1
+    system_content = llm_calls[0][0]["content"]
+    # _format_map prefers summary over title when both are present
+    assert "Started the new project" in system_content
+
+
+@pytest.mark.unit
+async def test_empty_memory_map_shows_placeholder():
+    """No history → '(no history available)' in prompt."""
+    agent = RecallAgent()
+
+    llm_calls: list = []
+
+    async def capture_llm(messages, **kwargs):
+        llm_calls.append(list(messages))
+        return _make_done_response()
+
+    with _patches(capture_llm):
+        await _run_recall(agent)
+
+    system_content = llm_calls[0][0]["content"]
+    assert "(no history available)" in system_content
+
+
+@pytest.mark.unit
+async def test_both_user_and_agent_maps_fetched():
+    """get_hierarchy_map called twice: once for user, once for agent_base."""
+    agent = RecallAgent()
+
+    fake_storage = MagicMock()
+    fake_storage.get_hierarchy_map = AsyncMock(return_value={3: [], 2: [], 1: []})
+
+    with _patches(AsyncMock(return_value=_make_done_response()), storage=fake_storage):
+        await _run_recall(agent)
+
+    assert fake_storage.get_hierarchy_map.await_count == 2
+    calls = fake_storage.get_hierarchy_map.await_args_list
+    # First call: user events
+    assert calls[0].args[0] == "user" or calls[0].kwargs.get("owner_type") == "user"
+    # Second call: agent_base events
+    assert calls[1].args[0] == "agent_base" or calls[1].kwargs.get("owner_type") == "agent_base"
+
+
+@pytest.mark.unit
+async def test_format_map_groups_by_level():
+    """_format_map outputs L3 before L2 before L1, sorted by time within each."""
+    from opencontext.context_processing.processor.recall_agent import RecallAgent
+
+    # _format_map prefers summary over title; use summary for descriptive text
+    ctx_l3_jan = _make_ctx("l3a", "", "January overview", "2026-01-15")
+    ctx_l3_feb = _make_ctx("l3b", "", "February overview", "2026-02-15")
+    ctx_l2 = _make_ctx("l2a", "", "Week 14 report", "2026-04-01")
+    ctx_l1 = _make_ctx("l1a", "", "Yesterday daily", "2026-04-12")
+
+    result = RecallAgent._format_map(
+        {
+            3: [ctx_l3_feb, ctx_l3_jan],  # deliberately out of order
+            2: [ctx_l2],
+            1: [ctx_l1],
+        }
+    )
+
+    # L3 should come first, sorted by date (Jan before Feb)
+    assert result.index("January overview") < result.index("February overview")
+    # L3 before L2
+    assert result.index("February overview") < result.index("Week 14 report")
+    # L2 before L1
+    assert result.index("Week 14 report") < result.index("Yesterday daily")
+    # Labels present
+    assert "monthly" in result
+    assert "weekly" in result
+    assert "daily" in result
