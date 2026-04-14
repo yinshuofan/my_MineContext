@@ -11,7 +11,6 @@ from langgraph.graph import END, START, StateGraph
 from opencontext.config.global_config import get_config, get_prompt_group
 from opencontext.llm.global_vlm_client import generate_for_agent_async
 from opencontext.models.context import ProcessedContext
-from opencontext.models.enums import ContextType
 from opencontext.server.search.event_search_service import EventSearchService
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.json_parser import parse_json_from_response
@@ -155,18 +154,6 @@ def _format_time_range_str(ctx: ProcessedContext) -> str:
     return start_str
 
 
-# Summary context types whose refs key indicates an upward (parent) link.
-# Derived from ContextType enum to stay in sync if new types are added.
-_SUMMARY_TYPE_VALUES: set[str] = {
-    ContextType.DAILY_SUMMARY.value,
-    ContextType.WEEKLY_SUMMARY.value,
-    ContextType.MONTHLY_SUMMARY.value,
-    ContextType.AGENT_BASE_L1_SUMMARY.value,
-    ContextType.AGENT_BASE_L2_SUMMARY.value,
-    ContextType.AGENT_BASE_L3_SUMMARY.value,
-}
-
-
 def _format_search_result(
     hits: list[ProcessedContext],
     ancestors: list[ProcessedContext],
@@ -201,14 +188,17 @@ def _format_search_result(
     linked: set[str] = set()
     for node_id, ctx in all_ctxs.items():
         refs = ctx.properties.refs if ctx.properties and ctx.properties.refs else {}
+        node_level = ctx.properties.hierarchy_level if ctx.properties else 0
         parent_id = None
-        for ref_key, ref_ids in refs.items():
-            if ref_key not in _SUMMARY_TYPE_VALUES:
-                continue
+        for ref_ids in refs.values():
             for pid in ref_ids:
                 if pid in all_ctxs:
-                    parent_id = pid
-                    break
+                    p_level = (
+                        all_ctxs[pid].properties.hierarchy_level if all_ctxs[pid].properties else 0
+                    )
+                    if p_level > node_level:
+                        parent_id = pid
+                        break
             if parent_id:
                 break
         if parent_id and node_id not in linked:

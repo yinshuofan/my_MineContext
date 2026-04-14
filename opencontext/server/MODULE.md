@@ -15,7 +15,7 @@ FastAPI-based HTTP server layer: request routing, search strategy dispatch, per-
 | `__init__.py` | Package marker (empty) |
 | **routes/** | |
 | `routes/push.py` | Push API endpoints (`/api/push/*`) -- unified chat, documents, contexts |
-| `routes/search.py` | Event search endpoint (`POST /api/search`) with semantic query, filters, and hierarchy drill-up |
+| `routes/search.py` | Event search endpoint (`POST /api/search`) with semantic query, filters, and hierarchy drill |
 | `routes/memory_cache.py` | Memory cache endpoints (`GET/DELETE /api/memory-cache`) |
 | `routes/health.py` | Health and readiness probes (`/health`, `/api/health`, `/api/ready`, `/api/auth/status`) |
 | `routes/context.py` | Context CRUD and vector search (`/api/contexts/*`, `/api/context_types`, `/api/vector_search`) |
@@ -118,7 +118,8 @@ Reusable, stateless search service that encapsulates vectorization, storage sear
 @dataclass
 class SearchResult:
     hits: List[Tuple[ProcessedContext, float]]     # (context, score) pairs
-    ancestors: Dict[str, ProcessedContext]          # id -> ancestor context (populated when drill_up=True)
+    ancestors: Dict[str, ProcessedContext]          # id -> ancestor context (populated when drill includes "up")
+    descendants: Dict[str, ProcessedContext]        # id -> descendant context (populated when drill includes "down")
 
 class EventSearchService:
     @property storage                               # -> get_storage()
@@ -126,16 +127,17 @@ class EventSearchService:
     # Public API — single unified method
     async def search(query=None, user_id=..., device_id=..., agent_id=...,
                      top_k=20, score_threshold=None, time_range=None,
-                     hierarchy_levels=None, drill_up=False) -> SearchResult
+                     hierarchy_levels=None, drill="none") -> SearchResult
 
     # Helpers (public — used by route layer)
     @staticmethod get_l0_type() -> str
     @staticmethod _get_context_types_for_levels(levels) -> List[str]
     @staticmethod _build_filters(time_range, hierarchy_levels) -> Dict[str, Any]
     async def collect_ancestors(results, max_level) -> Dict[str, ProcessedContext]
+    async def collect_descendants(results, min_level) -> Dict[str, ProcessedContext]
 ```
 
-`search()` is the single public method. If `query` is provided, it performs vector search: callers provide raw query content in OpenAI content parts format (`[{"type": "text", "text": "..."}]`), the method vectorizes the query, applies `hierarchy_levels` and `time_range` as filter conditions, and issues **one backend call**. If `query` is `None`, it falls back to filter-only search (no vectorization): applies `hierarchy_levels` and `time_range` via storage filters, still one backend call. Optionally collects ancestors via `collect_ancestors()` when `drill_up=True`. The `memory_owner` parameter was removed -- all searches now query both user events and agent base events. `search_hierarchy()` is not called from `EventSearchService`.
+`search()` is the single public method. If `query` is provided, it performs vector search: callers provide raw query content in OpenAI content parts format (`[{"type": "text", "text": "..."}]`), the method vectorizes the query, applies `hierarchy_levels` and `time_range` as filter conditions, and issues **one backend call**. If `query` is `None`, it falls back to filter-only search (no vectorization): applies `hierarchy_levels` and `time_range` via storage filters, still one backend call. The `drill` parameter controls hierarchy expansion: `"none"` (default) returns only search hits; `"up"` collects ancestors via `collect_ancestors()`; `"down"` collects descendants via `collect_descendants()`; `"both"` collects both directions. The `memory_owner` parameter was removed -- all searches now query both user events and agent base events. `search_hierarchy()` is not called from `EventSearchService`.
 
 ### Event Search Route (routes/search.py)
 
@@ -157,7 +159,7 @@ Algorithm:
    - `event_ids` → `storage.get_contexts_by_ids()`, score=1.0
    - `query` → `search_service.semantic_search()` (handles vectorization + storage search)
    - filters-only → `search_service.filter_search()`
-2. **Collect ancestors** (if `drill_up=True`): Handled by `EventSearchService.collect_ancestors()` — follows `refs` upward iteratively (max 3 rounds for L0→L3). Uses `seen` cache to avoid duplicate fetches when multiple events share the same parent ref. Strictly stops at `max_level`.
+2. **Collect ancestors/descendants** (controlled by `drill` parameter: `"none"`, `"up"`, `"down"`, `"both"`): Ancestors collected by `EventSearchService.collect_ancestors()` — follows refs upward to higher hierarchy levels iteratively (max 3 rounds for L0->L3). Descendants collected by `EventSearchService.collect_descendants()` — follows refs downward to lower hierarchy levels. Both use `seen` cache to avoid duplicate fetches.
 3. **Build node map**: Search hits become `EventNode` with is_search_hit=True (score/content/keywords populated), ancestors become lightweight `EventNode` with is_search_hit=False. Search hits are never overwritten by ancestors.
 4. **Link tree**: Parent is extracted from `refs` via `_extract_parent_id_from_refs()` — finds the first ref ID that exists in the node map. Nodes without a valid parent become roots.
 5. **Sort**: Roots and all children lists sorted by `event_time_start` ASC recursively.
@@ -241,7 +243,7 @@ Push endpoints that schedule hierarchy summary: `push_chat`.
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| POST | `/api/search` | `search_events` | Event search with semantic query, filters, and hierarchy drill-up |
+| POST | `/api/search` | `search_events` | Event search with semantic query, filters, and hierarchy drill |
 
 ### Memory Cache Routes (`/api/*`)
 
@@ -513,7 +515,7 @@ search_events()
      Path B (query or filters): search_service.search(query=..., hierarchy_levels=..., ...)
        - query provided → vector search with filter conditions (1 backend call)
        - query=None     → filter-only search (1 backend call, no vectorization)
-  -> ancestors from SearchResult (drill_up) or search_service.collect_ancestors()
+  -> ancestors/descendants from SearchResult (drill="up"/"down"/"both") via collect_ancestors()/collect_descendants()
   -> Build tree: node map → refs-based parent-child linking → recursive sort by event_time_start ASC
   -> Fire-and-forget _track_accessed_safe()     # Includes media_refs in tracked items
   -> Return EventSearchResponse (tree roots + search hit count)
@@ -574,7 +576,7 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 ```
 
 **Field notes:**
-- `events`: List of root nodes (tree roots). When `drill_up=true`, ancestors become parent nodes with search hits nested as children. When `drill_up=false`, all search hits are flat root nodes.
+- `events`: List of root nodes (tree roots). When `drill` includes `"up"`, ancestors become parent nodes with search hits nested as children. When `drill` includes `"down"`, descendants are included as child nodes. With `drill="none"`, all search hits are flat root nodes.
 - `is_search_hit`: `true` for search results (content/keywords/entities/score/metadata/media_refs populated), `false` for ancestor context nodes (only id/level/event_time_start/title/summary)
 - `media_refs`: List of media references for L0 events, e.g. `[{"type": "image", "url": "https://..."}, {"type": "video", "url": "https://..."}]`. Empty list for L1/L2/L3 summaries. Extracted from `ProcessedContext.metadata["media_refs"]`.
 - `children`: Nested child nodes, sorted by `event_time_start` ASC. Root nodes are also sorted by `event_time_start` ASC.
