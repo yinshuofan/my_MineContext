@@ -72,11 +72,14 @@
                     </div>
 
                     <div class="mb-3">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="drillUp" checked>
-                            <label class="form-check-label" for="drillUp">向上追溯祖先链</label>
-                        </div>
-                        <div class="form-text">开启后以树形结构显示层级关系</div>
+                        <label for="drill" class="form-label">层级展开方向</label>
+                        <select class="form-select" id="drill">
+                            <option value="up" selected>向上（祖先链）</option>
+                            <option value="down">向下（子事件）</option>
+                            <option value="both">双向（祖先 + 子事件）</option>
+                            <option value="none">不展开</option>
+                        </select>
+                        <div class="form-text">控制搜索结果的层级展开方向</div>
                     </div>
 
                     <div class="mb-3">
@@ -379,7 +382,7 @@ async function handleSearch(event) {
 
     const query = document.getElementById('query').value.trim();
     const topK = parseInt(document.getElementById('topK').value) || 10;
-    const drillUp = document.getElementById('drillUp').checked;
+    const drill = document.getElementById('drill').value;
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
     const userId = document.getElementById('userId').value.trim();
@@ -404,7 +407,7 @@ async function handleSearch(event) {
     try {
         const requestBody = {
             top_k: topK,
-            drill_up: drillUp
+            drill: drill
         };
 
         if (hasQuery || hasMedia) {
