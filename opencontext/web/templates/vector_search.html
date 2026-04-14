@@ -44,6 +44,14 @@
                     </div>
 
                     <div class="mb-3">
+                        <label for="eventIds" class="form-label">或：事件ID精确查找</label>
+                        <textarea class="form-control" id="eventIds" rows="2" placeholder="每行一个事件ID"></textarea>
+                        <div class="form-text">填写后优先走ID查找，忽略上方的查询内容和媒体</div>
+                    </div>
+
+                    <hr class="my-3">
+
+                    <div class="mb-3">
                         <label for="topK" class="form-label">返回数量 (Top-K)</label>
                         <input type="number" class="form-control" id="topK" value="10" min="1" max="100">
                     </div>
@@ -90,12 +98,6 @@
                     <div class="mb-3">
                         <label for="endTime" class="form-label">结束时间</label>
                         <input type="datetime-local" class="form-control" id="endTime">
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="eventIds" class="form-label">事件ID（精确查找）</label>
-                        <textarea class="form-control" id="eventIds" rows="2" placeholder="每行一个事件ID，填写后忽略语义搜索"></textarea>
-                        <div class="form-text">填写后走精确ID查找，忽略查询内容和媒体</div>
                     </div>
 
                     <div class="mb-3">
