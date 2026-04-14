@@ -125,3 +125,61 @@ async def test_collect_descendants_dedup():
         result = await service.collect_descendants([(hit_a, 0.9), (hit_b, 0.8)], min_level=0)
 
     assert result == {"shared": child}
+
+
+@pytest.mark.unit
+async def test_collect_ancestors_single_level():
+    """L0 hit with ref to L1 parent -> parent returned as ancestor."""
+    parent = _ctx("l1-1", level=1, refs={})
+    hit = _ctx("l0-1", level=0, refs={"daily_summary": ["l1-1"]})
+
+    storage = AsyncMock()
+    storage.get_contexts_by_ids = AsyncMock(return_value=[parent])
+
+    with patch(MOCK_STORAGE, return_value=storage):
+        service = EventSearchService()
+        result = await service.collect_ancestors([(hit, 0.9)], max_level=3)
+
+    assert set(result.keys()) == {"l1-1"}
+
+
+@pytest.mark.unit
+async def test_collect_ancestors_skips_downward_refs():
+    """L1 hit with refs to both L0 children and L2 parent -> only L2 returned."""
+    l0_child = _ctx("l0-1", level=0)
+    l2_parent = _ctx("l2-1", level=2, refs={})
+    hit = _ctx(
+        "l1-1",
+        level=1,
+        refs={
+            "event": ["l0-1"],
+            "weekly_summary": ["l2-1"],
+        },
+    )
+
+    storage = AsyncMock()
+    storage.get_contexts_by_ids = AsyncMock(return_value=[l0_child, l2_parent])
+
+    with patch(MOCK_STORAGE, return_value=storage):
+        service = EventSearchService()
+        result = await service.collect_ancestors([(hit, 0.9)], max_level=3)
+
+    assert set(result.keys()) == {"l2-1"}
+    assert "l0-1" not in result
+
+
+@pytest.mark.unit
+async def test_collect_ancestors_multi_level():
+    """L0 -> L1 -> L2 chain. Both ancestors collected."""
+    l2 = _ctx("l2-1", level=2, refs={})
+    l1 = _ctx("l1-1", level=1, refs={"weekly_summary": ["l2-1"]})
+    hit = _ctx("l0-1", level=0, refs={"daily_summary": ["l1-1"]})
+
+    storage = AsyncMock()
+    storage.get_contexts_by_ids = AsyncMock(side_effect=[[l1], [l2]])
+
+    with patch(MOCK_STORAGE, return_value=storage):
+        service = EventSearchService()
+        result = await service.collect_ancestors([(hit, 0.9)], max_level=3)
+
+    assert set(result.keys()) == {"l1-1", "l2-1"}

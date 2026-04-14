@@ -233,48 +233,41 @@ class EventSearchService:
         results: list[tuple[ProcessedContext, float]],
         max_level: int,
     ) -> dict[str, ProcessedContext]:
-        """Collect ancestors by following refs upward (to summary types)."""
-        user_summary_types = {
-            ContextType.DAILY_SUMMARY.value,
-            ContextType.WEEKLY_SUMMARY.value,
-            ContextType.MONTHLY_SUMMARY.value,
-        }
-        base_summary_types = {
-            ContextType.AGENT_BASE_L1_SUMMARY.value,
-            ContextType.AGENT_BASE_L2_SUMMARY.value,
-            ContextType.AGENT_BASE_L3_SUMMARY.value,
-        }
-        summary_type_values = user_summary_types | base_summary_types
-
-        all_ancestors = {}
-        seen = set()
-        current_batch = []
+        """Collect ancestors by following refs upward (to higher hierarchy levels)."""
+        all_ancestors: dict[str, ProcessedContext] = {}
+        seen: set[str] = set()
+        # Batch: list of (ref_id, child_hierarchy_level)
+        current_batch: list[tuple[str, int]] = []
 
         for ctx, _score in results:
             seen.add(ctx.id)
+            level = ctx.properties.hierarchy_level if ctx.properties else 0
             if not ctx.properties or not ctx.properties.refs:
                 continue
-            for ref_key, ref_ids in ctx.properties.refs.items():
-                if ref_key in summary_type_values:
-                    for pid in ref_ids:
-                        if pid not in seen:
-                            seen.add(pid)
-                            current_batch.append(pid)
+            for ref_ids in ctx.properties.refs.values():
+                for pid in ref_ids:
+                    if pid not in seen:
+                        seen.add(pid)
+                        current_batch.append((pid, level))
 
         rounds = 0
         while current_batch and rounds < max_level:
-            parents = await self.storage.get_contexts_by_ids(current_batch)
-            next_batch = []
+            batch_ids = [pid for pid, _ in current_batch]
+            child_levels = {pid: clvl for pid, clvl in current_batch}
+            parents = await self.storage.get_contexts_by_ids(batch_ids)
+            next_batch: list[tuple[str, int]] = []
             for parent in parents:
+                parent_level = parent.properties.hierarchy_level if parent.properties else 0
+                clvl = child_levels.get(parent.id, 0)
+                if parent_level <= clvl:
+                    continue  # not an ancestor (same level or downward ref)
                 all_ancestors[parent.id] = parent
-                if not parent.properties or not parent.properties.refs:
-                    continue
-                for ref_key, ref_ids in parent.properties.refs.items():
-                    if ref_key in summary_type_values:
+                if parent.properties and parent.properties.refs:
+                    for ref_ids in parent.properties.refs.values():
                         for pid in ref_ids:
                             if pid not in seen:
                                 seen.add(pid)
-                                next_batch.append(pid)
+                                next_batch.append((pid, parent_level))
             current_batch = next_batch
             rounds += 1
 
