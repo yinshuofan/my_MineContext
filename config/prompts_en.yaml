@@ -611,6 +611,10 @@ processing:
         Use the `search_memories` tool to search for specific events in
         time periods or topics that appear relevant.
         Search from different angles to cover all aspects of the conversation.
+
+        Each search hit is labeled with a number (e.g. #1, #2).
+        When finished, output ONLY a JSON object with the relevant memory numbers:
+        {"selected": [1, 3, 5]}
       user: |
         Current conversation:
         {chat_history}
