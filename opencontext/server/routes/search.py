@@ -146,11 +146,9 @@ async def _execute_search(
     all_ancestors: dict[str, ProcessedContext] = {}
     all_descendants: dict[str, ProcessedContext] = {}
 
-    l0_type = _search_service.get_l0_type()
-
     if request.event_ids:
-        # Path A: Exact ID lookup (stays in route — not a search)
-        contexts = await storage.get_contexts_by_ids(request.event_ids, l0_type)
+        # Path A: Exact ID lookup — search all collections (IDs may be any type)
+        contexts = await storage.get_contexts_by_ids(request.event_ids)
         raw_results = [(ctx, 1.0) for ctx in contexts]
 
         if raw_results:
