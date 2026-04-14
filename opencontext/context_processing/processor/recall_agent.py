@@ -32,6 +32,7 @@ class RecallState(TypedDict):
     search_params: dict[str, str]  # {user_id, device_id, agent_id}
     recall_model: str  # "" = use VLM default
     done: bool  # True when LLM responds without tool_calls
+    id_map: dict[str, str]  # short_id ("1","2",...) → original event ID
 
 
 # ---------------------------------------------------------------------------
@@ -105,10 +106,11 @@ async def _do_search(
     agent_id: str,
     time_range: Any | None = None,
     hierarchy_levels: list[int] | None = None,
-) -> tuple[list[ProcessedContext], list[ProcessedContext]]:
+) -> tuple[list[ProcessedContext], list[ProcessedContext], list[ProcessedContext]]:
     """Execute one search with optional filters. Exceptions propagate to caller.
 
-    Returns (hits, ancestors) — both deduplicated, ancestors exclude any hit IDs.
+    Returns (hits, ancestors, descendants) — all deduplicated,
+    ancestors/descendants exclude any hit IDs.
     """
     from opencontext.server.search.event_search_service import SearchResult
 
@@ -120,10 +122,10 @@ async def _do_search(
         agent_id=agent_id,
         time_range=time_range,
         hierarchy_levels=hierarchy_levels,
-        drill_up=True,
+        drill="both",
     )
     if not result:
-        return [], []
+        return [], [], []
     hits: list[ProcessedContext] = []
     hit_ids: set[str] = set()
     for ctx, _score in result.hits:
@@ -134,7 +136,11 @@ async def _do_search(
     for ctx_id, ctx in result.ancestors.items():
         if ctx_id not in hit_ids:
             ancestors.append(ctx)
-    return hits, ancestors
+    descendants: list[ProcessedContext] = []
+    for ctx_id, ctx in result.descendants.items():
+        if ctx_id not in hit_ids:
+            descendants.append(ctx)
+    return hits, ancestors, descendants
 
 
 def _format_time_range_str(ctx: ProcessedContext) -> str:
@@ -161,23 +167,32 @@ _SUMMARY_TYPE_VALUES: set[str] = {
 }
 
 
-def _format_search_result(hits: list[ProcessedContext], ancestors: list[ProcessedContext]) -> str:
-    """Build a hierarchy tree from hits + ancestors and render as indented text.
+def _format_search_result(
+    hits: list[ProcessedContext],
+    ancestors: list[ProcessedContext],
+    descendants: list[ProcessedContext] | None = None,
+    hit_short_ids: dict[str, str] | None = None,
+) -> str:
+    """Build a hierarchy tree from hits + ancestors + descendants and render as indented text.
 
     Replicates the tree-building logic from ``server/routes/search.py``:
     link children to parents via ``refs``, collect roots, sort by time,
     then render with indentation per hierarchy depth.
     """
-    if not hits and not ancestors:
+    if not hits and not ancestors and not descendants:
         return "No new memories found for this query."
 
     hit_ids = {ctx.id for ctx in hits}
+    descendant_ids = {ctx.id for ctx in (descendants or [])}
 
     # Build node map
     all_ctxs: dict[str, ProcessedContext] = {}
     for ctx in hits:
         all_ctxs[ctx.id] = ctx
     for ctx in ancestors:
+        if ctx.id not in all_ctxs:
+            all_ctxs[ctx.id] = ctx
+    for ctx in descendants or []:
         if ctx.id not in all_ctxs:
             all_ctxs[ctx.id] = ctx
 
@@ -222,8 +237,11 @@ def _format_search_result(hits: list[ProcessedContext], ancestors: list[Processe
             time_str = _format_time_range_str(ctx)
             title = (ctx.extracted_data.title if ctx.extracted_data else "") or ""
             summary = (ctx.extracted_data.summary if ctx.extracted_data else "") or ""
-            hit_marker = " ★" if ctx.id in hit_ids else ""
-            lines.append(f"{prefix}[{time_str} L{level}] {title}{hit_marker}")
+            id_marker = ""
+            if hit_short_ids and ctx.id in hit_short_ids:
+                id_marker = f"[#{hit_short_ids[ctx.id]}] "
+            hit_marker = " ★" if ctx.id in hit_ids or ctx.id in descendant_ids else ""
+            lines.append(f"{prefix}{id_marker}[{time_str} L{level}] {title}{hit_marker}")
             if summary:
                 lines.append(f"{prefix}  {summary}")
             if children_map.get(ctx.id):
@@ -232,8 +250,13 @@ def _format_search_result(hits: list[ProcessedContext], ancestors: list[Processe
     _render(roots, 0)
 
     header = f"Found {len(hits)} hits"
+    parts = []
     if ancestors:
-        header += f" (+ {len(ancestors)} ancestors)"
+        parts.append(f"{len(ancestors)} ancestors")
+    if descendants:
+        parts.append(f"{len(descendants)} children")
+    if parts:
+        header += f" (+ {', '.join(parts)})"
     return header + ":\n" + "\n".join(lines) if lines else "No new memories found for this query."
 
 
@@ -259,6 +282,12 @@ async def call_llm(state: RecallState) -> dict:
         return {"done": True}
 
     message = response.choices[0].message
+    if message.tool_calls:
+        tool_names = [tc.function.name for tc in message.tool_calls]
+        tool_args = [tc.function.arguments for tc in message.tool_calls]
+        logger.info(f"[recall_agent] LLM called tools: {tool_names}, args: {tool_args}")
+    else:
+        logger.info(f"[recall_agent] LLM done, content: {message.content!r}")
     assistant_msg: dict[str, Any] = {"role": "assistant", "content": message.content or ""}
     if message.tool_calls:
         assistant_msg["tool_calls"] = [
@@ -286,6 +315,7 @@ async def execute_search(state: RecallState) -> dict:
     new_accumulated = list(state["accumulated"])
     seen = set(state["seen_ids"])
     consecutive_empty = state["consecutive_empty"]
+    id_map = dict(state["id_map"])
     total_new_hits = 0
 
     for tc in tool_calls:
@@ -298,6 +328,18 @@ async def execute_search(state: RecallState) -> dict:
                     "role": "tool",
                     "tool_call_id": tool_call_id,
                     "content": f"Error: unknown tool '{func['name']}'",
+                }
+            )
+            continue
+
+        # Consecutive-empty brake: skip search and prompt LLM to output selection
+        if consecutive_empty >= 2:
+            new_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": "Error: consecutive searches returned no new results. "
+                    "Please output your selected memories now.",
                 }
             )
             continue
@@ -346,7 +388,7 @@ async def execute_search(state: RecallState) -> dict:
                 hierarchy_levels = [int(lv) for lv in args["hierarchy_levels"]]
 
         try:
-            search_hits, search_ancestors = await _do_search(
+            search_hits, search_ancestors, search_descendants = await _do_search(
                 query=query,
                 user_id=state["search_params"]["user_id"],
                 device_id=state["search_params"]["device_id"],
@@ -368,16 +410,33 @@ async def execute_search(state: RecallState) -> dict:
         # Dedup hits against previously seen
         new_hits = [c for c in search_hits if c.id not in seen]
         new_ancestor_hits = [c for c in search_ancestors if c.id not in seen]
+        new_descendant_hits = [c for c in search_descendants if c.id not in seen]
         seen.update(c.id for c in new_hits)
         seen.update(c.id for c in new_ancestor_hits)
-        # Only direct hits go into accumulated (for final output to commentary).
-        # Ancestors are shown to the LLM for context but not carried forward.
-        new_accumulated.extend(new_hits)
-        # Only direct hits count for the consecutive-empty brake.
-        total_new_hits += len(new_hits)
+        seen.update(c.id for c in new_descendant_hits)
 
-        # Format result text for the LLM
-        result_text = _format_search_result(new_hits, new_ancestor_hits)
+        # Assign short IDs to new hits
+        next_id = len(id_map) + 1
+        new_id_entries: dict[str, str] = {}
+        for ctx in new_hits:
+            short_id = str(next_id)
+            new_id_entries[short_id] = ctx.id
+            next_id += 1
+        for ctx in new_descendant_hits:
+            short_id = str(next_id)
+            new_id_entries[short_id] = ctx.id
+            next_id += 1
+        id_map.update(new_id_entries)
+
+        new_accumulated.extend(new_hits)
+        new_accumulated.extend(new_descendant_hits)
+        total_new_hits += len(new_hits) + len(new_descendant_hits)
+
+        # Reverse lookup for rendering: original_id → short_id (hits + descendants)
+        hit_short_ids = {v: k for k, v in new_id_entries.items()}
+        result_text = _format_search_result(
+            new_hits, new_ancestor_hits, new_descendant_hits, hit_short_ids
+        )
 
         new_messages.append(
             {
@@ -397,6 +456,7 @@ async def execute_search(state: RecallState) -> dict:
         "accumulated": new_accumulated,
         "seen_ids": list(seen),
         "consecutive_empty": consecutive_empty,
+        "id_map": id_map,
     }
 
 
@@ -407,10 +467,6 @@ async def execute_search(state: RecallState) -> dict:
 
 def route_after_llm(state: RecallState) -> str:
     return END if state["done"] else "execute_search"
-
-
-def route_after_search(state: RecallState) -> str:
-    return END if state["consecutive_empty"] >= 2 else "call_llm"
 
 
 # ---------------------------------------------------------------------------
@@ -431,7 +487,7 @@ class RecallAgent:
         builder.add_node("execute_search", execute_search)
         builder.add_edge(START, "call_llm")
         builder.add_conditional_edges("call_llm", route_after_llm)
-        builder.add_conditional_edges("execute_search", route_after_search)
+        builder.add_edge("execute_search", "call_llm")
         return builder.compile()
 
     async def recall(
@@ -472,6 +528,12 @@ class RecallAgent:
             logger.warning("[recall_agent] Prompt missing — aborting")
             return ""
 
+        logger.info(
+            f"[recall_agent] initial messages:\n"
+            f"--- system ---\n{messages[0]['content']}\n"
+            f"--- user ---\n{messages[1]['content']}"
+        )
+
         initial_state: RecallState = {
             "messages": messages,
             "accumulated": [],
@@ -484,14 +546,11 @@ class RecallAgent:
             },
             "recall_model": recall_model,
             "done": False,
+            "id_map": {},
         }
 
         # Each search turn = 2 supersteps (call_llm + execute_search).
         # +3 headroom covers the final call_llm that terminates, plus buffer.
-        # If GraphRecursionError fires, accumulated memories are lost (ainvoke
-        # does not return partial state). This is acceptable: with +3 headroom
-        # the normal exit paths (route_after_llm / route_after_search) fire
-        # before the limit in all expected scenarios.
         recursion_limit = (max_turns * 2) + 3
 
         try:
@@ -506,7 +565,22 @@ class RecallAgent:
             logger.warning(f"[recall_agent] Graph execution failed: {exc}")
             return ""
 
-        return self._format_memories(final_state["accumulated"])
+        accumulated = final_state["accumulated"]
+        id_map = final_state["id_map"]
+        selected_ids = self._parse_selected(final_state["messages"], id_map)
+        logger.info(
+            f"[recall_agent] accumulated={len(accumulated)}, "
+            f"id_map={id_map}, selected_ids={selected_ids}"
+        )
+        if selected_ids is None:
+            # JSON parse failure → fallback to all accumulated
+            filtered = accumulated
+        else:
+            selected_set = set(selected_ids)
+            filtered = [ctx for ctx in accumulated if ctx.id in selected_set]
+        result = self._format_memories(filtered)
+        logger.info(f"[recall_agent] final output:\n{result}")
+        return result
 
     @staticmethod
     def _build_initial_messages(
@@ -532,6 +606,36 @@ class RecallAgent:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
+
+    @staticmethod
+    def _parse_selected(messages: list[dict], id_map: dict[str, str]) -> list[str] | None:
+        """Parse selected memory IDs from the LLM's final message.
+
+        Returns list of original event IDs, or None if parsing fails (triggers fallback).
+        Empty list means the LLM explicitly selected nothing.
+        """
+        if not messages:
+            return None
+        last_msg = messages[-1]
+        if last_msg.get("role") != "assistant":
+            return None
+        content = last_msg.get("content", "")
+        if not content:
+            return None
+        parsed = parse_json_from_response(content)
+        if not parsed or not isinstance(parsed, dict):
+            return None
+        selected_shorts = parsed.get("selected")
+        if not isinstance(selected_shorts, list):
+            return None
+        if len(selected_shorts) == 0:
+            return []  # explicit empty selection
+        result = []
+        for short_id in selected_shorts:
+            original_id = id_map.get(str(short_id))
+            if original_id:
+                result.append(original_id)
+        return result if result else None  # all IDs invalid → treat as parse failure
 
     @staticmethod
     def _format_map(hierarchy_map: dict[int, list]) -> str:

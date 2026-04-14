@@ -149,7 +149,7 @@ def _patches(llm_mock, search_mock=None, config=None, prompt=None, storage=None)
         patch(MOCK_CONFIG, return_value=config or _FAKE_CONFIG),
         patch(MOCK_PROMPT, return_value=prompt or _FAKE_PROMPT_GROUP),
         patch(MOCK_LLM, new=llm_mock),
-        patch(MOCK_SEARCH, new=search_mock or AsyncMock(return_value=([], []))),
+        patch(MOCK_SEARCH, new=search_mock or AsyncMock(return_value=([], [], []))),
         patch(MOCK_STORAGE, return_value=storage),
     ):
         yield
@@ -165,7 +165,7 @@ async def test_first_turn_done_returns_empty():
     """LLM responds without tool calls on turn 1 → empty string, no search."""
     agent = RecallAgent()
     llm = AsyncMock(return_value=_make_done_response())
-    search = AsyncMock(return_value=([], []))
+    search = AsyncMock(return_value=([], [], []))
 
     with _patches(llm, search):
         result = await _run_recall(agent)
@@ -188,7 +188,7 @@ async def test_single_search_then_done():
             _make_done_response(),
         ]
     )
-    search = AsyncMock(return_value=([ctx1, ctx2], []))
+    search = AsyncMock(return_value=([ctx1, ctx2], [], []))
 
     with _patches(llm, search):
         result = await _run_recall(agent)
@@ -207,7 +207,7 @@ async def test_max_turns_hard_cap():
     """LLM always calls tool → loop stops at recursion limit."""
     agent = RecallAgent()
     # Each turn returns a different ctx ID so the empty-search brake doesn't fire
-    ctxs_per_turn = [([_make_ctx(f"c{i}", f"title{i}")], []) for i in range(10)]
+    ctxs_per_turn = [([_make_ctx(f"c{i}", f"title{i}")], [], []) for i in range(10)]
 
     call_count = {"n": 0}
 
@@ -230,24 +230,28 @@ async def test_max_turns_hard_cap():
 
 
 @pytest.mark.unit
-async def test_two_consecutive_empty_searches_stops():
-    """Two empty searches → route_after_search stops the loop."""
+async def test_two_consecutive_empty_searches_triggers_error_message():
+    """Two empty searches → error tool message → LLM gets one more call to output selection."""
     agent = RecallAgent()
     config = {"max_turns": 5, "model": ""}
 
     call_count = {"n": 0}
 
-    async def llm_always_search(*args, **kwargs):
+    async def llm_side_effect(*args, **kwargs):
         call_count["n"] += 1
-        return _make_tool_call_response(f"tc{call_count['n']}", "q")
+        if call_count["n"] <= 3:
+            return _make_tool_call_response(f"tc{call_count['n']}", "q")
+        # After seeing the error tool message, LLM outputs selection
+        return _make_done_response('{"selected": []}')
 
-    search = AsyncMock(return_value=([], []))  # always empty
+    search = AsyncMock(return_value=([], [], []))  # always empty
 
-    with _patches(AsyncMock(side_effect=llm_always_search), search, config=config):
+    with _patches(AsyncMock(side_effect=llm_side_effect), search, config=config):
         result = await _run_recall(agent)
 
     assert result == ""
-    assert search.await_count == 2  # stops after 2 consecutive empty
+    # 2 actual searches, 3rd call gets error message (skipped search)
+    assert search.await_count == 2
 
 
 @pytest.mark.unit
@@ -265,7 +269,7 @@ async def test_dedup_across_turns():
             _make_done_response(),
         ]
     )
-    search = AsyncMock(side_effect=[([ctx_a, ctx_b], []), ([ctx_a, ctx_c], [])])
+    search = AsyncMock(side_effect=[([ctx_a, ctx_b], [], []), ([ctx_a, ctx_c], [], [])])
 
     with _patches(llm, search):
         result = await _run_recall(agent)
@@ -323,7 +327,7 @@ async def test_search_raises_returns_error_to_llm():
     async def search_fn(*args, **kwargs):
         call_count["n"] += 1
         if call_count["n"] == 1:
-            return [ctx1], []
+            return [ctx1], [], []
         raise RuntimeError("search down")
 
     llm = AsyncMock(
@@ -404,7 +408,7 @@ async def test_config_hot_reload():
     # Run 1: max_turns=2
     with _patches(
         AsyncMock(side_effect=llm_always_search_2),
-        AsyncMock(side_effect=[([_make_ctx(f"a{i}", f"t{i}")], []) for i in range(5)]),
+        AsyncMock(side_effect=[([_make_ctx(f"a{i}", f"t{i}")], [], []) for i in range(5)]),
         config={"max_turns": 2, "model": ""},
     ):
         await _run_recall(agent)
@@ -418,7 +422,7 @@ async def test_config_hot_reload():
     # Run 2: max_turns=1
     with _patches(
         AsyncMock(side_effect=llm_always_search_1),
-        AsyncMock(side_effect=[([_make_ctx(f"b{i}", f"t{i}")], []) for i in range(5)]),
+        AsyncMock(side_effect=[([_make_ctx(f"b{i}", f"t{i}")], [], []) for i in range(5)]),
         config={"max_turns": 1, "model": ""},
     ):
         await _run_recall(agent)
@@ -486,7 +490,7 @@ async def test_message_history_accumulates():
             return _make_tool_call_response("tc1", "first query")
         return _make_done_response()
 
-    with _patches(capture_llm, AsyncMock(return_value=([ctx1], []))):
+    with _patches(capture_llm, AsyncMock(return_value=([ctx1], [], []))):
         await _run_recall(agent)
 
     assert len(llm_calls) == 2
@@ -543,7 +547,7 @@ async def test_graph_recursion_error_returns_empty():
         return _make_tool_call_response(f"tc{call_count['n']}", "q")
 
     # Return unique results each time so consecutive-empty brake doesn't fire
-    search = AsyncMock(side_effect=[([_make_ctx(f"x{i}", f"t{i}")], []) for i in range(20)])
+    search = AsyncMock(side_effect=[([_make_ctx(f"x{i}", f"t{i}")], [], []) for i in range(20)])
 
     with _patches(AsyncMock(side_effect=llm_always_search), search, config=config):
         result = await _run_recall(agent)
@@ -749,3 +753,209 @@ async def test_format_time_range_str_multi_day():
         id="r1",
     )
     assert _format_time_range_str(ctx) == "2026-04-01~2026-04-07"
+
+
+# ---------------------------------------------------------------------------
+# Tests for short ID mapping and selective output
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_short_ids_assigned_in_search_results():
+    """Search results shown to LLM include [#N] markers for each hit."""
+    agent = RecallAgent()
+    ctx1 = _make_ctx("c1", "meeting", "Q2", "2026-04-01")
+    ctx2 = _make_ctx("c2", "review", "auth", "2026-04-03")
+
+    llm_calls: list = []
+
+    async def capture_llm(messages, **kwargs):
+        llm_calls.append(list(messages))
+        if len(llm_calls) == 1:
+            return _make_tool_call_response("tc1", "search query")
+        return _make_done_response('{"selected": [1, 2]}')
+
+    with _patches(capture_llm, AsyncMock(return_value=([ctx1, ctx2], [], []))):
+        await _run_recall(agent)
+
+    # Turn 2 messages should include the tool result with short IDs
+    tool_msg = llm_calls[1][3]
+    assert tool_msg["role"] == "tool"
+    assert "[#1]" in tool_msg["content"]
+    assert "[#2]" in tool_msg["content"]
+
+
+@pytest.mark.unit
+async def test_parse_selected_valid_json():
+    """Valid JSON with matching IDs → returns correct original IDs."""
+    id_map = {"1": "orig_a", "2": "orig_b", "3": "orig_c"}
+    messages = [{"role": "assistant", "content": '{"selected": [1, 3]}'}]
+    result = RecallAgent._parse_selected(messages, id_map)
+    assert result == ["orig_a", "orig_c"]
+
+
+@pytest.mark.unit
+async def test_parse_selected_empty_selection():
+    """Empty selected list → returns empty list (not fallback)."""
+    id_map = {"1": "orig_a"}
+    messages = [{"role": "assistant", "content": '{"selected": []}'}]
+    result = RecallAgent._parse_selected(messages, id_map)
+    assert result == []
+
+
+@pytest.mark.unit
+async def test_parse_selected_invalid_json_fallback():
+    """Non-JSON text → returns None (triggers fallback)."""
+    messages = [{"role": "assistant", "content": "Recall complete."}]
+    result = RecallAgent._parse_selected(messages, {"1": "a"})
+    assert result is None
+
+
+@pytest.mark.unit
+async def test_parse_selected_invalid_ids_fallback():
+    """All IDs invalid → returns None (triggers fallback)."""
+    id_map = {"1": "orig_a"}
+    messages = [{"role": "assistant", "content": '{"selected": [99, 100]}'}]
+    result = RecallAgent._parse_selected(messages, id_map)
+    assert result is None
+
+
+@pytest.mark.unit
+async def test_selected_ids_filter_accumulated():
+    """Full flow: 3 hits, LLM selects 2 → only 2 in output."""
+    agent = RecallAgent()
+    ctx1 = _make_ctx("c1", "relevant meeting", "important", "2026-04-01")
+    ctx2 = _make_ctx("c2", "noise event", "not useful", "2026-04-02")
+    ctx3 = _make_ctx("c3", "relevant review", "key feedback", "2026-04-03")
+
+    llm = AsyncMock(
+        side_effect=[
+            _make_tool_call_response("tc1", "search"),
+            # Select #1 and #3, skip #2
+            _make_done_response('{"selected": [1, 3]}'),
+        ]
+    )
+    search = AsyncMock(return_value=([ctx1, ctx2, ctx3], [], []))
+
+    with _patches(llm, search):
+        result = await _run_recall(agent)
+
+    assert "relevant meeting" in result
+    assert "relevant review" in result
+    assert "noise event" not in result
+
+
+@pytest.mark.unit
+async def test_consecutive_empty_returns_error_tool_message():
+    """After 2 consecutive empty searches, tool returns error message to LLM."""
+    agent = RecallAgent()
+    config = {"max_turns": 5, "model": ""}
+
+    llm_calls: list = []
+
+    async def capture_llm(messages, **kwargs):
+        llm_calls.append(list(messages))
+        if len(llm_calls) <= 3:
+            return _make_tool_call_response(f"tc{len(llm_calls)}", "q")
+        return _make_done_response('{"selected": []}')
+
+    search = AsyncMock(return_value=([], [], []))
+
+    with _patches(capture_llm, search, config=config):
+        await _run_recall(agent)
+
+    # Turn 4: LLM sees error message from the 3rd tool call (consecutive_empty >= 2)
+    last_call_msgs = llm_calls[3]
+    tool_msg = [m for m in last_call_msgs if m.get("role") == "tool"][-1]
+    assert "consecutive searches returned no new results" in tool_msg["content"]
+
+
+@pytest.mark.unit
+async def test_format_search_result_with_short_ids():
+    """[#N] rendered next to hits, not next to ancestors."""
+    from opencontext.context_processing.processor.recall_agent import _format_search_result
+
+    hit = _make_ctx("h1", "meeting", "Q2 plans", "2026-04-01")
+    ancestor = SimpleNamespace(
+        id="a1",
+        extracted_data=SimpleNamespace(title="daily overview", summary=""),
+        properties=SimpleNamespace(
+            event_time_start=datetime.datetime.fromisoformat("2026-04-01"),
+            event_time_end=None,
+            hierarchy_level=1,
+            refs={},
+        ),
+    )
+    hit_short_ids = {"h1": "1"}
+    result = _format_search_result([hit], [ancestor], hit_short_ids=hit_short_ids)
+    assert "[#1]" in result
+    # #1 should be on the hit line, not the ancestor line
+    for line in result.split("\n"):
+        if "daily overview" in line:
+            assert "[#1]" not in line
+        if "meeting" in line:
+            assert "[#1]" in line
+
+
+@pytest.mark.unit
+async def test_short_ids_continue_across_turns():
+    """Turn 1 assigns #1-#2, turn 2 assigns #3 (not #1 again)."""
+    agent = RecallAgent()
+    ctx1 = _make_ctx("c1", "event A", "", "2026-04-01")
+    ctx2 = _make_ctx("c2", "event B", "", "2026-04-02")
+    ctx3 = _make_ctx("c3", "event C", "", "2026-04-03")
+
+    llm_calls: list = []
+
+    async def capture_llm(messages, **kwargs):
+        llm_calls.append(list(messages))
+        if len(llm_calls) == 1:
+            return _make_tool_call_response("tc1", "first")
+        if len(llm_calls) == 2:
+            return _make_tool_call_response("tc2", "second")
+        return _make_done_response('{"selected": [1, 3]}')
+
+    search = AsyncMock(side_effect=[([ctx1, ctx2], [], []), ([ctx3], [], [])])
+
+    with _patches(capture_llm, search):
+        result = await _run_recall(agent)
+
+    # Turn 2 tool message should have #3, not #1
+    turn2_tool_msg = [m for m in llm_calls[2] if m.get("role") == "tool"][-1]
+    assert "[#3]" in turn2_tool_msg["content"]
+    assert "[#1]" not in turn2_tool_msg["content"]
+    # Final output: selected #1 and #3
+    assert "event A" in result
+    assert "event C" in result
+    assert "event B" not in result
+
+
+@pytest.mark.unit
+async def test_parse_selected_mixed_valid_invalid_ids():
+    """Mix of valid and invalid IDs → returns only the valid ones."""
+    id_map = {"1": "orig_a", "2": "orig_b"}
+    messages = [{"role": "assistant", "content": '{"selected": [1, 99, 2]}'}]
+    result = RecallAgent._parse_selected(messages, id_map)
+    assert result == ["orig_a", "orig_b"]
+
+
+@pytest.mark.unit
+async def test_descendants_get_short_ids():
+    """Descendants from drill-down get short IDs and appear in accumulated."""
+    l1_hit = _make_ctx("l1-hit", "Daily Summary", level=1)
+    l0_desc = _make_ctx("l0-desc", "Detail Event", level=0)
+
+    agent = RecallAgent()
+    llm = AsyncMock(
+        side_effect=[
+            _make_tool_call_response("tc1", "test query"),
+            _make_done_response('{"selected": [1, 2]}'),
+        ]
+    )
+    search = AsyncMock(return_value=([l1_hit], [], [l0_desc]))
+
+    with _patches(llm, search):
+        result = await _run_recall(agent)
+
+    assert "Daily Summary" in result
+    assert "Detail Event" in result
