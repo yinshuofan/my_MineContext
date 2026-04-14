@@ -177,18 +177,21 @@ Updates the `agent_profile` for a specific user by aggregating `agent_commentary
 
 **Core flow in `async execute(context)`**:
 1. Validates `agent_id` is non-default and agent is registered
-2. Fetches today's EVENT-type contexts for the user via `storage.get_all_processed_contexts()`
-3. Filters for events that have non-empty `agent_commentary` on `extracted_data`
-4. Fetches existing `agent_profile` for context
-5. Calls LLM with `agent_profile_update` prompt, passing existing profile and today's commentary
-6. Calls `storage.upsert_profile()` directly with the LLM-generated profile — bypasses the LLM merge step in `profile_processor.refresh_profile()` since the LLM has already incorporated the existing profile in step 5
+2. Fetches today's L0 EVENT-type contexts for the user via `storage.get_all_processed_contexts()`
+3. Fetches `agent_profile` (per-user) and `agent_base_profile` (base). If user has no `agent_profile`, falls back to base profile with a first-interaction marker
+4. Calls LLM with `agent_profile_update` prompt, passing base persona, current persona, and today's events (including `agent_commentary` when present)
+5. Parses LLM JSON response: `{"no_update": true}` skips upsert, `{"updated_profile": "..."}` proceeds to storage
+6. Calls `storage.upsert_profile()` directly — bypasses `profile_processor.refresh_profile()` since the LLM has already incorporated the existing profile
+7. Invalidates memory cache after successful update
 
 Returns early if:
 - `agent_id` is missing or `"default"`
 - Agent not found in registry
-- No events with `agent_commentary` found today
+- No events found today
+- No `agent_base_profile` exists
+- LLM returns `{"no_update": true}`
 
-**Factory**: `create_agent_profile_handler() -> async TaskHandler`
+**Factory**: `create_agent_profile_update_handler() -> async TaskHandler`
 
 ## Class Hierarchy
 

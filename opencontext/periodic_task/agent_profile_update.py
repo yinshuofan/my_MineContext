@@ -1,5 +1,7 @@
 """Agent Profile Update Task — updates agent_profile from daily events."""
 
+import json
+
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_vlm_client import generate_with_messages
 from opencontext.models.enums import ContextType
@@ -91,7 +93,13 @@ class AgentProfileUpdateTask(BasePeriodicTask):
             return TaskResult.fail(f"No base profile for agent {agent_id}")
 
         base_persona = base_profile.get("factual_profile", "")
-        current_persona = current_profile.get("factual_profile", "") if current_profile else ""
+        # Fallback to base_profile if user has no agent_profile yet
+        if current_profile:
+            current_persona = current_profile.get("factual_profile", "")
+        else:
+            current_persona = (
+                f"{base_persona}\n(First interaction with this user — identical to base persona)"
+            )
 
         # 3. Format today's events
         events_text = self._format_events(events)
@@ -104,16 +112,14 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         system_prompt = prompt_group.get("system", "")
         system_prompt = system_prompt.replace("{agent_name}", agent_name)
         system_prompt = system_prompt.replace("{base_profile}", base_persona)
-        system_prompt = system_prompt.replace(
-            "{current_profile}", current_persona or "(No existing profile)"
-        )
+        system_prompt = system_prompt.replace("{current_profile}", current_persona)
 
         messages = [
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": prompt_group.get("user", "").format(
-                    current_time=tz_now().isoformat(),
+                    current_time=tz_now().strftime("%Y-%m-%d %H:%M"),
                     today_events=events_text,
                 ),
             },
@@ -123,9 +129,38 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         if not response or not response.strip():
             return TaskResult.fail("LLM returned empty response")
 
-        # 5. Store updated profile — direct upsert, no LLM merge
+        # 5. Parse LLM response (always JSON)
+        raw = response.strip()
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(
+                f"[agent_profile_update] LLM returned non-JSON for user={user_id}: {raw[:200]}"
+            )
+            return TaskResult.fail("LLM returned non-JSON response")
+
+        if not isinstance(parsed, dict):
+            return TaskResult.fail(f"LLM returned unexpected JSON type: {type(parsed).__name__}")
+
+        if parsed.get("no_update"):
+            logger.info(
+                f"[agent_profile_update] No update needed for user={user_id}, agent={agent_id}"
+            )
+            return TaskResult.ok(
+                f"No update needed for user={user_id}, agent={agent_id}",
+                data={"events_count": len(events)},
+            )
+
+        updated_profile = parsed.get("updated_profile")
+        if not updated_profile or not isinstance(updated_profile, str):
+            logger.warning(
+                f"[agent_profile_update] LLM JSON missing updated_profile "
+                f"for user={user_id}: {raw[:200]}"
+            )
+            return TaskResult.fail("LLM returned JSON without valid updated_profile")
+
+        # 6. Store updated profile — direct upsert, no LLM merge
         # (this task already produced the final profile via LLM, merging again would be redundant)
-        updated_profile = response.strip()
         success = await storage.upsert_profile(
             user_id=user_id,
             device_id=device_id,
@@ -174,7 +209,7 @@ class AgentProfileUpdateTask(BasePeriodicTask):
             if summary:
                 lines.append(f"  {summary}")
             if commentary:
-                lines.append(f"  My thoughts: {commentary}")
+                lines.append(f"  AI feeling: {commentary}")
             lines.append("")
         return "\n".join(lines).strip()
 
