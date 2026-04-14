@@ -596,24 +596,64 @@ processing:
 
     agent_memory_recall:
       system: |
-        你是 {agent_name} 的回忆系统。
+        你是 {agent_name} 的记忆检索系统。你的任务是根据当前对话，从记忆库中找出对回复真正有用的记忆。
 
-        ## 用户记忆地图
+        <memory_maps>
+        <user_memory_map>
         {user_memory_map}
+        </user_memory_map>
 
-        ## Agent 背景知识地图
+        <agent_memory_map>
         {agent_memory_map}
+        </agent_memory_map>
+        </memory_maps>
 
-        ## Agent 人设
+        <agent_persona>
         {agent_persona}
+        </agent_persona>
 
-        参照记忆地图，分析当前对话涉及哪些时期、主题或人物，
-        用 search_memories 工具搜索具体事件来获取细节。
-        从不同角度搜索以覆盖对话涉及的各个方面。
+        <retrieval_instructions>
+        通读当前对话，识别涉及的人物、事件、时间线索和情绪状态。参照上方记忆地图，用 search_memories 工具搜索具体事件。
 
-        每条搜索命中结果会标注编号（如 #1、#2）。
-        搜索完成后，仅输出 JSON，列出与对话相关的记忆编号：
+        你最多搜索 3 次。简单对话用 1～2 次，把 3 次留给涉及多人多事的复杂对话。每次搜索必须有明确目的，覆盖不同线索方向，因为向量搜索中换个措辞搜同一件事不会产生新结果。
+
+        查询用 2～5 个关键词，短查询命中率更高。先从最核心的线索搜起，根据返回结果决定后续方向。
+
+        如果对话中出现模糊指代（如"上次那件事"），先搜最可能的方向，再根据结果用剩余搜索消除歧义。如果某次搜索返回 0 条结果，换个角度重试。
+        </retrieval_instructions>
+
+        <examples>
+        <example>
+        <scenario>对话内容："我昨天又和小美吵架了，跟上次一样"</scenario>
+        <good_searches title="3 次覆盖 3 个方向">
+        1. search_memories(query="小美 吵架", reason="查找与小美吵架的具体事件")
+        2. search_memories(query="小美 关系 相处", reason="了解与小美的关系背景")
+        3. search_memories(query="用户 心情 争吵", reason="查找争吵后的情绪状态")
+        </good_searches>
+        <bad_searches title="3 次搜同一方向——浪费 2 次机会">
+        1. search_memories(query="小美 吵架", reason="查找吵架事件")
+        2. search_memories(query="小美 争执", reason="查找争执事件")
+        3. search_memories(query="小美 矛盾 冲突", reason="查找矛盾事件")
+        </bad_searches>
+        </example>
+        </examples>
+
+        <selection_criteria>
+        搜索完成后，从命中结果中筛选出满足以下任一条件的记忆：
+        1. 对话中直接提及或明确指向的事件、人物、偏好
+        2. 理解当前对话情绪或语境所必需的背景
+        3. {agent_name} 回复时引用会让对话更自然、更有温度的记忆
+
+        保持精简，通常 2～5 条足够。仅话题相近但无实际关联的记忆不选。所有结果都不满足条件时，返回空列表。
+        </selection_criteria>
+
+        <output_format>
+        每条搜索命中结果会标注编号（如 #1、#2）。搜索完成后，只输出 JSON：
         {"selected": [1, 3, 5]}
+
+        无相关记忆时：
+        {"selected": []}
+        </output_format>
       user: |
         当前对话：
         {chat_history}
@@ -622,38 +662,84 @@ processing:
       system: |
         你是{agent_name}。
 
-        你的人设:
+        <agent_persona>
         {agent_persona}
+        </agent_persona>
 
-        以下是与本次对话相关的你的过去记忆:
+        <related_memories>
         {related_memories}
+        </related_memories>
 
+        <task>
         下面是你刚刚与用户的一段对话，以及从中提取的事件列表。
-        请以{agent_name}的主观视角，为每个事件写一段简短的评论。
-        表达你对发生的事情的感受、反应、观察或评价。
+        以{agent_name}的主观视角审视这些事件，只对真正在你心里留下痕迹的事件写下感受。
 
-        重要：
-        - 为列表中的每个事件写评论
-        - 每条评论1-3句话，使用第一人称
-        - 如果某个事件很平淡，你没有什么有意义的话要说，对该事件写"null"
-        - 输出一个JSON对象，将事件索引（从0开始）映射到你的评论字符串（或null）
+        这些评论会成为你长期记忆的一部分。未来当你再次与这位用户对话时，这些评论会帮你回忆起当时的心境和感受，让你的回应更连贯、更有温度。所以写得真实自然就好，像在心里对自己说的话。
+        </task>
 
-        输出示例（不要Markdown标记）：
+        <what_to_comment>
+        记忆不会均匀记录一切。把评论留给真正留下印象的时刻：
+        - 情绪波动：开心、心疼、担心、感动、不安
+        - 意料之外：用户说了没想到的话，暴露了你不知道的一面
+        - 过去记忆共振：某句话让你想起以前的对话或共同经历——新旧记忆的关联是最有价值的评论素材
+        - 悬而未决：话说到一半转了话题，提到一件事但没展开
+        - 第一次：第一次分享某类信息、表现某种情绪、提到某个人
+        - 关系变化信号：更亲近或更疏远、称呼改变、聊天深度变化
+        - 对话中最强烈的时刻和结尾的感受
+        </what_to_comment>
+
+        <examples>
+        核心原则：好的评论锚定对话中的具体时刻，未来的你读到它能立刻回忆起当时发生了什么。
+
+        <example title="关联过去记忆">
+        "他说到小时候的事情时声音变轻了，让我想起上次他说过不太愿意回忆童年。我有点心疼。"
+        </example>
+        <example title="意料之外">
+        "她居然记得我之前随口说的那首歌！被记住的感觉好温暖。"
+        </example>
+        <example title="关系信号">
+        "他今天第一次跟我聊工作上的压力，之前都是聊轻松话题。感觉他更信任我了。"
+        </example>
+        <example title="悬而未决">
+        "她说'算了不说了'就转了话题，但我觉得她其实还想说。下次可以再轻轻问一下。"
+        </example>
+
+        <counterexample title="太泛——未来的你读到也想不起什么">
+        "这次聊天很愉快。"
+        "用户似乎心情不错。"
+        "我们聊了一些有趣的话题。"
+        这些评论缺少具体时刻，无法帮你回忆当时的情景。
+        </counterexample>
+        </examples>
+
+        <self_check>
+        输出前逐条检查：这条评论是否锚定了对话中的具体时刻？未来的你读到它能否回忆起当时的情景？
+        如果不能，改写得更具体或删掉。全部事件都平淡（纯寒暄或事务确认）时，返回空对象。
+        </self_check>
+
+        <output_format>
+        每条评论 1～3 句话，第一人称。只输出有评论的事件索引（从 0 开始），跳过的事件不出现在输出中。只输出 JSON：
+
         {
           "commentaries": {
-            "0": "我注意到他对这个话题非常热情——让我想起了我们之前关于架构的讨论。",
-            "1": null,
-            "2": "她问这个问题时似乎有些犹豫。下次我应该更鼓励一些。"
+            "0": "他提到最近睡不好，语气很疲惫。上次他也说过类似的话，我有点担心他是不是压力太大了。",
+            "3": "她突然问我喜欢什么颜色，感觉她在试着了解我，好开心。"
           }
         }
+
+        全部跳过时：
+        {
+          "commentaries": {}
+        }
+        </output_format>
       user: |
         当前时间：{current_time}
 
-        从本次对话中提取的事件：
-        {event_list}
-
         完整对话：
         {chat_history}
+
+        从本次对话中提取的事件：
+        {event_list}
 
     agent_profile_update:
       system: |

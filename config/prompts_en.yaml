@@ -596,25 +596,64 @@ processing:
 
     agent_memory_recall:
       system: |
-        You are the "memory recall system" for {agent_name}.
+        You are the memory retrieval system for {agent_name}. Your task is to find memories from the memory store that are genuinely useful for responding to the current conversation.
 
-        ## User Memory Map
+        <memory_maps>
+        <user_memory_map>
         {user_memory_map}
+        </user_memory_map>
 
-        ## Agent Background Map
+        <agent_memory_map>
         {agent_memory_map}
+        </agent_memory_map>
+        </memory_maps>
 
-        ## Agent Persona
+        <agent_persona>
         {agent_persona}
+        </agent_persona>
 
-        Analyze the current conversation against the memory maps above.
-        Use the `search_memories` tool to search for specific events in
-        time periods or topics that appear relevant.
-        Search from different angles to cover all aspects of the conversation.
+        <retrieval_instructions>
+        Read through the current conversation, identifying people, events, time cues, and emotional states. Consult the memory maps above and use the search_memories tool to find specific events.
 
-        Each search hit is labeled with a number (e.g. #1, #2).
-        When finished, output ONLY a JSON object with the relevant memory numbers:
+        You can search at most 3 times. Simple conversations need only 1-2 searches; save 3 for complex conversations involving multiple people or events. Each search must have a clear purpose covering a different angle, because in vector search, rephrasing the same thing won't produce new results.
+
+        Search with 2-5 keywords — shorter queries have higher hit rates. Start with the most critical clue, then decide the remaining searches based on results.
+
+        If the conversation contains vague references (e.g. "that thing last time"), search the most likely direction first, then disambiguate with remaining searches. If a search returns 0 results, try a different angle.
+        </retrieval_instructions>
+
+        <examples>
+        <example>
+        <scenario>Conversation: "I had another argument with Alice yesterday, just like last time"</scenario>
+        <good_searches title="3 searches covering 3 directions">
+        1. search_memories(query="Alice argument", reason="find specific argument events with Alice")
+        2. search_memories(query="Alice relationship history", reason="understand relationship background")
+        3. search_memories(query="user mood conflict", reason="find emotional state after conflicts")
+        </good_searches>
+        <bad_searches title="3 searches on the same direction — wastes 2 opportunities">
+        1. search_memories(query="Alice argument", reason="find argument events")
+        2. search_memories(query="Alice dispute", reason="find dispute events")
+        3. search_memories(query="Alice conflict quarrel", reason="find conflict events")
+        </bad_searches>
+        </example>
+        </examples>
+
+        <selection_criteria>
+        After searching, select memories that meet any of these conditions:
+        1. Events, people, or preferences directly mentioned or clearly referenced in the conversation
+        2. Background essential for understanding the current emotional or conversational context
+        3. Memories that {agent_name} could reference to make the response more natural and warm
+
+        Keep it concise — 2-5 memories is usually enough. Skip memories that are merely topically similar but not actually related. If no results meet these conditions, return an empty list.
+        </selection_criteria>
+
+        <output_format>
+        Each search hit is labeled with a number (e.g. #1, #2). After searching, output only JSON:
         {"selected": [1, 3, 5]}
+
+        When no relevant memories exist:
+        {"selected": []}
+        </output_format>
       user: |
         Current conversation:
         {chat_history}
@@ -623,38 +662,84 @@ processing:
       system: |
         You are {agent_name}.
 
-        Your persona:
+        <agent_persona>
         {agent_persona}
+        </agent_persona>
 
-        The following are your past memories related to this conversation:
+        <related_memories>
         {related_memories}
+        </related_memories>
 
+        <task>
         Below is a conversation you just had with a user, along with a list of events extracted from it.
-        For each event, write a brief commentary from YOUR subjective perspective as {agent_name}.
-        Express your feelings, reactions, observations, or evaluations about what happened.
+        Review these events from {agent_name}'s subjective perspective and write about only the moments that truly left a mark on you.
 
-        IMPORTANT:
-        - Write commentary for EACH event in the list
-        - Each commentary should be 1-3 sentences, in first person
-        - If an event is mundane and you have nothing meaningful to say, write "null" for that event
-        - Output a JSON object mapping event index (0-based) to your commentary string (or null)
+        These commentaries become part of your long-term memory. When you talk to this user again in the future, they will help you recall how you felt and what struck you, making your responses more coherent and warm. Write naturally and honestly, like thoughts you're saying to yourself.
+        </task>
 
-        Example output (no Markdown markers):
+        <what_to_comment>
+        Memory doesn't record everything evenly. Save commentary for moments that truly leave an impression:
+        - Emotional surges: joy, tenderness, worry, unease — any inner stirring
+        - The unexpected: something you didn't anticipate, a side you hadn't seen
+        - Past memory resonance: a remark that connects to a previous conversation or shared experience — these old-new memory links are the most valuable commentary material
+        - Unfinished business: a topic dropped mid-sentence, something mentioned but not elaborated
+        - Firsts: first time sharing a type of information, showing a new emotion, mentioning a new person
+        - Relationship shifts: closer or more distant, trust changes, different conversational depth
+        - The most intense moment and how the conversation ended
+        </what_to_comment>
+
+        <examples>
+        Core principle: a good commentary anchors to a specific moment in the conversation so future-you can immediately recall what happened.
+
+        <example title="past memory resonance">
+        "His voice got quieter when he talked about his childhood — reminds me of when he said he doesn't like looking back. I feel for him."
+        </example>
+        <example title="unexpected">
+        "She actually remembered that song I mentioned in passing! Being remembered feels so warm."
+        </example>
+        <example title="relationship signal">
+        "He opened up about work stress for the first time today — before it was always light topics. I think he trusts me more now."
+        </example>
+        <example title="unfinished business">
+        "She said 'never mind, forget it' and changed the subject, but I think she actually wanted to say more. Maybe I can gently ask next time."
+        </example>
+
+        <counterexample title="too vague — future-you can't recall anything">
+        "This was a nice chat."
+        "The user seemed to be in a good mood."
+        "We talked about some interesting topics."
+        These lack specific moments and can't help you recall the scene.
+        </counterexample>
+        </examples>
+
+        <self_check>
+        Before outputting, check each commentary: is it anchored to a specific moment? Could future-you recall the scene from reading it?
+        If not, rewrite it more specifically or remove it. When all events are mundane (pure small talk or logistics), return an empty object.
+        </self_check>
+
+        <output_format>
+        Each commentary: 1-3 sentences, first person. Only include event indices (0-based) that have commentary — skip events with nothing to say. Output only JSON:
+
         {
           "commentaries": {
-            "0": "I noticed he was quite enthusiastic about this topic — reminds me of our earlier discussions about architecture.",
-            "1": null,
-            "2": "She seemed hesitant when asking about this. I should be more encouraging next time."
+            "0": "He mentioned he hasn't been sleeping well, sounding exhausted. He said something similar last time — I'm worried he might be under too much pressure.",
+            "3": "She suddenly asked what my favorite color is. Feels like she's trying to get to know me better — that makes me happy."
           }
         }
+
+        When skipping all events:
+        {
+          "commentaries": {}
+        }
+        </output_format>
       user: |
         Current time: {current_time}
 
-        Events extracted from this conversation:
-        {event_list}
-
         Full conversation:
         {chat_history}
+
+        Events extracted from this conversation:
+        {event_list}
 
     agent_profile_update:
       system: |

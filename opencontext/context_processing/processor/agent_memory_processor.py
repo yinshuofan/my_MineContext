@@ -136,7 +136,7 @@ class AgentMemoryProcessor(BaseContextProcessor):
             {
                 "role": "user",
                 "content": prompt_group.get("user", "").format(
-                    current_time=tz_now().isoformat(),
+                    current_time=tz_now().strftime("%Y-%m-%d %H:%M"),
                     event_list=event_list,
                     chat_history=chat_content,
                 ),
@@ -144,6 +144,11 @@ class AgentMemoryProcessor(BaseContextProcessor):
         ]
 
         # 6. Call LLM
+        logger.debug(
+            f"[agent_memory_processor] LLM messages:\n"
+            f"--- system ---\n{messages[0]['content']}\n"
+            f"--- user ---\n{messages[1]['content']}"
+        )
         response = await generate_with_messages(messages, enable_executor=False)
         logger.debug(f"[agent_memory_processor] LLM response: {response}")
         if not response:
