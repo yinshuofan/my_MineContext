@@ -51,10 +51,16 @@ class AgentProfileUpdateTask(BasePeriodicTask):
             return TaskResult.ok(f"Skipped: agent {agent_id} not registered")
 
         agent_name = agent.get("name", agent_id)
+        logger.debug(
+            f"[agent_profile_update] Start: user={user_id}, agent={agent_id} ({agent_name})"
+        )
 
         # 1. Fetch today's events using filter (same pattern as hierarchy_summary)
         day_start = today_start()
         day_start_ts = float(int(day_start.timestamp()))
+        logger.debug(
+            f"[agent_profile_update] Querying events since {day_start} (ts={day_start_ts})"
+        )
 
         event_filters = {
             "event_time_start_ts": {"$gte": day_start_ts},
@@ -71,6 +77,7 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         )
 
         events = events_dict.get(ContextType.EVENT.value, [])
+        logger.debug(f"[agent_profile_update] Found {len(events)} events today")
 
         if not events:
             return TaskResult.ok("Skipped: no events today")
@@ -96,13 +103,16 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         # Fallback to base_profile if user has no agent_profile yet
         if current_profile:
             current_persona = current_profile.get("factual_profile", "")
+            logger.debug("[agent_profile_update] Using existing agent_profile")
         else:
             current_persona = (
                 f"{base_persona}\n(First interaction with this user — identical to base persona)"
             )
+            logger.debug("[agent_profile_update] No agent_profile found, falling back to base")
 
         # 3. Format today's events
         events_text = self._format_events(events)
+        logger.debug(f"[agent_profile_update] Events text:\n{events_text}")
 
         # 4. Load prompt and call LLM
         prompt_group = get_prompt_group("processing.extraction.agent_profile_update")
@@ -125,12 +135,14 @@ class AgentProfileUpdateTask(BasePeriodicTask):
             },
         ]
 
+        logger.debug("[agent_profile_update] Calling LLM...")
         response = await generate_with_messages(messages, enable_executor=False)
         if not response or not response.strip():
             return TaskResult.fail("LLM returned empty response")
 
         # 5. Parse LLM response (always JSON)
         raw = response.strip()
+        logger.debug(f"[agent_profile_update] LLM response:\n{raw}")
         try:
             parsed = json.loads(raw)
         except (json.JSONDecodeError, ValueError):

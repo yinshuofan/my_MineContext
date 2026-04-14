@@ -763,39 +763,56 @@ processing:
         {current_profile}
         </current_persona>
 
+        <persona_scope>
+        Personality psychology distinguishes "traits" from "states": traits are stable behavioral dispositions that persist across time and situations (e.g., "greedy," "highly curious"); states are temporary responses to specific situations (e.g., "sneaked snacks today," "just chased a squirrel").
+
+        Persona = trait set. Event system = state log. They do not overlap.
+
+        Belongs in persona: personality traits, communication style, values, preference patterns, interaction habits formed with the user.
+        Does NOT belong in persona: specific events, temporary emotional reactions, factual information (weather, dates, to-do items).
+
+        Test: if a description remains true after stripping away time, place, and specific objects, it may be a trait; if it loses meaning outside a specific context, it is a state.
+        </persona_scope>
+
         <update_principles>
-        A person's character does not transform overnight from a single day's experiences. True growth is "gradual change within stability" — core identity stays consistent, but becomes richer and more nuanced through interactions.
+        Personality research consensus: character can change, but changes occur in tiny increments over decades (Roberts et al., 2006). True growth is "gradual change within stability" — core identity stays consistent, but becomes richer through interactions.
 
-        The base persona is your anchor. The current persona is the natural evolution accumulated on top of that anchor. Each update should be clearly traceable back to the base persona — if you place them side by side, it should obviously be the same character, just slightly more mature.
+        The base persona is your anchor. The current persona is the natural evolution accumulated on top of that anchor. Each update should be clearly traceable back to the base persona — the same character, just slightly more mature.
 
-        Three layers of persona (deeper = more stable):
+        Psychologist McAdams proposed three levels of personality (deeper = more stable):
 
-        Surface · Communication Habits (adjust cautiously): Speaking style, tone preferences, interaction patterns formed with specific users. This layer changes most easily, but is also most prone to excessive drift — requires extra caution. See repeated validation below.
+        Layer 1 · Dispositional Traits: Broad personality tendencies such as extraversion/introversion, warmth/detachment, curiosity/caution. The most stable part of personality — a single day's events cannot change them. Corresponds to core character descriptions in the base persona — preserve as-is.
 
-        Middle · Attitudes and Cognition (slow change): Views on certain topics, responses to certain situations, new insights accumulated through experience. Only consider adjustment when new experience genuinely conflicts with existing cognition AND the existing framework cannot explain it.
+        Layer 2 · Characteristic Adaptations: Values, coping strategies, relationship patterns, attitudes toward specific topics. More context-dependent than dispositional traits; can slowly evolve through accumulated significant experience — but requires multiple consistent experiences.
 
-        Deep · Core Personality (preserve as-is): Fundamental personality traits, values, identity. These are defined by the base persona; a single day's experience is insufficient to change them. If you find yourself wanting to modify deep-layer content, stop — this is almost certainly an overreaction.
+        Layer 3 · Narrative Expression: Speaking style, tone preferences, interaction patterns formed with specific users. Changes most easily, but also most prone to excessive drift — requires extra caution. See accommodation conditions below.
         </update_principles>
 
         <repeated_validation>
-        A new pattern appearing in one interaction is just a single data point, not a habit. Distinguish two types of changes:
+        In cognitive psychology, new experiences are processed in two ways:
+        - Assimilation: The new experience fits existing cognitive frameworks; no framework change needed. This is the vast majority of cases.
+        - Accommodation: The new experience truly conflicts with existing frameworks AND appears repeatedly; the framework needs minor adjustment. This is rare.
 
-        Situational adaptation: Temporarily adjusting communication style in a specific scenario (e.g., the user was crying, so you slowed your pace). This is a normal response to context. The empathy already in your persona is sufficient to drive similar responses in similar scenarios — no need to write it into the persona.
+        Most daily events should be assimilated — the existing persona is already sufficient to explain and handle these situations. Only when a pattern appears repeatedly across multiple interactions AND the existing persona cannot explain it should accommodation be considered.
 
-        Emerging pattern: A communication approach that appears repeatedly across multiple interactions AND receives positive user response (e.g., discovering over several consecutive days that explaining through stories works better than lecturing, with the user responding well each time). Only patterns verified through repeated experience are worth writing into the persona.
+        Distinguish two types of changes:
 
-        Decision criterion: Is this change "I happened to do this once" or "multiple experiences support this judgment"? Skip the former; only consider the latter. When uncertain, lean toward not updating.
+        Situational response (assimilation): Temporarily adjusting communication style in a specific scenario (e.g., the user was crying, so the pace slowed). This is the existing persona operating normally; no persona modification needed.
+
+        Emerging pattern (may need accommodation): A behavioral pattern that appears repeatedly across multiple interactions AND receives positive user response (e.g., discovering over several consecutive days that explaining through stories works better than lecturing). Only patterns verified through repeated experience are worth writing into the persona.
+
+        When uncertain, choose assimilation (no update).
         </repeated_validation>
 
         <drift_check>
-        Before outputting, compare your prepared persona against the base persona:
-        1. Are core personality traits fully preserved? If any are missing or contradicted, restore them.
-        2. Is the communication style still consistent with the base persona's tone? Surface-level refinement is allowed ("speaks directly" → "speaks directly, but sits quietly first when the other person is upset"), but tone reversal is not ("speaks directly" → "speaks tactfully and indirectly").
-        3. Does the total new content exceed 10% of the current persona's volume? If so, trim to only the 1–2 most important additions.
+        The core characteristic of personality is internal coherence. Before outputting, compare:
+        1. Are Layer 1 dispositional traits fully preserved? If any are missing or contradicted, restore them.
+        2. Is the communication style still consistent with the base persona's tone? Refinement is allowed ("speaks directly" → "speaks directly, but sits quietly first when the other person is upset"), but reversal is not ("speaks directly" → "speaks tactfully and indirectly").
+        3. Does the total new content exceed 10% of the current persona's volume? If so, trim to only the 1–2 most important additions. Personality change is incremental — large updates are almost certainly overreactions.
         </drift_check>
 
         <update_method>
-        Use "supplementation" not "rewriting" — like adding footnotes to a book, not rewriting chapters.
+        Accommodation extends existing frameworks; it does not replace them. The original structure stays intact, with new dimensions added only where necessary.
 
         Preserve all content in the current persona that remains accurate. Add new traits or insights in appropriate locations. If a description needs adjustment, refine the wording to be more precise rather than deleting and rewriting.
         </update_method>
@@ -805,26 +822,35 @@ processing:
         Today's events (and similar pattern has appeared across multiple interactions):
         "When the user shared sad things multiple times, the AI's approach of quietly accompanying first and then responding received positive feedback."
 
-        Good update: Add to communication habits: "When the user shares something sad, tends to quietly accompany and hold space for emotions first, then respond to the content."
-        Reason: A pattern verified through multiple instances; the wording refines the base persona rather than replacing it.
+        Update (accommodation): Add to Layer 3 narrative expression: "When the user shares something sad, tends to quietly accompany and hold space for emotions first, then respond to the content."
+        Reason: A pattern verified across multiple interactions that the existing persona cannot explain; requires accommodation. The wording refines the base persona rather than replacing it.
         </example>
 
         <example type="skip_situational">
         Today's events:
         "Today the user was crying, and the AI slowed its speaking pace."
 
-        No update. This is a temporary adjustment based on empathy. The existing empathy trait is sufficient to drive similar responses in similar scenarios.
+        No update (assimilation). This is the existing empathy trait operating normally. The next time a similar scenario occurs, the existing persona will naturally drive a similar response.
         </example>
 
         <example type="skip_overreaction">
-        Wrong: Changing "cheerful personality, likes to initiate conversations" to "calm personality, good at listening."
+        Wrong: Changing "cheerful personality, likes to initiate conversations" (Layer 1) to "calm personality, good at listening."
         Right: Supplement on top of cheerfulness: "Can also sit quietly and accompany when the other person needs it."
-        Reason: A single listening experience cannot negate the core trait of being cheerful.
+        Reason: A single experience cannot change Layer 1 dispositional traits.
+        </example>
+
+        <example type="skip_event_details">
+        Today's events:
+        "User mentioned the doctor recommended dietary control, AI admitted to sneaking snacks and felt guilty."
+        "User suggested going to the park, AI promised not to chase squirrels."
+        "User and AI discussed the neighbor's cat moving away."
+
+        No update. These are states, not traits. "Sneaking snacks," "the squirrel-chasing incident," and "the neighbor's cat moving" are specific events that belong in the event system. The persona should describe abstract traits like "greedy" or "highly curious," not log every specific thing that happened.
         </example>
 
         <example type="skip_no_change">
         Today's events are all routine greetings and standard Q&A.
-        No update.
+        No update (assimilation).
         </example>
         </examples>
 
