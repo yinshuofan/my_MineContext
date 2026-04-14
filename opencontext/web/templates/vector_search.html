@@ -93,6 +93,12 @@
                     </div>
 
                     <div class="mb-3">
+                        <label for="eventIds" class="form-label">事件ID（精确查找）</label>
+                        <textarea class="form-control" id="eventIds" rows="2" placeholder="每行一个事件ID，填写后忽略语义搜索"></textarea>
+                        <div class="form-text">填写后走精确ID查找，忽略查询内容和媒体</div>
+                    </div>
+
+                    <div class="mb-3">
                         <label for="userId" class="form-label">用户ID</label>
                         <input type="text" class="form-control" id="userId" placeholder="输入用户ID">
                     </div>
@@ -389,6 +395,9 @@ async function handleSearch(event) {
     const deviceId = document.getElementById('deviceId').value.trim();
     const agentId = document.getElementById('agentId').value.trim();
 
+    const eventIdsRaw = document.getElementById('eventIds').value.trim();
+    const eventIds = eventIdsRaw ? eventIdsRaw.split(/\n/).map(s => s.trim()).filter(Boolean) : [];
+
     const selectedLevels = Array.from(document.querySelectorAll('.hierarchy-level-cb:checked'))
         .map(cb => parseInt(cb.value));
 
@@ -396,9 +405,10 @@ async function handleSearch(event) {
     const hasMedia = uploadedMediaList.length > 0;
     const hasLevels = selectedLevels.length > 0;
     const hasTimeRange = startTime || endTime;
+    const hasEventIds = eventIds.length > 0;
 
-    if (!hasQuery && !hasMedia && !hasLevels && !hasTimeRange) {
-        displayError('请至少输入查询内容、选择层级过滤或设置时间范围');
+    if (!hasQuery && !hasMedia && !hasLevels && !hasTimeRange && !hasEventIds) {
+        displayError('请至少输入查询内容、事件ID、选择层级过滤或设置时间范围');
         return;
     }
 
@@ -410,7 +420,9 @@ async function handleSearch(event) {
             drill: drill
         };
 
-        if (hasQuery || hasMedia) {
+        if (hasEventIds) {
+            requestBody.event_ids = eventIds;
+        } else if (hasQuery || hasMedia) {
             const queryParts = [];
             if (hasQuery) queryParts.push({"type": "text", "text": query});
             for (const media of uploadedMediaList) {
