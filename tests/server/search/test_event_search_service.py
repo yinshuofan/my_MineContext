@@ -12,7 +12,12 @@ def _ctx(ctx_id: str, level: int, refs: dict | None = None):
     """Minimal ProcessedContext-like object."""
     return SimpleNamespace(
         id=ctx_id,
-        properties=SimpleNamespace(hierarchy_level=level, refs=refs or {}),
+        properties=SimpleNamespace(
+            hierarchy_level=level,
+            refs=refs or {},
+            event_time_start=None,
+        ),
+        extracted_data=SimpleNamespace(title="", context_type=SimpleNamespace(value="")),
     )
 
 
@@ -183,3 +188,61 @@ async def test_collect_ancestors_multi_level():
         result = await service.collect_ancestors([(hit, 0.9)], max_level=3)
 
     assert set(result.keys()) == {"l1-1", "l2-1"}
+
+
+@pytest.mark.unit
+async def test_search_drill_both_calls_ancestors_and_descendants():
+    """drill='both' populates both ancestors and descendants on SearchResult."""
+    from opencontext.server.search.event_search_service import SearchResult
+
+    hit = _ctx("h-1", level=1, refs={"event": ["l0-1"], "weekly_summary": ["l2-1"]})
+    l0 = _ctx("l0-1", level=0)
+    l2 = _ctx("l2-1", level=2)
+
+    service = EventSearchService()
+
+    async def fake_get_by_ids(ids, **kw):
+        lookup = {"l0-1": l0, "l2-1": l2}
+        return [lookup[i] for i in ids if i in lookup]
+
+    storage = AsyncMock()
+    storage.search = AsyncMock(return_value=[(hit, 0.9)])
+    storage.get_contexts_by_ids = AsyncMock(side_effect=fake_get_by_ids)
+
+    with (
+        patch(MOCK_STORAGE, return_value=storage),
+        patch("opencontext.server.search.event_search_service.do_vectorize"),
+    ):
+        result = await service.search(
+            query=[{"type": "text", "text": "test"}],
+            drill="both",
+        )
+
+    assert isinstance(result, SearchResult)
+    assert len(result.hits) == 1
+    assert "l2-1" in result.ancestors
+    assert "l0-1" in result.descendants
+
+
+@pytest.mark.unit
+async def test_search_drill_none_no_traversal():
+    """drill='none' returns empty ancestors and descendants."""
+    hit = _ctx("h-1", level=1, refs={"event": ["l0-1"]})
+
+    service = EventSearchService()
+
+    storage = AsyncMock()
+    storage.search = AsyncMock(return_value=[(hit, 0.9)])
+
+    with (
+        patch(MOCK_STORAGE, return_value=storage),
+        patch("opencontext.server.search.event_search_service.do_vectorize"),
+    ):
+        result = await service.search(
+            query=[{"type": "text", "text": "test"}],
+            drill="none",
+        )
+
+    assert result.ancestors == {}
+    assert result.descendants == {}
+    storage.get_contexts_by_ids.assert_not_awaited()

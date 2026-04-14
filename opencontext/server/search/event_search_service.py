@@ -48,7 +48,7 @@ class EventSearchService:
         top_k: int = 20,
         score_threshold: float | None = None,
         time_range: Any | None = None,
-        drill_up: bool = False,
+        drill: str = "none",
     ) -> SearchResult:
         """Unified search — vector or filter-only, with optional drill-up.
 
@@ -65,7 +65,7 @@ class EventSearchService:
         logger.debug(
             f"[EventSearchService] search: query='{query_text[:100]}', "
             f"user_id={user_id}, agent_id={agent_id}, "
-            f"hierarchy_levels={hierarchy_levels}, top_k={top_k}, drill_up={drill_up}"
+            f"hierarchy_levels={hierarchy_levels}, top_k={top_k}, drill={drill}"
         )
 
         # Build unified filters and context types
@@ -94,15 +94,21 @@ class EventSearchService:
                 top_k,
             )
 
-        # Drill-up
+        # Drill traversal
         ancestors: dict[str, ProcessedContext] = {}
-        if drill_up and raw_results:
-            max_level = max(hierarchy_levels) if hierarchy_levels else 3
-            ancestors = await self.collect_ancestors(raw_results, max_level=max_level)
+        descendants: dict[str, ProcessedContext] = {}
+        if raw_results:
+            if drill in ("up", "both"):
+                max_level = max(hierarchy_levels) if hierarchy_levels else 3
+                ancestors = await self.collect_ancestors(raw_results, max_level=max_level)
+            if drill in ("down", "both"):
+                min_level = min(hierarchy_levels) if hierarchy_levels else 0
+                descendants = await self.collect_descendants(raw_results, min_level=min_level)
 
         logger.debug(
             f"[EventSearchService] search results: "
-            f"{len(raw_results)} hits, {len(ancestors)} ancestors"
+            f"{len(raw_results)} hits, {len(ancestors)} ancestors, "
+            f"{len(descendants)} descendants"
         )
         for ctx, score in raw_results:
             ed = ctx.extracted_data
@@ -113,7 +119,7 @@ class EventSearchService:
                 f"event_time_start={ctx.properties.event_time_start if ctx.properties else ''}"
             )
 
-        return SearchResult(hits=raw_results, ancestors=ancestors)
+        return SearchResult(hits=raw_results, ancestors=ancestors, descendants=descendants)
 
     # ── Internal search paths ──
 
