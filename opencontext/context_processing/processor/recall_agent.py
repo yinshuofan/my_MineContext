@@ -234,6 +234,14 @@ def _format_search_result(
             lines.append(f"{prefix}{id_marker}[{time_str} L{level}] {title}{hit_marker}")
             if summary:
                 lines.append(f"{prefix}  {summary}")
+            commentary = (
+                getattr(ctx.extracted_data, "agent_commentary", None)
+                if ctx.extracted_data
+                else None
+            )
+            # "default" is the placeholder value on agent_base events (pre-populated)
+            if commentary and commentary != "default":
+                lines.append(f"{prefix}  [feeling] {commentary}")
             if children_map.get(ctx.id):
                 _render(children_map[ctx.id], indent + 1)
 
@@ -683,5 +691,13 @@ class RecallAgent:
             lines.append(f"[{event_time}] {title}")
             if summary:
                 lines.append(summary)
+            commentary = (
+                getattr(ctx.extracted_data, "agent_commentary", None)
+                if ctx.extracted_data
+                else None
+            )
+            # "default" is the placeholder value on agent_base events (pre-populated)
+            if commentary and commentary != "default":
+                lines.append(f"[feeling] {commentary}")
             lines.append("")
         return "\n".join(lines).strip()

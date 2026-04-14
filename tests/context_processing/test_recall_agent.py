@@ -34,11 +34,21 @@ _FAKE_PROMPT_GROUP = {
 }
 
 
-def _make_ctx(ctx_id: str, title: str, summary: str = "", date: str = "2026-04-01", level: int = 0):
+def _make_ctx(
+    ctx_id: str,
+    title: str,
+    summary: str = "",
+    date: str = "2026-04-01",
+    level: int = 0,
+    agent_commentary: str | None = None,
+):
     """Build a minimal ProcessedContext-like object."""
+    ed_kwargs = {"title": title, "summary": summary}
+    if agent_commentary is not None:
+        ed_kwargs["agent_commentary"] = agent_commentary
     return SimpleNamespace(
         id=ctx_id,
-        extracted_data=SimpleNamespace(title=title, summary=summary),
+        extracted_data=SimpleNamespace(**ed_kwargs),
         properties=SimpleNamespace(
             event_time_start=datetime.datetime.fromisoformat(date),
             event_time_end=None,
@@ -726,6 +736,48 @@ async def test_format_search_result_empty():
 
     result = _format_search_result([], [])
     assert "No new memories" in result
+
+
+@pytest.mark.unit
+async def test_format_search_result_includes_feeling():
+    """Search result rendering includes [feeling] for events with agent_commentary."""
+    from opencontext.context_processing.processor.recall_agent import _format_search_result
+
+    ctx = _make_ctx("c1", "Park Visit", summary="Went to the park", agent_commentary="So excited!")
+    result = _format_search_result([ctx], [])
+    assert "[feeling] So excited!" in result
+
+
+@pytest.mark.unit
+async def test_format_search_result_filters_default_commentary():
+    """Search result rendering filters out 'default' placeholder commentary."""
+    from opencontext.context_processing.processor.recall_agent import _format_search_result
+
+    ctx = _make_ctx("c1", "Base Event", summary="A base event", agent_commentary="default")
+    result = _format_search_result([ctx], [])
+    assert "[feeling]" not in result
+
+
+@pytest.mark.unit
+async def test_format_memories_includes_feeling():
+    """Final memories output includes [feeling] for events with agent_commentary."""
+    from opencontext.context_processing.processor.recall_agent import RecallAgent
+
+    ctx = _make_ctx("c1", "Park Visit", summary="Went to the park", agent_commentary="So excited!")
+    result = RecallAgent._format_memories([ctx])
+    assert "[feeling] So excited!" in result
+    assert "Park Visit" in result
+
+
+@pytest.mark.unit
+async def test_format_memories_filters_default_commentary():
+    """Final memories output filters out 'default' placeholder commentary."""
+    from opencontext.context_processing.processor.recall_agent import RecallAgent
+
+    ctx = _make_ctx("c1", "Base Event", summary="A base event", agent_commentary="default")
+    result = RecallAgent._format_memories([ctx])
+    assert "[feeling]" not in result
+    assert "Base Event" in result
 
 
 @pytest.mark.unit
