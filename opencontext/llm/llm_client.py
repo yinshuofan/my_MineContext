@@ -123,7 +123,7 @@ class LLMClient:
                         from opencontext.monitoring import record_token_usage
 
                         await record_token_usage(
-                            model=create_params["model"],
+                            model=str(create_params["model"]),
                             prompt_tokens=response.usage.prompt_tokens,
                             completion_tokens=response.usage.completion_tokens,
                             total_tokens=response.usage.total_tokens,
