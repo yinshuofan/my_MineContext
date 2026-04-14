@@ -94,16 +94,16 @@ class EventSearchService:
                 top_k,
             )
 
-        # Drill traversal
+        # Drill traversal — depth is independent of hierarchy_levels (search filter).
+        # hierarchy_levels controls WHICH levels to search; drill controls HOW FAR
+        # to traverse from hits. Always traverse the full range.
         ancestors: dict[str, ProcessedContext] = {}
         descendants: dict[str, ProcessedContext] = {}
         if raw_results:
             if drill in ("up", "both"):
-                max_level = max(hierarchy_levels) if hierarchy_levels else 3
-                ancestors = await self.collect_ancestors(raw_results, max_level=max_level)
+                ancestors = await self.collect_ancestors(raw_results, max_level=3)
             if drill in ("down", "both"):
-                min_level = min(hierarchy_levels) if hierarchy_levels else 0
-                descendants = await self.collect_descendants(raw_results, min_level=min_level)
+                descendants = await self.collect_descendants(raw_results, min_level=0)
 
         logger.debug(
             f"[EventSearchService] search results: "

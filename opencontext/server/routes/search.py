@@ -153,12 +153,10 @@ async def _execute_search(
 
         if raw_results:
             if request.drill in ("up", "both"):
-                max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
-                all_ancestors = await _search_service.collect_ancestors(raw_results, max_level)
+                all_ancestors = await _search_service.collect_ancestors(raw_results, max_level=3)
             if request.drill in ("down", "both"):
-                min_level = min(request.hierarchy_levels) if request.hierarchy_levels else 0
                 all_descendants = await _search_service.collect_descendants(
-                    raw_results, min_level=min_level
+                    raw_results, min_level=0
                 )
 
     else:
