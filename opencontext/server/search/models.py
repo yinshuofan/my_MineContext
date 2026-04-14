@@ -43,9 +43,13 @@ class EventSearchRequest(BaseModel):
         default=None,
         description="Filter by hierarchy levels: 0=raw events, 1=daily, 2=weekly, 3=monthly",
     )
-    drill_up: bool = Field(
-        default=True,
-        description="Whether to recursively fetch ancestor summaries for each result",
+    drill: str = Field(
+        default="up",
+        description=(
+            "Drill direction for hierarchy traversal: "
+            "'none' (no traversal), 'up' (ancestors only), "
+            "'down' (descendants only), 'both' (ancestors + descendants)"
+        ),
     )
     top_k: int = Field(
         default=10,

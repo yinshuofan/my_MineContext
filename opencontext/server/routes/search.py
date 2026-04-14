@@ -47,8 +47,8 @@ async def search_events(
     2. **query** — Semantic search with optional time_range / hierarchy_levels filters
     3. **filters-only** — Browse by time_range and/or hierarchy_levels
 
-    When `drill_up=True`, results are returned as a hierarchy tree where ancestor
-    summaries are parent nodes containing search hits as nested children.
+    When `drill` is 'up', 'down', or 'both', results include hierarchy context
+    (ancestors, descendants, or both) and are returned as a tree structure.
     """
     start_time = time.monotonic()
     query_preview = str(request.query)[:50] if request.query else ""
@@ -70,7 +70,7 @@ async def search_events(
     logger.info(
         f"Event search: query='{query_preview}', "
         f"event_ids={bool(request.event_ids)}, "
-        f"drill_up={request.drill_up}, user_id={request.user_id}"
+        f"drill={request.drill}, user_id={request.user_id}"
     )
 
     storage = get_storage()
@@ -145,6 +145,7 @@ async def _execute_search(
     # ── Step 1: Get raw results + ancestors via service ──
     raw_results: list[tuple[ProcessedContext, float]] = []
     all_ancestors: dict[str, ProcessedContext] = {}
+    all_descendants: dict[str, ProcessedContext] = {}
 
     l0_type = _search_service.get_l0_type()
 
@@ -153,9 +154,15 @@ async def _execute_search(
         contexts = await storage.get_contexts_by_ids(request.event_ids, l0_type)
         raw_results = [(ctx, 1.0) for ctx in contexts]
 
-        if request.drill_up and raw_results:
-            max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
-            all_ancestors = await _search_service.collect_ancestors(raw_results, max_level)
+        if raw_results:
+            if request.drill in ("up", "both"):
+                max_level = max(request.hierarchy_levels) if request.hierarchy_levels else 3
+                all_ancestors = await _search_service.collect_ancestors(raw_results, max_level)
+            if request.drill in ("down", "both"):
+                min_level = min(request.hierarchy_levels) if request.hierarchy_levels else 0
+                all_descendants = await _search_service.collect_descendants(
+                    raw_results, min_level=min_level
+                )
 
     else:
         # Path B: Unified search (vector if query provided, filter-only otherwise)
@@ -168,10 +175,11 @@ async def _execute_search(
             top_k=request.top_k,
             score_threshold=request.score_threshold,
             time_range=request.time_range,
-            drill_up=request.drill_up,
+            drill=request.drill,
         )
         raw_results = result.hits
         all_ancestors = result.ancestors
+        all_descendants = result.descendants
 
     # ── Step 2: Build node map (stays in route — EventNode is a response model) ──
     nodes: dict[str, EventNode] = {}
@@ -184,6 +192,10 @@ async def _execute_search(
     for aid, actx in all_ancestors.items():
         if aid not in nodes:
             nodes[aid] = _to_context_node(actx)
+
+    for did, dctx in all_descendants.items():
+        if did not in nodes:
+            nodes[did] = _to_context_node(dctx)
 
     # ── Step 3: Link children to parents, build tree ──
     user_summary_types = {
