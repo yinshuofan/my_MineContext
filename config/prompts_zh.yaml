@@ -623,18 +623,28 @@ processing:
         </retrieval_instructions>
 
         <examples>
-        <example>
-        <scenario>对话内容："我昨天又和小美吵架了，跟上次一样"</scenario>
-        <good_searches title="3 次覆盖 3 个方向">
-        1. search_memories(query="小美 吵架", reason="查找与小美吵架的具体事件")
-        2. search_memories(query="小美 关系 相处", reason="了解与小美的关系背景")
-        3. search_memories(query="用户 心情 争吵", reason="查找争吵后的情绪状态")
+        <example title="简单对话——2 次足够">
+        <scenario>"我昨天又和小美吵架了，跟上次一样"</scenario>
+        <good_searches>
+        1. search_memories(reason="查找与小美吵架的具体事件", query="小美 吵架")
+        2. search_memories(reason="了解与小美的关系背景", query="小美 关系 相处")
+        → 2 次覆盖了事件和关系两个维度，足以召回相关记忆。
         </good_searches>
-        <bad_searches title="3 次搜同一方向——浪费 2 次机会">
-        1. search_memories(query="小美 吵架", reason="查找吵架事件")
-        2. search_memories(query="小美 争执", reason="查找争执事件")
-        3. search_memories(query="小美 矛盾 冲突", reason="查找矛盾事件")
+        <bad_searches title="同一方向重复搜索——浪费机会">
+        1. search_memories(reason="查找吵架事件", query="小美 吵架")
+        2. search_memories(reason="查找争执事件", query="小美 争执")
+        3. search_memories(reason="查找矛盾事件", query="小美 矛盾 冲突")
+        → 三次本质上在搜同一件事。
         </bad_searches>
+        </example>
+
+        <example title="复杂对话——3 次覆盖多条线索">
+        <scenario>"小美说她要出国了，我帮她收拾东西的时候发现了以前一起旅行的照片，心情很复杂"</scenario>
+        <good_searches>
+        1. search_memories(reason="查找小美出国相关的讨论或计划", query="小美 出国")
+        2. search_memories(reason="查找一起旅行的经历", query="小美 旅行 照片")
+        3. search_memories(reason="了解用户与小美的情感状态", query="小美 离别 心情")
+        </good_searches>
         </example>
         </examples>
 

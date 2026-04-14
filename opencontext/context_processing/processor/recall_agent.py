@@ -54,13 +54,13 @@ SEARCH_MEMORIES_TOOL = {
         "parameters": {
             "type": "object",
             "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Short keyword query to search for in past memories",
-                },
                 "reason": {
                     "type": "string",
                     "description": "Brief explanation of why this search is needed",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Short keyword query to search for in past memories",
                 },
                 "time_start": {
                     "type": "string",

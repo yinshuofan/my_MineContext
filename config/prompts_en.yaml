@@ -623,18 +623,28 @@ processing:
         </retrieval_instructions>
 
         <examples>
-        <example>
-        <scenario>Conversation: "I had another argument with Alice yesterday, just like last time"</scenario>
-        <good_searches title="3 searches covering 3 directions">
-        1. search_memories(query="Alice argument", reason="find specific argument events with Alice")
-        2. search_memories(query="Alice relationship history", reason="understand relationship background")
-        3. search_memories(query="user mood conflict", reason="find emotional state after conflicts")
+        <example title="simple conversation — 2 searches suffice">
+        <scenario>"I had another argument with Alice yesterday, just like last time"</scenario>
+        <good_searches>
+        1. search_memories(reason="find specific argument events with Alice", query="Alice argument")
+        2. search_memories(reason="understand relationship background", query="Alice relationship history")
+        → 2 searches cover the event and relationship dimensions, enough to recall relevant memories.
         </good_searches>
-        <bad_searches title="3 searches on the same direction — wastes 2 opportunities">
-        1. search_memories(query="Alice argument", reason="find argument events")
-        2. search_memories(query="Alice dispute", reason="find dispute events")
-        3. search_memories(query="Alice conflict quarrel", reason="find conflict events")
+        <bad_searches title="repeating the same direction — wastes opportunities">
+        1. search_memories(reason="find argument events", query="Alice argument")
+        2. search_memories(reason="find dispute events", query="Alice dispute")
+        3. search_memories(reason="find conflict events", query="Alice conflict quarrel")
+        → All three are essentially searching the same thing.
         </bad_searches>
+        </example>
+
+        <example title="complex conversation — 3 searches covering multiple threads">
+        <scenario>"Alice said she's moving abroad. While helping her pack I found photos from our trip together — I have mixed feelings"</scenario>
+        <good_searches>
+        1. search_memories(reason="find discussions about Alice moving abroad", query="Alice moving abroad")
+        2. search_memories(reason="find shared travel experiences", query="Alice trip photos")
+        3. search_memories(reason="understand emotional state around Alice", query="Alice farewell feelings")
+        </good_searches>
         </example>
         </examples>
 
