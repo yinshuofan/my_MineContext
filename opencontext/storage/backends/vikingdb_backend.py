@@ -1630,6 +1630,7 @@ class VikingDBBackend(IVectorStorageBackend):
             now = tz_now()
             from datetime import timedelta
 
+            apply_time_filter = owner_type != "agent_base"
             l1_cutoff = now - timedelta(days=l1_days)
             month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -1663,9 +1664,9 @@ class VikingDBBackend(IVectorStorageBackend):
                 ts = ctx.properties.event_time_start
                 if level == 3:
                     grouped[3].append(ctx)
-                elif level == 2 and ts and ts >= month_start:
+                elif level == 2 and (not apply_time_filter or (ts and ts >= month_start)):
                     grouped[2].append(ctx)
-                elif level == 1 and ts and ts >= l1_cutoff:
+                elif level == 1 and (not apply_time_filter or (ts and ts >= l1_cutoff)):
                     grouped[1].append(ctx)
             return grouped
 

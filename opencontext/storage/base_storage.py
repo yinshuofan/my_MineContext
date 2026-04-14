@@ -289,9 +289,18 @@ class IVectorStorageBackend(IStorageBackend):
         if not types or len(types) < 4:
             return {3: [], 2: [], 1: []}
 
+        # Agent base events are pre-configured knowledge with arbitrary time spans.
+        # Only apply time windowing for user events (daily activity streams).
+        apply_time_filter = owner_type != "agent_base"
+
         now = tz_now()
-        month_start_ts = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
-        l1_start_ts = (now - timedelta(days=l1_days)).timestamp()
+        l2_time_start = None
+        l1_time_start = None
+        if apply_time_filter:
+            l2_time_start = now.replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            ).timestamp()
+            l1_time_start = (now - timedelta(days=l1_days)).timestamp()
 
         l3_task = self.search_by_hierarchy(
             context_type=types[3].value,
@@ -304,20 +313,20 @@ class IVectorStorageBackend(IStorageBackend):
         l2_task = self.search_by_hierarchy(
             context_type=types[2].value,
             hierarchy_level=2,
-            time_start=month_start_ts,
+            time_start=l2_time_start,
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
-            top_k=10,
+            top_k=100 if not apply_time_filter else 10,
         )
         l1_task = self.search_by_hierarchy(
             context_type=types[1].value,
             hierarchy_level=1,
-            time_start=l1_start_ts,
+            time_start=l1_time_start,
             user_id=user_id,
             device_id=device_id,
             agent_id=agent_id,
-            top_k=l1_days,
+            top_k=100 if not apply_time_filter else l1_days,
         )
 
         l3_results, l2_results, l1_results = await asyncio.gather(l3_task, l2_task, l1_task)
