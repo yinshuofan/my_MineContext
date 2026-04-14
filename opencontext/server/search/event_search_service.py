@@ -50,7 +50,7 @@ class EventSearchService:
         time_range: Any | None = None,
         drill: str = "none",
     ) -> SearchResult:
-        """Unified search — vector or filter-only, with optional drill-up.
+        """Unified search — vector or filter-only, with optional drill traversal.
 
         If query is provided, performs vector similarity search.
         If query is None, performs filter-only retrieval.
@@ -301,7 +301,9 @@ class EventSearchService:
                         seen.add(cid)
                         current_batch.append((cid, level))
 
-        while current_batch:
+        max_rounds = 4  # L3 → L0 is at most 3 hops; generous limit
+        rounds = 0
+        while current_batch and rounds < max_rounds:
             batch_ids = [cid for cid, _ in current_batch]
             parent_levels = {cid: plvl for cid, plvl in current_batch}
             children = await self.storage.get_contexts_by_ids(batch_ids)
@@ -319,5 +321,6 @@ class EventSearchService:
                                 seen.add(cid)
                                 next_batch.append((cid, child_level))
             current_batch = next_batch
+            rounds += 1
 
         return all_descendants

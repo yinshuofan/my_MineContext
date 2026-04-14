@@ -2,7 +2,7 @@
 Event Search API - Request/Response Models
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -43,7 +43,7 @@ class EventSearchRequest(BaseModel):
         default=None,
         description="Filter by hierarchy levels: 0=raw events, 1=daily, 2=weekly, 3=monthly",
     )
-    drill: str = Field(
+    drill: Literal["none", "up", "down", "both"] = Field(
         default="up",
         description=(
             "Drill direction for hierarchy traversal: "

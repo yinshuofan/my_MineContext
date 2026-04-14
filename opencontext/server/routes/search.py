@@ -14,7 +14,6 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from opencontext.models.context import ProcessedContext
-from opencontext.models.enums import ContextType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.search.event_search_service import EventSearchService
 from opencontext.server.search.models import (
@@ -198,22 +197,10 @@ async def _execute_search(
             nodes[did] = _to_context_node(dctx)
 
     # ── Step 3: Link children to parents, build tree ──
-    user_summary_types = {
-        ContextType.DAILY_SUMMARY.value,
-        ContextType.WEEKLY_SUMMARY.value,
-        ContextType.MONTHLY_SUMMARY.value,
-    }
-    base_summary_types = {
-        ContextType.AGENT_BASE_L1_SUMMARY.value,
-        ContextType.AGENT_BASE_L2_SUMMARY.value,
-        ContextType.AGENT_BASE_L3_SUMMARY.value,
-    }
-    summary_type_values = user_summary_types | base_summary_types
-
     roots: list[EventNode] = []
     linked: set = set()
     for node_id, node in nodes.items():
-        pid = _extract_parent_id_from_refs(node.refs, nodes, summary_type_values)
+        pid = _extract_parent_id_from_refs(node, nodes)
         if pid and pid in nodes and node_id not in linked:
             nodes[pid].children.append(node)
             linked.add(node_id)
@@ -241,19 +228,16 @@ def _format_timestamp(value) -> str | None:
         return str(value)
 
 
-def _extract_parent_id_from_refs(
-    refs: dict[str, list[str]], nodes: dict[str, Any], summary_type_values: set = None
-) -> str | None:
-    """Find the first upward ref target that exists in the nodes map (i.e., a known ancestor).
+def _extract_parent_id_from_refs(node: EventNode, nodes: dict[str, Any]) -> str | None:
+    """Find the first upward ref target that exists in the nodes map.
 
-    Only considers refs whose keys are summary types (upward/parent direction).
-    Skips child refs to avoid incorrect parent-child linkage.
+    Uses hierarchy_level comparison: a ref target with higher level than the
+    current node is a parent. Skips same-level or lower-level refs.
     """
-    for ref_key, ref_ids in refs.items():
-        if summary_type_values and ref_key not in summary_type_values:
-            continue  # skip downward (child) refs
+    node_level = node.hierarchy_level
+    for ref_ids in node.refs.values():
         for pid in ref_ids:
-            if pid in nodes:
+            if pid in nodes and nodes[pid].hierarchy_level > node_level:
                 return pid
     return None
 
