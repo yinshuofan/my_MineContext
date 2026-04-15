@@ -19,8 +19,8 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["memory-cache"])
 
-VALID_SECTIONS = {"profile", "events", "accessed"}
-DEFAULT_SECTIONS = {"profile", "events", "accessed"}
+VALID_SECTIONS = {"profile", "agent_prompt", "events", "accessed"}
+DEFAULT_SECTIONS = {"profile", "agent_prompt", "events", "accessed"}
 
 
 def _parse_include(include: str | None) -> set[str]:
@@ -43,8 +43,8 @@ async def get_user_memory_cache(
         default=None,
         description=(
             "Comma-separated response sections: "
-            "profile,events,accessed,all. "
-            "Default: profile,events,accessed"
+            "profile,agent_prompt,events,accessed,all. "
+            "Default: profile,agent_prompt,events,accessed"
         ),
     ),
     recent_days: int = Query(default=None, description="Recent memory window in days"),  # noqa: B008
