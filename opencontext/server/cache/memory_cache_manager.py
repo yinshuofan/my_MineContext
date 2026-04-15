@@ -51,8 +51,6 @@ class MemoryCacheManager:
             "recent_days": raw.get("recent_days", 3),
             "max_recently_accessed": raw.get("max_recently_accessed", 25),
             "max_today_events": raw.get("max_today_events", 5),
-            "max_recent_documents": raw.get("max_recent_documents", 10),
-            "max_recent_knowledge": raw.get("max_recent_knowledge", 10),
             "accessed_ttl": raw.get("accessed_ttl", 604800),  # 7 days
         }
 
