@@ -77,6 +77,7 @@ class UserMemoryCacheResponse(BaseModel):
     device_id: str = "default"
     agent_id: str
     profile: SimpleProfile | None = None
+    agent_prompt: SimpleProfile | None = None
     recently_accessed: list[RecentlyAccessedItem] | None = None
     daily_summaries: list[SimpleDailySummary] | None = None
     today_events: list[SimpleTodayEvent] | None = None
