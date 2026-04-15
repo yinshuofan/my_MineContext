@@ -216,11 +216,11 @@ class MemoryCacheManager:
 
         Args:
             include_sections: Set of section names to include in response.
-                Valid values: "profile", "events", "accessed".
-                Default (None): {"profile", "events", "accessed"}.
+                Valid values: "profile", "agent_prompt", "events", "accessed".
+                Default (None): {"profile", "agent_prompt", "events", "accessed"}.
                 Snapshot is always built fully for caching; filtering is response-level only.
         """
-        sections = include_sections or {"profile", "events", "accessed"}
+        sections = include_sections or {"profile", "agent_prompt", "events", "accessed"}
         cache = await get_cache()
 
         # 1. Recently accessed — only if requested, always real-time from Redis
@@ -658,11 +658,14 @@ class MemoryCacheManager:
         Only populates sections listed in include_sections. Unrequested sections
         remain None in the response (= not requested). Requested but empty sections
         are set to [] (= no data).
+
+        ``profile`` and ``agent_prompt`` are independently gated — each has its
+        own include section name.
         """
-        sections = include_sections or {"profile", "events", "accessed"}
+        sections = include_sections or {"profile", "agent_prompt", "events", "accessed"}
         rm_data = snapshot_data.get("recent_memories", {})
 
-        # Profile
+        # Profile — user's own profile
         profile = None
         if "profile" in sections:
             profile_data = snapshot_data.get("profile")
@@ -671,6 +674,17 @@ class MemoryCacheManager:
                     factual_profile=profile_data.get("factual_profile", ""),
                     behavioral_profile=profile_data.get("behavioral_profile"),
                     metadata=profile_data.get("metadata", {}),
+                )
+
+        # Agent prompt — agent's own profile / prompt
+        agent_prompt = None
+        if "agent_prompt" in sections:
+            agent_prompt_data = snapshot_data.get("agent_prompt")
+            if agent_prompt_data:
+                agent_prompt = SimpleProfile(
+                    factual_profile=agent_prompt_data.get("factual_profile", ""),
+                    behavioral_profile=agent_prompt_data.get("behavioral_profile"),
+                    metadata=agent_prompt_data.get("metadata", {}),
                 )
 
         # Collect IDs from shown sections (for dedup against accessed)
@@ -719,6 +733,7 @@ class MemoryCacheManager:
             device_id=snapshot_data.get("device_id", "default"),
             agent_id=snapshot_data.get("agent_id", "default"),
             profile=profile,
+            agent_prompt=agent_prompt,
             recently_accessed=filtered_accessed,
             daily_summaries=daily_summaries,
             today_events=today_events,
