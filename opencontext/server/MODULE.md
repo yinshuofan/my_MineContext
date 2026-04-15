@@ -174,12 +174,12 @@ class MemoryCacheManager:
     async def track_accessed(self, user_id, items: List[Dict], device_id, agent_id) -> None
     async def invalidate_snapshot(self, user_id, device_id, agent_id) -> None
     async def refresh_snapshot(self, user_id, device_id, agent_id) -> bool
-    async def get_user_memory_cache(self, user_id, device_id, agent_id, recent_days, max_recent_events_today, max_accessed, force_refresh, include_sections: Optional[Set[str]] = None) -> UserMemoryCacheResponse
+    async def get_user_memory_cache(self, user_id, device_id, agent_id, recent_days, max_recent_events_today, max_accessed, force_refresh, include_sections: set[str] | None = None) -> UserMemoryCacheResponse
 
     # Internal
     async def _get_recently_accessed(self, cache, user_id, max_items, device_id, agent_id) -> List[RecentlyAccessedItem]
     async def _build_snapshot(self, user_id, device_id, agent_id, recent_days, max_today_events) -> Dict[str, Any]
-    def _merge_response(self, snapshot_data, accessed, cache_hit, ttl_remaining, include_sections: Optional[Set[str]] = None) -> UserMemoryCacheResponse
+    def _merge_response(self, snapshot_data, accessed, cache_hit, ttl_remaining, include_sections: set[str] | None = None) -> UserMemoryCacheResponse
     async def _trim_accessed(self, cache, key: str, max_size: int) -> None
     @staticmethod _ctx_to_recent_item(ctx: ProcessedContext) -> Dict[str, Any]
     @staticmethod _snapshot_key(user_id, device_id, agent_id) -> str
@@ -188,11 +188,11 @@ class MemoryCacheManager:
 The `memory_owner` parameter was removed -- the cache always operates on user memory (EVENT/DAILY_SUMMARY/WEEKLY_SUMMARY/MONTHLY_SUMMARY and PROFILE). Agent profile data is maintained separately by `AgentProfileUpdateTask`.
 
 Caching architecture:
-- **Snapshot** (profile + today events + daily summaries + recent docs + recent knowledge): Redis JSON string, configurable TTL (default 300s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot always stores full internal data; response assembly in `_merge_response()` filters by `include_sections` and simplifies to `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`.
+- **Snapshot** (profile + agent_prompt + today events + daily summaries): Redis JSON string, configurable TTL (default 3600s). Key: `memory_cache:snapshot:{user_id}:{device_id}:{agent_id}`. Snapshot always stores full internal data; response assembly in `_merge_response()` filters by `include_sections` and simplifies to `SimpleProfile`, `SimpleDailySummary`, `SimpleTodayEvent`.
 - **Recently Accessed**: Redis Hash, 7-day TTL. Key: `memory_cache:accessed:{user_id}:{device_id}:{agent_id}`. Updated on every search (documents/events/knowledge only; profile excluded), always read real-time. Skipped entirely if `"accessed"` not in `include_sections`.
 - **Stampede prevention**: Distributed lock via `cache.acquire_lock()` + double-check pattern. Lock key: `memory_cache:build:{user_id}:{device_id}:{agent_id}`. If lock acquisition times out, tries cache once more then builds directly without caching.
-- **Snapshot build**: 5 parallel queries (profile, today events, daily summaries, recent docs, recent knowledge). Snapshot is always built fully for caching efficiency; `include_sections` filtering is response-level only.
-- **Section filtering**: `include_sections` controls which response fields are populated. Default: `{"profile", "events", "accessed"}`. Sections: `profile` → `profile`, `events` → `today_events` + `daily_summaries`, `accessed` → `recently_accessed`. Unrequested sections are `null` in response; requested but empty sections are `[]`.
+- **Snapshot build**: 3–4 parallel queries — `profile` (always user PROFILE), `today_events`, `daily_summaries`, plus `agent_prompt` (AGENT_PROFILE) when `agent_id != "default"`. `agent_prompt` falls back to `agent_base_profile` (user_id=`__base__`) when the per-user entry is missing.
+- **Section filtering**: `include_sections` controls which response fields are populated. Default: `{"profile", "agent_prompt", "events", "accessed"}`. Sections: `profile` → `profile`, `agent_prompt` → `agent_prompt`, `events` → `today_events` + `daily_summaries`, `accessed` → `recently_accessed`. Unrequested sections are `null` in response; requested but empty sections are `[]`.
 
 ### Auth Middleware (middleware/auth.py)
 
@@ -591,7 +591,7 @@ Response is a **tree structure**: high-level summaries are root nodes, lower-lev
 
 ```
 get_user_memory_cache(include_sections)
-  -> Parse include_sections (default: {profile, events, accessed})
+  -> Parse include_sections (default: {profile, agent_prompt, events, accessed})
   -> If "accessed" in sections:
        _get_recently_accessed()          # Real-time from Redis Hash
   -> If only "accessed" requested:
@@ -600,12 +600,14 @@ get_user_memory_cache(include_sections)
      HIT  -> _merge_response(snapshot, accessed, sections)
      MISS -> acquire_lock()
           -> Double-check snapshot
-          -> _build_snapshot()
-             profile, today_events, daily_summaries, recent_docs, recent_knowledge
-          -> cache.set_json(snapshot, ttl=300s)
+          -> _build_snapshot()          # 3–4 parallel queries:
+             profile, today_events, daily_summaries
+             + agent_prompt (only when agent_id != "default";
+               fallback to agent_base_profile on miss)
+          -> cache.set_json(snapshot, ttl=3600s)
           -> release_lock()
           -> _merge_response(snapshot, accessed, sections)
-             # Filters by include_sections: only populates requested sections
+             # profile / agent_prompt gated on their own sections
              # Deduplicates accessed against IDs in shown sections
 ```
 
@@ -618,7 +620,7 @@ OpenContext._handle_processed_context()
      -> get_memory_cache_manager().refresh_snapshot()
         -> acquire distributed lock
         -> delete old snapshot
-        -> _build_snapshot() (5 parallel queries)
+        -> _build_snapshot() (3–4 parallel queries)
         -> cache new snapshot with TTL
      -> Fallback (lock held by another worker): delete snapshot key only
 ```
