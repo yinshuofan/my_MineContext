@@ -181,11 +181,6 @@ class EventSearchService:
     # ── Helpers ──
 
     @staticmethod
-    def get_l0_type() -> str:
-        """Get the L0 event ContextType value."""
-        return ContextType.EVENT.value
-
-    @staticmethod
     def _get_context_types_for_levels(levels: list[int] | None = None) -> list[str]:
         """Map hierarchy_levels to combined user + agent_base ContextType values."""
         user_types = [

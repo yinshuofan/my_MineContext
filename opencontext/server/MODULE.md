@@ -130,7 +130,6 @@ class EventSearchService:
                      hierarchy_levels=None, drill="none") -> SearchResult
 
     # Helpers (public — used by route layer)
-    @staticmethod get_l0_type() -> str
     @staticmethod _get_context_types_for_levels(levels) -> List[str]
     @staticmethod _build_filters(time_range, hierarchy_levels) -> Dict[str, Any]
     async def collect_ancestors(results, max_level) -> Dict[str, ProcessedContext]
