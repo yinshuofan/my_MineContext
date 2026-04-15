@@ -379,17 +379,20 @@ class MemoryCacheManager:
         recent_days: int | None,
         max_today_events: int | None,
     ) -> dict[str, Any]:
-        """Build the snapshot from storage backends (profile + recent memories).
+        """Build the snapshot from storage backends.
 
-        Automatically includes both user events and agent base memories.
-        Profile type is determined by agent_id (agent_profile if non-default).
+        Queries (run in parallel):
+          - profile:          ContextType.PROFILE — always the user's own profile.
+          - agent_prompt:     ContextType.AGENT_PROFILE, only when agent_id != "default";
+                              if missing, fallback to agent_base_profile under user_id="__base__".
+          - today_events:     ContextType.EVENT, hierarchy_level=0, today.
+          - daily_summaries:  ContextType.DAILY_SUMMARY, hierarchy_level=1, past `recent_days`.
         """
         t0 = time.perf_counter()
         storage = get_storage()
         days = recent_days if recent_days is not None else self._config["recent_days"]
         max_events_today = max_today_events or self._config["max_today_events"]
 
-        # Resolve context types — always user events
         l0_type = ContextType.EVENT.value
         l1_type = ContextType.DAILY_SUMMARY.value
         summary_type_values = {
@@ -398,26 +401,21 @@ class MemoryCacheManager:
             ContextType.MONTHLY_SUMMARY.value,
         }
 
-        # Profile — use agent_profile if agent_id is not default
-        if agent_id and agent_id != "default":
-            profile_context_type = ContextType.AGENT_PROFILE.value
-        else:
-            profile_context_type = ContextType.PROFILE.value
-
-        # Compute time boundaries
+        # Time boundaries
         now = tz_now()
         today_start_val = tz_today_start()
         today_start_ts = int(today_start_val.timestamp())
-        yesterday_end_ts = float(today_start_ts - 1)  # end of yesterday
-        week_start = today_start_val - timedelta(days=days)
-        week_start_ts = int(week_start.timestamp())
+        yesterday_end_ts = float(today_start_ts - 1)
         period_start_dt = today_start_val - timedelta(days=days - 1)
         period_start_ts = float(int(period_start_dt.timestamp()))
 
-        # Parallel queries — always include docs/knowledge and base events
-        tasks = {
+        # Parallel queries — profile is always user PROFILE; agent_prompt is optional
+        tasks: dict[str, Any] = {
             "profile": storage.get_profile(  # type: ignore[union-attr]
-                user_id, device_id, agent_id, context_type=profile_context_type
+                user_id,
+                device_id,
+                agent_id,
+                context_type=ContextType.PROFILE.value,
             ),
             "today_events": storage.get_all_processed_contexts(  # type: ignore[union-attr]
                 context_types=[l0_type],
@@ -434,7 +432,7 @@ class MemoryCacheManager:
             ),
             "daily_summaries": storage.search_hierarchy(  # type: ignore[union-attr]
                 context_type=l1_type,
-                hierarchy_level=1,  # L1
+                hierarchy_level=1,
                 time_start=period_start_ts,
                 time_end=yesterday_end_ts,
                 user_id=user_id,
@@ -442,41 +440,19 @@ class MemoryCacheManager:
                 agent_id=agent_id,
                 top_k=days,
             ),
-            "recent_docs": storage.get_all_processed_contexts(  # type: ignore[union-attr]
-                context_types=[ContextType.DOCUMENT.value],
-                limit=self._config["max_recent_documents"],
-                offset=0,
-                filter={"create_time_ts": {"$gte": week_start_ts}},
-                need_vector=False,
-                user_id=user_id,
-                device_id=device_id,
-                agent_id=agent_id,
-            ),
-            "recent_knowledge": storage.get_all_processed_contexts(  # type: ignore[union-attr]
-                context_types=[ContextType.KNOWLEDGE.value],
-                limit=self._config["max_recent_knowledge"],
-                offset=0,
-                filter={"create_time_ts": {"$gte": week_start_ts}},
-                need_vector=False,
-                user_id=user_id,
-                device_id=device_id,
-                agent_id=agent_id,
-            ),
-            # Backend skips user_id filter for agent_base_* types automatically
-            "base_events": storage.get_all_processed_contexts(  # type: ignore[union-attr]
-                context_types=[ContextType.AGENT_BASE_EVENT.value],
-                limit=20,
-                user_id=user_id,
-                device_id=device_id,
-                agent_id=agent_id,
-            ),
         }
+        if agent_id and agent_id != "default":
+            tasks["agent_prompt"] = storage.get_profile(  # type: ignore[union-attr]
+                user_id,
+                device_id,
+                agent_id,
+                context_type=ContextType.AGENT_PROFILE.value,
+            )
 
         task_names = list(tasks.keys())
         raw_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         results_map = dict(zip(task_names, raw_results, strict=True))
 
-        # Log errors
         for name, result in results_map.items():
             if isinstance(result, Exception):
                 logger.error(f"Memory cache build error ({name}): {result}")
@@ -493,37 +469,56 @@ class MemoryCacheManager:
             "recent_days": days,
         }
 
-        # Profile — with agent_base_profile fallback for non-default agent_id
+        # Profile — user's own profile
         profile_data = results_map.get("profile")
         if isinstance(profile_data, Exception):
             profile_data = None
-        if not profile_data and agent_id and agent_id != "default":
-            profile_data = await storage.get_profile(  # type: ignore[union-attr]
-                "__base__", device_id, agent_id, context_type="agent_base_profile"
-            )
-            if profile_data:
-                logger.debug(
-                    f"[memory-cache] Using __base__ fallback profile "
-                    f"for user={user_id}, agent={agent_id}"
-                )
         if profile_data:
             snapshot["profile"] = {
                 "user_id": user_id,
                 "device_id": device_id,
                 "agent_id": agent_id,
-                "factual_profile": profile_data.get("factual_profile", ""),  # type: ignore[union-attr]
-                "behavioral_profile": profile_data.get("behavioral_profile"),  # type: ignore[union-attr]
-                "metadata": profile_data.get("metadata", {}),  # type: ignore[union-attr]
+                "factual_profile": profile_data.get("factual_profile", ""),
+                "behavioral_profile": profile_data.get("behavioral_profile"),
+                "metadata": profile_data.get("metadata", {}),
             }
 
-        # Recent memories — hierarchical
+        # Agent prompt — with __base__ + agent_base_profile fallback
+        agent_prompt_data: Any = None
+        if agent_id and agent_id != "default":
+            agent_prompt_data = results_map.get("agent_prompt")
+            if isinstance(agent_prompt_data, Exception):
+                agent_prompt_data = None
+            if not agent_prompt_data:
+                try:
+                    agent_prompt_data = await storage.get_profile(  # type: ignore[union-attr]
+                        "__base__",
+                        device_id,
+                        agent_id,
+                        context_type=ContextType.AGENT_BASE_PROFILE.value,
+                    )
+                    if agent_prompt_data:
+                        logger.debug(
+                            f"[memory-cache] agent_prompt fallback to __base__ for "
+                            f"user={user_id}, agent={agent_id}"
+                        )
+                except Exception as exc:
+                    logger.error(f"Memory cache agent_base_profile fallback error: {exc}")
+                    agent_prompt_data = None
+        if agent_prompt_data:
+            snapshot["agent_prompt"] = {
+                "factual_profile": agent_prompt_data.get("factual_profile", ""),
+                "behavioral_profile": agent_prompt_data.get("behavioral_profile"),
+                "metadata": agent_prompt_data.get("metadata", {}),
+            }
+
+        # Recent memories — only today_events + daily_summaries now
         recent_memories: dict[str, Any] = {}
 
-        # Today's L0 events
         today_data = results_map.get("today_events")
         if today_data and not isinstance(today_data, Exception):
             today_items = []
-            for _ctx_type, contexts in today_data.items():  # type: ignore[union-attr]
+            for _ctx_type, contexts in today_data.items():
                 for ctx in contexts:
                     today_items.append(self._ctx_to_recent_item(ctx))
             today_items.sort(
@@ -531,12 +526,10 @@ class MemoryCacheManager:
             )
             recent_memories["today_events"] = today_items[:max_events_today]
 
-        # Daily summaries (L1)
         summaries_data = results_map.get("daily_summaries")
         if summaries_data and not isinstance(summaries_data, Exception):
             daily_items = []
-            for ctx, _score in summaries_data:  # type: ignore[union-attr]
-                # Derive event_time_start string from properties
+            for ctx, _score in summaries_data:
                 ets = ""
                 if ctx.properties and ctx.properties.event_time_start:
                     ets_val = ctx.properties.event_time_start
@@ -552,36 +545,6 @@ class MemoryCacheManager:
                 )
             daily_items.sort(key=lambda x: x["event_time_start"], reverse=True)
             recent_memories["daily_summaries"] = daily_items
-
-        # Recent documents
-        docs_data = results_map.get("recent_docs")
-        if docs_data and not isinstance(docs_data, Exception):
-            doc_items = []
-            for _ctx_type, contexts in docs_data.items():  # type: ignore[union-attr]
-                for ctx in contexts:
-                    doc_items.append(self._ctx_to_recent_item(ctx))
-            doc_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
-            recent_memories["recent_documents"] = doc_items
-
-        # Recent knowledge
-        knowledge_data = results_map.get("recent_knowledge")
-        if knowledge_data and not isinstance(knowledge_data, Exception):
-            knowledge_items = []
-            for _ctx_type, contexts in knowledge_data.items():  # type: ignore[union-attr]
-                for ctx in contexts:
-                    knowledge_items.append(self._ctx_to_recent_item(ctx))
-            knowledge_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
-            recent_memories["recent_knowledge"] = knowledge_items
-
-        # Base events (agent base memories)
-        base_data = results_map.get("base_events")
-        if base_data and not isinstance(base_data, Exception):
-            base_items = []
-            for _ctx_type, contexts in base_data.items():  # type: ignore[union-attr]
-                for ctx in contexts:
-                    base_items.append(self._ctx_to_recent_item(ctx))
-            base_items.sort(key=lambda x: x.get("create_time") or "", reverse=True)
-            recent_memories["base_memories"] = base_items
 
         snapshot["recent_memories"] = recent_memories
 
