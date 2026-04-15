@@ -819,7 +819,7 @@ processing:
 
         <examples>
         <example type="should_update">
-        昨天的事件（且类似模式已跨多次出现）：
+        今天的事件（且类似模式已跨多次出现）：
         "用户多次分享难过的事情时，AI 先安静陪伴再回应的方式都得到了积极反馈。"
 
         更新（顺应）：在 Layer 3 沟通表达中增加"在用户分享难过的事情时，倾向于先安静陪伴、接住情绪，再回应内容。"
@@ -827,7 +827,7 @@ processing:
         </example>
 
         <example type="skip_situational">
-        昨天的事件：
+        今天的事件：
         "今天用户在哭，AI 放慢了说话节奏。"
 
         不更新（同化）。这是现有人设中共情特质的正常运作。下次遇到类似场景，现有人设自然会驱动类似反应。
@@ -840,7 +840,7 @@ processing:
         </example>
 
         <example type="skip_event_details">
-        昨天的事件：
+        今天的事件：
         "用户提到医生建议控制饮食，AI承认偷吃了小鱼干并表现得心虚。"
         "用户提议去公园，AI保证不追松鼠。"
         "用户和AI聊了邻居家的蓝猫搬走的事。"
@@ -849,7 +849,7 @@ processing:
         </example>
 
         <example type="skip_no_change">
-        昨天的事件全是日常寒暄和常规问答。
+        今天的事件全是日常寒暄和常规问答。
         不更新（同化）。
         </example>
         </examples>
@@ -862,8 +862,8 @@ processing:
       user: |
         当前时间：{current_time}
 
-        昨天的事件：
-        {yesterday_events}
+        今天的事件：
+        {today_events}
 
 merging:
   context_merging_multiple:

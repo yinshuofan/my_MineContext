@@ -138,7 +138,7 @@ class AgentProfileUpdateTask(BasePeriodicTask):
                 "role": "user",
                 "content": prompt_group.get("user", "").format(
                     current_time=tz_now().strftime("%Y-%m-%d %H:%M"),
-                    yesterday_events=events_text,
+                    today_events=events_text,
                 ),
             },
         ]
