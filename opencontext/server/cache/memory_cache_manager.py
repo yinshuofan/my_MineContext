@@ -469,7 +469,7 @@ class MemoryCacheManager:
 
         # Profile — user's own profile
         profile_data = results_map.get("profile")
-        if isinstance(profile_data, Exception):
+        if isinstance(profile_data, BaseException):
             profile_data = None
         if profile_data:
             snapshot["profile"] = {
@@ -485,7 +485,7 @@ class MemoryCacheManager:
         agent_prompt_data: Any = None
         if agent_id and agent_id != "default":
             agent_prompt_data = results_map.get("agent_prompt")
-            if isinstance(agent_prompt_data, Exception):
+            if isinstance(agent_prompt_data, BaseException):
                 agent_prompt_data = None
             if not agent_prompt_data:
                 try:
@@ -514,7 +514,7 @@ class MemoryCacheManager:
         recent_memories: dict[str, Any] = {}
 
         today_data = results_map.get("today_events")
-        if today_data and not isinstance(today_data, Exception):
+        if today_data and not isinstance(today_data, BaseException):
             today_items = []
             for _ctx_type, contexts in today_data.items():
                 for ctx in contexts:
@@ -525,7 +525,7 @@ class MemoryCacheManager:
             recent_memories["today_events"] = today_items[:max_events_today]
 
         summaries_data = results_map.get("daily_summaries")
-        if summaries_data and not isinstance(summaries_data, Exception):
+        if summaries_data and not isinstance(summaries_data, BaseException):
             daily_items = []
             for ctx, _score in summaries_data:
                 ets = ""
