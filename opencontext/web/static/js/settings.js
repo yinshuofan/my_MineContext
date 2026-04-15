@@ -517,8 +517,6 @@ function populateCacheSettings(allData) {
     setVal('cache_recent_days', cache.recent_days);
     setVal('cache_max_recently', cache.max_recently_accessed);
     setVal('cache_max_today_events', cache.max_today_events);
-    setVal('cache_max_documents', cache.max_recent_documents);
-    setVal('cache_max_knowledge', cache.max_recent_knowledge);
     setVal('cache_accessed_ttl', cache.accessed_ttl);
     setVal('cache_max_entities', cache.max_entities);
 }
@@ -543,8 +541,6 @@ document.getElementById('cacheForm')?.addEventListener('submit', async (e) => {
             recent_days: getInt('cache_recent_days'),
             max_recently_accessed: getInt('cache_max_recently'),
             max_today_events: getInt('cache_max_today_events'),
-            max_recent_documents: getInt('cache_max_documents'),
-            max_recent_knowledge: getInt('cache_max_knowledge'),
             accessed_ttl: getInt('cache_accessed_ttl'),
             max_entities: getInt('cache_max_entities'),
         },
