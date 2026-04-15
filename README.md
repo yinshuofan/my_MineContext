@@ -268,19 +268,23 @@ curl "http://localhost:1733/api/memory-cache?user_id=user_001"
 | 参数 | 说明 |
 |------|------|
 | `user_id` | 用户标识（必填） |
+| `device_id` | 设备标识，默认 `default` |
 | `agent_id` | Agent 标识，默认 `default` |
-| `recent_days` | 近期记忆天数，默认 7 |
-| `max_accessed` | 最近访问记录数，默认 20 |
+| `include` | 逗号分隔的 section：`profile,agent_prompt,events,accessed,all`，默认全部 |
+| `recent_days` | 日摘要向前追溯的天数，默认 3 |
+| `max_recent_events_today` | 今日事件上限，默认 5 |
+| `max_accessed` | 最近访问记录数，默认 5 |
 | `force_refresh` | 强制重建缓存，默认 false |
 
-返回内容包含：
+响应顶层字段（每个字段与 include section 一一对应，未请求时为 `null`）：
 
-- **profile** — 用户画像
-- **entities** — 已知实体（人物、项目、团队等）
-- **recently_accessed** — 最近通过搜索访问的记忆（实时）
-- **recent_memories** — 近期记忆（当日 L0 事件 + 历史日摘要 + 近期文档/知识）
+- **profile** — 用户自己的画像（`factual_profile` / `behavioral_profile` / `metadata`）。属 `profile` section。
+- **agent_prompt** — Agent 的提示词 / 画像。`agent_id != "default"` 时查 `agent_profile`；缺失时自动 fallback 到 `agent_base_profile`（`user_id="__base__"`）。属 `agent_prompt` section。
+- **today_events** — 今日 L0 事件列表。属 `events` section。
+- **daily_summaries** — 历史日摘要列表。属 `events` section。
+- **recently_accessed** — 最近通过搜索访问的记忆（实时、与 snapshot 去重）。属 `accessed` section。
 
-快照缓存 TTL 默认 1 小时（可配置），数据写入时自动失效；最近访问记录独立存储，始终实时返回。
+快照缓存 TTL 默认 1 小时（可配置），上游写入新数据时主动失效；最近访问记录独立存储于 Redis Hash，始终实时返回。
 
 ### 其他接口
 
