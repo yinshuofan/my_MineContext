@@ -230,7 +230,7 @@ def _format_search_result(
             id_marker = ""
             if hit_short_ids and ctx.id in hit_short_ids:
                 id_marker = f"[#{hit_short_ids[ctx.id]}] "
-            hit_marker = " ★" if ctx.id in hit_ids or ctx.id in descendant_ids else ""
+            hit_marker = " [hit]" if ctx.id in hit_ids or ctx.id in descendant_ids else ""
             lines.append(f"{prefix}{id_marker}[{time_str} L{level}] {title}{hit_marker}")
             if summary:
                 lines.append(f"{prefix}  {summary}")

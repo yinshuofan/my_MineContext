@@ -679,14 +679,14 @@ async def test_format_map_groups_by_level():
 
 @pytest.mark.unit
 async def test_format_search_result_hits_only():
-    """Hits without ancestors renders flat list with ★ markers."""
+    """Hits without ancestors renders flat list with [hit] markers."""
     from opencontext.context_processing.processor.recall_agent import _format_search_result
 
     ctx1 = _make_ctx("h1", "meeting", "Q2 plans", "2026-04-01")
     ctx2 = _make_ctx("h2", "review", "auth module", "2026-04-03")
     result = _format_search_result([ctx1, ctx2], [])
     assert "2 hits" in result
-    assert "meeting" in result and "★" in result
+    assert "meeting" in result and "[hit]" in result
     assert "review" in result
     assert "ancestors" not in result
 
@@ -726,7 +726,7 @@ async def test_format_search_result_with_hierarchy_tree():
     hit_line = [ln for ln in lines if "meeting" in ln][0]
     # Hit should be indented more than ancestor
     assert len(hit_line) - len(hit_line.lstrip()) > len(ancestor_line) - len(ancestor_line.lstrip())
-    assert "★" in hit_line
+    assert "[hit]" in hit_line
 
 
 @pytest.mark.unit
