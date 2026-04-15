@@ -30,6 +30,10 @@
                     <div class="mb-3">
                         <label class="form-label">返回内容</label>
                         <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="includeAgentPrompt" checked>
+                            <label class="form-check-label" for="includeAgentPrompt">Agent 提示词</label>
+                        </div>
+                        <div class="form-check">
                             <input type="checkbox" class="form-check-input" id="includeProfile" checked>
                             <label class="form-check-label" for="includeProfile">用户画像</label>
                         </div>
@@ -40,10 +44,6 @@
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" id="includeAccessed" checked>
                             <label class="form-check-label" for="includeAccessed">最近访问</label>
-                        </div>
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input" id="includeAgentPrompt" checked>
-                            <label class="form-check-label" for="includeAgentPrompt">Agent 提示词</label>
                         </div>
                     </div>
                     <div class="mb-3">
@@ -168,8 +168,8 @@ function setLoading(loading) {
 
 function renderResults(data) {
     let html = '';
-    if (data.profile != null) html += renderProfile(data.profile);
     if (data.agent_prompt != null) html += renderAgentPrompt(data.agent_prompt);
+    if (data.profile != null) html += renderProfile(data.profile);
     if (data.recently_accessed != null) html += renderRecentlyAccessed(data.recently_accessed);
     if (data.today_events != null) html += renderTodayEvents(data.today_events);
     if (data.daily_summaries != null) html += renderDailySummaries(data.daily_summaries);
