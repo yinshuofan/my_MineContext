@@ -249,11 +249,15 @@ def _to_context_node(ctx: ProcessedContext) -> EventNode:
     """Convert a ProcessedContext to a lightweight EventNode (for ancestors)."""
     props = ctx.properties
     extracted = ctx.extracted_data
+    ct = ""
+    if extracted and extracted.context_type:
+        ct = extracted.context_type.value
 
     return EventNode(
         id=ctx.id,
         hierarchy_level=props.hierarchy_level if props else 0,
         refs=props.refs if props else {},
+        context_type=ct,
         title=extracted.title if extracted else None,
         summary=extracted.summary if extracted else None,
         event_time_start=_format_timestamp(props.event_time_start if props else None),
@@ -269,6 +273,9 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
     """Convert a ProcessedContext to a search-hit EventNode with full data."""
     props = ctx.properties
     extracted = ctx.extracted_data
+    ct = ""
+    if extracted and extracted.context_type:
+        ct = extracted.context_type.value
 
     return EventNode(
         id=ctx.id,
@@ -279,6 +286,7 @@ def _to_search_hit_node(ctx: ProcessedContext, score: float) -> EventNode:
         score=score,
         hierarchy_level=props.hierarchy_level if props else 0,
         refs=props.refs if props else {},
+        context_type=ct,
         event_time_start=_format_timestamp(props.event_time_start if props else None),
         event_time_end=_format_timestamp(props.event_time_end if props else None),
         create_time=_format_timestamp(props.create_time if props else None),
@@ -294,15 +302,21 @@ async def _track_accessed_safe(
     device_id: str = "default",
     agent_id: str = "default",
 ) -> None:
-    """Fire-and-forget: record accessed event IDs in Redis for memory cache."""
+    """Fire-and-forget: record accessed event IDs in Redis for memory cache.
+
+    Uses each node's real context_type so both user-side events and agent_base_*
+    hits are tracked under their correct type label.
+    """
     try:
-        l0_type = _search_service.get_l0_type()
         items: list[dict] = []
         for er in results:
+            if not er.context_type:
+                # Skip nodes that somehow lost their type label — don't fabricate one.
+                continue
             items.append(
                 {
                     "id": er.id,
-                    "context_type": l0_type,
+                    "context_type": er.context_type,
                     "title": er.title,
                     "summary": er.summary,
                     "keywords": er.keywords,

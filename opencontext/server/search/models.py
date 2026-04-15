@@ -106,6 +106,7 @@ class EventNode(BaseModel):
     id: str
     hierarchy_level: int = 0
     refs: dict[str, list[str]] = Field(default_factory=dict)
+    context_type: str = ""
     title: str | None = None
     summary: str | None = None
     event_time_start: str | None = None
