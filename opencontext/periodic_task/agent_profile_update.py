@@ -9,7 +9,6 @@ from opencontext.models.enums import ContextType
 from opencontext.periodic_task.base import BasePeriodicTask, TaskContext, TaskResult
 from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
-from opencontext.utils.time_utils import now as tz_now
 from opencontext.utils.time_utils import today_start
 
 logger = get_logger(__name__)
@@ -137,7 +136,6 @@ class AgentProfileUpdateTask(BasePeriodicTask):
             {
                 "role": "user",
                 "content": prompt_group.get("user", "").format(
-                    current_time=tz_now().strftime("%Y-%m-%d %H:%M"),
                     today_events=events_text,
                 ),
             },

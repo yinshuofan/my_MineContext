@@ -860,8 +860,6 @@ processing:
         - 如果不需要更新：{"no_update": true}
         </output_format>
       user: |
-        当前时间：{current_time}
-
         今天的事件：
         {today_events}
 

@@ -860,8 +860,6 @@ processing:
         - If no update needed: {"no_update": true}
         </output_format>
       user: |
-        Current time: {current_time}
-
         Today's events:
         {today_events}
 
