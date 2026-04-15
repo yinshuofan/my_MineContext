@@ -163,7 +163,7 @@ Generates embedding via `await do_vectorize()`, calls `await storage.upsert_proc
 
 ### AgentProfileUpdateTask
 
-Updates the `agent_profile` for a specific user by aggregating `agent_commentary` from today's events. Triggered via `user_activity` when `agent_memory` processor is used.
+Updates the `agent_profile` for a specific user by aggregating `agent_commentary` from yesterday's events. Triggered via `user_activity` when `agent_memory` processor is used. Task is scheduled with 24h delay, so at execution time it processes the calendar day when events were pushed (aligns with `hierarchy_summary` L1 which also processes "yesterday").
 
 | Property | Value |
 |----------|-------|
@@ -177,9 +177,9 @@ Updates the `agent_profile` for a specific user by aggregating `agent_commentary
 
 **Core flow in `async execute(context)`**:
 1. Validates `agent_id` is non-default and agent is registered
-2. Fetches today's L0 EVENT-type contexts for the user via `storage.get_all_processed_contexts()`
+2. Fetches yesterday's L0 EVENT-type contexts (filter `event_time_start_ts` in `[yesterday 00:00, today 00:00)`) for the user via `storage.get_all_processed_contexts()`
 3. Fetches `agent_profile` (per-user) and `agent_base_profile` (base). If user has no `agent_profile`, falls back to base profile with a first-interaction marker
-4. Calls LLM with `agent_profile_update` prompt, passing base persona, current persona, and today's events (including `agent_commentary` when present)
+4. Calls LLM with `agent_profile_update` prompt, passing base persona, current persona, and yesterday's events (including `agent_commentary` when present)
 5. Parses LLM JSON response: `{"no_update": true}` skips upsert, `{"updated_profile": "..."}` proceeds to storage
 6. Calls `storage.upsert_profile()` directly — bypasses `profile_processor.refresh_profile()` since the LLM has already incorporated the existing profile
 7. Invalidates memory cache after successful update
@@ -187,7 +187,7 @@ Updates the `agent_profile` for a specific user by aggregating `agent_commentary
 Returns early if:
 - `agent_id` is missing or `"default"`
 - Agent not found in registry
-- No events found today
+- No events found yesterday
 - No `agent_base_profile` exists
 - LLM returns `{"no_update": true}`
 

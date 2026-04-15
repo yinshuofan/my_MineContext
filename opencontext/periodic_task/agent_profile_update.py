@@ -1,6 +1,7 @@
 """Agent Profile Update Task — updates agent_profile from daily events."""
 
 import json
+from datetime import timedelta
 
 from opencontext.config.global_config import get_prompt_group
 from opencontext.llm.global_vlm_client import generate_with_messages
@@ -16,9 +17,11 @@ logger = get_logger(__name__)
 
 class AgentProfileUpdateTask(BasePeriodicTask):
     """
-    Updates agent_profile based on today's events.
+    Updates agent_profile based on yesterday's events.
 
     Triggered via user_activity (scheduled from push endpoint when agent_memory is used).
+    Task is scheduled with 24h delay, so it processes the previous day's events —
+    aligns with hierarchy_summary's L1 daily summary which also processes "yesterday".
     Skipped if agent_id is not registered or is "default".
     """
 
@@ -55,15 +58,20 @@ class AgentProfileUpdateTask(BasePeriodicTask):
             f"[agent_profile_update] Start: user={user_id}, agent={agent_id} ({agent_name})"
         )
 
-        # 1. Fetch today's events using filter (same pattern as hierarchy_summary)
-        day_start = today_start()
+        # 1. Fetch yesterday's events (task runs 24h after push, so "today" events
+        # from push time are "yesterday" at execution time). Aligns with hierarchy_summary
+        # L1 daily summary which also processes "yesterday".
+        day_end = today_start()  # today 00:00 (exclusive upper bound)
+        day_start = day_end - timedelta(days=1)  # yesterday 00:00 (inclusive lower bound)
         day_start_ts = float(int(day_start.timestamp()))
+        day_end_ts = float(int(day_end.timestamp()))
         logger.debug(
-            f"[agent_profile_update] Querying events since {day_start} (ts={day_start_ts})"
+            f"[agent_profile_update] Querying events in [{day_start}, {day_end}) "
+            f"(ts=[{day_start_ts}, {day_end_ts}))"
         )
 
         event_filters = {
-            "event_time_start_ts": {"$gte": day_start_ts},
+            "event_time_start_ts": {"$gte": day_start_ts, "$lt": day_end_ts},
             "hierarchy_level": 0,
         }
 
@@ -77,10 +85,10 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         )
 
         events = events_dict.get(ContextType.EVENT.value, [])
-        logger.debug(f"[agent_profile_update] Found {len(events)} events today")
+        logger.debug(f"[agent_profile_update] Found {len(events)} events yesterday")
 
         if not events:
-            return TaskResult.ok("Skipped: no events today")
+            return TaskResult.ok("Skipped: no events yesterday")
 
         # 2. Fetch current agent_profile and base_profile
         current_profile = await storage.get_profile(
@@ -110,7 +118,7 @@ class AgentProfileUpdateTask(BasePeriodicTask):
             )
             logger.debug("[agent_profile_update] No agent_profile found, falling back to base")
 
-        # 3. Format today's events
+        # 3. Format yesterday's events
         events_text = self._format_events(events)
         logger.debug(f"[agent_profile_update] Events text:\n{events_text}")
 
@@ -130,7 +138,7 @@ class AgentProfileUpdateTask(BasePeriodicTask):
                 "role": "user",
                 "content": prompt_group.get("user", "").format(
                     current_time=tz_now().strftime("%Y-%m-%d %H:%M"),
-                    today_events=events_text,
+                    yesterday_events=events_text,
                 ),
             },
         ]

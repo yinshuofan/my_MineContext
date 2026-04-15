@@ -819,7 +819,7 @@ processing:
 
         <examples>
         <example type="should_update">
-        Today's events (and similar pattern has appeared across multiple interactions):
+        Yesterday's events (and similar pattern has appeared across multiple interactions):
         "When the user shared sad things multiple times, the AI's approach of quietly accompanying first and then responding received positive feedback."
 
         Update (accommodation): Add to Layer 3 narrative expression: "When the user shares something sad, tends to quietly accompany and hold space for emotions first, then respond to the content."
@@ -827,7 +827,7 @@ processing:
         </example>
 
         <example type="skip_situational">
-        Today's events:
+        Yesterday's events:
         "Today the user was crying, and the AI slowed its speaking pace."
 
         No update (assimilation). This is the existing empathy trait operating normally. The next time a similar scenario occurs, the existing persona will naturally drive a similar response.
@@ -840,7 +840,7 @@ processing:
         </example>
 
         <example type="skip_event_details">
-        Today's events:
+        Yesterday's events:
         "User mentioned the doctor recommended dietary control, AI admitted to sneaking snacks and felt guilty."
         "User suggested going to the park, AI promised not to chase squirrels."
         "User and AI discussed the neighbor's cat moving away."
@@ -849,7 +849,7 @@ processing:
         </example>
 
         <example type="skip_no_change">
-        Today's events are all routine greetings and standard Q&A.
+        Yesterday's events are all routine greetings and standard Q&A.
         No update (assimilation).
         </example>
         </examples>
@@ -862,8 +862,8 @@ processing:
       user: |
         Current time: {current_time}
 
-        Today's events:
-        {today_events}
+        Yesterday's events:
+        {yesterday_events}
 
 merging:
   context_merging_multiple:
