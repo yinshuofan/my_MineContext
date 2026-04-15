@@ -143,6 +143,13 @@ class AgentProfileUpdateTask(BasePeriodicTask):
         # 5. Parse LLM response (always JSON)
         raw = response.strip()
         logger.debug(f"[agent_profile_update] LLM response:\n{raw}")
+        # Strip markdown code fences if present (```json ... ```)
+        if raw.startswith("```"):
+            first_newline = raw.find("\n")
+            if first_newline != -1:
+                raw = raw[first_newline + 1 :]
+            if raw.endswith("```"):
+                raw = raw[:-3].strip()
         try:
             parsed = json.loads(raw)
         except (json.JSONDecodeError, ValueError):
@@ -221,7 +228,7 @@ class AgentProfileUpdateTask(BasePeriodicTask):
             if summary:
                 lines.append(f"  {summary}")
             if commentary:
-                lines.append(f"  AI feeling: {commentary}")
+                lines.append(f"  [feeling] {commentary}")
             lines.append("")
         return "\n".join(lines).strip()
 
