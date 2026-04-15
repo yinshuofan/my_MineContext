@@ -383,7 +383,7 @@ curl -X POST http://localhost:1733/api/search \
 
 `GET /api/memory-cache`
 
-获取用户的记忆快照，包含 profile（用户画像）、近期事件摘要、今日事件、最近访问记录。支持 Redis 缓存，可按 section 过滤返回内容。
+获取用户的记忆快照，包含 profile（用户画像）、agent_prompt（Agent 画像/提示词）、近期事件摘要、今日事件、最近访问记录。支持 Redis 缓存，可按 section 过滤返回内容。
 
 ### 查询参数
 
@@ -392,7 +392,7 @@ curl -X POST http://localhost:1733/api/search \
 | `user_id` | `string` | **是** | — | 用户标识 |
 | `device_id` | `string` | 否 | `"default"` | 设备标识 |
 | `agent_id` | `string` | 否 | `"default"` | Agent 标识 |
-| `include` | `string` | 否 | `"profile,events,accessed"` | 逗号分隔的返回 section：`profile` / `events` / `accessed` / `all` |
+| `include` | `string` | 否 | `"profile,agent_prompt,events,accessed"` | 逗号分隔的返回 section：`profile` / `agent_prompt` / `events` / `accessed` / `all` |
 | `recent_days` | `int` | 否 | 配置值（默认 3） | 近期记忆时间窗口（天） |
 | `max_recent_events_today` | `int` | 否 | 配置值（默认 5） | 今日最大 L0 事件数 |
 | `max_accessed` | `int` | 否 | `5`（1-100） | 最近访问记录最大数量 |
@@ -400,10 +400,15 @@ curl -X POST http://localhost:1733/api/search \
 
 **`include` 参数说明：**
 - `profile`：返回用户画像（`profile` 字段）
+- `agent_prompt`：返回 Agent 的画像/提示词（`agent_prompt` 字段，独立于 `profile` 的新 section）
 - `events`：返回每日摘要和今日事件（`daily_summaries` + `today_events` 字段）
 - `accessed`：返回最近访问记录（`recently_accessed` 字段）
 - `all`：返回所有 section
 - 未包含的 section 对应字段为 `null`，已包含但无数据的为 `[]`
+
+**响应字段说明（补充）：**
+- `profile` (`SimpleProfile | null`) — 用户自身画像。仅在 `include` 包含 `profile` 时返回。
+- `agent_prompt` (`SimpleProfile | null`) — The agent's own profile / prompt when `agent_id != "default"`. Falls back to `agent_base_profile` (same `device_id` / `agent_id`, `user_id="__base__"`) if an agent-specific entry is not yet stored. Populated only when `include` contains `agent_prompt` (a new section, independent of `profile`). `null` when `agent_id == "default"`, when no entry exists, or when the section is not requested.
 
 ### 请求示例
 
@@ -422,9 +427,19 @@ curl "http://localhost:1733/api/memory-cache?user_id=test_user&include=profile"
 curl "http://localhost:1733/api/memory-cache?user_id=test_user&include=events"
 ```
 
+**仅返回 Agent 画像/提示词**
+```bash
+curl "http://localhost:1733/api/memory-cache?user_id=test_user&agent_id=kiki&include=agent_prompt"
+```
+
+**返回用户画像 + Agent 画像**
+```bash
+curl "http://localhost:1733/api/memory-cache?user_id=test_user&agent_id=kiki&include=profile,agent_prompt"
+```
+
 **全部参数**
 ```bash
-curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&agent_id=chatbot&include=profile,events&recent_days=7&max_accessed=3&force_refresh=true"
+curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&agent_id=chatbot&include=profile,agent_prompt,events&recent_days=7&max_accessed=3&force_refresh=true"
 ```
 
 ### 响应示例
@@ -435,10 +450,15 @@ curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&
   "success": true,
   "user_id": "test_user",
   "device_id": "default",
-  "agent_id": "default",
+  "agent_id": "kiki",
   "profile": {
     "factual_profile": "用户是一名25岁的男性，喜欢摄影和传统文化。",
     "behavioral_profile": "沟通风格简洁直接，偏好中文交流。",
+    "metadata": {}
+  },
+  "agent_prompt": {
+    "factual_profile": "Kiki 是一位专注于摄影和传统文化话题的助手。",
+    "behavioral_profile": "语气友好亲切，主动分享拍摄建议。",
     "metadata": {}
   },
   "recently_accessed": [
@@ -480,6 +500,7 @@ curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&
   "device_id": "default",
   "agent_id": "default",
   "profile": null,
+  "agent_prompt": null,
   "recently_accessed": null,
   "daily_summaries": null,
   "today_events": null
@@ -494,9 +515,29 @@ curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&
   "device_id": "default",
   "agent_id": "default",
   "profile": null,
+  "agent_prompt": null,
   "recently_accessed": null,
   "daily_summaries": [],
   "today_events": []
+}
+```
+
+**仅 agent_prompt section（agent_id=kiki）**
+```json
+{
+  "success": true,
+  "user_id": "test_user",
+  "device_id": "default",
+  "agent_id": "kiki",
+  "profile": null,
+  "agent_prompt": {
+    "factual_profile": "Kiki 是一位专注于摄影和传统文化话题的助手。",
+    "behavioral_profile": "语气友好亲切，主动分享拍摄建议。",
+    "metadata": {}
+  },
+  "recently_accessed": null,
+  "daily_summaries": null,
+  "today_events": null
 }
 ```
 
@@ -508,6 +549,7 @@ curl "http://localhost:1733/api/memory-cache?user_id=test_user&device_id=iphone&
   "device_id": "default",
   "agent_id": "default",
   "profile": null,
+  "agent_prompt": null,
   "recently_accessed": [],
   "daily_summaries": [],
   "today_events": []

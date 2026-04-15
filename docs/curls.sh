@@ -342,7 +342,14 @@ curl -X POST http://localhost:1733/api/vector_search \
 # 5. Memory Cache
 # ============================================================================
 
-# Get Memory Cache Snapshot (default sections: profile, events, accessed)
+# Get Memory Cache Snapshot
+# Response top-level fields: success, user_id, device_id, agent_id,
+#   profile (SimpleProfile | null)           - user's own profile, section=profile
+#   agent_prompt (SimpleProfile | null)      - agent's prompt / profile (with agent_base_profile fallback), section=agent_prompt
+#   today_events (list | null)               - today's L0 events, section=events
+#   daily_summaries (list | null)            - recent daily summaries, section=events
+#   recently_accessed (list | null)          - recently returned search hits, section=accessed
+# `include` values: profile, agent_prompt, events, accessed, all. Default: all four.
 curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&device_id=default&agent_id=default&recent_days=7&max_recent_events_today=30&max_accessed=20&force_refresh=false"
 # -H "X-API-Key: your-api-key"
 
@@ -352,6 +359,14 @@ curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=pro
 
 # Get profile + events (no recently accessed)
 curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&include=profile,events"
+# -H "X-API-Key: your-api-key"
+
+# Get only agent prompt
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=kiki&include=agent_prompt"
+# -H "X-API-Key: your-api-key"
+
+# Get profile + agent prompt (user + agent views)
+curl -X GET "http://localhost:1733/api/memory-cache?user_id=user_001&agent_id=kiki&include=profile,agent_prompt"
 # -H "X-API-Key: your-api-key"
 
 # Invalidate Memory Cache
