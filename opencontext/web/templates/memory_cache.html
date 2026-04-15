@@ -41,6 +41,10 @@
                             <input type="checkbox" class="form-check-input" id="includeAccessed" checked>
                             <label class="form-check-label" for="includeAccessed">最近访问</label>
                         </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="includeAgentPrompt" checked>
+                            <label class="form-check-label" for="includeAgentPrompt">Agent 提示词</label>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label for="recentDays" class="form-label">近期天数</label>
@@ -102,6 +106,7 @@ async function handleQuery(event) {
     if (document.getElementById('includeProfile').checked) includeSections.push('profile');
     if (document.getElementById('includeEvents').checked) includeSections.push('events');
     if (document.getElementById('includeAccessed').checked) includeSections.push('accessed');
+    if (document.getElementById('includeAgentPrompt').checked) includeSections.push('agent_prompt');
 
     setLoading(true);
 
@@ -117,7 +122,7 @@ async function handleQuery(event) {
         });
 
         // Only add include param if not all sections selected (backward compat)
-        if (includeSections.length > 0 && includeSections.length < 3) {
+        if (includeSections.length > 0 && includeSections.length < 4) {
             params.set('include', includeSections.join(','));
         } else if (includeSections.length === 0) {
             // Nothing selected — use default (all)
@@ -164,6 +169,7 @@ function setLoading(loading) {
 function renderResults(data) {
     let html = '';
     if (data.profile != null) html += renderProfile(data.profile);
+    if (data.agent_prompt != null) html += renderAgentPrompt(data.agent_prompt);
     if (data.recently_accessed != null) html += renderRecentlyAccessed(data.recently_accessed);
     if (data.today_events != null) html += renderTodayEvents(data.today_events);
     if (data.daily_summaries != null) html += renderDailySummaries(data.daily_summaries);
@@ -184,6 +190,22 @@ function renderProfile(profile) {
         `;
     }
     return wrapCard(title, icon, content, 'profile-section');
+}
+
+function renderAgentPrompt(agentPrompt) {
+    const title = 'Agent 提示词';
+    const icon = 'cpu';
+    const factual = agentPrompt.factual_profile || '';
+    const behavioral = agentPrompt.behavioral_profile || '';
+    const blocks = [];
+    if (factual) {
+        blocks.push(`<div class="bg-light p-3 rounded mb-2" style="white-space: pre-wrap;">${factual}</div>`);
+    }
+    if (behavioral) {
+        blocks.push(`<div class="bg-light p-3 rounded" style="white-space: pre-wrap;">${behavioral}</div>`);
+    }
+    const content = blocks.length ? blocks.join('') : `<p class="text-muted">暂无 ${title}</p>`;
+    return wrapCard(title, icon, content, 'agent-prompt-section');
 }
 
 function renderRecentlyAccessed(items) {
