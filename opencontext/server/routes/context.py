@@ -5,6 +5,8 @@
 Context management routes
 """
 
+import datetime
+import math
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,9 @@ from opencontext.models.enums import ContentFormat, ContextSource
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.opencontext import OpenContext
 from opencontext.server.utils import convert_resp, get_context_lab
+from opencontext.storage.global_storage import get_storage
 from opencontext.utils.logging_utils import get_logger
+from opencontext.utils.time_utils import get_timezone
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["context"])
@@ -105,6 +109,137 @@ async def read_context_detail(
             "context": ProcessedContextModel.from_processed_context(context, project_root),
         },
     )
+
+
+@router.get("/api/contexts")
+async def list_contexts_api(
+    page: int = Query(1, ge=1, description="Page number"),  # noqa: B008
+    limit: int = Query(15, ge=1, description="Items per page (max 100)"),  # noqa: B008
+    type: str | None = Query(None, description="Filter by context type"),  # noqa: B008
+    user_id: str | None = Query(None, description="Filter by user ID"),  # noqa: B008
+    device_id: str | None = Query(None, description="Filter by device ID"),  # noqa: B008
+    agent_id: str | None = Query(None, description="Filter by agent ID"),  # noqa: B008
+    hierarchy_level: int | None = Query(None, description="Filter by hierarchy level"),  # noqa: B008
+    start_date: str | None = Query(None, description="Start date filter"),  # noqa: B008
+    end_date: str | None = Query(None, description="End date filter"),  # noqa: B008
+    _auth: str = auth_dependency,
+):
+    """List processed contexts with filtering and pagination (JSON API)."""
+    storage = get_storage()
+    if storage is None:
+        return convert_resp(
+            code=503,
+            status=503,
+            message=(
+                "Context storage is unavailable. Check vector database initialization, "
+                "credentials, and network connectivity."
+            ),
+        )
+
+    try:
+        limit = min(max(limit, 1), 100)
+        page = max(page, 1)
+        types = []
+        if type:
+            types.append(type)
+
+        # Build filter dict from query params
+        storage_filter: dict = {}
+        if hierarchy_level is not None:
+            storage_filter["hierarchy_level"] = hierarchy_level
+        if start_date:
+            for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    start_dt = datetime.datetime.strptime(start_date, fmt).replace(
+                        tzinfo=get_timezone()
+                    )
+                    storage_filter.setdefault("create_time_ts", {})["$gte"] = start_dt.timestamp()
+                    break
+                except ValueError:
+                    continue
+        if end_date:
+            for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    end_dt = datetime.datetime.strptime(end_date, fmt).replace(
+                        tzinfo=get_timezone()
+                    )
+                    if fmt == "%Y-%m-%d":
+                        end_dt += datetime.timedelta(days=1)
+                    else:
+                        end_dt += datetime.timedelta(minutes=1)
+                    storage_filter.setdefault("create_time_ts", {})["$lt"] = end_dt.timestamp()
+                    break
+                except ValueError:
+                    continue
+
+        context_types = [
+            ct
+            for ct in storage.get_available_context_types()
+            if ct not in ("profile", "agent_profile", "agent_base_profile")
+        ]
+        types_for_query = list(types) if types else context_types
+
+        # Get total count for pagination
+        total_count = await storage.get_filtered_context_count(
+            context_types=types_for_query,
+            filter=storage_filter if storage_filter else None,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+        )
+        total_pages = max(1, math.ceil(total_count / limit))
+        page = min(page, total_pages)
+        offset = (page - 1) * limit
+
+        # Fetch data with skip_slice=True for correct cross-type global pagination.
+        # Note: fetches (offset+limit) records per type, so cost is O(types * (offset+limit)).
+        contexts_dict = await storage.get_all_processed_contexts(
+            context_types=types_for_query,
+            limit=limit + offset,
+            offset=0,
+            need_vector=False,
+            filter=storage_filter if storage_filter else None,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            skip_slice=True,
+        )
+        contexts = []
+        for backend_contexts in contexts_dict.values():
+            contexts.extend(backend_contexts)
+
+        # Sort with timezone-aware datetime handling, then global slice
+        def get_sort_key(context):
+            dt = context.properties.create_time
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=get_timezone())
+            return dt
+
+        contexts.sort(key=get_sort_key, reverse=True)
+        contexts_to_display = contexts[offset : offset + limit]
+
+        model_contexts = []
+        for context in contexts_to_display:
+            try:
+                model = ProcessedContextModel.from_processed_context(context, project_root)
+                model_contexts.append(model.model_dump(exclude={"embedding", "raw_contexts"}))
+            except Exception:
+                logger.exception("Failed to serialize context %s for /api/contexts", context.id)
+
+        return convert_resp(
+            data={
+                "contexts": model_contexts,
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": total_pages,
+                "context_types": context_types,
+            }
+        )
+
+    except Exception as e:
+        logger.exception("Failed to handle GET /api/contexts: %s", e)
+        return convert_resp(code=500, status=500, message=f"Failed to load contexts: {str(e)}")
 
 
 @router.get("/api/contexts/{context_id}")
