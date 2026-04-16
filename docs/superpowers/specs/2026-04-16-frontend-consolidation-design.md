@@ -266,25 +266,25 @@ Current pages have duplicated utility functions. Extract once into a shared JS f
 
 ### File structure
 
-All new files are created in a `console/` subdirectory, keeping them fully separate from the existing pages.
+All new files live under `scripts/devtools/`, fully separate from the main application code.
 
 ```
-opencontext/web/templates/console/
-  base.html              ← new: standalone layout (top nav, no sidebar)
-  agent_console.html     ← new: Agent Debug Console
-  memory_explorer.html   ← new: Memory Explorer
-
-opencontext/web/static/console/
-  js/shared.js           ← new: deduplicated utilities
-  js/agent_console.js    ← new: Agent Console logic
-  js/memory_explorer.js  ← new: Memory Explorer logic
-  css/console.css        ← new: console-specific styles
+scripts/devtools/
+  templates/
+    base.html              ← new: standalone layout (top nav, no sidebar)
+    agent_console.html     ← new: Agent Debug Console
+    memory_explorer.html   ← new: Memory Explorer
+  static/
+    js/shared.js           ← new: deduplicated utilities
+    js/agent_console.js    ← new: Agent Console logic
+    js/memory_explorer.js  ← new: Memory Explorer logic
+    css/console.css        ← new: console-specific styles
+  routes.py                ← new: page routes (/console/agents, /console/memory)
 
 opencontext/server/routes/
-  console.py             ← new: /console/agents, /console/memory routes
-  contexts_api.py        ← new: GET /api/contexts endpoint
-  users_api.py           ← new: GET /api/users endpoint
-  api.py                 ← add new API route includes (existing file, minimal change)
+  contexts_api.py          ← new: GET /api/contexts endpoint
+  users_api.py             ← new: GET /api/users endpoint
+  api.py                   ← add new API route includes (existing file, minimal change)
 ```
 
 ### Coexistence with existing pages
@@ -292,15 +292,16 @@ opencontext/server/routes/
 - All original templates, routes, and static files are **untouched**
 - Old pages remain accessible at their original URLs (`/agents`, `/contexts`, `/vector_search`, etc.)
 - New console pages are served at `/console/agents` and `/console/memory`
-- `console/base.html` is a new standalone layout template — the existing `base.html` is not modified
+- `scripts/devtools/routes.py` exports a FastAPI `APIRouter` that is mounted by `api.py`
+- `scripts/devtools/templates/` and `scripts/devtools/static/` are registered as separate Jinja2 template directory and static mount at `/console/static`
 - The 2 new APIs (`GET /api/contexts`, `GET /api/users`) are additive — no existing API is changed
 
-### console/base.html (new layout)
+### devtools base.html (new layout)
 
 A new base template for the console pages, independent of the existing `base.html`:
 
 - Top navbar with "MineContext" brand + two tab-style page links + API Key button
 - No sidebar
 - Main content area uses full width with `padding-top` for navbar clearance
-- Loads Bootstrap 5, Feather Icons, and `/static/console/js/shared.js`
-- Same `api_auth.js` integration for API key injection
+- Loads Bootstrap 5, Feather Icons, and `/console/static/js/shared.js`
+- Reuses the existing `api_auth.js` from `/static/js/api_auth.js` for API key injection
