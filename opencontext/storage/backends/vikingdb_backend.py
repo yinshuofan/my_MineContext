@@ -1142,20 +1142,15 @@ class VikingDBBackend(IVectorStorageBackend):
                     all_results.append((context, 1.0))
             return all_results[:top_k] if len(all_results) > top_k else all_results
 
-        groups = self._split_types_by_user_scope(context_types or [], user_id, device_id)
-        all_results = []
-
-        for group_types, is_base in groups:
-            filter_dict = self._build_filter_dict(
-                filters=filters,
-                user_id=None if is_base else user_id,
-                device_id=None if is_base else device_id,
-                agent_id=agent_id,
-                context_types=group_types,
-                data_type=DATA_TYPE_CONTEXT,
-            )
-            results = await self._vector_search(query_vector, filter_dict, top_k, need_vector)
-            all_results.extend(results)
+        filter_dict = self._build_user_scoped_filter(
+            context_types=context_types or [],
+            filters=filters,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            data_type=DATA_TYPE_CONTEXT,
+        )
+        all_results = await self._vector_search(query_vector, filter_dict, top_k, need_vector)
 
         if score_threshold is not None:
             all_results = [(ctx, s) for ctx, s in all_results if s >= score_threshold]
@@ -1647,46 +1642,40 @@ class VikingDBBackend(IVectorStorageBackend):
         if not context_types:
             context_types = [ct.value for ct in ContextType]
 
-        groups = self._split_types_by_user_scope(context_types, user_id, device_id)
-        total = 0
+        filter_dict = self._build_user_scoped_filter(
+            context_types=context_types,
+            filters=filter,
+            user_id=user_id,
+            device_id=device_id,
+            agent_id=agent_id,
+            data_type=DATA_TYPE_CONTEXT,
+        )
 
-        for group_types, is_base in groups:
-            try:
-                filter_dict = self._build_filter_dict(
-                    filters=filter,
-                    user_id=None if is_base else user_id,
-                    device_id=None if is_base else device_id,
-                    agent_id=agent_id,
-                    context_types=group_types,
-                    data_type=DATA_TYPE_CONTEXT,
-                )
+        try:
+            data = {
+                "collection_name": self._collection_name,
+                "index_name": self._index_name,
+                "limit": 100000,
+                "output_fields": [],
+                "field": FIELD_CREATE_TIME_TS,
+                "order": "desc",
+            }
+            if filter_dict:
+                data["filter"] = filter_dict
 
-                data = {
-                    "collection_name": self._collection_name,
-                    "index_name": self._index_name,
-                    "limit": 100000,
-                    "output_fields": [],
-                    "field": FIELD_CREATE_TIME_TS,
-                    "order": "desc",
-                }
-                if filter_dict:
-                    data["filter"] = filter_dict
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
+                path="/api/vikingdb/data/search/scalar", data=data
+            )
 
-                result = await self._client.async_data_request(  # type: ignore[union-attr]
-                    path="/api/vikingdb/data/search/scalar", data=data
-                )
-
-                if result.get("code") == "Success":
-                    result_data = result.get("result", {})
-                    if "filter_matched_count" in result_data:
-                        total += result_data["filter_matched_count"]
-                    else:
-                        total += result_data.get("total_return_count", 0)
-
-            except Exception as e:
-                logger.error(f"Failed to get count for types {group_types}: {e}")
-
-        return total
+            if result.get("code") == "Success":
+                result_data = result.get("result", {})
+                if "filter_matched_count" in result_data:
+                    return result_data["filter_matched_count"]
+                return result_data.get("total_return_count", 0)
+            return 0
+        except Exception as e:
+            logger.error(f"Failed to get count for types {context_types}: {e}")
+            return 0
 
     async def search_by_hierarchy(
         self,

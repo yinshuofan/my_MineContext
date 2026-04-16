@@ -256,12 +256,13 @@ class TestGetFilteredContextCount:
         assert backend._client.async_data_request.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_with_user_id_issues_two_api_calls_and_sums(self):
+    async def test_with_user_id_issues_single_api_call_with_or(self):
+        """With user_id and mixed types, uses or-filter in a single API call."""
         backend = _make_vikingdb_backend()
-        backend._client.async_data_request.side_effect = [
-            {"code": "Success", "result": {"filter_matched_count": 30}},
-            {"code": "Success", "result": {"filter_matched_count": 12}},
-        ]
+        backend._client.async_data_request.return_value = {
+            "code": "Success",
+            "result": {"total_return_count": 42},
+        }
 
         count = await backend.get_filtered_context_count(
             context_types=["event", "knowledge", "agent_base_event"],
@@ -269,7 +270,9 @@ class TestGetFilteredContextCount:
         )
 
         assert count == 42
-        assert backend._client.async_data_request.call_count == 2
+        assert backend._client.async_data_request.call_count == 1
+        call_data = backend._client.async_data_request.call_args[1]["data"]
+        assert call_data["filter"]["op"] == "or"
 
     @pytest.mark.asyncio
     async def test_single_type_still_works(self):
