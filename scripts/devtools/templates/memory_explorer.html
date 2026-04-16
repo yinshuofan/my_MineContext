@@ -110,6 +110,106 @@
         padding: 8px 12px;
         margin-bottom: 8px;
     }
+
+    /* --- Tab 2: Semantic Search --- */
+
+    /* Media upload zone */
+    .paste-zone {
+        border: 2px dashed #dee2e6;
+        border-radius: 6px;
+        padding: 12px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, background-color 0.2s;
+        outline: none;
+        position: relative;
+        min-height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .paste-zone:hover, .paste-zone:focus { border-color: #0d6efd; background-color: #f8f9ff; }
+    .paste-zone.drag-over { border-color: #198754; background-color: #f0fff4; }
+    .paste-zone.has-media { border-style: solid; border-color: #198754; padding: 8px; }
+    .paste-zone.uploading { border-color: #ffc107; background-color: #fffdf0; pointer-events: none; opacity: 0.8; }
+    .paste-placeholder { color: #6c757d; font-size: 0.85rem; }
+
+    /* Media preview thumbnails */
+    .paste-preview-img { max-width: 100%; max-height: 120px; border-radius: 4px; }
+    .paste-video-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        font-size: 0.85rem;
+    }
+
+    /* Search params card */
+    .search-params-card {
+        max-height: calc(100vh - 160px);
+        overflow-y: auto;
+    }
+
+    /* Search result cards */
+    .search-hit-card { transition: box-shadow 0.15s; border-left: 3px solid #198754; }
+    .search-hit-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .search-hit-badge { background-color: #198754; font-size: 0.7rem; font-weight: 500; }
+
+    /* Context cards in search results */
+    .search-context-card {
+        background-color: #f8f9fa;
+        border-left: 3px dashed;
+        border-radius: 4px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        opacity: 0.85;
+    }
+    .search-context-card-0 { border-left-color: #6c757d; }
+    .search-context-card-1 { border-left-color: #0d6efd; }
+    .search-context-card-2 { border-left-color: #6f42c1; }
+    .search-context-card-3 { border-left-color: #d63384; }
+    .search-ctx-badge { background-color: #6c757d; opacity: 0.6; font-size: 0.7rem; font-weight: 500; }
+
+    /* Level badges */
+    .level-badge { font-size: 0.75rem; font-weight: 600; }
+    .level-badge-0 { background-color: #6c757d; }
+    .level-badge-1 { background-color: #0d6efd; }
+    .level-badge-2 { background-color: #6f42c1; }
+    .level-badge-3 { background-color: #d63384; }
+
+    /* Score coloring */
+    .score-badge { font-size: 0.8rem; }
+
+    /* Summary text truncation */
+    .summary-text { max-height: 4.5em; overflow: hidden; position: relative; }
+    .summary-text.expanded { max-height: none; }
+
+    /* Tree children indentation */
+    .tree-children { padding-left: 20px; border-left: 2px solid; margin-left: 8px; margin-top: 4px; }
+    .tree-children-0 { border-color: #6c757d; }
+    .tree-children-1 { border-color: #0d6efd; }
+    .tree-children-2 { border-color: #6f42c1; }
+    .tree-children-3 { border-color: #d63384; }
+
+    /* Toggle button */
+    .toggle-btn { cursor: pointer; user-select: none; }
+    .toggle-btn:hover { opacity: 0.7; }
+
+    /* Media refs in search results */
+    .media-refs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .media-ref-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #dee2e6; cursor: pointer; }
+    .media-ref-thumb:hover { opacity: 0.8; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+    .media-ref-video { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 4px; background: #f0f0f0; font-size: 0.8rem; color: #495057; text-decoration: none; }
+    .media-ref-video:hover { background: #e2e6ea; }
+
+    /* Search metadata bar */
+    .search-metadata-bar {
+        background: #f8f9fa;
+        border-radius: 4px;
+        padding: 6px 12px;
+    }
 </style>
 <script src="/console/static/js/memory_explorer.js"></script>
 {% endblock %}
