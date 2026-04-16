@@ -17,10 +17,7 @@ MineContext needs to provide reference frontend pages for integration into an ag
 - `memory_cache.html` → Memory Explorer
 - `vector_search.html` → Memory Explorer
 
-**Out of scope (removed from new navigation, files kept in codebase for internal use):**
-- `monitoring.html`, `settings.html`, `assistant.html`, `agent_chat.html`, `note_editor.html`, `chat.html`
-
-**Kept unchanged:** `base.html` (layout shell), `context_detail.html` (detail view), `error.html`
+**Existing pages:** All original templates and routes are kept untouched. The new pages are created in a separate location and coexist with the old pages.
 
 ## Overall Architecture
 
@@ -30,10 +27,10 @@ Replace the current 10-item sidebar with a top navigation bar containing 2 entri
 
 | Entry | Route | Description |
 |-------|-------|-------------|
-| Agent 调试台 | `/agents` | Agent inspection + message tracing + related contexts |
-| 记忆浏览器 | `/memory` | User memory snapshot + semantic search + contexts list |
+| Agent 调试台 | `/console/agents` | Agent inspection + message tracing + related contexts |
+| 记忆浏览器 | `/console/memory` | User memory snapshot + semantic search + contexts list |
 
-The sidebar is removed. The top navbar (already present in `base.html`) gains two tab-style links. API Key button remains in the top-right.
+The console pages use a new `console/base.html` template with a top navbar containing two tab-style links + API Key button. No sidebar.
 
 ### Unified Layout Pattern
 
@@ -56,7 +53,7 @@ Both pages use an identical master-detail + tab layout:
 - Right panel: Bootstrap tab navigation + tab content area
 - Responsive: left panel collapses on small screens
 
-## Page 1: Agent Debug Console (`/agents`)
+## Page 1: Agent Debug Console (`/console/agents`)
 
 ### Left Panel — Agent List
 
@@ -124,7 +121,7 @@ A client-side rendered version of the contexts list, filtered by the selected ag
 - `POST /contexts/detail` — view detail (existing)
 - `POST /contexts/delete` — delete context (existing)
 
-## Page 2: Memory Explorer (`/memory`)
+## Page 2: Memory Explorer (`/console/memory`)
 
 ### Left Panel — User List
 
@@ -240,8 +237,8 @@ REST API version of the server-side `/contexts` route logic. Enables client-side
 
 ## Cross-Page Linking
 
-- **Agent Console → Memory Explorer:** In Tab 3 (Contexts) or Tab 2 (Chat Batches), clicking a `user_id` navigates to `/memory?user_id={}&device_id={}&agent_id={}`, which auto-selects the user in Memory Explorer's left panel.
-- **Memory Explorer → Agent Console:** In Tab 3 (Contexts) or Tab 1 (Memory Snapshot), if `agent_id` is not "default", show a link icon next to agent_id that navigates to `/agents?agent_id={}`, which auto-selects the agent.
+- **Agent Console → Memory Explorer:** In Tab 3 (Contexts) or Tab 2 (Chat Batches), clicking a `user_id` navigates to `/console/memory?user_id={}&device_id={}&agent_id={}`, which auto-selects the user in Memory Explorer's left panel.
+- **Memory Explorer → Agent Console:** In Tab 3 (Contexts) or Tab 1 (Memory Snapshot), if `agent_id` is not "default", show a link icon next to agent_id that navigates to `/console/agents?agent_id={}`, which auto-selects the agent.
 
 Both pages read URL query parameters on load to support deep-linking and cross-page navigation.
 
@@ -269,34 +266,41 @@ Current pages have duplicated utility functions. Extract once into a shared JS f
 
 ### File structure
 
+All new files are created in a `console/` subdirectory, keeping them fully separate from the existing pages.
+
 ```
-opencontext/web/templates/
-  base.html              ← modified: sidebar → top nav tabs
+opencontext/web/templates/console/
+  base.html              ← new: standalone layout (top nav, no sidebar)
   agent_console.html     ← new: Agent Debug Console
   memory_explorer.html   ← new: Memory Explorer
-  context_detail.html    ← kept unchanged
-  error.html             ← kept unchanged
 
-opencontext/web/static/
+opencontext/web/static/console/
   js/shared.js           ← new: deduplicated utilities
-  js/agent_console.js    ← new: Agent Console logic (from agents + chat_batches + contexts)
-  js/memory_explorer.js  ← new: Memory Explorer logic (from memory_cache + vector_search + contexts)
+  js/agent_console.js    ← new: Agent Console logic
+  js/memory_explorer.js  ← new: Memory Explorer logic
+  css/console.css        ← new: console-specific styles
 
 opencontext/server/routes/
-  web.py                 ← modified: replace 10 routes with 2 page routes + keep /files
-  api.py                 ← add new API routes
+  console.py             ← new: /console/agents, /console/memory routes
   contexts_api.py        ← new: GET /api/contexts endpoint
   users_api.py           ← new: GET /api/users endpoint
+  api.py                 ← add new API route includes (existing file, minimal change)
 ```
 
-### Old pages
+### Coexistence with existing pages
 
-The 5 original templates (`agents.html`, `chat_batches.html`, `contexts.html`, `memory_cache.html`, `vector_search.html`) are removed after the new pages are complete. The server-rendered `/contexts` route is replaced by the `GET /api/contexts` API.
+- All original templates, routes, and static files are **untouched**
+- Old pages remain accessible at their original URLs (`/agents`, `/contexts`, `/vector_search`, etc.)
+- New console pages are served at `/console/agents` and `/console/memory`
+- `console/base.html` is a new standalone layout template — the existing `base.html` is not modified
+- The 2 new APIs (`GET /api/contexts`, `GET /api/users`) are additive — no existing API is changed
 
-### base.html changes
+### console/base.html (new layout)
 
-- Remove the left sidebar entirely
-- Convert top navbar brand area to include two tab-style page links
-- Keep API Key button in top-right
-- Adjust main content area: remove `margin-left: 160px`, keep `padding-top` for navbar clearance
-- Remove sidebar-related responsive styles
+A new base template for the console pages, independent of the existing `base.html`:
+
+- Top navbar with "MineContext" brand + two tab-style page links + API Key button
+- No sidebar
+- Main content area uses full width with `padding-top` for navbar clearance
+- Loads Bootstrap 5, Feather Icons, and `/static/console/js/shared.js`
+- Same `api_auth.js` integration for API key injection
