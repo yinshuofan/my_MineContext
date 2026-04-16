@@ -335,20 +335,20 @@
     }
 
     /* ── context type dropdown ── */
-    function loadContextTypes() {
-        fetch('/api/context_types', { headers: window.apiAuth ? window.apiAuth.getAuthHeaders() : {} })
-            .then(function(r) { return r.json(); })
-            .then(function(types) {
-                var sel = document.getElementById('filterType');
-                if (!Array.isArray(types)) return;
-                types.forEach(function(t) {
-                    var opt = document.createElement('option');
-                    opt.value = t;
-                    opt.textContent = t;
-                    sel.appendChild(opt);
-                });
-            })
-            .catch(function(e) { console.warn('Failed to load context types:', e); });
+    var typesPopulated = false;
+
+    function populateContextTypes(types) {
+        if (typesPopulated || !Array.isArray(types) || types.length === 0) return;
+        var sel = document.getElementById('filterType');
+        var current = sel.value;
+        types.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+        typesPopulated = true;
     }
 
     /* ── filter params ── */
@@ -407,6 +407,7 @@
                     return;
                 }
                 var data = resp.data;
+                populateContextTypes(data.context_types);
                 var contexts = data.contexts || [];
                 var totalPages = data.total_pages || 1;
                 var total = data.total || 0;
@@ -736,7 +737,6 @@
 
     /* ── init ── */
     document.addEventListener('DOMContentLoaded', function() {
-        loadContextTypes();
         loadContexts(1);
     });
 </script>
