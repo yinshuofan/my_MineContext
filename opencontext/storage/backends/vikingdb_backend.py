@@ -1005,7 +1005,7 @@ class VikingDBBackend(IVectorStorageBackend):
                     if filter_dict:
                         data["filter"] = filter_dict
 
-                    query_result = await self._client.async_data_request(
+                    query_result = await self._client.async_data_request(  # type: ignore[union-attr]
                         path="/api/vikingdb/data/search/scalar", data=data
                     )
 
@@ -1062,7 +1062,7 @@ class VikingDBBackend(IVectorStorageBackend):
             if filter_dict:
                 data["filter"] = filter_dict
 
-            query_result = await self._client.async_data_request(
+            query_result = await self._client.async_data_request(  # type: ignore[union-attr]
                 path="/api/vikingdb/data/search/scalar", data=data
             )
 
@@ -1153,34 +1153,16 @@ class VikingDBBackend(IVectorStorageBackend):
                     all_results.append((context, 1.0))
             return all_results[:top_k] if len(all_results) > top_k else all_results
 
-        # Split context_types into user and base groups for separate filtering
-        # (base types skip user_id/device_id, but VikingDB does single-collection search)
-        user_types = [ct for ct in (context_types or []) if not ct.startswith("agent_base")]
-        base_types = [ct for ct in (context_types or []) if ct.startswith("agent_base")]
-
+        groups = self._split_types_by_user_scope(context_types or [], user_id, device_id)
         all_results = []
 
-        # Search user types (with user_id/device_id)
-        if user_types:
+        for group_types, is_base in groups:
             filter_dict = self._build_filter_dict(
                 filters=filters,
-                user_id=user_id,
-                device_id=device_id,
+                user_id=None if is_base else user_id,
+                device_id=None if is_base else device_id,
                 agent_id=agent_id,
-                context_types=user_types,
-                data_type=DATA_TYPE_CONTEXT,
-            )
-            results = await self._vector_search(query_vector, filter_dict, top_k, need_vector)
-            all_results.extend(results)
-
-        # Search base types (without user_id/device_id)
-        if base_types:
-            filter_dict = self._build_filter_dict(
-                filters=filters,
-                user_id=None,
-                device_id=None,
-                agent_id=agent_id,
-                context_types=base_types,
+                context_types=group_types,
                 data_type=DATA_TYPE_CONTEXT,
             )
             results = await self._vector_search(query_vector, filter_dict, top_k, need_vector)
@@ -1647,7 +1629,7 @@ class VikingDBBackend(IVectorStorageBackend):
                 if filter_dict:
                     data["filter"] = filter_dict
 
-                result = await self._client.async_data_request(
+                result = await self._client.async_data_request(  # type: ignore[union-attr]
                     path="/api/vikingdb/data/search/scalar", data=data
                 )
 
