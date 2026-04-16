@@ -1631,10 +1631,10 @@ class VikingDBBackend(IVectorStorageBackend):
         device_id: str | None = None,
         agent_id: str | None = None,
     ) -> int:
-        """Get total count across multiple context types using combined queries.
+        """Get total count across multiple context types using a single combined query.
 
-        Overrides the default per-type loop with grouped queries that combine
-        context_types into 1-2 VikingDB API calls (regular vs agent_base).
+        Overrides the default per-type loop with a single VikingDB API call,
+        using or-filter for mixed regular/agent_base types.
         """
         if not self._initialized:
             return 0

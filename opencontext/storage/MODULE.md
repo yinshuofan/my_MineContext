@@ -61,7 +61,7 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 | `delete_processed_context` | `(id: str, context_type: str) -> bool` | Success flag |
 | `search` | `(query: Vectorize, top_k, context_types, filters, user_id, device_id, agent_id, score_threshold) -> List[Tuple[ProcessedContext, float]]` | Scored results. `score_threshold` (0-1) filters out low-similarity results at the database level when supported |
 | `get_processed_context_count` | `(context_type, filter, user_id, device_id, agent_id) -> int` | Count (all params except context_type are optional) |
-| `get_filtered_context_count` | `(context_types, filter, user_id, device_id, agent_id) -> int` | Total count across multiple types. Default loops per-type; VikingDB overrides with combined query (1-2 API calls) |
+| `get_filtered_context_count` | `(context_types, filter, user_id, device_id, agent_id) -> int` | Total count across multiple types. Default loops per-type; VikingDB overrides with single combined query (uses `or` filter for mixed regular/agent_base types) |
 | `get_all_processed_context_counts` | `() -> Dict[str, int]` | Type-keyed counts |
 | `search_by_hierarchy` | `(context_type, hierarchy_level, time_start, time_end, user_id, device_id, agent_id, top_k) -> List[Tuple[ProcessedContext, float]]` | Scored results. `time_start`/`time_end` are UTC timestamps (floats); returns contexts whose `[event_time_start, event_time_end]` overlaps the query range |
 | `get_by_ids` | `(ids: List[str], context_type: Optional[str], need_vector: bool) -> List[ProcessedContext]` | Contexts by ID |
