@@ -347,9 +347,10 @@ if _devtools_routes_path.exists():
     import importlib.util
 
     _spec = importlib.util.spec_from_file_location("devtools_routes", _devtools_routes_path)
-    _mod = importlib.util.module_from_spec(_spec)
-    _spec.loader.exec_module(_mod)
-    app.include_router(_mod.router)
+    if _spec and _spec.loader:
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        app.include_router(_mod.router)
 
 
 def start_web_server(host: str, port: int, workers: int = 1) -> None:
