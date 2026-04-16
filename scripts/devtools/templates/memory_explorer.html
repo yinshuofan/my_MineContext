@@ -41,6 +41,18 @@
                 </li>
             </ul>
 
+            <!-- Device/Agent selector bar (shown after selecting a user) -->
+            <div id="userTripleBar" class="d-none px-2 pb-2">
+                <div class="d-flex align-items-center gap-2 p-2 bg-light border rounded" style="font-size:0.85rem;">
+                    <span class="text-muted">用户:</span>
+                    <strong id="tripleUserId"></strong>
+                    <span class="text-muted ms-2">Device:</span>
+                    <select class="form-select form-select-sm" id="tripleDeviceId" style="width:auto;min-width:100px;" onchange="onTripleChanged()"></select>
+                    <span class="text-muted ms-2">Agent:</span>
+                    <select class="form-select form-select-sm" id="tripleAgentId" style="width:auto;min-width:100px;" onchange="onTripleChanged()"></select>
+                </div>
+            </div>
+
             <div class="tab-content">
                 <div class="tab-pane fade show active" id="tab-snapshot" role="tabpanel" aria-labelledby="tab-snapshot-btn">
                     <div class="text-muted text-center py-5">

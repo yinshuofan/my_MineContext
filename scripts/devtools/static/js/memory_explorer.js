@@ -15,8 +15,10 @@
    State
    ============================================================ */
 
-let selectedUser = null;  // { user_id, device_id, agent_id }
-let _allUsers = [];
+let selectedUser = null;   // { user_id, device_id, agent_id } — fully resolved triple
+let selectedUserId = null; // just the user_id (selected in sidebar)
+let _allUsers = [];        // raw triples from API
+let _uniqueUserIds = [];   // deduplicated user_id list for sidebar
 
 // Tab 2: Semantic Search state
 let uploadedMediaList = [];  // [{ url, type: 'image'|'video', filename }, ...]
@@ -53,24 +55,37 @@ async function loadUserList() {
         var resp = await fetch('/api/users');
         var data = await resp.json();
         if (!resp.ok) throw new Error(data.detail || 'Failed to load users');
-        var users = (data.data && data.data.users) || [];
-        _allUsers = users;
-        renderUserList(users);
+        _allUsers = (data.data && data.data.users) || [];
+
+        // Deduplicate user_ids for sidebar
+        var seen = {};
+        _uniqueUserIds = [];
+        _allUsers.forEach(function (u) {
+            if (!seen[u.user_id]) {
+                seen[u.user_id] = true;
+                _uniqueUserIds.push(u.user_id);
+            }
+        });
+
+        renderUserList(_uniqueUserIds);
 
         // Auto-select deep-linked user
         var params = new URLSearchParams(window.location.search);
         var linkedUserId = params.get('user_id');
-        var linkedDeviceId = params.get('device_id');
-        var linkedAgentId = params.get('agent_id');
-        if (linkedUserId) {
-            var found = users.find(function (u) {
-                return u.user_id === linkedUserId &&
-                    (linkedDeviceId ? u.device_id === linkedDeviceId : true) &&
-                    (linkedAgentId ? u.agent_id === linkedAgentId : true);
-            });
-            if (found) {
-                selectUser(found);
+        if (linkedUserId && _uniqueUserIds.indexOf(linkedUserId) !== -1) {
+            selectUserId(linkedUserId);
+            // If device/agent also specified, pre-select them
+            var linkedDeviceId = params.get('device_id');
+            var linkedAgentId = params.get('agent_id');
+            if (linkedDeviceId) {
+                var devSel = document.getElementById('tripleDeviceId');
+                if (devSel) devSel.value = linkedDeviceId;
             }
+            if (linkedAgentId) {
+                var agSel = document.getElementById('tripleAgentId');
+                if (agSel) agSel.value = linkedAgentId;
+            }
+            onTripleChanged();
         }
     } catch (e) {
         console.error('Load users failed:', e);
@@ -81,74 +96,105 @@ async function loadUserList() {
     }
 }
 
-function renderUserList(users) {
+function renderUserList(userIds) {
     var list = document.getElementById('userList');
     var countEl = document.getElementById('userCount');
 
-    if (users.length === 0) {
+    if (userIds.length === 0) {
         list.innerHTML = '<div class="text-muted text-center py-4"><small>暂无用户</small></div>';
         countEl.textContent = '0 个用户';
         return;
     }
 
     var html = '';
-    users.forEach(function (u) {
-        var isActive = selectedUser &&
-            selectedUser.user_id === u.user_id &&
-            selectedUser.device_id === u.device_id &&
-            selectedUser.agent_id === u.agent_id;
-        var key = escAttr(u.user_id) + '|' + escAttr(u.device_id) + '|' + escAttr(u.agent_id);
+    userIds.forEach(function (uid) {
+        var combos = _allUsers.filter(function (u) { return u.user_id === uid; });
+        var isActive = selectedUserId === uid;
         html += '<div class="sidebar-item' + (isActive ? ' active' : '') + '" ' +
-            'onclick="selectUserByKey(\'' + key + '\')" ' +
-            'data-user-key="' + key + '" ' +
-            'title="' + escAttr(u.user_id) + '">' +
-            '<div style="overflow:hidden;text-overflow:ellipsis;">' + esc(u.user_id) + '</div>' +
+            'onclick="selectUserId(\'' + escAttr(uid) + '\')" ' +
+            'data-user-id="' + escAttr(uid) + '" ' +
+            'title="' + escAttr(uid) + '">' +
+            '<div style="overflow:hidden;text-overflow:ellipsis;">' + esc(uid) + '</div>' +
             '<small class="text-muted" style="font-size:0.72rem;">' +
-            esc(u.device_id) + ' / ' + esc(u.agent_id) + '</small>' +
+            combos.length + ' 个组合</small>' +
             '</div>';
     });
 
     list.innerHTML = html;
-    countEl.textContent = users.length + ' 个用户';
+    countEl.textContent = userIds.length + ' 个用户';
 }
 
 function filterUserList(query) {
     if (!query) {
-        renderUserList(_allUsers);
+        renderUserList(_uniqueUserIds);
         return;
     }
     var q = query.toLowerCase();
-    var filtered = _allUsers.filter(function (u) {
-        return u.user_id.toLowerCase().indexOf(q) !== -1;
+    var filtered = _uniqueUserIds.filter(function (uid) {
+        return uid.toLowerCase().indexOf(q) !== -1;
     });
     renderUserList(filtered);
 }
 
-function selectUserByKey(key) {
-    var parts = key.split('|');
-    var user = { user_id: parts[0], device_id: parts[1], agent_id: parts[2] };
-    selectUser(user);
-}
+function selectUserId(userId) {
+    selectedUserId = userId;
+    selectedUser = null; // reset until device/agent are chosen
 
-function selectUser(user) {
-    selectedUser = user;
-
-    // Highlight active sidebar item
+    // Highlight sidebar
     document.querySelectorAll('#userList .sidebar-item').forEach(function (el) {
-        var k = el.getAttribute('data-user-key');
-        var expected = user.user_id + '|' + user.device_id + '|' + user.agent_id;
-        if (k === expected) {
+        if (el.getAttribute('data-user-id') === userId) {
             el.classList.add('active');
         } else {
             el.classList.remove('active');
         }
     });
 
+    // Get all combos for this user
+    var combos = _allUsers.filter(function (u) { return u.user_id === userId; });
+
+    // Populate device/agent dropdowns
+    var devices = [];
+    var agents = [];
+    var deviceSeen = {};
+    var agentSeen = {};
+    combos.forEach(function (u) {
+        if (!deviceSeen[u.device_id]) { deviceSeen[u.device_id] = true; devices.push(u.device_id); }
+        if (!agentSeen[u.agent_id]) { agentSeen[u.agent_id] = true; agents.push(u.agent_id); }
+    });
+
+    var bar = document.getElementById('userTripleBar');
+    document.getElementById('tripleUserId').textContent = userId;
+
+    var devSel = document.getElementById('tripleDeviceId');
+    devSel.innerHTML = devices.map(function (d) {
+        return '<option value="' + escAttr(d) + '">' + esc(d) + '</option>';
+    }).join('');
+
+    var agSel = document.getElementById('tripleAgentId');
+    agSel.innerHTML = agents.map(function (a) {
+        return '<option value="' + escAttr(a) + '">' + esc(a) + '</option>';
+    }).join('');
+
+    bar.classList.remove('d-none');
+
+    // If only 1 combo, auto-select
+    onTripleChanged();
+}
+
+function onTripleChanged() {
+    if (!selectedUserId) return;
+
+    var deviceId = document.getElementById('tripleDeviceId').value;
+    var agentId = document.getElementById('tripleAgentId').value;
+    if (!deviceId || !agentId) return;
+
+    selectedUser = { user_id: selectedUserId, device_id: deviceId, agent_id: agentId };
+
     // Update URL
     var params = new URLSearchParams();
-    params.set('user_id', user.user_id);
-    if (user.device_id && user.device_id !== 'default') params.set('device_id', user.device_id);
-    if (user.agent_id && user.agent_id !== 'default') params.set('agent_id', user.agent_id);
+    params.set('user_id', selectedUserId);
+    if (deviceId !== 'default') params.set('device_id', deviceId);
+    if (agentId !== 'default') params.set('agent_id', agentId);
     history.replaceState(null, '', window.location.pathname + '?' + params.toString());
 
     // Load active tab content
