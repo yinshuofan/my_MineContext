@@ -105,10 +105,19 @@
 .badge-l3 { background-color: #dc3545 !important; color: #fff; }
 
 /* --- Type badges ------------------------------------------ */
-.badge-event      { background-color: #ffc107 !important; color: #212529; }
-.badge-knowledge  { background-color: #6f42c1 !important; color: #fff; }
-.badge-document   { background-color: #198754 !important; color: #fff; }
-.badge-profile    { background-color: #0d6efd !important; color: #fff; }
+.badge-event                { background-color: #ffc107 !important; color: #212529; }
+.badge-knowledge            { background-color: #6f42c1 !important; color: #fff; }
+.badge-document             { background-color: #198754 !important; color: #fff; }
+.badge-profile              { background-color: #0d6efd !important; color: #fff; }
+.badge-agent_profile        { background-color: #0dcaf0 !important; color: #212529; }
+.badge-daily_summary        { background-color: #6c757d !important; color: #fff; }
+.badge-weekly_summary       { background-color: #6c757d !important; color: #fff; }
+.badge-monthly_summary      { background-color: #6c757d !important; color: #fff; }
+.badge-agent_base_event     { background-color: #e67e22 !important; color: #fff; }
+.badge-agent_base_l1_summary { background-color: #a0522d !important; color: #fff; }
+.badge-agent_base_l2_summary { background-color: #a0522d !important; color: #fff; }
+.badge-agent_base_l3_summary { background-color: #a0522d !important; color: #fff; }
+.badge-agent_base_profile   { background-color: #2980b9 !important; color: #fff; }
 
 /* --- Responsive: collapse sidebar on small screens -------- */
 @media (max-width: 767.98px) {

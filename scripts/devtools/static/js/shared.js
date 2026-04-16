@@ -208,7 +208,7 @@ function renderContextCardHTML(ctx) {
     // Header row: type badge, level badge, media icons, truncated ID
     html += '<div class="d-flex align-items-center gap-1 mb-1">';
     html += '<span class="badge ' + typeBadgeClass(type) + '">' + esc(type) + '</span>';
-    if (level != null && type === 'event') {
+    if (level != null && (type === 'event' || type.startsWith('agent_base'))) {
         html += ' ' + levelBadge(level);
     }
     html += mediaHtml;
