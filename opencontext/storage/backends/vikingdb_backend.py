@@ -964,64 +964,53 @@ class VikingDBBackend(IVectorStorageBackend):
         result: dict[str, list[ProcessedContext]] = {}
         target_types = context_types or [ct.value for ct in ContextType]
 
-        # Optimization: combine multiple types into grouped queries.
-        # Split into at most 2 groups by user/device filter compatibility,
-        # then issue one VikingDB API call per group instead of per type.
-        # (Replicates the pattern from search() at lines 1089-1126.)
+        # Optimization: use _build_user_scoped_filter to handle mixed regular/base
+        # types in a single query via VikingDB's or-filter operator.
         if len(target_types) > 1:
-            groups = self._split_types_by_user_scope(target_types, user_id, device_id)
+            filter_dict = self._build_user_scoped_filter(
+                context_types=target_types,
+                filters=filter,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+                data_type=DATA_TYPE_CONTEXT,
+            )
 
-            for group_types, is_base in groups:
-                try:
-                    # Nullify user_id/device_id for base groups: _build_filter_dict's
-                    # internal is_base detection only works for single-type calls
-                    # (see its NOTE at lines 1340-1343). For multi-type lists, the
-                    # caller must handle the split explicitly.
-                    filter_dict = self._build_filter_dict(
-                        filters=filter,
-                        user_id=None if is_base else user_id,
-                        device_id=None if is_base else device_id,
-                        agent_id=agent_id,
-                        context_types=group_types,
-                        data_type=DATA_TYPE_CONTEXT,
-                    )
+            if skip_slice:
+                fetch_limit = limit + offset
+                fetch_offset = 0
+            else:
+                # Over-fetch to fill per-type limits after grouping
+                fetch_limit = limit * len(target_types)
+                fetch_offset = 0
 
-                    if skip_slice:
-                        fetch_limit = limit + offset
-                        fetch_offset = 0
-                    else:
-                        # Over-fetch to fill per-type limits after grouping
-                        fetch_limit = limit * len(group_types)
-                        fetch_offset = 0
+            data = {
+                "collection_name": self._collection_name,
+                "index_name": self._index_name,
+                "limit": fetch_limit,
+                "offset": fetch_offset,
+                "field": FIELD_CREATE_TIME_TS,
+                "order": "desc",
+            }
+            if filter_dict:
+                data["filter"] = filter_dict
 
-                    data = {
-                        "collection_name": self._collection_name,
-                        "index_name": self._index_name,
-                        "limit": fetch_limit,
-                        "offset": fetch_offset,
-                        "field": FIELD_CREATE_TIME_TS,
-                        "order": "desc",
-                    }
-                    if filter_dict:
-                        data["filter"] = filter_dict
+            try:
+                query_result = await self._client.async_data_request(  # type: ignore[union-attr]
+                    path="/api/vikingdb/data/search/scalar", data=data
+                )
 
-                    query_result = await self._client.async_data_request(  # type: ignore[union-attr]
-                        path="/api/vikingdb/data/search/scalar", data=data
-                    )
-
-                    if query_result.get("code") == "Success":
-                        output = query_result.get("result", {}).get("data", [])
-                        for item in output:
-                            doc = {"id": item.get("id")}
-                            doc.update(item.get("fields", {}))
-                            context = self._doc_to_context(doc, need_vector)
-                            if context:
-                                ct = context.extracted_data.context_type.value
-                                result.setdefault(ct, []).append(context)
-
-                except Exception as e:
-                    logger.exception(f"Failed to get contexts for types {group_types}: {e}")
-                    continue
+                if query_result.get("code") == "Success":
+                    output = query_result.get("result", {}).get("data", [])
+                    for item in output:
+                        doc = {"id": item.get("id")}
+                        doc.update(item.get("fields", {}))
+                        context = self._doc_to_context(doc, need_vector)
+                        if context:
+                            ct = context.extracted_data.context_type.value
+                            result.setdefault(ct, []).append(context)
+            except Exception as e:
+                logger.exception(f"Failed to get contexts for types {target_types}: {e}")
 
             # For skip_slice=False, apply per-type limit
             if not skip_slice:

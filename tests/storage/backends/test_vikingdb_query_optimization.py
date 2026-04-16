@@ -113,8 +113,8 @@ class TestGetAllProcessedContextsCombined:
         assert set(ctx_type_cond["conds"]) == {"document", "event", "knowledge"}
 
     @pytest.mark.asyncio
-    async def test_multi_type_with_user_id_issues_two_api_calls(self):
-        """When user_id is provided, regular and base types become separate calls."""
+    async def test_multi_type_with_user_id_issues_single_api_call(self):
+        """With user_id and mixed types, uses or-filter in a single API call."""
         backend = _make_vikingdb_backend()
         backend._client.async_data_request.return_value = _make_scalar_response(
             [
@@ -128,8 +128,11 @@ class TestGetAllProcessedContextsCombined:
             user_id="user1",
         )
 
-        # Should issue exactly 2 API calls (regular + base)
-        assert backend._client.async_data_request.call_count == 2
+        # Should issue exactly 1 API call (or-filter combines both groups)
+        assert backend._client.async_data_request.call_count == 1
+        call_data = backend._client.async_data_request.call_args[1]["data"]
+        # Filter should use "or" operator
+        assert call_data["filter"]["op"] == "or"
 
     @pytest.mark.asyncio
     async def test_results_grouped_by_context_type(self):
