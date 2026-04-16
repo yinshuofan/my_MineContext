@@ -376,18 +376,18 @@ class UnifiedStorage:
         device_id: str | None = None,
         agent_id: str | None = None,
     ) -> int:
-        """Get total record count across multiple context types with filters"""
-        if not context_types:
-            context_types = [ct.value for ct in ContextType]
-        total = 0
-        for ct in context_types:
-            try:
-                total += await self._vector_backend.get_processed_context_count(
-                    ct, filter=filter, user_id=user_id, device_id=device_id, agent_id=agent_id
-                )
-            except Exception as e:
-                logger.exception(f"Failed to get {ct} record count: {e}")
-        return total
+        """Get total record count across multiple context types with filters."""
+        try:
+            return await self._vector_backend.get_filtered_context_count(
+                context_types=context_types,
+                filter=filter,
+                user_id=user_id,
+                device_id=device_id,
+                agent_id=agent_id,
+            )
+        except Exception as e:
+            logger.exception(f"Failed to get filtered context count: {e}")
+            return 0
 
     @_require_backend("_vector_backend", default={})
     async def get_all_processed_context_counts(self) -> dict[str, int]:

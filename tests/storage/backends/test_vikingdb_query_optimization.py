@@ -231,3 +231,55 @@ class TestGetAllProcessedContextsCombined:
         # Each type capped at limit=2
         assert len(result.get("document", [])) == 2
         assert len(result.get("event", [])) == 1  # only 1 exists
+
+
+@pytest.mark.unit
+class TestGetFilteredContextCount:
+    """Tests for combined count query."""
+
+    @pytest.mark.asyncio
+    async def test_no_user_id_issues_single_api_call(self):
+        backend = _make_vikingdb_backend()
+        backend._client.async_data_request.return_value = {
+            "code": "Success",
+            "result": {"filter_matched_count": 42, "total_return_count": 0},
+        }
+
+        count = await backend.get_filtered_context_count(
+            context_types=["document", "event", "knowledge"],
+        )
+
+        assert count == 42
+        assert backend._client.async_data_request.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_with_user_id_issues_two_api_calls_and_sums(self):
+        backend = _make_vikingdb_backend()
+        backend._client.async_data_request.side_effect = [
+            {"code": "Success", "result": {"filter_matched_count": 30}},
+            {"code": "Success", "result": {"filter_matched_count": 12}},
+        ]
+
+        count = await backend.get_filtered_context_count(
+            context_types=["event", "knowledge", "agent_base_event"],
+            user_id="user1",
+        )
+
+        assert count == 42
+        assert backend._client.async_data_request.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_single_type_still_works(self):
+        """Single type should still work (no grouping needed)."""
+        backend = _make_vikingdb_backend()
+        backend._client.async_data_request.return_value = {
+            "code": "Success",
+            "result": {"filter_matched_count": 7},
+        }
+
+        count = await backend.get_filtered_context_count(
+            context_types=["event"],
+        )
+
+        assert count == 7
+        assert backend._client.async_data_request.call_count == 1

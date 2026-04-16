@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Any
 
 from opencontext.models.context import ProcessedContext, Vectorize
+from opencontext.models.enums import ContextType
 
 
 class StorageType(Enum):
@@ -224,6 +225,28 @@ class IVectorStorageBackend(IStorageBackend):
         agent_id: str | None = None,
     ) -> int:
         """Get record count for specified context_type"""
+
+    async def get_filtered_context_count(
+        self,
+        context_types: list[str] | None = None,
+        filter: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> int:
+        """Get total record count across multiple context types.
+
+        Default implementation sums per-type counts sequentially.
+        Backends may override for more efficient combined queries.
+        """
+        if not context_types:
+            context_types = [ct.value for ct in ContextType]
+        total = 0
+        for ct in context_types:
+            total += await self.get_processed_context_count(
+                ct, filter=filter, user_id=user_id, device_id=device_id, agent_id=agent_id
+            )
+        return total
 
     @abstractmethod
     async def get_all_processed_context_counts(self) -> dict[str, int]:

@@ -1603,6 +1603,66 @@ class VikingDBBackend(IVectorStorageBackend):
             counts[ct.value] = await self.get_processed_context_count(ct.value)
         return counts
 
+    async def get_filtered_context_count(
+        self,
+        context_types: list[str] | None = None,
+        filter: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+    ) -> int:
+        """Get total count across multiple context types using combined queries.
+
+        Overrides the default per-type loop with grouped queries that combine
+        context_types into 1-2 VikingDB API calls (regular vs agent_base).
+        """
+        if not self._initialized:
+            return 0
+
+        if not context_types:
+            context_types = [ct.value for ct in ContextType]
+
+        groups = self._split_types_by_user_scope(context_types, user_id, device_id)
+        total = 0
+
+        for group_types, is_base in groups:
+            try:
+                filter_dict = self._build_filter_dict(
+                    filters=filter,
+                    user_id=None if is_base else user_id,
+                    device_id=None if is_base else device_id,
+                    agent_id=agent_id,
+                    context_types=group_types,
+                    data_type=DATA_TYPE_CONTEXT,
+                )
+
+                data = {
+                    "collection_name": self._collection_name,
+                    "index_name": self._index_name,
+                    "limit": 100000,
+                    "output_fields": [],
+                    "field": FIELD_CREATE_TIME_TS,
+                    "order": "desc",
+                }
+                if filter_dict:
+                    data["filter"] = filter_dict
+
+                result = await self._client.async_data_request(
+                    path="/api/vikingdb/data/search/scalar", data=data
+                )
+
+                if result.get("code") == "Success":
+                    result_data = result.get("result", {})
+                    if "filter_matched_count" in result_data:
+                        total += result_data["filter_matched_count"]
+                    else:
+                        total += result_data.get("total_return_count", 0)
+
+            except Exception as e:
+                logger.error(f"Failed to get count for types {group_types}: {e}")
+
+        return total
+
     async def search_by_hierarchy(
         self,
         context_type: str,
