@@ -327,10 +327,29 @@ def _setup_static_files() -> None:
     else:
         print(f"Static path does not exist: {static_path}")
 
+    # Devtools console static files (optional — only if scripts/devtools/ exists)
+    devtools_static = Path(__file__).parents[1] / "scripts" / "devtools" / "static"
+    if devtools_static.exists():
+        app.mount(
+            "/console/static",
+            StaticFiles(directory=str(devtools_static)),
+            name="console_static",
+        )
+
 
 _setup_static_files()
 
 app.include_router(api_router)
+
+# Devtools console routes (optional — dynamic import so the app works without them)
+_devtools_routes_path = Path(__file__).parents[1] / "scripts" / "devtools" / "routes.py"
+if _devtools_routes_path.exists():
+    import importlib.util
+
+    _spec = importlib.util.spec_from_file_location("devtools_routes", _devtools_routes_path)
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    app.include_router(_mod.router)
 
 
 def start_web_server(host: str, port: int, workers: int = 1) -> None:
