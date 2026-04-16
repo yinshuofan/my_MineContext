@@ -397,8 +397,7 @@
         params.set('page', currentPage);
         params.set('limit', currentLimit);
 
-        var headers = window.apiAuth ? window.apiAuth.getAuthHeaders() : {};
-        fetch('/api/contexts?' + params.toString(), { headers: headers })
+        fetch('/api/contexts?' + params.toString())
             .then(function(r) { return r.json(); })
             .then(function(resp) {
                 if (resp.code !== 0) {
@@ -620,14 +619,9 @@
     /* ── actions ── */
     async function viewContext(contextId, contextType) {
         try {
-            var headers = { 'Content-Type': 'application/json' };
-            if (window.apiAuth) {
-                var authHeaders = window.apiAuth.getAuthHeaders();
-                for (var k in authHeaders) headers[k] = authHeaders[k];
-            }
             var response = await fetch('/contexts/detail', {
                 method: 'POST',
-                headers: headers,
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: contextId, context_type: contextType })
             });
             if (response.ok) {
@@ -647,14 +641,9 @@
     async function deleteContext(id, type, el) {
         if (!confirm('确定要删除这个上下文吗？此操作不可撤销。')) return;
         try {
-            var headers = { 'Content-Type': 'application/json' };
-            if (window.apiAuth) {
-                var authHeaders = window.apiAuth.getAuthHeaders();
-                for (var k in authHeaders) headers[k] = authHeaders[k];
-            }
             var response = await fetch('/contexts/delete', {
                 method: 'POST',
-                headers: headers,
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: id, context_type: type })
             });
             if (response.ok) {
