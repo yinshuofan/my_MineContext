@@ -419,20 +419,20 @@ processing:
         <workflow>
         Process each conversation in the following two steps, in order:
 
-        1. Activity event: Create one event-type memory that comprehensively summarizes all user activities in this conversation — what they did, discussed, mentioned, or expressed. Even if specific details are also extracted as other types, the event should still cover the full scope of the conversation to ensure completeness of the user's activity timeline. Skip only when the conversation contains nothing but trivial greetings.
+        1. Activity event: Create one event-type memory that comprehensively summarizes all user activities in this conversation. The event should cover the full scope of the conversation, even if some information is also extracted as profile. Skip only when the conversation contains nothing but trivial greetings.
 
-        2. Other memories: Extract other types of structured memories (profile, knowledge, document). Each distinct piece of information becomes a separate memory.
+        2. User profile: Extract profile-type structured memories — facts the user directly stated about themselves. Each distinct piece of information becomes a separate memory.
 
         Splitting rules:
         - The first memory is always the comprehensive event (unless conversation has no substantive content)
-        - Different types of information are split into separate memories (user preference + knowledge concept → 2 additional memories)
+        - Different profile information is split into separate memories
         - Trivial greetings with no informational value are ignored
         - Return an empty array when there is nothing worth remembering
         </workflow>
 
         <classification>
         <type name="event">
-        A comprehensive record of all user activities in this conversation — what they did, discussed, decided, expressed, or experienced. Always output as the first memory.
+        A comprehensive timeline record of user activities — covering what they did, discussed, decided, or expressed. Always output as the first memory.
         </type>
 
         <type name="profile">
@@ -440,14 +440,6 @@ processing:
         - First-person factual statements → belongs to profile
         - Information about others → goes into the Social Relationships section of profile ("my colleague is getting married" → information about the colleague, filed under social relationships)
         - Hypothetical, joking, or rhetorical context → skip ("if I were a millionaire" ≠ user is a millionaire)
-        </type>
-
-        <type name="knowledge">
-        Abstract knowledge, concepts, principles, or operational procedures (e.g., "React Hooks principles", "TCP handshake process", "Docker deployment steps").
-        </type>
-
-        <type name="document">
-        Content from uploaded documents or files. Rarely occurs in chat — only when the user explicitly shares document content.
         </type>
         </classification>
 
@@ -504,7 +496,7 @@ processing:
         Skip when: the media has no direct relationship to the memory content.
         - Meme/sticker sent while discussing work → work event skips the meme
         - Screenshot used as conversation starter but discussion has moved beyond it → skip
-        - profile or knowledge type memories → typically skip media association
+        - profile type memories → typically skip media association
 
         For large sets of similar media (e.g., a group of travel photos), associate only the 1-3 most representative ones.
         </related_media>
@@ -521,7 +513,7 @@ processing:
         - title (string): short descriptive title
         - summary (string): memory content. event uses layered bullet format, profile uses Markdown section format
         - keywords (string[]): relevant keywords
-        - context_type (string): "event" | "profile" | "knowledge" | "document"
+        - context_type (string): "event" | "profile"
         - entities (object[]): key entities, each containing name, type, description
         - importance (int, 0-10): technical decisions/personal information score high, casual greetings score low
         - confidence (int, 0-10): confidence in extraction accuracy
@@ -548,6 +540,34 @@ processing:
               "title": "User tech preferences",
               "summary": "## Interests & Focus\n- Tech stack: prefers React ecosystem, currently learning Next.js",
               "keywords": ["React", "Next.js"],
+              "context_type": "profile",
+              "entities": [],
+              "importance": 6,
+              "confidence": 8
+            }
+          ]
+        }
+        </output>
+        </example>
+
+        <example name="daily_life_extraction">
+        <scenario>User chatted about weekend plans and personal updates</scenario>
+        <output>
+        {
+          "memories": [
+            {
+              "title": "Weekend outing plan and recent life updates",
+              "summary": "Planning a weekend cycling trip to West Lake with girlfriend, discussed recent life.\n- Saturday plan: cycling around West Lake, starting from Broken Bridge\n- Recently started running, 5km each time, two weeks in\n- Job interview for product manager role next Wednesday",
+              "keywords": ["West Lake", "cycling", "running", "interview"],
+              "context_type": "event",
+              "entities": [{"name": "West Lake", "type": "location", "description": "Scenic spot in Hangzhou"}],
+              "importance": 5,
+              "confidence": 9
+            },
+            {
+              "title": "User life information",
+              "summary": "## Interests & Focus\n- Exercise: recently started running, 5km each time, two weeks in\n- Follow-up: product manager interview next Wednesday\n\n## Social Relationships\n- Girlfriend: cycling together on weekends",
+              "keywords": ["running", "interview", "girlfriend"],
               "context_type": "profile",
               "entities": [],
               "importance": 6,

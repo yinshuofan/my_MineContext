@@ -419,20 +419,20 @@ processing:
         <workflow>
         按以下两步顺序处理每段对话：
 
-        1. 活动事件：创建一条 event 类型记忆，综合总结用户在这段对话中的所有活动 — 做了什么、讨论了什么、提到了什么、表达了什么。即使具体细节也会被提取为其他类型，event 仍应涵盖对话的完整范围，确保用户活动时间线的完整性。仅当对话为无实质内容的寒暄时跳过。
+        1. 活动事件：创建一条 event 类型记忆，综合总结用户在这段对话中的所有活动。event 应涵盖对话的完整范围，即使部分信息也会被提取为 profile。仅当对话为无实质内容的寒暄时跳过。
 
-        2. 其他记忆：提取其他类型的结构化记忆（profile、knowledge、document）。每条独立信息作为一条独立记忆。
+        2. 用户画像：提取 profile 类型的结构化记忆 — 用户直接陈述的关于自身的事实。每条独立信息作为一条独立记忆。
 
         拆分规则：
         - 第一条记忆始终是综合 event（除非对话无实质内容）
-        - 不同类型的信息拆为独立记忆（用户偏好 + 知识概念 → 2 条额外记忆）
+        - 不同的 profile 信息拆为独立记忆
         - 无信息价值的寒暄直接忽略
         - 没有任何值得记忆的内容时，返回空数组
         </workflow>
 
         <classification>
         <type name="event">
-        综合记录用户在这段对话中的所有活动 — 做了什么、讨论了什么、决定了什么、表达了什么、经历了什么。始终作为第一条记忆输出。
+        用户活动的综合时间线记录 — 涵盖做了什么、讨论了什么、决定了什么、表达了什么。始终作为第一条记忆输出。
         </type>
 
         <type name="profile">
@@ -440,14 +440,6 @@ processing:
         - 主语是"我"的事实性陈述 → 属于 profile
         - 主语是他人的信息 → 记入 profile 的社交关系分节（"我同事要结婚了" → 同事的信息，归入社交关系）
         - 假设、玩梗、反问语境 → 跳过（"如果我是百万富翁" ≠ 用户是百万富翁）
-        </type>
-
-        <type name="knowledge">
-        抽象的知识、概念、原理、操作流程（如 "React Hooks 的原理"、"TCP 握手过程"、"Docker 部署步骤"）。
-        </type>
-
-        <type name="document">
-        来自上传文档或文件的内容。聊天中很少出现，仅当用户明确分享文档内容时使用。
         </type>
         </classification>
 
@@ -504,7 +496,7 @@ processing:
         排除条件：媒体与记忆内容无直接关系时跳过。
         - 表情包/meme 同时在讨论工作 → 工作 event 跳过表情包
         - 截图作为话题引子但讨论已脱离截图内容 → 跳过
-        - profile 或 knowledge 类型记忆 → 通常跳过媒体关联
+        - profile 类型记忆 → 通常跳过媒体关联
 
         大量同类媒体时（如一组旅行照片），关联最具代表性的 1-3 张。
         </related_media>
@@ -521,7 +513,7 @@ processing:
         - title (string): 简短标题
         - summary (string): 记忆内容。event 使用分层要点格式，profile 使用 Markdown 分节格式
         - keywords (string[]): 相关关键词
-        - context_type (string): "event" | "profile" | "knowledge" | "document"
+        - context_type (string): "event" | "profile"
         - entities (object[]): 关键实体，每个包含 name、type、description
         - importance (int, 0-10): 技术决策/个人信息为高分，普通寒暄为低分
         - confidence (int, 0-10): 提取准确性的置信度
@@ -548,6 +540,34 @@ processing:
               "title": "用户技术偏好",
               "summary": "## 兴趣与关注\n- 技术栈: 偏好 React 生态，正在学习 Next.js",
               "keywords": ["React", "Next.js"],
+              "context_type": "profile",
+              "entities": [],
+              "importance": 6,
+              "confidence": 8
+            }
+          ]
+        }
+        </output>
+        </example>
+
+        <example name="daily_life_extraction">
+        <scenario>用户聊了周末计划和个人近况</scenario>
+        <output>
+        {
+          "memories": [
+            {
+              "title": "周末出游计划与近期生活近况",
+              "summary": "计划周末和女朋友去西湖骑行，讨论了近期生活状态。\n- 周六计划：西湖环湖骑行，从断桥出发\n- 最近开始跑步，已坚持两周，每次 5 公里\n- 下周三有产品经理的面试",
+              "keywords": ["西湖", "骑行", "跑步", "面试"],
+              "context_type": "event",
+              "entities": [{"name": "西湖", "type": "location", "description": "杭州景点"}],
+              "importance": 5,
+              "confidence": 9
+            },
+            {
+              "title": "用户生活信息",
+              "summary": "## 兴趣与关注\n- 运动: 近期开始跑步，每次 5 公里，已坚持两周\n- 待跟进: 下周三产品经理面试\n\n## 社交关系\n- 女朋友: 周末一起骑行",
+              "keywords": ["跑步", "面试", "女朋友"],
               "context_type": "profile",
               "entities": [],
               "importance": 6,
