@@ -4,12 +4,112 @@
 
 {% block content %}
 <div class="console-main">
-    <div class="container-fluid py-4">
-        <div class="text-center text-muted py-5">
-            <i data-feather="cpu" style="width:48px;height:48px;" class="mb-3"></i>
-            <h4>记忆浏览器</h4>
-            <p>Coming soon</p>
+    <div class="console-container">
+        <!-- Left Sidebar: User List -->
+        <div class="console-sidebar">
+            <div class="sidebar-header">
+                <i data-feather="users" style="width:16px;height:16px;"></i>
+                Users
+            </div>
+            <div style="padding:8px 10px 4px;">
+                <input type="text" class="form-control form-control-sm" id="userSearch"
+                       placeholder="搜索用户..." oninput="filterUserList(this.value)">
+            </div>
+            <div class="sidebar-list" id="userList">
+                <!-- User items rendered by JS -->
+            </div>
+            <div class="sidebar-footer" id="userCount">0 个用户</div>
+        </div>
+
+        <!-- Right Content: Tabs -->
+        <div class="console-content">
+            <ul class="nav nav-tabs mb-3" id="memoryTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="tab-snapshot-btn" data-bs-toggle="tab"
+                            data-bs-target="#tab-snapshot" type="button" role="tab"
+                            aria-controls="tab-snapshot" aria-selected="true">记忆快照</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-search-btn" data-bs-toggle="tab"
+                            data-bs-target="#tab-search" type="button" role="tab"
+                            aria-controls="tab-search" aria-selected="false">语义搜索</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-mcontexts-btn" data-bs-toggle="tab"
+                            data-bs-target="#tab-mcontexts" type="button" role="tab"
+                            aria-controls="tab-mcontexts" aria-selected="false">Contexts 列表</button>
+                </li>
+            </ul>
+
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="tab-snapshot" role="tabpanel" aria-labelledby="tab-snapshot-btn">
+                    <div class="text-muted text-center py-5">
+                        <i data-feather="cpu" style="width:48px;height:48px;" class="mb-3"></i>
+                        <p>请从左侧选择一个用户</p>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="tab-search" role="tabpanel" aria-labelledby="tab-search-btn">
+                    <!-- Filled in Task 8 -->
+                </div>
+                <div class="tab-pane fade" id="tab-mcontexts" role="tabpanel" aria-labelledby="tab-mcontexts-btn">
+                    <!-- Filled in Task 8 -->
+                </div>
+            </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    /* --- Memory Explorer specifics --- */
+    .snapshot-config-bar {
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+    }
+    .snapshot-config-bar .form-check-inline {
+        margin-right: 12px;
+    }
+    .snapshot-config-bar .form-control-sm {
+        width: 70px;
+        display: inline-block;
+    }
+    .snapshot-config-bar label {
+        font-size: 0.82rem;
+        color: #495057;
+    }
+    .snapshot-results .card-header h6 {
+        font-size: 0.88rem;
+    }
+    .profile-display {
+        white-space: pre-wrap;
+        background: #f8f9fa;
+        border-radius: 6px;
+        padding: 12px;
+        min-height: 40px;
+        font-size: 0.85rem;
+    }
+    .accessed-item {
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 8px;
+        background: #fff;
+    }
+    .event-timeline-item {
+        border-left: 3px solid #198754;
+        padding-left: 12px;
+        margin-bottom: 8px;
+    }
+    .summary-item {
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 8px;
+    }
+</style>
+<script src="/console/static/js/memory_explorer.js"></script>
 {% endblock %}
