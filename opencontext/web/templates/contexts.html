@@ -9,37 +9,34 @@
 <!-- Filter Bar -->
 <div class="card mb-4 filter-panel">
     <div class="card-body py-3 px-3">
-        <form method="get" id="filter-form">
+        <div id="filterForm">
             <div class="row g-2 align-items-end">
                 <div class="col-6 col-md">
                     <label class="filter-label">类型</label>
-                    <select name="type" class="form-select form-select-sm filter-input">
+                    <select id="filterType" class="form-select form-select-sm filter-input">
                         <option value="">全部</option>
-                        {% for ct in context_types %}
-                        <option value="{{ ct }}" {% if type == ct %}selected{% endif %}>{{ ct }}</option>
-                        {% endfor %}
                     </select>
                 </div>
                 <div class="col-6 col-md">
                     <label class="filter-label">User ID</label>
-                    <input type="text" name="user_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ user_id or '' }}">
+                    <input type="text" id="filterUserId" class="form-control form-control-sm filter-input" placeholder="可选">
                 </div>
                 <div class="col-6 col-md">
                     <label class="filter-label">Device ID</label>
-                    <input type="text" name="device_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ device_id or '' }}">
+                    <input type="text" id="filterDeviceId" class="form-control form-control-sm filter-input" placeholder="可选">
                 </div>
                 <div class="col-6 col-md">
                     <label class="filter-label">Agent ID</label>
-                    <input type="text" name="agent_id" class="form-control form-control-sm filter-input" placeholder="可选" value="{{ agent_id or '' }}">
+                    <input type="text" id="filterAgentId" class="form-control form-control-sm filter-input" placeholder="可选">
                 </div>
                 <div class="col-6 col-md">
                     <label class="filter-label">层级</label>
-                    <select name="hierarchy_level" class="form-select form-select-sm filter-input">
+                    <select id="filterHierarchyLevel" class="form-select form-select-sm filter-input">
                         <option value="">全部</option>
-                        <option value="0" {% if hierarchy_level == 0 %}selected{% endif %}>L0 原始</option>
-                        <option value="1" {% if hierarchy_level == 1 %}selected{% endif %}>L1 日</option>
-                        <option value="2" {% if hierarchy_level == 2 %}selected{% endif %}>L2 周</option>
-                        <option value="3" {% if hierarchy_level == 3 %}selected{% endif %}>L3 月</option>
+                        <option value="0">L0 原始</option>
+                        <option value="1">L1 日</option>
+                        <option value="2">L2 周</option>
+                        <option value="3">L3 月</option>
                     </select>
                 </div>
             </div>
@@ -50,165 +47,43 @@
                         <span data-feather="calendar" style="width:11px;height:11px;vertical-align:-1px;" class="me-1"></span>开始时间
                     </label>
                     <div class="datetime-group">
-                        <input type="date" id="start_date_date" class="form-control form-control-sm filter-input">
-                        <input type="time" id="start_date_time" class="form-control form-control-sm filter-input datetime-time">
+                        <input type="date" id="startDateDate" class="form-control form-control-sm filter-input">
+                        <input type="time" id="startDateTime" class="form-control form-control-sm filter-input datetime-time">
                     </div>
-                    <input type="hidden" name="start_date" id="start_date_hidden">
                 </div>
                 <div class="col-6 col-md-3">
                     <label class="filter-label">
                         <span data-feather="calendar" style="width:11px;height:11px;vertical-align:-1px;" class="me-1"></span>结束时间
                     </label>
                     <div class="datetime-group">
-                        <input type="date" id="end_date_date" class="form-control form-control-sm filter-input">
-                        <input type="time" id="end_date_time" class="form-control form-control-sm filter-input datetime-time">
+                        <input type="date" id="endDateDate" class="form-control form-control-sm filter-input">
+                        <input type="time" id="endDateTime" class="form-control form-control-sm filter-input datetime-time">
                     </div>
-                    <input type="hidden" name="end_date" id="end_date_hidden">
                 </div>
                 <div class="col-12 col-md-2 ms-auto">
-                    <input type="hidden" name="page" value="1">
-                    <input type="hidden" name="limit" value="{{ limit }}">
                     <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-sm flex-grow-1 filter-btn-primary">
+                        <button type="button" class="btn btn-sm flex-grow-1 filter-btn-primary" onclick="loadContexts(1)">
                             <span data-feather="search" style="width:13px;height:13px;vertical-align:-1px;" class="me-1"></span>筛选
                         </button>
-                        <a href="/contexts" class="btn btn-sm filter-btn-reset">重置</a>
+                        <button type="button" class="btn btn-sm filter-btn-reset" onclick="resetFilters()">重置</button>
                     </div>
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Context Cards -->
-{% if contexts %}
-{% set type_colors = {'profile': 'primary', 'agent_profile': 'primary', 'document': 'success', 'event': 'warning', 'knowledge': 'purple', 'daily_summary': 'info', 'weekly_summary': 'info', 'monthly_summary': 'info'} %}
-<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 mb-4">
-    {% for context in contexts %}
-    <div class="col">
-        <div class="card h-100 context-card">
-            <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                <div>
-                    <span class="badge bg-{{ type_colors.get(context.context_type, 'secondary') }}">{{ context.context_type }}</span>
-                    {% if context.hierarchy_level is not none and context.hierarchy_level > 0 %}
-                    {% set level_colors = {1: 'success', 2: 'warning', 3: 'danger'} %}
-                    <span class="badge bg-{{ level_colors.get(context.hierarchy_level, 'info') }}">L{{ context.hierarchy_level }}</span>
-                    {% endif %}
-                    {% if context.metadata and context.metadata.get('media_refs') %}
-                    {% set media_types = context.metadata['media_refs'] | map(attribute='type') | list %}
-                    {% if 'image' in media_types %}
-                    <span data-feather="image" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;" class="ms-1" title="含图片"></span>
-                    {% endif %}
-                    {% if 'video' in media_types %}
-                    <span data-feather="video" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;" class="ms-1" title="含视频"></span>
-                    {% endif %}
-                    {% endif %}
-                </div>
-                <small class="text-muted" title="点击复制: {{ context.id }}" style="cursor:pointer" onclick="copyId(this, '{{ context.id }}')">{{ context.id[:8] }}</small>
-            </div>
-            <div class="card-body" onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" style="cursor: pointer;">
-                <h6 class="card-title mb-2">{{ context.title or 'N/A' }}</h6>
-                {% if context.summary %}
-                <p class="card-text text-muted small mb-2">{{ context.summary[:120] }}{% if context.summary|length > 120 %}...{% endif %}</p>
-                {% endif %}
-                {% if context.user_id and context.user_id != 'default' %}
-                <small class="text-muted me-2" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, '{{ context.user_id }}')"><span data-feather="user" style="width:12px;height:12px;"></span> {{ context.user_id }}</small>
-                {% endif %}
-                {% if context.device_id and context.device_id != 'default' %}
-                <small class="text-muted me-2" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, '{{ context.device_id }}')"><span data-feather="smartphone" style="width:12px;height:12px;"></span> {{ context.device_id }}</small>
-                {% endif %}
-                {% if context.agent_id and context.agent_id != 'default' %}
-                <small class="text-muted" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, '{{ context.agent_id }}')"><span data-feather="cpu" style="width:12px;height:12px;"></span> {{ context.agent_id }}</small>
-                {% endif %}
-            </div>
-            <div class="card-footer py-2 d-flex justify-content-between align-items-center">
-                <small class="text-muted">{{ context.create_time[:16] if context.create_time else '' }}</small>
-                <div>
-                    <button onclick="viewContext('{{ context.id }}', '{{ context.context_type }}')" class="btn btn-sm btn-outline-primary py-0 px-2">查看</button>
-                    <button class="btn btn-sm btn-outline-danger py-0 px-2 delete-btn" data-id="{{ context.id }}" data-type="{{ context.context_type }}">删除</button>
                 </div>
             </div>
         </div>
     </div>
-    {% endfor %}
 </div>
-{% else %}
-<div class="text-center py-5 text-muted">
+
+<!-- Context Cards -->
+<div id="contextGrid" class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 mb-4"></div>
+
+<!-- Empty State (hidden by default) -->
+<div id="emptyState" class="text-center py-5 text-muted" style="display:none;">
     <span data-feather="inbox" style="width:48px;height:48px;" class="mb-3 d-block mx-auto"></span>
     <p>没有找到上下文</p>
 </div>
-{% endif %}
 
 <!-- Pagination -->
-{% if contexts %}
-<div class="pager-bar">
-    {# Left: per-page selector + total info #}
-    <div class="pager-left">
-        <select class="pager-select" id="limit-select" onchange="changeLimit(this.value)">
-            <option value="15" {% if limit == 15 %}selected{% endif %}>15</option>
-            <option value="30" {% if limit == 30 %}selected{% endif %}>30</option>
-            <option value="50" {% if limit == 50 %}selected{% endif %}>50</option>
-        </select>
-        <span class="pager-info">条/页</span>
-        <span class="pager-divider"></span>
-        <span class="pager-info">共 <strong>{{ total_count }}</strong> 条</span>
-    </div>
-
-    {# Center: page buttons #}
-    {% if total_pages > 1 %}
-    <nav class="pager-nav" aria-label="Page navigation">
-        {% set filter_qs = '' %}
-        {% if type %}{% set filter_qs = filter_qs ~ '&type=' ~ (type | urlencode) %}{% endif %}
-        {% if user_id %}{% set filter_qs = filter_qs ~ '&user_id=' ~ (user_id | urlencode) %}{% endif %}
-        {% if device_id %}{% set filter_qs = filter_qs ~ '&device_id=' ~ (device_id | urlencode) %}{% endif %}
-        {% if agent_id %}{% set filter_qs = filter_qs ~ '&agent_id=' ~ (agent_id | urlencode) %}{% endif %}
-        {% if hierarchy_level is not none %}{% set filter_qs = filter_qs ~ '&hierarchy_level=' ~ hierarchy_level %}{% endif %}
-        {% if start_date %}{% set filter_qs = filter_qs ~ '&start_date=' ~ (start_date | urlencode) %}{% endif %}
-        {% if end_date %}{% set filter_qs = filter_qs ~ '&end_date=' ~ (end_date | urlencode) %}{% endif %}
-
-        <a class="pager-btn {% if page == 1 %}disabled{% endif %}" href="?page={{ page - 1 }}&limit={{ limit }}{{ filter_qs }}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </a>
-
-        {% if page > 3 %}
-        <a class="pager-btn" href="?page=1&limit={{ limit }}{{ filter_qs }}">1</a>
-        {% endif %}
-        {% if page > 4 %}
-        <span class="pager-ellipsis">&hellip;</span>
-        {% endif %}
-
-        {% for p in range([1, page - 2]|max, [total_pages, page + 2]|min + 1) %}
-        {% if p == page %}
-        <span class="pager-btn active">{{ p }}</span>
-        {% else %}
-        <a class="pager-btn" href="?page={{ p }}&limit={{ limit }}{{ filter_qs }}">{{ p }}</a>
-        {% endif %}
-        {% endfor %}
-
-        {% if page < total_pages - 3 %}
-        <span class="pager-ellipsis">&hellip;</span>
-        {% endif %}
-        {% if page < total_pages - 2 %}
-        <a class="pager-btn" href="?page={{ total_pages }}&limit={{ limit }}{{ filter_qs }}">{{ total_pages }}</a>
-        {% endif %}
-
-        <a class="pager-btn {% if page == total_pages %}disabled{% endif %}" href="?page={{ page + 1 }}&limit={{ limit }}{{ filter_qs }}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </a>
-    </nav>
-    {% endif %}
-
-    {# Right: jump-to-page #}
-    {% if total_pages > 1 %}
-    <div class="pager-right">
-        <span class="pager-info">第</span>
-        <input type="number" class="pager-jump-input" id="page-jump-input" min="1" max="{{ total_pages }}" value="{{ page }}" onkeydown="if(event.key==='Enter')goToPage('page-jump-input')">
-        <span class="pager-info">/ {{ total_pages }} 页</span>
-        <button class="pager-jump-btn" onclick="goToPage('page-jump-input')">Go</button>
-    </div>
-    {% endif %}
-</div>
-{% endif %}
+<div id="paginationArea"></div>
 
 <style>
     /* Filter Panel */
@@ -447,47 +322,357 @@
 
 {% block scripts %}
 <script>
-    function buildFilterParams(overrides) {
-        // Populate hidden datetime fields before reading form
-        combineDatetime('start_date_date', 'start_date_time', 'start_date_hidden');
-        combineDatetime('end_date_date', 'end_date_time', 'end_date_hidden');
-        const params = new URLSearchParams();
-        const form = document.getElementById('filter-form');
-        const formData = new FormData(form);
-        // Preserve filter values
-        for (const [key, value] of formData.entries()) {
-            if (value && key !== 'page' && key !== 'limit') {
-                params.set(key, value);
+    /* ── state ── */
+    var currentPage = 1;
+    var currentLimit = 15;
+
+    /* ── helpers ── */
+    function esc(str) {
+        if (str == null) return '';
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(str)));
+        return d.innerHTML;
+    }
+
+    /* ── context type dropdown ── */
+    function loadContextTypes() {
+        fetch('/api/context_types', { headers: window.apiAuth ? window.apiAuth.getAuthHeaders() : {} })
+            .then(function(r) { return r.json(); })
+            .then(function(types) {
+                var sel = document.getElementById('filterType');
+                if (!Array.isArray(types)) return;
+                types.forEach(function(t) {
+                    var opt = document.createElement('option');
+                    opt.value = t;
+                    opt.textContent = t;
+                    sel.appendChild(opt);
+                });
+            })
+            .catch(function(e) { console.warn('Failed to load context types:', e); });
+    }
+
+    /* ── filter params ── */
+    function getFilterParams() {
+        var params = new URLSearchParams();
+        var type = document.getElementById('filterType').value;
+        var userId = document.getElementById('filterUserId').value.trim();
+        var deviceId = document.getElementById('filterDeviceId').value.trim();
+        var agentId = document.getElementById('filterAgentId').value.trim();
+        var hierarchy = document.getElementById('filterHierarchyLevel').value;
+
+        if (type) params.set('type', type);
+        if (userId) params.set('user_id', userId);
+        if (deviceId) params.set('device_id', deviceId);
+        if (agentId) params.set('agent_id', agentId);
+        if (hierarchy !== '') params.set('hierarchy_level', hierarchy);
+
+        var sd = document.getElementById('startDateDate').value;
+        var st = document.getElementById('startDateTime').value;
+        if (sd) params.set('start_date', st ? sd + 'T' + st : sd);
+
+        var ed = document.getElementById('endDateDate').value;
+        var et = document.getElementById('endDateTime').value;
+        if (ed) params.set('end_date', et ? ed + 'T' + et : ed);
+
+        return params;
+    }
+
+    function resetFilters() {
+        document.getElementById('filterType').value = '';
+        document.getElementById('filterUserId').value = '';
+        document.getElementById('filterDeviceId').value = '';
+        document.getElementById('filterAgentId').value = '';
+        document.getElementById('filterHierarchyLevel').value = '';
+        document.getElementById('startDateDate').value = '';
+        document.getElementById('startDateTime').value = '';
+        document.getElementById('endDateDate').value = '';
+        document.getElementById('endDateTime').value = '';
+        loadContexts(1);
+    }
+
+    /* ── load contexts ── */
+    function loadContexts(page) {
+        currentPage = page || 1;
+        var params = getFilterParams();
+        params.set('page', currentPage);
+        params.set('limit', currentLimit);
+
+        var headers = window.apiAuth ? window.apiAuth.getAuthHeaders() : {};
+        fetch('/api/contexts?' + params.toString(), { headers: headers })
+            .then(function(r) { return r.json(); })
+            .then(function(resp) {
+                if (resp.code !== 0) {
+                    document.getElementById('contextGrid').innerHTML =
+                        '<div class="col-12 text-center text-danger py-3">' + esc(resp.message || '加载失败') + '</div>';
+                    return;
+                }
+                var data = resp.data;
+                var contexts = data.contexts || [];
+                var totalPages = data.total_pages || 1;
+                var total = data.total || 0;
+                currentPage = data.page || 1;
+                currentLimit = data.limit || 15;
+
+                if (contexts.length === 0) {
+                    document.getElementById('contextGrid').innerHTML = '';
+                    document.getElementById('emptyState').style.display = '';
+                    document.getElementById('paginationArea').innerHTML = '';
+                    feather.replace();
+                    return;
+                }
+
+                document.getElementById('emptyState').style.display = 'none';
+                renderContextCards(contexts);
+                renderPagination(currentPage, totalPages, total);
+                feather.replace();
+            })
+            .catch(function(e) {
+                console.error('Failed to load contexts:', e);
+                document.getElementById('contextGrid').innerHTML =
+                    '<div class="col-12 text-center text-danger py-3">加载上下文失败，请检查网络连接。</div>';
+            });
+    }
+
+    /* ── render cards ── */
+    var TYPE_COLORS = {
+        'profile': 'primary',
+        'agent_profile': 'primary',
+        'document': 'success',
+        'event': 'warning',
+        'knowledge': 'purple',
+        'daily_summary': 'info',
+        'weekly_summary': 'info',
+        'monthly_summary': 'info'
+    };
+    var LEVEL_COLORS = { 1: 'success', 2: 'warning', 3: 'danger' };
+
+    function renderContextCards(contexts) {
+        var html = '';
+        for (var i = 0; i < contexts.length; i++) {
+            html += renderContextCard(contexts[i]);
+        }
+        document.getElementById('contextGrid').innerHTML = html;
+    }
+
+    function renderContextCard(ctx) {
+        var typeColor = TYPE_COLORS[ctx.context_type] || 'secondary';
+        var id = ctx.id || '';
+        var shortId = id.length > 8 ? id.substring(0, 8) : id;
+
+        /* badges */
+        var badges = '<span class="badge bg-' + typeColor + '">' + esc(ctx.context_type) + '</span>';
+        if (ctx.hierarchy_level != null && ctx.hierarchy_level > 0) {
+            var lvlColor = LEVEL_COLORS[ctx.hierarchy_level] || 'info';
+            badges += ' <span class="badge bg-' + lvlColor + '">L' + ctx.hierarchy_level + '</span>';
+        }
+
+        /* media icons */
+        var mediaIcons = '';
+        if (ctx.metadata && ctx.metadata.media_refs && ctx.metadata.media_refs.length) {
+            var mediaTypes = ctx.metadata.media_refs.map(function(r) { return r.type; });
+            if (mediaTypes.indexOf('image') !== -1) {
+                mediaIcons += '<span data-feather="image" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;" class="ms-1" title="含图片"></span>';
+            }
+            if (mediaTypes.indexOf('video') !== -1) {
+                mediaIcons += '<span data-feather="video" style="width:14px;height:14px;color:#6c757d;vertical-align:-2px;" class="ms-1" title="含视频"></span>';
             }
         }
-        // Apply overrides
-        if (overrides) {
-            for (const [key, value] of Object.entries(overrides)) {
-                params.set(key, value);
-            }
+
+        /* summary */
+        var summary = '';
+        if (ctx.summary) {
+            var truncated = ctx.summary.length > 120 ? ctx.summary.substring(0, 120) + '...' : ctx.summary;
+            summary = '<p class="card-text text-muted small mb-2">' + esc(truncated) + '</p>';
         }
-        // Always include page and limit
-        if (!params.has('page')) params.set('page', '{{ page }}');
-        if (!params.has('limit')) params.set('limit', '{{ limit }}');
-        return params.toString();
+
+        /* user/device/agent IDs */
+        var idBadges = '';
+        if (ctx.user_id && ctx.user_id !== 'default') {
+            idBadges += '<small class="text-muted me-2" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, \'' + esc(ctx.user_id) + '\')"><span data-feather="user" style="width:12px;height:12px;"></span> ' + esc(ctx.user_id) + '</small>';
+        }
+        if (ctx.device_id && ctx.device_id !== 'default') {
+            idBadges += '<small class="text-muted me-2" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, \'' + esc(ctx.device_id) + '\')"><span data-feather="smartphone" style="width:12px;height:12px;"></span> ' + esc(ctx.device_id) + '</small>';
+        }
+        if (ctx.agent_id && ctx.agent_id !== 'default') {
+            idBadges += '<small class="text-muted" style="cursor:pointer" title="点击复制" onclick="event.stopPropagation(); copyId(this, \'' + esc(ctx.agent_id) + '\')"><span data-feather="cpu" style="width:12px;height:12px;"></span> ' + esc(ctx.agent_id) + '</small>';
+        }
+
+        /* create time */
+        var createTime = ctx.create_time ? esc(ctx.create_time.substring(0, 16)) : '';
+
+        return '<div class="col">'
+            + '<div class="card h-100 context-card">'
+            + '<div class="card-header py-2 d-flex justify-content-between align-items-center">'
+            +   '<div>' + badges + mediaIcons + '</div>'
+            +   '<small class="text-muted" title="点击复制: ' + esc(id) + '" style="cursor:pointer" onclick="copyId(this, \'' + esc(id) + '\')">' + esc(shortId) + '</small>'
+            + '</div>'
+            + '<div class="card-body" onclick="viewContext(\'' + esc(id) + '\', \'' + esc(ctx.context_type) + '\')" style="cursor: pointer;">'
+            +   '<h6 class="card-title mb-2">' + esc(ctx.title || 'N/A') + '</h6>'
+            +   summary
+            +   idBadges
+            + '</div>'
+            + '<div class="card-footer py-2 d-flex justify-content-between align-items-center">'
+            +   '<small class="text-muted">' + createTime + '</small>'
+            +   '<div>'
+            +     '<button onclick="viewContext(\'' + esc(id) + '\', \'' + esc(ctx.context_type) + '\')" class="btn btn-sm btn-outline-primary py-0 px-2">查看</button> '
+            +     '<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteContext(\'' + esc(id) + '\', \'' + esc(ctx.context_type) + '\', this)">删除</button>'
+            +   '</div>'
+            + '</div>'
+            + '</div>'
+            + '</div>';
+    }
+
+    /* ── pagination ── */
+    function renderPagination(page, totalPages, total) {
+        if (total === 0) {
+            document.getElementById('paginationArea').innerHTML = '';
+            return;
+        }
+
+        var html = '<div class="pager-bar">';
+
+        /* left: per-page selector + total */
+        html += '<div class="pager-left">';
+        html += '<select class="pager-select" onchange="changeLimit(this.value)">';
+        [15, 30, 50].forEach(function(v) {
+            html += '<option value="' + v + '"' + (currentLimit === v ? ' selected' : '') + '>' + v + '</option>';
+        });
+        html += '</select>';
+        html += '<span class="pager-info">条/页</span>';
+        html += '<span class="pager-divider"></span>';
+        html += '<span class="pager-info">共 <strong>' + total + '</strong> 条</span>';
+        html += '</div>';
+
+        /* center: page buttons */
+        if (totalPages > 1) {
+            html += '<nav class="pager-nav" aria-label="Page navigation">';
+
+            /* prev */
+            html += '<a class="pager-btn' + (page === 1 ? ' disabled' : '') + '" onclick="loadContexts(' + (page - 1) + ')">'
+                + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>'
+                + '</a>';
+
+            /* first page + ellipsis */
+            if (page > 3) {
+                html += '<a class="pager-btn" onclick="loadContexts(1)">1</a>';
+            }
+            if (page > 4) {
+                html += '<span class="pager-ellipsis">&hellip;</span>';
+            }
+
+            /* window pages: [page-2, page+2] */
+            var start = Math.max(1, page - 2);
+            var end = Math.min(totalPages, page + 2);
+            for (var p = start; p <= end; p++) {
+                if (p === page) {
+                    html += '<span class="pager-btn active">' + p + '</span>';
+                } else {
+                    html += '<a class="pager-btn" onclick="loadContexts(' + p + ')">' + p + '</a>';
+                }
+            }
+
+            /* last page + ellipsis */
+            if (page < totalPages - 3) {
+                html += '<span class="pager-ellipsis">&hellip;</span>';
+            }
+            if (page < totalPages - 2) {
+                html += '<a class="pager-btn" onclick="loadContexts(' + totalPages + ')">' + totalPages + '</a>';
+            }
+
+            /* next */
+            html += '<a class="pager-btn' + (page === totalPages ? ' disabled' : '') + '" onclick="loadContexts(' + (page + 1) + ')">'
+                + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
+                + '</a>';
+
+            html += '</nav>';
+        }
+
+        /* right: jump-to-page */
+        if (totalPages > 1) {
+            html += '<div class="pager-right">';
+            html += '<span class="pager-info">第</span>';
+            html += '<input type="number" class="pager-jump-input" id="pageJumpInput" min="1" max="' + totalPages + '" value="' + page + '" onkeydown="if(event.key===\'Enter\')goToPage()">';
+            html += '<span class="pager-info">/ ' + totalPages + ' 页</span>';
+            html += '<button class="pager-jump-btn" onclick="goToPage()">Go</button>';
+            html += '</div>';
+        }
+
+        html += '</div>';
+        document.getElementById('paginationArea').innerHTML = html;
     }
 
     function changeLimit(newLimit) {
-        const params = buildFilterParams({ limit: newLimit, page: '1' });
-        window.location.href = '/contexts?' + params;
+        currentLimit = parseInt(newLimit, 10);
+        loadContexts(1);
     }
 
-    function goToPage(inputId) {
-        const val = parseInt(document.getElementById(inputId).value);
-        if (val >= 1 && val <= {{ total_pages }}) {
-            const params = buildFilterParams({ page: val.toString() });
-            window.location.href = '/contexts?' + params;
+    function goToPage() {
+        var input = document.getElementById('pageJumpInput');
+        if (!input) return;
+        var val = parseInt(input.value, 10);
+        var max = parseInt(input.max, 10);
+        if (val >= 1 && val <= max) {
+            loadContexts(val);
         }
     }
 
+    /* ── actions ── */
+    async function viewContext(contextId, contextType) {
+        try {
+            var headers = { 'Content-Type': 'application/json' };
+            if (window.apiAuth) {
+                var authHeaders = window.apiAuth.getAuthHeaders();
+                for (var k in authHeaders) headers[k] = authHeaders[k];
+            }
+            var response = await fetch('/contexts/detail', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ id: contextId, context_type: contextType })
+            });
+            if (response.ok) {
+                var html = await response.text();
+                document.open();
+                document.write(html);
+                document.close();
+            } else {
+                alert('查看失败');
+            }
+        } catch (error) {
+            console.error('查看操作失败:', error);
+            alert('查看操作失败');
+        }
+    }
+
+    async function deleteContext(id, type, el) {
+        if (!confirm('确定要删除这个上下文吗？此操作不可撤销。')) return;
+        try {
+            var headers = { 'Content-Type': 'application/json' };
+            if (window.apiAuth) {
+                var authHeaders = window.apiAuth.getAuthHeaders();
+                for (var k in authHeaders) headers[k] = authHeaders[k];
+            }
+            var response = await fetch('/contexts/delete', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ id: id, context_type: type })
+            });
+            if (response.ok) {
+                var col = el.closest('.col');
+                if (col) col.remove();
+            } else {
+                var errData = await response.json();
+                alert('删除失败: ' + (errData.detail || '未知错误'));
+            }
+        } catch (error) {
+            console.error('删除操作失败:', error);
+            alert('删除操作失败');
+        }
+    }
+
+    /* ── clipboard copy ── */
     function fallbackCopyText(text) {
-        const textarea = document.createElement('textarea');
-        const activeElement = document.activeElement;
+        var textarea = document.createElement('textarea');
+        var activeElement = document.activeElement;
         textarea.value = text;
         textarea.setAttribute('readonly', '');
         textarea.style.position = 'fixed';
@@ -495,7 +680,6 @@
         textarea.style.left = '-9999px';
         textarea.style.opacity = '0';
         document.body.appendChild(textarea);
-
         try {
             textarea.focus();
             textarea.select();
@@ -514,30 +698,25 @@
 
     function showCopyFeedback(el) {
         if (!el) return;
-
         if (typeof el._copyOriginalHtml !== 'string') {
             el._copyOriginalHtml = el.innerHTML;
         }
         if (el._copyFeedbackTimer) {
             clearTimeout(el._copyFeedbackTimer);
         }
-
         el.innerHTML = '已复制';
-        el._copyFeedbackTimer = setTimeout(() => {
+        el._copyFeedbackTimer = setTimeout(function() {
             el.innerHTML = el._copyOriginalHtml;
+            feather.replace();
             el._copyFeedbackTimer = null;
         }, 1000);
     }
 
     async function copyId(el, fullId) {
-        let copied = false;
-
-        if (
-            typeof navigator !== 'undefined' &&
-            navigator.clipboard &&
-            typeof navigator.clipboard.writeText === 'function' &&
-            window.isSecureContext
-        ) {
+        var copied = false;
+        if (typeof navigator !== 'undefined' && navigator.clipboard
+            && typeof navigator.clipboard.writeText === 'function'
+            && window.isSecureContext) {
             try {
                 await navigator.clipboard.writeText(fullId);
                 copied = true;
@@ -545,11 +724,9 @@
                 console.warn('Clipboard API copy failed, falling back to execCommand:', error);
             }
         }
-
         if (!copied) {
             copied = fallbackCopyText(fullId);
         }
-
         if (copied) {
             showCopyFeedback(el);
         } else {
@@ -557,87 +734,10 @@
         }
     }
 
-    async function viewContext(contextId, contextType) {
-        try {
-            const response = await fetch('/contexts/detail', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: contextId, context_type: contextType })
-            });
-            if (response.ok) {
-                const html = await response.text();
-                document.open();
-                document.write(html);
-                document.close();
-            } else {
-                alert('查看失败');
-            }
-        } catch (error) {
-            console.error('查看操作失败:', error);
-            alert('查看操作失败');
-        }
-    }
-
-    function combineDatetime(dateId, timeId, hiddenId) {
-        var d = document.getElementById(dateId).value;
-        var t = document.getElementById(timeId).value;
-        document.getElementById(hiddenId).value = d ? (t ? d + 'T' + t : d) : '';
-    }
-
-    function splitDatetime(value, dateId, timeId) {
-        if (!value) return;
-        if (value.includes('T')) {
-            var parts = value.split('T');
-            document.getElementById(dateId).value = parts[0];
-            document.getElementById(timeId).value = parts[1];
-        } else if (value.includes(' ')) {
-            var parts = value.split(' ');
-            document.getElementById(dateId).value = parts[0];
-            document.getElementById(timeId).value = parts[1];
-        } else {
-            document.getElementById(dateId).value = value;
-        }
-    }
-
+    /* ── init ── */
     document.addEventListener('DOMContentLoaded', function() {
-        // Backfill date/time inputs from server values
-        splitDatetime('{{ start_date or "" }}', 'start_date_date', 'start_date_time');
-        splitDatetime('{{ end_date or "" }}', 'end_date_date', 'end_date_time');
-
-        // Combine date+time into hidden fields before submit, then disable empties
-        document.getElementById('filter-form').addEventListener('submit', function() {
-            combineDatetime('start_date_date', 'start_date_time', 'start_date_hidden');
-            combineDatetime('end_date_date', 'end_date_time', 'end_date_hidden');
-            this.querySelectorAll('input, select').forEach(function(el) {
-                if (!el.value) el.disabled = true;
-            });
-        });
-
-        document.querySelectorAll('.delete-btn').forEach(button => {
-            button.addEventListener('click', async function(e) {
-                e.stopPropagation();
-                const contextId = this.getAttribute('data-id');
-                const contextType = this.getAttribute('data-type');
-                if (confirm('确定要删除这个上下文吗？此操作不可撤销。')) {
-                    try {
-                        const response = await fetch('/contexts/delete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: contextId, context_type: contextType })
-                        });
-                        if (response.ok) {
-                            this.closest('.col').remove();
-                        } else {
-                            const error = await response.json();
-                            alert(`删除失败: ${error.detail || '未知错误'}`);
-                        }
-                    } catch (error) {
-                        console.error('删除操作失败:', error);
-                        alert('删除操作失败');
-                    }
-                }
-            });
-        });
+        loadContextTypes();
+        loadContexts(1);
     });
 </script>
 {% endblock %}
