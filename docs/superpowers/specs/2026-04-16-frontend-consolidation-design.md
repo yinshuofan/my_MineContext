@@ -17,7 +17,7 @@ MineContext needs to provide reference frontend pages for integration into an ag
 - `memory_cache.html` → Memory Explorer
 - `vector_search.html` → Memory Explorer
 
-**Existing pages:** All original templates and routes are kept untouched. The new pages are created in a separate location and coexist with the old pages.
+**Existing pages:** All original templates and routes are kept untouched, with one exception: `contexts.html` is converted from server-side rendering to client-side rendering (see below). The new pages are created in a separate location and coexist with the old pages.
 
 ## Overall Architecture
 
@@ -114,10 +114,8 @@ A client-side rendered version of the contexts list, filtered by the selected ag
 - Delete button per card
 - Pagination: page selector, page numbers, jump-to-page
 
-**Key change from current `contexts.html`:** This tab is **client-side rendered**, not server-side. It calls the same storage APIs but via JavaScript fetch. This aligns with the other 4 client-side pages and avoids the server-rendered outlier.
-
 **API endpoints:**
-- New: `GET /api/contexts?agent_id={selected}&type=&user_id=&hierarchy_level=&start_date=&end_date=&page=1&limit=15` — paginated context list (REST API version of what the server-side route currently does)
+- `GET /api/contexts?agent_id={selected}&type=&user_id=&hierarchy_level=&start_date=&end_date=&page=1&limit=15` — same API used by the refactored `contexts.html`
 - `POST /contexts/detail` — view detail (existing)
 - `POST /contexts/delete` — delete context (existing)
 
@@ -202,9 +200,9 @@ Returns unique `(user_id, device_id, agent_id)` combinations from stored context
 
 **Implementation:** Aggregate from vector DB context metadata. Deduplicate on the three-field tuple.
 
-### 2. `GET /api/contexts` — Paginated Context List API
+### 2. `GET /api/contexts` — Paginated Context List API (refactor of existing `/contexts`)
 
-REST API version of the server-side `/contexts` route logic. Enables client-side rendering in both pages' "Contexts" tabs.
+Converts the existing server-rendered `/contexts` route into a JSON API. The query/filter/pagination logic from `web.py:read_contexts()` is extracted into this API endpoint. The existing `contexts.html` is updated to call this API via JavaScript fetch instead of relying on server-side template rendering.
 
 **Query parameters:** `type`, `user_id`, `device_id`, `agent_id`, `hierarchy_level`, `start_date`, `end_date`, `page` (default 1), `limit` (default 15)
 
@@ -233,7 +231,11 @@ REST API version of the server-side `/contexts` route logic. Enables client-side
 }
 ```
 
-**Implementation:** Extract the query/filter/pagination logic from `web.py:read_contexts()` into a new API route handler. The server-rendered `/contexts` route can be removed or kept as a redirect.
+**Changes to existing files:**
+- `web.py`: The `read_contexts()` handler is simplified to just render the static `contexts.html` template (no data fetching). The query/filter/pagination logic moves to the new API.
+- `contexts.html`: Converted from Jinja2 server-rendered to client-side JS fetch + rendering. The filter bar, card grid, and pagination are rebuilt in JavaScript, matching the pattern used by the other 4 pages.
+
+This eliminates `contexts.html` as the only server-rendered outlier and provides the JSON API needed by both the old page and the new console pages.
 
 ## Cross-Page Linking
 
@@ -282,9 +284,13 @@ scripts/devtools/
   routes.py                ← new: page routes (/console/agents, /console/memory)
 
 opencontext/server/routes/
-  contexts_api.py          ← new: GET /api/contexts endpoint
+  context.py               ← modified: add GET /api/contexts (logic extracted from web.py)
   users_api.py             ← new: GET /api/users endpoint
-  api.py                   ← add new API route includes (existing file, minimal change)
+  web.py                   ← modified: read_contexts() simplified to static template render
+  api.py                   ← modified: add new route includes
+
+opencontext/web/templates/
+  contexts.html            ← modified: server-side rendering → client-side JS fetch
 ```
 
 ### Coexistence with existing pages
