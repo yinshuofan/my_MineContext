@@ -1296,6 +1296,37 @@ class VikingDBBackend(IVectorStorageBackend):
 
         return None
 
+    @staticmethod
+    def _split_types_by_user_scope(
+        context_types: list[str],
+        user_id: str | None,
+        device_id: str | None,
+    ) -> list[tuple[list[str], bool]]:
+        """Split context types into groups by user/device filter compatibility.
+
+        agent_base_* types are agent-level (not user-scoped), so user_id/device_id
+        filters must be skipped for them. When user_id or device_id is provided,
+        types are split into two groups: regular (with user filters) and base (without).
+
+        Returns:
+            List of (types, is_base) tuples where is_base=True means the group
+            should skip user_id/device_id filtering.
+        """
+        if not context_types:
+            return []
+        if not user_id and not device_id:
+            return [(context_types, False)]
+
+        regular = [t for t in context_types if not t.startswith("agent_base")]
+        base = [t for t in context_types if t.startswith("agent_base")]
+
+        groups: list[tuple[list[str], bool]] = []
+        if regular:
+            groups.append((regular, False))
+        if base:
+            groups.append((base, True))
+        return groups
+
     def _build_filter_dict(
         self,
         filters: dict[str, Any] | None = None,
