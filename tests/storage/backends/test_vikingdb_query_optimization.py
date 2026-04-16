@@ -283,3 +283,86 @@ class TestGetFilteredContextCount:
 
         assert count == 7
         assert backend._client.async_data_request.call_count == 1
+
+
+@pytest.mark.unit
+class TestBuildUserScopedFilter:
+    """Tests for _build_user_scoped_filter helper."""
+
+    def test_no_user_id_returns_single_and_filter(self):
+        """Without user_id, all types in one AND filter (no or)."""
+        backend = _make_vikingdb_backend()
+        result = backend._build_user_scoped_filter(
+            context_types=["event", "agent_base_event"],
+            user_id=None,
+            device_id=None,
+        )
+        assert result is not None
+        assert result.get("op") != "or"
+
+    def test_with_user_id_mixed_types_returns_or_filter(self):
+        """With user_id and mixed types, builds an or filter with 2 branches."""
+        backend = _make_vikingdb_backend()
+        result = backend._build_user_scoped_filter(
+            context_types=["event", "knowledge", "agent_base_event"],
+            user_id="user1",
+            device_id=None,
+            data_type="context",
+        )
+        assert result is not None
+        assert result["op"] == "or"
+        assert len(result["conds"]) == 2
+
+        # Branch 1 (regular): should contain user_id condition
+        branch1 = result["conds"][0]
+        field_names = [c.get("field") for c in branch1["conds"]]
+        assert "user_id" in field_names
+        ctx_cond = [c for c in branch1["conds"] if c.get("field") == "context_type"][0]
+        assert set(ctx_cond["conds"]) == {"event", "knowledge"}
+
+        # Branch 2 (base): should NOT contain user_id condition
+        branch2 = result["conds"][1]
+        field_names_2 = [c.get("field") for c in branch2["conds"]]
+        assert "user_id" not in field_names_2
+        ctx_cond_2 = [c for c in branch2["conds"] if c.get("field") == "context_type"][0]
+        assert ctx_cond_2["conds"] == ["agent_base_event"]
+
+    def test_with_user_id_only_regular_no_or(self):
+        """With user_id but only regular types, no or needed."""
+        backend = _make_vikingdb_backend()
+        result = backend._build_user_scoped_filter(
+            context_types=["event", "knowledge"],
+            user_id="user1",
+            device_id=None,
+        )
+        assert result is not None
+        assert result.get("op") != "or"
+
+    def test_with_user_id_only_base_no_or(self):
+        """With user_id but only base types, no or needed, no user_id in filter."""
+        backend = _make_vikingdb_backend()
+        result = backend._build_user_scoped_filter(
+            context_types=["agent_base_event", "agent_base_l1_summary"],
+            user_id="user1",
+            device_id=None,
+        )
+        assert result is not None
+        assert result.get("op") != "or"
+        if result.get("op") == "and":
+            field_names = [c.get("field") for c in result["conds"]]
+            assert "user_id" not in field_names
+
+    def test_additional_filters_present_in_both_branches(self):
+        """Extra filters (e.g. date range) should appear in both or branches."""
+        backend = _make_vikingdb_backend()
+        result = backend._build_user_scoped_filter(
+            context_types=["event", "agent_base_event"],
+            filters={"create_time_ts": {"$gte": 1000.0}},
+            user_id="user1",
+            device_id=None,
+            data_type="context",
+        )
+        assert result["op"] == "or"
+        for branch in result["conds"]:
+            range_conds = [c for c in branch["conds"] if c.get("op") == "range"]
+            assert len(range_conds) >= 1

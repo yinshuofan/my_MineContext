@@ -1376,6 +1376,60 @@ class VikingDBBackend(IVectorStorageBackend):
             groups.append((base, True))
         return groups
 
+    def _build_user_scoped_filter(
+        self,
+        context_types: list[str],
+        filters: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        device_id: str | None = None,
+        agent_id: str | None = None,
+        data_type: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Build a filter that handles user/device scope for mixed context types.
+
+        When context_types contains both regular and agent_base_* types AND
+        user_id/device_id is provided, uses VikingDB's ``or`` operator to combine
+        two filter branches in a single query:
+          - Regular types: includes user_id/device_id conditions
+          - Base types: excludes user_id/device_id conditions
+
+        When all types share the same scope (no split needed), delegates to
+        _build_filter_dict directly — no ``or`` wrapper.
+        """
+        groups = self._split_types_by_user_scope(context_types, user_id, device_id)
+
+        if len(groups) <= 1:
+            # Single group (or empty) — direct filter, no or needed
+            is_base = groups[0][1] if groups else False
+            return self._build_filter_dict(
+                filters=filters,
+                user_id=None if is_base else user_id,
+                device_id=None if is_base else device_id,
+                agent_id=agent_id,
+                context_types=context_types,
+                data_type=data_type,
+            )
+
+        # Two groups — build or filter with one branch per group
+        or_branches = []
+        for group_types, is_base in groups:
+            branch = self._build_filter_dict(
+                filters=filters,
+                user_id=None if is_base else user_id,
+                device_id=None if is_base else device_id,
+                agent_id=agent_id,
+                context_types=group_types,
+                data_type=data_type,
+            )
+            if branch:
+                or_branches.append(branch)
+
+        if not or_branches:
+            return None
+        if len(or_branches) == 1:
+            return or_branches[0]
+        return {"op": "or", "conds": or_branches}
+
     def _build_filter_dict(
         self,
         filters: dict[str, Any] | None = None,
