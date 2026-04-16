@@ -33,12 +33,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     loadAgentList();
 
-    // Tab-switch listener (skeleton for Task 6)
+    // Tab-switch listener
     var tabEl = document.getElementById('agentTabs');
     if (tabEl) {
         tabEl.addEventListener('shown.bs.tab', function (e) {
-            // Task 6 will add per-tab lazy-loading here
-            // e.target is the newly activated tab button
+            if (!selectedAgentId) return;
+            var target = e.target.getAttribute('data-bs-target');
+            if (target === '#tab-batches') initBatchesTab();
+            if (target === '#tab-contexts') initContextsTab();
         });
     }
 });
@@ -116,6 +118,14 @@ function selectAgent(agentId) {
     });
 
     loadAgentDetail(agentId);
+
+    // Reinitialize the active non-info tab when agent changes
+    var activeTab = document.querySelector('#agentTabs .nav-link.active');
+    if (activeTab) {
+        var target = activeTab.getAttribute('data-bs-target');
+        if (target === '#tab-batches') initBatchesTab();
+        if (target === '#tab-contexts') initContextsTab();
+    }
 }
 
 /* ============================================================
@@ -731,5 +741,467 @@ async function submitBatchImport() {
     } finally {
         btn.disabled = false;
         btn.textContent = '导入';
+    }
+}
+
+/* ============================================================
+   Tab 2: Message Tracing (消息追踪)
+   ============================================================ */
+
+let batchPage = 1;
+const batchLimit = 20;
+let expandedBatchId = null;
+
+function initBatchesTab() {
+    var container = document.getElementById('tab-batches');
+    if (!container) return;
+
+    container.innerHTML =
+        // Filter bar
+        '<div class="card mb-3" style="border-top: 3px solid #2c3e50;">' +
+            '<div class="card-body py-3 px-3">' +
+                '<div class="row g-2 align-items-end">' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">User ID</label>' +
+                        '<input type="text" class="form-control form-control-sm" id="batchFilterUserId" placeholder="可选">' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">Device ID</label>' +
+                        '<input type="text" class="form-control form-control-sm" id="batchFilterDeviceId" placeholder="可选">' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">Agent ID</label>' +
+                        '<input type="text" class="form-control form-control-sm" id="batchFilterAgentId" value="' + escAttr(selectedAgentId || '') + '" disabled>' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">开始时间</label>' +
+                        '<input type="datetime-local" class="form-control form-control-sm" id="batchFilterStartDate">' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">结束时间</label>' +
+                        '<input type="datetime-local" class="form-control form-control-sm" id="batchFilterEndDate">' +
+                    '</div>' +
+                    '<div class="col-12 col-md-auto">' +
+                        '<div class="d-flex gap-2">' +
+                            '<button class="btn btn-sm btn-dark" onclick="loadBatches(1)">筛选</button>' +
+                            '<button class="btn btn-sm btn-outline-secondary" onclick="resetBatchFilters()">重置</button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+        // Table
+        '<div class="card" style="border-top: 3px solid #2c3e50;">' +
+            '<div class="card-body p-0">' +
+                '<div class="table-responsive">' +
+                    '<table class="table table-hover mb-0" id="batchTable">' +
+                        '<thead class="table-light">' +
+                            '<tr>' +
+                                '<th style="width:40px;"></th>' +
+                                '<th>Batch ID</th>' +
+                                '<th>User ID</th>' +
+                                '<th>消息数</th>' +
+                                '<th>创建时间</th>' +
+                            '</tr>' +
+                        '</thead>' +
+                        '<tbody id="batchTableBody">' +
+                            '<tr><td colspan="5" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm"></div> 加载中...</td></tr>' +
+                        '</tbody>' +
+                    '</table>' +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+        // Pagination
+        '<div id="batchPaginationArea" class="mt-3"></div>';
+
+    loadBatches(1);
+}
+
+function resetBatchFilters() {
+    var uid = document.getElementById('batchFilterUserId');
+    var did = document.getElementById('batchFilterDeviceId');
+    var sd = document.getElementById('batchFilterStartDate');
+    var ed = document.getElementById('batchFilterEndDate');
+    if (uid) uid.value = '';
+    if (did) did.value = '';
+    if (sd) sd.value = '';
+    if (ed) ed.value = '';
+    loadBatches(1);
+}
+
+function getBatchFilterParams() {
+    var params = new URLSearchParams();
+    params.set('agent_id', selectedAgentId);
+    var userId = document.getElementById('batchFilterUserId');
+    var deviceId = document.getElementById('batchFilterDeviceId');
+    var startDate = document.getElementById('batchFilterStartDate');
+    var endDate = document.getElementById('batchFilterEndDate');
+    if (userId && userId.value.trim()) params.set('user_id', userId.value.trim());
+    if (deviceId && deviceId.value.trim()) params.set('device_id', deviceId.value.trim());
+    if (startDate && startDate.value) params.set('start_date', startDate.value);
+    if (endDate && endDate.value) params.set('end_date', endDate.value);
+    return params;
+}
+
+async function loadBatches(page) {
+    batchPage = page;
+    var params = getBatchFilterParams();
+    params.set('page', page);
+    params.set('limit', batchLimit);
+
+    var tbody = document.getElementById('batchTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border spinner-border-sm"></div> 加载中...</td></tr>';
+
+    try {
+        var resp = await fetch('/api/chat-batches?' + params);
+        var data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || '加载失败');
+
+        var batches = data.data.batches || [];
+        var total = data.data.total || 0;
+        var totalPages = data.data.total_pages || 1;
+
+        if (batches.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-5">没有找到消息批次</td></tr>';
+            document.getElementById('batchPaginationArea').innerHTML = '';
+            return;
+        }
+
+        expandedBatchId = null;
+        tbody.innerHTML = batches.map(function (b) { return renderBatchRow(b); }).join('');
+        renderBatchPagination(page, totalPages, total);
+        refreshIcons();
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">加载失败: ' + esc(e.message) + '</td></tr>';
+    }
+}
+
+function userLink(userId, deviceId, agentId) {
+    if (!userId || userId === 'default') return esc(userId || '');
+    var href = '/console/memory?user_id=' + encodeURIComponent(userId) +
+        '&device_id=' + encodeURIComponent(deviceId || 'default') +
+        '&agent_id=' + encodeURIComponent(agentId || 'default');
+    return '<a href="' + escAttr(href) + '" title="在记忆浏览器中查看">' + esc(userId) + '</a>';
+}
+
+function renderBatchRow(batch) {
+    var id = batch.batch_id || '';
+    var safeId = escAttr(id);
+    var shortId = esc(id).substring(0, 8);
+    var time = batch.created_at ? String(batch.created_at).substring(0, 19).replace('T', ' ') : '-';
+    return '<tr class="batch-row" data-batch-id="' + safeId + '" onclick="toggleBatchExpand(\'' + safeId + '\')" style="cursor:pointer;">' +
+            '<td class="text-center"><i data-feather="chevron-right" class="expand-btn" id="batch-expand-' + safeId + '" style="width:16px;height:16px;"></i></td>' +
+            '<td><code title="' + safeId + '">' + shortId + '</code></td>' +
+            '<td>' + userLink(batch.user_id, batch.device_id, batch.agent_id) + '</td>' +
+            '<td><span class="badge bg-secondary">' + (batch.message_count || 0) + '</span></td>' +
+            '<td><small>' + esc(time) + '</small></td>' +
+        '</tr>' +
+        '<tr class="detail-row d-none" id="batch-detail-' + safeId + '">' +
+            '<td colspan="5" style="padding:0 !important; background:#f8f9fa;">' +
+                '<div class="detail-content" id="batch-detail-content-' + safeId + '" style="padding:16px 24px;"></div>' +
+            '</td>' +
+        '</tr>';
+}
+
+async function toggleBatchExpand(batchId) {
+    var detailRow = document.getElementById('batch-detail-' + batchId);
+    var expandBtn = document.getElementById('batch-expand-' + batchId);
+
+    if (expandedBatchId === batchId) {
+        // Collapse
+        if (detailRow) detailRow.classList.add('d-none');
+        if (expandBtn) expandBtn.classList.remove('open');
+        expandedBatchId = null;
+        return;
+    }
+
+    // Collapse previous
+    if (expandedBatchId) {
+        var prevDetail = document.getElementById('batch-detail-' + expandedBatchId);
+        var prevBtn = document.getElementById('batch-expand-' + expandedBatchId);
+        if (prevDetail) prevDetail.classList.add('d-none');
+        if (prevBtn) prevBtn.classList.remove('open');
+    }
+
+    // Expand new
+    expandedBatchId = batchId;
+    if (detailRow) detailRow.classList.remove('d-none');
+    if (expandBtn) expandBtn.classList.add('open');
+
+    var content = document.getElementById('batch-detail-content-' + batchId);
+    if (!content) return;
+    content.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> 加载详情...</div>';
+
+    try {
+        var results = await Promise.all([
+            fetch('/api/chat-batches/' + encodeURIComponent(batchId)),
+            fetch('/api/chat-batches/' + encodeURIComponent(batchId) + '/contexts')
+        ]);
+
+        var batchResp = results[0];
+        var ctxResp = results[1];
+        var batchData = await batchResp.json();
+        var ctxData = await ctxResp.json();
+
+        if (!batchResp.ok) throw new Error(batchData.detail || '加载批次失败');
+
+        var batch = batchData.data.batch;
+        var contexts = (ctxResp.ok && ctxData.data) ? (ctxData.data.contexts || []) : [];
+
+        content.innerHTML =
+            '<div class="row">' +
+                '<div class="col-md-6">' +
+                    '<h6 class="mb-2">原始消息 (' + (batch.message_count || 0) + ')</h6>' +
+                    '<div class="border rounded p-2" style="max-height:400px;overflow-y:auto;">' +
+                        renderBatchMessages(batch.messages || []) +
+                    '</div>' +
+                '</div>' +
+                '<div class="col-md-6">' +
+                    '<h6 class="mb-2">关联数据 (' + contexts.length + ')</h6>' +
+                    '<div style="max-height:400px;overflow-y:auto;">' +
+                        (contexts.length > 0
+                            ? contexts.map(function (c) { return renderBatchContextCard(c); }).join('')
+                            : '<p class="text-muted">暂无关联数据</p>') +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        refreshIcons();
+    } catch (e) {
+        content.innerHTML = '<div class="alert alert-danger mb-0">加载失败: ' + esc(e.message) + '</div>';
+    }
+}
+
+function renderBatchMessages(messages) {
+    if (!messages || messages.length === 0) return '<p class="text-muted">无消息</p>';
+    return messages.map(function (m) {
+        var role = (m.role || 'user').toLowerCase();
+        var roleClass = role === 'assistant' ? 'msg-assistant' : role === 'system' ? 'msg-system' : 'msg-user';
+        var roleBadge = role === 'user' ? 'primary' : role === 'assistant' ? 'success' : 'warning';
+        var msgContent = '';
+        if (typeof m.content === 'string') {
+            msgContent = esc(m.content);
+        } else if (Array.isArray(m.content)) {
+            msgContent = m.content.map(function (part) {
+                if (part.type === 'text') return esc(part.text || '');
+                if (part.type === 'image_url') return '<span class="badge bg-info">图片</span>';
+                if (part.type === 'video_url') return '<span class="badge bg-dark">视频</span>';
+                return '';
+            }).join(' ');
+        }
+        return '<div class="msg-bubble ' + roleClass + '">' +
+            '<span class="badge bg-' + roleBadge + ' me-1" style="font-size:0.65rem;">' + esc(role) + '</span>' +
+            '<span style="font-size:0.85rem;">' + msgContent + '</span>' +
+        '</div>';
+    }).join('');
+}
+
+function renderBatchContextCard(ctx) {
+    var TYPE_COLORS = {
+        event: 'warning', knowledge: 'purple',
+        document: 'success', profile: 'primary', agent_profile: 'primary',
+        daily_summary: 'info', weekly_summary: 'info', monthly_summary: 'info'
+    };
+    var color = TYPE_COLORS[ctx.context_type] || 'secondary';
+    var cssClass = 'batch-ctx-card-' + (ctx.context_type || 'event');
+    var keywords = (ctx.keywords || []).map(function (k) {
+        return '<span class="badge bg-info bg-opacity-75 me-1">' + esc(k) + '</span>';
+    }).join('');
+    return '<div class="batch-ctx-card ' + cssClass + '">' +
+        '<div class="d-flex justify-content-between align-items-start">' +
+            '<div>' +
+                '<span class="badge bg-' + color + '" style="font-size:0.7rem;">' + esc(ctx.context_type) + '</span> ' +
+                '<strong>' + esc(ctx.title || '未命名') + '</strong>' +
+            '</div>' +
+            (ctx.importance != null ? '<span class="badge bg-light text-dark">重要性: ' + ctx.importance + '</span>' : '') +
+        '</div>' +
+        (ctx.summary ? '<p class="text-muted small mb-1 mt-1">' + esc(ctx.summary) + '</p>' : '') +
+        (keywords ? '<div class="mt-1">' + keywords + '</div>' : '') +
+    '</div>';
+}
+
+function renderBatchPagination(page, totalPages, total) {
+    var area = document.getElementById('batchPaginationArea');
+    if (!area) return;
+    if (totalPages <= 1) {
+        area.innerHTML = '<div class="text-muted small text-center">共 ' + total + ' 条</div>';
+        return;
+    }
+
+    var btns = '';
+    btns += '<button class="btn btn-sm btn-outline-dark me-1" ' + (page <= 1 ? 'disabled' : '') + ' onclick="loadBatches(' + (page - 1) + ')">&laquo;</button>';
+    for (var p = Math.max(1, page - 2); p <= Math.min(totalPages, page + 2); p++) {
+        btns += '<button class="btn btn-sm ' + (p === page ? 'btn-dark' : 'btn-outline-dark') + ' me-1" onclick="loadBatches(' + p + ')">' + p + '</button>';
+    }
+    btns += '<button class="btn btn-sm btn-outline-dark" ' + (page >= totalPages ? 'disabled' : '') + ' onclick="loadBatches(' + (page + 1) + ')">&raquo;</button>';
+
+    area.innerHTML = '<div class="d-flex justify-content-between align-items-center">' +
+        '<small class="text-muted">共 ' + total + ' 条，第 ' + page + '/' + totalPages + ' 页</small>' +
+        '<div>' + btns + '</div>' +
+    '</div>';
+}
+
+/* ============================================================
+   Tab 3: Related Contexts (关联 Contexts)
+   ============================================================ */
+
+let ctxPage = 1;
+const ctxLimit = 15;
+
+function initContextsTab() {
+    var container = document.getElementById('tab-contexts');
+    if (!container) return;
+
+    container.innerHTML =
+        // Filter bar
+        '<div class="card mb-3" style="border-top: 3px solid #2c3e50;">' +
+            '<div class="card-body py-3 px-3">' +
+                '<div class="row g-2 align-items-end">' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">Type</label>' +
+                        '<select class="form-select form-select-sm" id="ctxFilterType">' +
+                            '<option value="">全部</option>' +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">User ID</label>' +
+                        '<input type="text" class="form-control form-control-sm" id="ctxFilterUserId" placeholder="可选">' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">Device ID</label>' +
+                        '<input type="text" class="form-control form-control-sm" id="ctxFilterDeviceId" placeholder="可选">' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">Agent ID</label>' +
+                        '<input type="text" class="form-control form-control-sm" id="ctxFilterAgentId" value="' + escAttr(selectedAgentId || '') + '" disabled>' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">层级</label>' +
+                        '<select class="form-select form-select-sm" id="ctxFilterLevel">' +
+                            '<option value="">全部</option>' +
+                            '<option value="0">L0 原始事件</option>' +
+                            '<option value="1">L1 日摘要</option>' +
+                            '<option value="2">L2 周摘要</option>' +
+                            '<option value="3">L3 月摘要</option>' +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">开始时间</label>' +
+                        '<input type="datetime-local" class="form-control form-control-sm" id="ctxFilterStartDate">' +
+                    '</div>' +
+                    '<div class="col-6 col-md">' +
+                        '<label class="form-label small text-muted mb-1">结束时间</label>' +
+                        '<input type="datetime-local" class="form-control form-control-sm" id="ctxFilterEndDate">' +
+                    '</div>' +
+                    '<div class="col-12 col-md-auto">' +
+                        '<div class="d-flex gap-2">' +
+                            '<button class="btn btn-sm btn-dark" onclick="loadAgentContexts(1)">筛选</button>' +
+                            '<button class="btn btn-sm btn-outline-secondary" onclick="resetCtxFilters()">重置</button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+        // Card grid
+        '<div id="ctxCardGrid" class="row g-3"></div>' +
+        // Pagination
+        '<div id="ctxPaginationArea" class="mt-3"></div>';
+
+    // Populate type dropdown from API
+    populateCtxTypeDropdown();
+    loadAgentContexts(1);
+}
+
+async function populateCtxTypeDropdown() {
+    var select = document.getElementById('ctxFilterType');
+    if (!select) return;
+    try {
+        var resp = await fetch('/api/contexts?limit=1&agent_id=' + encodeURIComponent(selectedAgentId));
+        var data = await resp.json();
+        if (resp.ok && data.data && data.data.context_types) {
+            var types = data.data.context_types;
+            // Keep the "all" option, then add each type
+            var html = '<option value="">全部</option>';
+            for (var i = 0; i < types.length; i++) {
+                html += '<option value="' + escAttr(types[i]) + '">' + esc(types[i]) + '</option>';
+            }
+            select.innerHTML = html;
+        }
+    } catch (e) {
+        // Silently fail — dropdown just stays at default "all"
+    }
+}
+
+function resetCtxFilters() {
+    var type = document.getElementById('ctxFilterType');
+    var uid = document.getElementById('ctxFilterUserId');
+    var did = document.getElementById('ctxFilterDeviceId');
+    var level = document.getElementById('ctxFilterLevel');
+    var sd = document.getElementById('ctxFilterStartDate');
+    var ed = document.getElementById('ctxFilterEndDate');
+    if (type) type.value = '';
+    if (uid) uid.value = '';
+    if (did) did.value = '';
+    if (level) level.value = '';
+    if (sd) sd.value = '';
+    if (ed) ed.value = '';
+    loadAgentContexts(1);
+}
+
+function getCtxFilterParams() {
+    var params = new URLSearchParams();
+    params.set('agent_id', selectedAgentId);
+    var type = document.getElementById('ctxFilterType');
+    var userId = document.getElementById('ctxFilterUserId');
+    var deviceId = document.getElementById('ctxFilterDeviceId');
+    var level = document.getElementById('ctxFilterLevel');
+    var startDate = document.getElementById('ctxFilterStartDate');
+    var endDate = document.getElementById('ctxFilterEndDate');
+    if (type && type.value) params.set('type', type.value);
+    if (userId && userId.value.trim()) params.set('user_id', userId.value.trim());
+    if (deviceId && deviceId.value.trim()) params.set('device_id', deviceId.value.trim());
+    if (level && level.value !== '') params.set('hierarchy_level', level.value);
+    if (startDate && startDate.value) params.set('start_date', startDate.value);
+    if (endDate && endDate.value) params.set('end_date', endDate.value);
+    return params;
+}
+
+async function loadAgentContexts(page) {
+    ctxPage = page;
+    var params = getCtxFilterParams();
+    params.set('page', page);
+    params.set('limit', ctxLimit);
+
+    var grid = document.getElementById('ctxCardGrid');
+    var pagArea = document.getElementById('ctxPaginationArea');
+    if (!grid) return;
+    grid.innerHTML = '<div class="col-12 text-center py-4"><div class="spinner-border spinner-border-sm"></div> 加载中...</div>';
+    if (pagArea) pagArea.innerHTML = '';
+
+    try {
+        var resp = await fetch('/api/contexts?' + params);
+        var data = await resp.json();
+        if (!resp.ok) throw new Error(data.message || '加载失败');
+
+        var contexts = data.data.contexts || [];
+        var total = data.data.total || 0;
+        var totalPages = data.data.total_pages || 1;
+
+        if (contexts.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-center text-muted py-5">没有找到 Contexts</div>';
+            return;
+        }
+
+        grid.innerHTML = contexts.map(function (ctx) {
+            return '<div class="col-md-6 col-lg-4">' + renderContextCardHTML(ctx) + '</div>';
+        }).join('');
+
+        if (pagArea) {
+            pagArea.innerHTML = renderPaginationHTML(page, totalPages, total, ctxLimit, 'loadAgentContexts');
+        }
+
+        refreshIcons();
+    } catch (e) {
+        grid.innerHTML = '<div class="col-12 text-center text-danger py-4">加载失败: ' + esc(e.message) + '</div>';
     }
 }
