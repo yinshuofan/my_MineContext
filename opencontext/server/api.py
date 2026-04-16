@@ -27,6 +27,7 @@ from .routes import (
     push,
     search,
     settings,
+    users_api,
     vaults,
     web,
 )
@@ -55,3 +56,4 @@ router.include_router(push.router)
 router.include_router(search.router)
 router.include_router(media.router)
 router.include_router(memory_cache.router)
+router.include_router(users_api.router)

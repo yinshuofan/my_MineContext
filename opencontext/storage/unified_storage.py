@@ -1072,3 +1072,10 @@ class UnifiedStorage:
     async def get_chat_batch(self, batch_id: str) -> dict | None:
         """Get single chat batch from document backend."""
         return await self._document_backend.get_chat_batch(batch_id)
+
+    # ── User listing (→ document DB) ──
+
+    @_require_backend("_document_backend", default=[])
+    async def list_distinct_users(self) -> list[dict]:
+        """Return distinct (user_id, device_id, agent_id) tuples from profiles."""
+        return await self._document_backend.list_distinct_users()

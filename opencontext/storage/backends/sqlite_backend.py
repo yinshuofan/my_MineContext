@@ -2515,6 +2515,24 @@ class SQLiteBackend(IDocumentStorageBackend):
             logger.error(f"delete_agent failed: {e}")
             return False
 
+    # ── User listing ──
+
+    async def list_distinct_users(self) -> list[dict]:
+        """Return distinct (user_id, device_id, agent_id) tuples from the profiles table."""
+        if not self._initialized:
+            return []
+
+        conn = self._db
+        try:
+            cursor = await conn.execute(
+                "SELECT DISTINCT user_id, device_id, agent_id FROM profiles ORDER BY user_id"
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"list_distinct_users failed: {e}")
+            return []
+
     async def close(self):
         """Close the database connection."""
         if self._connection:

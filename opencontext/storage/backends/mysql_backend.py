@@ -2038,6 +2038,26 @@ class MySQLBackend(IDocumentStorageBackend):
         logger.warning("MySQL query method is not fully implemented")
         return QueryResult(documents=[], total_count=0)
 
+    # ── User listing ──
+
+    async def list_distinct_users(self) -> list[dict]:
+        """Return distinct (user_id, device_id, agent_id) tuples from the profiles table."""
+        if not self._initialized:
+            return []
+
+        async with (
+            self._get_connection() as conn,
+            conn.cursor(asyncmy.cursors.DictCursor) as cursor,
+        ):
+            try:
+                await cursor.execute(
+                    "SELECT DISTINCT user_id, device_id, agent_id FROM profiles ORDER BY user_id"
+                )
+                return await cursor.fetchall()
+            except Exception as e:
+                logger.error(f"list_distinct_users failed: {e}")
+                return []
+
     async def close(self):
         """Close the connection pool."""
         if self._pool:

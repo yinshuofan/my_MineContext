@@ -618,3 +618,13 @@ class IDocumentStorageBackend(IStorageBackend):
     async def get_chat_batch(self, batch_id: str) -> dict | None:
         """Get single chat batch with messages."""
         raise NotImplementedError
+
+    # ── User listing ──
+
+    async def list_distinct_users(self) -> list[dict]:
+        """Return distinct (user_id, device_id, agent_id) tuples from the profiles table.
+
+        Returns:
+            List of dicts, each with keys: user_id, device_id, agent_id
+        """
+        raise NotImplementedError
