@@ -5,10 +5,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from opencontext.models.context import (
     ContextProperties,
@@ -418,3 +422,112 @@ class TestReplaceBaseEventsImpl:
         assert any(
             "delete_batch_processed_contexts returned False" in msg for msg in loguru_capture
         )
+
+
+def _build_app():
+    from opencontext.server.routes.agent_base_events import router
+
+    app = FastAPI()
+    app.include_router(router)
+    return app
+
+
+@contextlib.contextmanager
+def _patched_client(mock_storage, mock_cache=None):
+    """TestClient with get_storage + get_cache + auth patched."""
+    app = _build_app()
+
+    if mock_cache is None:
+        mock_cache = MagicMock()
+        mock_cache.acquire_lock = AsyncMock(return_value="lock-token-123")
+        mock_cache.release_lock = AsyncMock(return_value=True)
+
+    with (
+        patch(
+            "opencontext.server.routes.agent_base_events.get_storage",
+            return_value=mock_storage,
+        ),
+        patch(
+            "opencontext.server.routes.agent_base_events.get_cache",
+            new=AsyncMock(return_value=mock_cache),
+        ),
+        patch(
+            "opencontext.server.routes.agent_base_events.auth_dependency",
+            return_value="test-token",
+        ),
+    ):
+        yield TestClient(app), mock_cache
+
+
+@pytest.mark.unit
+class TestPushBaseEventsReplace:
+    """Tests for POST /api/agents/{agent_id}/base/events — replace semantics."""
+
+    def _mock_storage_with_existing(self, existing_ids):
+        storage = MagicMock()
+        storage.get_agent = AsyncMock(return_value={"agent_id": "a1", "name": "A1"})
+        existing_dict = {
+            ContextType.AGENT_BASE_EVENT.value: [
+                _make_base_ctx(eid, ContextType.AGENT_BASE_EVENT, 0) for eid in existing_ids
+            ],
+        }
+        storage.get_all_processed_contexts = AsyncMock(return_value=existing_dict)
+        storage.batch_upsert_processed_context = AsyncMock(return_value=["new-id"])
+        storage.delete_batch_processed_contexts = AsyncMock(return_value=True)
+        return storage
+
+    def test_404_when_agent_missing(self):
+        storage = self._mock_storage_with_existing([])
+        storage.get_agent = AsyncMock(return_value=None)
+
+        with _patched_client(storage) as (client, _):
+            resp = client.post(
+                "/api/agents/a1/base/events",
+                json={"events": [{"title": "t", "summary": "s"}]},
+            )
+            assert resp.status_code == 404
+
+    def test_replace_deletes_ids_missing_from_payload(self):
+        storage = self._mock_storage_with_existing(["old-1", "old-2"])
+
+        with _patched_client(storage) as (client, _):
+            resp = client.post(
+                "/api/agents/a1/base/events",
+                json={"events": [{"title": "t", "summary": "s"}]},  # one new event
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["data"]["upserted"] == 1
+            assert body["data"]["deleted"] == 2
+            deleted_args_list = storage.delete_batch_processed_contexts.call_args_list
+            all_deleted_ids = set()
+            for call in deleted_args_list:
+                all_deleted_ids.update(call[0][0])
+            assert all_deleted_ids == {"old-1", "old-2"}
+
+    def test_acquires_and_releases_lock(self):
+        storage = self._mock_storage_with_existing([])
+
+        with _patched_client(storage) as (client, mock_cache):
+            client.post(
+                "/api/agents/a1/base/events",
+                json={"events": [{"title": "t", "summary": "s"}]},
+            )
+            mock_cache.acquire_lock.assert_awaited_once()
+            lock_args = mock_cache.acquire_lock.call_args
+            assert lock_args[0][0] == "agent_base_edit:a1"
+            mock_cache.release_lock.assert_awaited_once_with("agent_base_edit:a1", "lock-token-123")
+
+    def test_returns_503_when_lock_unavailable(self):
+        storage = self._mock_storage_with_existing([])
+
+        mock_cache = MagicMock()
+        mock_cache.acquire_lock = AsyncMock(return_value=None)  # acquisition failed
+        mock_cache.release_lock = AsyncMock(return_value=True)
+
+        with _patched_client(storage, mock_cache) as (client, _):
+            resp = client.post(
+                "/api/agents/a1/base/events",
+                json={"events": [{"title": "t", "summary": "s"}]},
+            )
+            assert resp.status_code == 503

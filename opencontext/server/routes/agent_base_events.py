@@ -27,6 +27,7 @@ from opencontext.models.enums import ContentFormat, ContextType
 from opencontext.server.middleware.auth import auth_dependency
 from opencontext.server.utils import convert_resp
 from opencontext.storage.global_storage import get_storage
+from opencontext.storage.redis_cache import get_cache
 from opencontext.utils.logging_utils import get_logger
 from opencontext.utils.time_utils import get_timezone
 from opencontext.utils.time_utils import now as tz_now
@@ -462,7 +463,12 @@ async def _replace_base_events_impl(
 
 @router.post("/{agent_id}/base/events")
 async def push_base_events(agent_id: str, request: BaseEventsRequest, _auth: str = auth_dependency):
-    """Push structured base events for an agent (no LLM extraction)."""
+    """Push the agent's base-event tree with REPLACE semantics.
+
+    Diffs the payload against existing AGENT_BASE_* contexts for this agent;
+    upserts all new ids, then deletes any existing ids not present in the payload.
+    Serializes per-agent via Redis lock.
+    """
     storage = get_storage()
     agent = await storage.get_agent(agent_id)  # type: ignore[union-attr]
     if not agent:
@@ -475,13 +481,35 @@ async def push_base_events(agent_id: str, request: BaseEventsRequest, _auth: str
             detail=f"Total event count {total_count} exceeds maximum of {_MAX_TOTAL_EVENTS}",
         )
 
-    contexts = _flatten_base_event_tree(request.events, agent_id)
+    new_contexts = _flatten_base_event_tree(request.events, agent_id)
 
-    result = await storage.batch_upsert_processed_context(contexts)  # type: ignore[union-attr]
-    success = result is not None
+    cache = await get_cache()
+    lock_key = f"agent_base_edit:{agent_id}"
+    lock_token = await cache.acquire_lock(
+        lock_key,
+        timeout=_LOCK_TIMEOUT_SECONDS,
+        blocking=True,
+        blocking_timeout=_LOCK_BLOCKING_TIMEOUT_SECONDS,
+    )
+    if not lock_token:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Another edit is in progress for agent {agent_id}",
+        )
+
+    try:
+        result = await _replace_base_events_impl(storage, agent_id, new_contexts)
+    finally:
+        await cache.release_lock(lock_key, lock_token)
+
     return convert_resp(
-        data={"count": len(contexts) if success else 0},
-        message="Base events saved" if success else "Failed to save base events",
+        data={
+            "upserted": result["upserted"],
+            "deleted": result["deleted"],
+            "stragglers": result["stragglers"],
+            "ids": [c.id for c in new_contexts],
+        },
+        message="Base events replaced",
     )
 
 
