@@ -797,6 +797,8 @@ curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
 
 `POST /api/agents/{agent_id}/base/events`
 
+> **⚠️ Breaking change (2026-04-17):** This endpoint now uses **replace semantics**. Each request treats the submitted tree as the agent's complete base-event state. Any existing `AGENT_BASE_*` context not present in the new tree will be deleted. Clients that previously relied on additive/incremental uploads must now merge locally before posting.
+
 推送结构化的基础事件，不经过 LLM 提取。系统会为每个事件生成 embedding，并根据 `hierarchy_level` 存储为对应的 context type：L0 → `agent_base_event`，L1 → `agent_base_l1_summary`，L2 → `agent_base_l2_summary`，L3 → `agent_base_l3_summary`。
 
 支持嵌套层级结构（L3→L2→L1→L0），父节点时间范围必须覆盖所有子节点。
@@ -888,17 +890,34 @@ curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
   }'
 ```
 
-**成功**
+**成功 (`200 OK`)**
 ```json
 {
   "code": 0,
   "status": 200,
-  "message": "Base events saved",
-  "data": {"count": 3}
+  "message": "Base events replaced",
+  "data": {
+    "upserted": 12,
+    "deleted": 4,
+    "stragglers": 0,
+    "ids": ["<new_id_1>", "..."]
+  }
 }
 ```
 
-> `count` 为实际存储的事件总数（含所有层级子节点）。
+- `upserted` — count of contexts written
+- `deleted` — count of previously-existing contexts removed
+- `stragglers` — count of contexts that should have been deleted but whose deletion failed (non-fatal; cleaned on next POST)
+- `ids` — ids of upserted contexts
+
+**另一编辑进行中（503）**
+```json
+{
+  "detail": "another edit is in progress for this agent"
+}
+```
+
+> 同一 agent 在同一时刻只能有一个 replace 请求进行中；并发请求会收到 `503 Service Unavailable`。客户端应重试。
 
 ### 6.4 列出基础事件
 
@@ -953,18 +972,32 @@ curl "http://localhost:1733/api/agents/assistant_01/base/events?hierarchy_level=
 
 `DELETE /api/agents/{agent_id}/base/events/{event_id}`
 
+Deletes an event and its entire subtree (all descendants reachable via
+downward refs). The surviving parent's ref list is scrubbed of the
+deleted root id. Empty parent summaries (whose only child was just
+deleted) are preserved — to remove them, POST a new tree without them.
+
 ```bash
 curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
-**成功**
+**成功 (`200 OK`)**
 ```json
 {
   "code": 0,
   "status": 200,
-  "message": "Event deleted"
+  "message": "Event deleted",
+  "data": {
+    "deleted_ids": ["<root_id>", "<child_id_1>", "..."],
+    "updated_parent_id": "<parent_id_or_null>",
+    "stragglers": 0
+  }
 }
 ```
+
+- `deleted_ids` — 已删除的 context id 列表（root + 所有后代）
+- `updated_parent_id` — 其 ref 列表被清理的父节点 id；若被删根节点无父节点，则为 `null`
+- `stragglers` — 应被删除但删除失败的 context 数量（non-fatal；下次 POST 时清理）
 
 **不存在（404）**
 ```json
@@ -972,6 +1005,15 @@ curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events/a1b2c3d
   "detail": "Event not found"
 }
 ```
+
+**另一编辑进行中（503）**
+```json
+{
+  "detail": "another edit is in progress for this agent"
+}
+```
+
+> 同一 agent 在同一时刻只能有一个 edit 请求进行中（replace 或 delete）；并发请求会收到 `503 Service Unavailable`。客户端应重试。
 
 ---
 

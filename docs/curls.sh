@@ -921,6 +921,8 @@ curl -X POST http://localhost:1733/api/agents/assistant_01/base/profile \
 curl -X GET http://localhost:1733/api/agents/assistant_01/base/profile
 # -H "X-API-Key: your-api-key"
 
+# NOTE: POST uses REPLACE semantics. Each request treats the payload as the
+# agent's complete base-event state — ids not in the payload are deleted.
 # Push Base Events (flat L0 events, no LLM extraction; generates embeddings directly)
 curl -X POST http://localhost:1733/api/agents/assistant_01/base/events \
   -H "Content-Type: application/json" \
