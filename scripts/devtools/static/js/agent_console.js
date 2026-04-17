@@ -614,6 +614,73 @@ function showAddEventModal() {
     new bootstrap.Modal(document.getElementById('addEventModal')).show();
 }
 
+/**
+ * Convert flat _currentEvents list (with bidirectional refs) back to the
+ * nested tree shape the POST endpoint accepts. Each root node has its
+ * descendants inlined via `children`.
+ */
+function _toPushTree(flatEvents) {
+    if (!flatEvents || flatEvents.length === 0) return [];
+
+    // Build id -> event map.
+    var byId = {};
+    var i, ev;
+    for (i = 0; i < flatEvents.length; i++) {
+        ev = flatEvents[i];
+        byId[ev.id] = ev;
+    }
+
+    // Detect downward refs: a ref is downward when the target has a smaller hierarchy_level.
+    var childrenById = {};  // parent_id -> [child_id, ...]
+    for (i = 0; i < flatEvents.length; i++) {
+        ev = flatEvents[i];
+        var parentLevel = ev.hierarchy_level != null ? ev.hierarchy_level : 0;
+        var refs = ev.refs || {};
+        var refTypes = Object.keys(refs);
+        for (var k = 0; k < refTypes.length; k++) {
+            var refIds = refs[refTypes[k]] || [];
+            for (var j = 0; j < refIds.length; j++) {
+                var refId = refIds[j];
+                var refEv = byId[refId];
+                if (!refEv) continue;
+                var refLevel = refEv.hierarchy_level != null ? refEv.hierarchy_level : 0;
+                if (refLevel < parentLevel) {
+                    if (!childrenById[ev.id]) childrenById[ev.id] = [];
+                    childrenById[ev.id].push(refId);
+                }
+            }
+        }
+    }
+
+    // Identify roots: events with no upward ref (no ref target has higher level).
+    var hasParent = new Set();
+    var parentIds = Object.keys(childrenById);
+    for (i = 0; i < parentIds.length; i++) {
+        var kids = childrenById[parentIds[i]];
+        for (j = 0; j < kids.length; j++) hasParent.add(kids[j]);
+    }
+
+    function toNode(evNode) {
+        var node = {
+            title: evNode.title,
+            summary: evNode.summary,
+            hierarchy_level: evNode.hierarchy_level != null ? evNode.hierarchy_level : 0,
+            importance: evNode.importance != null ? evNode.importance : 5,
+            keywords: evNode.keywords || [],
+            entities: evNode.entities || []
+        };
+        if (evNode.event_time_start) node.event_time_start = evNode.event_time_start;
+        if (evNode.event_time_end) node.event_time_end = evNode.event_time_end;
+        var childIds = childrenById[evNode.id];
+        if (childIds && childIds.length) {
+            node.children = childIds.map(function (cid) { return toNode(byId[cid]); }).filter(Boolean);
+        }
+        return node;
+    }
+
+    return flatEvents.filter(function (e) { return !hasParent.has(e.id); }).map(toNode);
+}
+
 async function addBaseEvent() {
     var title = document.getElementById('newEventTitle').value.trim();
     var summary = document.getElementById('newEventSummary').value.trim();
@@ -631,10 +698,15 @@ async function addBaseEvent() {
     if (!isNaN(imp)) eventObj.importance = Math.max(0, Math.min(10, imp));
 
     try {
+        // Replace-semantics POST — fetch current tree, append, re-POST.
+        var existing = _currentEvents || [];
+        var mergedTree = _toPushTree(existing);
+        mergedTree.push(eventObj);
+
         var resp = await fetch('/api/agents/' + encodeURIComponent(selectedAgentId) + '/base/events', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ events: [eventObj] })
+            body: JSON.stringify({ events: mergedTree })
         });
         if (!resp.ok) {
             var d = await resp.json();

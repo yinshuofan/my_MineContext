@@ -407,6 +407,63 @@ function showAddEventModal() {
     new bootstrap.Modal(document.getElementById('addEventModal')).show();
 }
 
+/**
+ * Convert flat _currentEvents list (with bidirectional refs) back to the
+ * nested tree shape the POST endpoint accepts. Each root node has its
+ * descendants inlined via `children`.
+ */
+function _toPushTree(flatEvents) {
+    if (!flatEvents || flatEvents.length === 0) return [];
+
+    // Build id → event map and id → list-of-child-ids map from downward refs.
+    const byId = {};
+    for (const ev of flatEvents) byId[ev.id] = ev;
+
+    // Detect downward refs: a ref is downward when the target has a smaller hierarchy_level.
+    const childrenById = {};  // parent_id → [child_id, ...]
+    for (const ev of flatEvents) {
+        const parentLevel = ev.hierarchy_level ?? 0;
+        const refs = ev.refs || {};
+        for (const refType in refs) {
+            for (const refId of (refs[refType] || [])) {
+                const refEv = byId[refId];
+                if (!refEv) continue;
+                const refLevel = refEv.hierarchy_level ?? 0;
+                if (refLevel < parentLevel) {
+                    if (!childrenById[ev.id]) childrenById[ev.id] = [];
+                    childrenById[ev.id].push(refId);
+                }
+            }
+        }
+    }
+
+    // Identify roots: events with no upward ref (no ref target has higher level).
+    const hasParent = new Set();
+    for (const parentId in childrenById) {
+        for (const childId of childrenById[parentId]) hasParent.add(childId);
+    }
+
+    const toNode = (ev) => {
+        const node = {
+            title: ev.title,
+            summary: ev.summary,
+            hierarchy_level: ev.hierarchy_level ?? 0,
+            importance: ev.importance ?? 5,
+            keywords: ev.keywords || [],
+            entities: ev.entities || [],
+        };
+        if (ev.event_time_start) node.event_time_start = ev.event_time_start;
+        if (ev.event_time_end) node.event_time_end = ev.event_time_end;
+        const childIds = childrenById[ev.id];
+        if (childIds && childIds.length) {
+            node.children = childIds.map(cid => toNode(byId[cid])).filter(Boolean);
+        }
+        return node;
+    };
+
+    return flatEvents.filter(ev => !hasParent.has(ev.id)).map(toNode);
+}
+
 async function addBaseEvent() {
     const title = document.getElementById('newEventTitle').value.trim();
     const summary = document.getElementById('newEventSummary').value.trim();
@@ -421,10 +478,15 @@ async function addBaseEvent() {
     if (!isNaN(imp)) eventObj.importance = Math.max(0, Math.min(10, imp));
 
     try {
+        // Replace-semantics POST — fetch current tree, append, re-POST.
+        const existing = _currentEvents || [];
+        const mergedTree = _toPushTree(existing);
+        mergedTree.push(eventObj);
+
         const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/events`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({events: [eventObj]})
+            body: JSON.stringify({events: mergedTree})
         });
         if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Add failed'); }
         bootstrap.Modal.getInstance(document.getElementById('addEventModal')).hide();
