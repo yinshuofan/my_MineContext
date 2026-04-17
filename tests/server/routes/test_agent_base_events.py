@@ -531,3 +531,145 @@ class TestPushBaseEventsReplace:
                 json={"events": [{"title": "t", "summary": "s"}]},
             )
             assert resp.status_code == 503
+
+
+@pytest.mark.unit
+class TestDeleteBaseEvent:
+    """Tests for DELETE /api/agents/{agent_id}/base/events/{event_id}."""
+
+    def _tree_storage(self):
+        """Build mock storage with a small L0/L1 tree."""
+        l1 = _make_base_ctx(
+            "l1-1",
+            ContextType.AGENT_BASE_L1_SUMMARY,
+            1,
+            refs={ContextType.AGENT_BASE_EVENT.value: ["l0-a", "l0-b"]},
+        )
+        l0_a = _make_base_ctx(
+            "l0-a",
+            ContextType.AGENT_BASE_EVENT,
+            0,
+            refs={ContextType.AGENT_BASE_L1_SUMMARY.value: ["l1-1"]},
+        )
+        l0_b = _make_base_ctx(
+            "l0-b",
+            ContextType.AGENT_BASE_EVENT,
+            0,
+            refs={ContextType.AGENT_BASE_L1_SUMMARY.value: ["l1-1"]},
+        )
+        existing_dict = {
+            ContextType.AGENT_BASE_L1_SUMMARY.value: [l1],
+            ContextType.AGENT_BASE_EVENT.value: [l0_a, l0_b],
+        }
+        storage = MagicMock()
+        storage.get_all_processed_contexts = AsyncMock(return_value=existing_dict)
+        storage.batch_upsert_processed_context = AsyncMock(
+            return_value=["l1-1", "l0-b"],
+        )
+        storage.delete_batch_processed_contexts = AsyncMock(return_value=True)
+        return storage
+
+    def test_404_when_event_not_found(self):
+        storage = self._tree_storage()
+
+        with _patched_client(storage) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events/does-not-exist")
+            assert resp.status_code == 404
+
+    def test_delete_leaf_prunes_single_id_and_scrubs_parent(self):
+        storage = self._tree_storage()
+
+        with _patched_client(storage) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events/l0-a")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["data"]["deleted_ids"] == ["l0-a"]
+            assert body["data"]["updated_parent_id"] == "l1-1"
+
+            # Verify parent ctx passed to upsert has l0-a removed from refs
+            upserted = storage.batch_upsert_processed_context.call_args[0][0]
+            parent_ctx = next(c for c in upserted if c.id == "l1-1")
+            assert parent_ctx.properties.refs[ContextType.AGENT_BASE_EVENT.value] == ["l0-b"]
+
+            # Verify delete_batch called with l0-a
+            deleted_ids_by_call = {
+                call[0][1]: set(call[0][0])
+                for call in storage.delete_batch_processed_contexts.call_args_list
+            }
+            all_deleted = set()
+            for ids in deleted_ids_by_call.values():
+                all_deleted.update(ids)
+            assert all_deleted == {"l0-a"}
+
+    def test_delete_l1_prunes_entire_subtree(self):
+        storage = self._tree_storage()
+
+        with _patched_client(storage) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events/l1-1")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert set(body["data"]["deleted_ids"]) == {"l1-1", "l0-a", "l0-b"}
+            assert body["data"]["updated_parent_id"] is None  # L1 had no parent
+
+            # Upsert called with empty list (tree fully pruned)
+            upserted = storage.batch_upsert_processed_context.call_args[0][0]
+            assert upserted == []
+
+            all_deleted = set()
+            for call in storage.delete_batch_processed_contexts.call_args_list:
+                all_deleted.update(call[0][0])
+            assert all_deleted == {"l1-1", "l0-a", "l0-b"}
+
+    def test_delete_leaf_preserves_empty_parent_summary(self):
+        """Regression guard: deleting the only child of an L1 leaves L1 intact."""
+        # Build tree with single L0 child under L1
+        l1 = _make_base_ctx(
+            "l1-only",
+            ContextType.AGENT_BASE_L1_SUMMARY,
+            1,
+            refs={ContextType.AGENT_BASE_EVENT.value: ["l0-only"]},
+        )
+        l0 = _make_base_ctx(
+            "l0-only",
+            ContextType.AGENT_BASE_EVENT,
+            0,
+            refs={ContextType.AGENT_BASE_L1_SUMMARY.value: ["l1-only"]},
+        )
+        existing = {
+            ContextType.AGENT_BASE_L1_SUMMARY.value: [l1],
+            ContextType.AGENT_BASE_EVENT.value: [l0],
+        }
+        storage = MagicMock()
+        storage.get_all_processed_contexts = AsyncMock(return_value=existing)
+        storage.batch_upsert_processed_context = AsyncMock(return_value=["l1-only"])
+        storage.delete_batch_processed_contexts = AsyncMock(return_value=True)
+
+        with _patched_client(storage) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events/l0-only")
+            assert resp.status_code == 200
+
+            # L1 still in the upsert list (preserved) with empty downward ref list
+            upserted = storage.batch_upsert_processed_context.call_args[0][0]
+            assert any(c.id == "l1-only" for c in upserted)
+            l1_after = next(c for c in upserted if c.id == "l1-only")
+            assert l1_after.properties.refs[ContextType.AGENT_BASE_EVENT.value] == []
+
+    def test_delete_acquires_and_releases_lock(self):
+        storage = self._tree_storage()
+
+        with _patched_client(storage) as (client, mock_cache):
+            client.delete("/api/agents/a1/base/events/l0-a")
+            mock_cache.acquire_lock.assert_awaited_once()
+            lock_args = mock_cache.acquire_lock.call_args
+            assert lock_args[0][0] == "agent_base_edit:a1"
+            mock_cache.release_lock.assert_awaited_once()
+
+    def test_delete_returns_503_when_lock_unavailable(self):
+        storage = self._tree_storage()
+        mock_cache = MagicMock()
+        mock_cache.acquire_lock = AsyncMock(return_value=None)
+        mock_cache.release_lock = AsyncMock(return_value=True)
+
+        with _patched_client(storage, mock_cache) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events/l0-a")
+            assert resp.status_code == 503

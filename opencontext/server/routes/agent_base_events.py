@@ -400,10 +400,12 @@ async def _replace_base_events_impl(
     to_delete = list(existing_ids - new_ids)
 
     # Upsert FIRST — if this fails, old tree is intact.
-    if new_contexts:
-        upsert_result = await storage.batch_upsert_processed_context(new_contexts)
-        if upsert_result is None:
-            raise RuntimeError(f"Failed to upsert base events for agent={agent_id}")
+    # Always call upsert (even with an empty list) so the intent "this is the
+    # full intended set" is uniformly expressed to the storage layer. The
+    # DELETE path relies on this to assert its inputs.
+    upsert_result = await storage.batch_upsert_processed_context(new_contexts)
+    if upsert_result is None:
+        raise RuntimeError(f"Failed to upsert base events for agent={agent_id}")
 
     # Delete SECOND — grouped per context_type because some backends (e.g. Qdrant)
     # route by type. If delete raises OR returns a falsy value, we count those
@@ -560,10 +562,58 @@ async def list_base_events(
 
 @router.delete("/{agent_id}/base/events/{event_id}")
 async def delete_base_event(agent_id: str, event_id: str, _auth: str = auth_dependency):
-    """Delete a single base event or summary by ID."""
+    """Delete a base event and its entire subtree via replace semantics.
+
+    Fetches the current tree, computes the subtree rooted at event_id,
+    scrubs the parent's downward refs (if any parent exists), and invokes
+    the same replace core as POST. The empty-parent summary is preserved
+    (not cascade-deleted) — users decide whether to keep or remove
+    summaries in their next POST.
+    """
     storage = get_storage()
-    for ct_value in _ALL_AGENT_BASE_TYPES:
-        success = await storage.delete_processed_context(event_id, ct_value)  # type: ignore[union-attr]
-        if success:
-            return convert_resp(message="Event deleted")
-    raise HTTPException(status_code=404, detail="Event not found")
+    cache = await get_cache()
+    lock_key = f"agent_base_edit:{agent_id}"
+    lock_token = await cache.acquire_lock(
+        lock_key,
+        timeout=_LOCK_TIMEOUT_SECONDS,
+        blocking=True,
+        blocking_timeout=_LOCK_BLOCKING_TIMEOUT_SECONDS,
+    )
+    if not lock_token:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Another edit is in progress for agent {agent_id}",
+        )
+
+    try:
+        existing = await _fetch_existing_base_events(storage, agent_id)
+        ctx_by_id = {c.id: c for c in existing}
+
+        if event_id not in ctx_by_id:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        subtree_ids = _collect_subtree_ids(ctx_by_id, event_id)
+        parent_id = _find_parent_id(ctx_by_id, event_id)
+
+        kept = [c for c in existing if c.id not in subtree_ids]
+
+        # Scrub parent's downward ref to the deleted root (in the kept list).
+        if parent_id and parent_id in ctx_by_id:
+            target_ctx = ctx_by_id[event_id]
+            target_type = target_ctx.extracted_data.context_type
+            parent_ctx = next((c for c in kept if c.id == parent_id), None)
+            if parent_ctx is not None:
+                _scrub_parent_refs(parent_ctx, event_id, target_type)
+
+        result = await _replace_base_events_impl(storage, agent_id, kept)
+    finally:
+        await cache.release_lock(lock_key, lock_token)
+
+    return convert_resp(
+        data={
+            "deleted_ids": list(subtree_ids),
+            "updated_parent_id": parent_id,
+            "stragglers": result["stragglers"],
+        },
+        message="Event deleted",
+    )
