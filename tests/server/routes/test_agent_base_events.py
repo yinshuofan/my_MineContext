@@ -230,3 +230,132 @@ class TestScrubParentRefs:
         _scrub_parent_refs(parent, "c1", ContextType.AGENT_BASE_EVENT)
 
         assert parent.properties.refs == {}
+
+
+@pytest.mark.unit
+class TestReplaceBaseEventsImpl:
+    """Tests for _replace_base_events_impl (shared replace logic)."""
+
+    @pytest.fixture
+    def mock_storage(self):
+        from unittest.mock import AsyncMock, MagicMock
+
+        storage = MagicMock()
+        storage.get_all_processed_contexts = AsyncMock(return_value={})
+        storage.batch_upsert_processed_context = AsyncMock(return_value=["id-1"])
+        storage.delete_batch_processed_contexts = AsyncMock(return_value=True)
+        return storage
+
+    @pytest.fixture
+    def loguru_capture(self):
+        """Capture WARNING-and-above loguru messages into a list.
+
+        Inline copy of the scheduler-tests fixture since there is no shared
+        conftest at tests/server/routes/.
+        """
+        from loguru import logger
+
+        messages: list[str] = []
+        sink_id = logger.add(
+            lambda msg: messages.append(str(msg)),
+            level="WARNING",
+            format="{message}",
+        )
+        try:
+            yield messages
+        finally:
+            logger.remove(sink_id)
+
+    async def test_fresh_agent_upserts_all_no_delete(self, mock_storage):
+        from opencontext.server.routes.agent_base_events import _replace_base_events_impl
+
+        new_contexts = [_make_base_ctx("new-1", ContextType.AGENT_BASE_EVENT, 0)]
+        mock_storage.batch_upsert_processed_context.return_value = ["new-1"]
+
+        result = await _replace_base_events_impl(mock_storage, "agent-x", new_contexts)
+
+        assert result["upserted"] == 1
+        assert result["deleted"] == 0
+        assert result["stragglers"] == 0
+        mock_storage.batch_upsert_processed_context.assert_awaited_once_with(new_contexts)
+        mock_storage.delete_batch_processed_contexts.assert_not_awaited()
+
+    async def test_diff_deletes_removed_ids(self, mock_storage):
+        from opencontext.server.routes.agent_base_events import _replace_base_events_impl
+
+        # Existing: a, b, c. New: a, d. Should delete: b, c.
+        existing = {
+            ContextType.AGENT_BASE_EVENT.value: [
+                _make_base_ctx("a", ContextType.AGENT_BASE_EVENT, 0),
+                _make_base_ctx("b", ContextType.AGENT_BASE_EVENT, 0),
+                _make_base_ctx("c", ContextType.AGENT_BASE_EVENT, 0),
+            ],
+        }
+        mock_storage.get_all_processed_contexts.return_value = existing
+        mock_storage.batch_upsert_processed_context.return_value = ["a", "d"]
+
+        new_contexts = [
+            _make_base_ctx("a", ContextType.AGENT_BASE_EVENT, 0),
+            _make_base_ctx("d", ContextType.AGENT_BASE_EVENT, 0),
+        ]
+
+        result = await _replace_base_events_impl(mock_storage, "agent-x", new_contexts)
+
+        assert result["upserted"] == 2
+        assert result["deleted"] == 2
+        deleted_ids_arg = mock_storage.delete_batch_processed_contexts.call_args[0][0]
+        assert set(deleted_ids_arg) == {"b", "c"}
+
+    async def test_empty_new_deletes_all_existing(self, mock_storage):
+        from opencontext.server.routes.agent_base_events import _replace_base_events_impl
+
+        existing = {
+            ContextType.AGENT_BASE_EVENT.value: [
+                _make_base_ctx("a", ContextType.AGENT_BASE_EVENT, 0),
+            ],
+        }
+        mock_storage.get_all_processed_contexts.return_value = existing
+        mock_storage.batch_upsert_processed_context.return_value = []
+
+        result = await _replace_base_events_impl(mock_storage, "agent-x", [])
+
+        assert result["upserted"] == 0
+        assert result["deleted"] == 1
+        deleted_ids_arg = mock_storage.delete_batch_processed_contexts.call_args[0][0]
+        assert deleted_ids_arg == ["a"]
+
+    async def test_upsert_failure_propagates(self, mock_storage):
+        from opencontext.server.routes.agent_base_events import _replace_base_events_impl
+
+        mock_storage.batch_upsert_processed_context.return_value = None  # indicates failure
+
+        with pytest.raises(RuntimeError, match="Failed to upsert"):
+            await _replace_base_events_impl(
+                mock_storage,
+                "agent-x",
+                [_make_base_ctx("x", ContextType.AGENT_BASE_EVENT, 0)],
+            )
+        mock_storage.delete_batch_processed_contexts.assert_not_awaited()
+
+    async def test_delete_failure_logged_returns_stragglers(self, mock_storage, loguru_capture):
+        from opencontext.server.routes.agent_base_events import _replace_base_events_impl
+
+        existing = {
+            ContextType.AGENT_BASE_EVENT.value: [
+                _make_base_ctx("old", ContextType.AGENT_BASE_EVENT, 0),
+            ],
+        }
+        mock_storage.get_all_processed_contexts.return_value = existing
+        mock_storage.batch_upsert_processed_context.return_value = ["new"]
+        mock_storage.delete_batch_processed_contexts.side_effect = Exception("viking down")
+
+        result = await _replace_base_events_impl(
+            mock_storage,
+            "agent-x",
+            [_make_base_ctx("new", ContextType.AGENT_BASE_EVENT, 0)],
+        )
+
+        assert result["upserted"] == 1
+        assert result["deleted"] == 0
+        assert result["stragglers"] == 1
+        assert any("delete_batch_processed_contexts failed" in m for m in loguru_capture)

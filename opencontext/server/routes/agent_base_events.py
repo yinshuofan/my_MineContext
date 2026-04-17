@@ -360,6 +360,70 @@ def _scrub_parent_refs(
     parent_ctx.properties.refs[key] = [rid for rid in ids if rid != child_id]
 
 
+async def _fetch_existing_base_events(
+    storage,
+    agent_id: str,
+) -> list[ProcessedContext]:
+    """Return all AGENT_BASE_* contexts for the given agent_id under user_id='__base__'."""
+    result = await storage.get_all_processed_contexts(
+        context_types=_ALL_AGENT_BASE_TYPES,
+        user_id="__base__",
+        agent_id=agent_id,
+        limit=_MAX_TOTAL_EVENTS,
+    )
+    all_contexts: list[ProcessedContext] = []
+    for ct_value in _ALL_AGENT_BASE_TYPES:
+        all_contexts.extend(result.get(ct_value, []))
+    return all_contexts
+
+
+async def _replace_base_events_impl(
+    storage,
+    agent_id: str,
+    new_contexts: list[ProcessedContext],
+) -> dict[str, int]:
+    """Replace all AGENT_BASE_* contexts for an agent with new_contexts.
+
+    Order: upsert first (fail-safe: old tree intact on upsert failure),
+    then delete the ids that no longer exist in new_contexts.
+
+    A delete failure is logged but does not fail the request — stragglers
+    will be cleaned up on the next replace.
+
+    Returns {"upserted": N, "deleted": M, "stragglers": K}.
+    Raises RuntimeError on upsert failure.
+    """
+    existing = await _fetch_existing_base_events(storage, agent_id)
+    existing_ids = {c.id for c in existing}
+    new_ids = {c.id for c in new_contexts}
+    to_delete = list(existing_ids - new_ids)
+
+    # Upsert FIRST — if this fails, old tree is intact.
+    if new_contexts:
+        upsert_result = await storage.batch_upsert_processed_context(new_contexts)
+        if upsert_result is None:
+            raise RuntimeError(f"Failed to upsert base events for agent={agent_id}")
+
+    # Delete SECOND — if this fails, new tree is written but stragglers remain.
+    deleted = 0
+    stragglers = 0
+    if to_delete:
+        try:
+            await storage.delete_batch_processed_contexts(to_delete, _ALL_AGENT_BASE_TYPES[0])
+            deleted = len(to_delete)
+        except Exception as e:
+            logger.warning(
+                f"delete_batch_processed_contexts failed after upsert for agent={agent_id}: {e}"
+            )
+            stragglers = len(to_delete)
+
+    return {
+        "upserted": len(new_contexts),
+        "deleted": deleted,
+        "stragglers": stragglers,
+    }
+
+
 # ============================================================================
 # Endpoints (migrated as-is; rewritten in later tasks)
 # ============================================================================
