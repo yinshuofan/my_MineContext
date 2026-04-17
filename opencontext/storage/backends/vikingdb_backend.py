@@ -1150,7 +1150,10 @@ class VikingDBBackend(IVectorStorageBackend):
             agent_id=agent_id,
             data_type=DATA_TYPE_CONTEXT,
         )
-        all_results = await self._vector_search(query_vector, filter_dict, top_k, need_vector)
+        # VikingDB has no native ANN score threshold; over-fetch 2x when threshold set so
+        # post-filter still has a chance of returning top_k results (approximates Qdrant).
+        fetch_limit = top_k * 2 if score_threshold is not None else top_k
+        all_results = await self._vector_search(query_vector, filter_dict, fetch_limit, need_vector)
 
         if score_threshold is not None:
             all_results = [(ctx, s) for ctx, s in all_results if s >= score_threshold]

@@ -57,6 +57,12 @@
                     </div>
 
                     <div class="mb-3">
+                        <label for="scoreThreshold" class="form-label">分数阈值</label>
+                        <input type="number" class="form-control" id="scoreThreshold" step="0.05" min="0" max="1" placeholder="不设阈值">
+                        <div class="form-text">仅对语义搜索生效，低于此分数的结果会被过滤</div>
+                    </div>
+
+                    <div class="mb-3">
                         <label class="form-label">层级过滤</label>
                         <div id="hierarchyLevels">
                             <div class="form-check">
@@ -390,6 +396,8 @@ async function handleSearch(event) {
 
     const query = document.getElementById('query').value.trim();
     const topK = parseInt(document.getElementById('topK').value) || 10;
+    const scoreThresholdRaw = document.getElementById('scoreThreshold').value.trim();
+    const scoreThreshold = scoreThresholdRaw !== '' ? parseFloat(scoreThresholdRaw) : null;
     const drill = document.getElementById('drill').value;
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
@@ -437,6 +445,9 @@ async function handleSearch(event) {
             requestBody.query = queryParts;
         }
         if (hasLevels) requestBody.hierarchy_levels = selectedLevels;
+        if (scoreThreshold !== null && !Number.isNaN(scoreThreshold)) {
+            requestBody.score_threshold = scoreThreshold;
+        }
         if (userId) requestBody.user_id = userId;
         if (deviceId) requestBody.device_id = deviceId;
         if (agentId) requestBody.agent_id = agentId;
