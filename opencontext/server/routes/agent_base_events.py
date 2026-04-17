@@ -82,15 +82,15 @@ class BaseEventsRequest(BaseModel):
 def _parse_event_time(
     value: str | None, node_path: str, field_name: str
 ) -> datetime.datetime | None:
-    """Parse an ISO 8601 string into tz-aware datetime. Returns None if value is None."""
+    """Parse an ISO 8601 string to datetime. Returns None if value is None."""
     if value is None:
         return None
     try:
-        parsed = datetime.datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=get_timezone())
-        return parsed
-    except ValueError as e:
+        dt = datetime.datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=get_timezone())
+        return dt
+    except (ValueError, TypeError) as e:
         raise HTTPException(
             status_code=400,
             detail=f"{node_path}: invalid ISO 8601 format for {field_name}: '{value}'",
@@ -112,30 +112,89 @@ def _validate_base_event_tree(
         node_path = f"{path}[{i}]"
         level = event.hierarchy_level
 
+        # Validate hierarchy_level range
         if level not in _BASE_HIERARCHY_LEVEL_TO_TYPE:
             raise HTTPException(
                 status_code=400,
-                detail=f"{node_path}: hierarchy_level must be 0/1/2/3, got {level}",
+                detail=f"{node_path}: hierarchy_level must be 0-3, got {level}",
             )
 
-        if level > 0 and not event.event_time_end:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{node_path}: event_time_end is required when hierarchy_level > 0",
-            )
+        # Parse event times for this node
+        ets = _parse_event_time(event.event_time_start, node_path, "event_time_start")
 
-        if event.children:
+        if level > 0:
+            # Summary node validations
+            if not event.event_time_end:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{node_path}: event_time_end is required for hierarchy_level > 0",
+                )
+            if not event.children:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{node_path}: children is required for hierarchy_level > 0",
+                )
+
+            ete = _parse_event_time(event.event_time_end, node_path, "event_time_end")
+
+            if ets and ete and ets > ete:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{node_path}: event_time_start must be <= event_time_end",
+                )
+
+            # Validate children hierarchy_level
             for j, child in enumerate(event.children):
-                child_path = f"{node_path}.children[{j}]"
-                if child.hierarchy_level >= level:
+                if child.hierarchy_level != level - 1:
                     raise HTTPException(
                         status_code=400,
                         detail=(
-                            f"{child_path}: child hierarchy_level ({child.hierarchy_level}) "
-                            f"must be less than parent ({level})"
+                            f"{node_path}.children[{j}]: hierarchy_level must be "
+                            f"{level - 1} (parent is {level}), got {child.hierarchy_level}"
                         ),
                     )
-            total_count += _validate_base_event_tree(event.children, path=f"{node_path}.children")
+
+            # Time range coverage: parent must cover all direct children
+            child_starts = []
+            child_ends = []
+            for j, child in enumerate(event.children):
+                child_path = f"{node_path}.children[{j}]"
+                cs = _parse_event_time(child.event_time_start, child_path, "event_time_start")
+                if cs:
+                    child_starts.append(cs)
+                if child.event_time_end:
+                    ce = _parse_event_time(child.event_time_end, child_path, "event_time_end")
+                    if ce:
+                        child_ends.append(ce)
+                elif cs:
+                    child_ends.append(cs)  # L0: event_time_end defaults to event_time_start
+
+            if ets and child_starts and ets > min(child_starts):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{node_path}: event_time_start ({ets.isoformat()}) must be <= "
+                        f"min child event_time_start ({min(child_starts).isoformat()})"
+                    ),
+                )
+            if ete and child_ends and ete < max(child_ends):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{node_path}: event_time_end ({ete.isoformat()}) must be >= "
+                        f"max child event_time_end ({max(child_ends).isoformat()})"
+                    ),
+                )
+
+            # Recurse into children
+            total_count += _validate_base_event_tree(event.children, f"{node_path}.children")
+        else:
+            # L0 node validations
+            if event.children:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{node_path}: hierarchy_level 0 cannot have children",
+                )
 
         total_count += 1
 
