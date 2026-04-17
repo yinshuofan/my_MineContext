@@ -359,3 +359,62 @@ class TestReplaceBaseEventsImpl:
         assert result["deleted"] == 0
         assert result["stragglers"] == 1
         assert any("delete_batch_processed_contexts failed" in m for m in loguru_capture)
+
+    async def test_delete_groups_ids_by_context_type(self, mock_storage):
+        """Verify delete_batch is called per context_type, not as one batch."""
+        from opencontext.server.routes.agent_base_events import _replace_base_events_impl
+
+        # Existing tree: 1 L1 summary + 2 L0 events, all going away
+        existing = {
+            ContextType.AGENT_BASE_L1_SUMMARY.value: [
+                _make_base_ctx("l1", ContextType.AGENT_BASE_L1_SUMMARY, 1),
+            ],
+            ContextType.AGENT_BASE_EVENT.value: [
+                _make_base_ctx("l0-a", ContextType.AGENT_BASE_EVENT, 0),
+                _make_base_ctx("l0-b", ContextType.AGENT_BASE_EVENT, 0),
+            ],
+        }
+        mock_storage.get_all_processed_contexts.return_value = existing
+        mock_storage.batch_upsert_processed_context.return_value = []
+
+        result = await _replace_base_events_impl(mock_storage, "agent-x", [])
+
+        assert result["deleted"] == 3
+        assert result["stragglers"] == 0
+
+        # Should have been called twice: once for L1_SUMMARY, once for EVENT
+        call_args_list = mock_storage.delete_batch_processed_contexts.call_args_list
+        assert len(call_args_list) == 2
+
+        calls_by_type = {call[0][1]: set(call[0][0]) for call in call_args_list}
+        assert calls_by_type == {
+            ContextType.AGENT_BASE_L1_SUMMARY.value: {"l1"},
+            ContextType.AGENT_BASE_EVENT.value: {"l0-a", "l0-b"},
+        }
+
+    async def test_delete_backend_returns_false_counts_as_straggler(
+        self, mock_storage, loguru_capture
+    ):
+        """Verify that a False return from the backend is treated as failure."""
+        from opencontext.server.routes.agent_base_events import _replace_base_events_impl
+
+        existing = {
+            ContextType.AGENT_BASE_EVENT.value: [
+                _make_base_ctx("old", ContextType.AGENT_BASE_EVENT, 0),
+            ],
+        }
+        mock_storage.get_all_processed_contexts.return_value = existing
+        mock_storage.batch_upsert_processed_context.return_value = ["new"]
+        mock_storage.delete_batch_processed_contexts.return_value = False
+
+        result = await _replace_base_events_impl(
+            mock_storage,
+            "agent-x",
+            [_make_base_ctx("new", ContextType.AGENT_BASE_EVENT, 0)],
+        )
+
+        assert result["deleted"] == 0
+        assert result["stragglers"] == 1
+        assert any(
+            "delete_batch_processed_contexts returned False" in msg for msg in loguru_capture
+        )

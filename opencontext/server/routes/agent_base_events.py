@@ -404,18 +404,49 @@ async def _replace_base_events_impl(
         if upsert_result is None:
             raise RuntimeError(f"Failed to upsert base events for agent={agent_id}")
 
-    # Delete SECOND — if this fails, new tree is written but stragglers remain.
+    # Delete SECOND — grouped per context_type because some backends (e.g. Qdrant)
+    # route by type. If delete raises OR returns a falsy value, we count those
+    # ids as stragglers. Upserts already succeeded by this point; stragglers
+    # will be cleaned up on the next replace.
     deleted = 0
     stragglers = 0
     if to_delete:
-        try:
-            await storage.delete_batch_processed_contexts(to_delete, _ALL_AGENT_BASE_TYPES[0])
-            deleted = len(to_delete)
-        except Exception as e:
-            logger.warning(
-                f"delete_batch_processed_contexts failed after upsert for agent={agent_id}: {e}"
-            )
-            stragglers = len(to_delete)
+        ct_by_id: dict[str, str] = {
+            c.id: c.extracted_data.context_type.value
+            for c in existing
+            if c.extracted_data and c.extracted_data.context_type
+        }
+        ids_by_type: dict[str, list[str]] = {}
+        for del_id in to_delete:
+            ct_value = ct_by_id.get(del_id)
+            if ct_value is None:
+                # Shouldn't happen — existing contexts always have a type — but
+                # if it does, we can't route the delete, so count as straggler.
+                stragglers += 1
+                logger.warning(
+                    f"delete straggler (no context_type in existing map) "
+                    f"id={del_id} agent={agent_id}"
+                )
+                continue
+            ids_by_type.setdefault(ct_value, []).append(del_id)
+
+        for ct_value, ids in ids_by_type.items():
+            try:
+                ok = await storage.delete_batch_processed_contexts(ids, ct_value)
+                if ok is False:
+                    stragglers += len(ids)
+                    logger.warning(
+                        f"delete_batch_processed_contexts returned False for "
+                        f"type={ct_value} agent={agent_id} ({len(ids)} stragglers)"
+                    )
+                else:
+                    deleted += len(ids)
+            except Exception as e:
+                stragglers += len(ids)
+                logger.warning(
+                    f"delete_batch_processed_contexts failed for type={ct_value} "
+                    f"agent={agent_id}: {e}"
+                )
 
     return {
         "upserted": len(new_contexts),
