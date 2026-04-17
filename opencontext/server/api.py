@@ -13,6 +13,7 @@ from opencontext.utils.logging_utils import get_logger
 
 # Import route modules
 from .routes import (
+    agent_base_events,
     agent_chat,
     agents,
     chat_batches,
@@ -47,6 +48,7 @@ router.include_router(monitoring.router)
 router.include_router(vaults.router)
 router.include_router(agent_chat.router)
 router.include_router(agents.router)
+router.include_router(agent_base_events.router)
 router.include_router(chat_batches.router)
 router.include_router(settings.router)
 router.include_router(conversation.router)
