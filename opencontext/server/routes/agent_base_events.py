@@ -400,12 +400,12 @@ async def _replace_base_events_impl(
     to_delete = list(existing_ids - new_ids)
 
     # Upsert FIRST — if this fails, old tree is intact.
-    # Always call upsert (even with an empty list) so the intent "this is the
-    # full intended set" is uniformly expressed to the storage layer. The
-    # DELETE path relies on this to assert its inputs.
-    upsert_result = await storage.batch_upsert_processed_context(new_contexts)
-    if upsert_result is None:
-        raise RuntimeError(f"Failed to upsert base events for agent={agent_id}")
+    # Skip when empty: some backends reject empty upsert payloads, and there's
+    # nothing to write anyway (used by DELETE when the entire tree is pruned).
+    if new_contexts:
+        upsert_result = await storage.batch_upsert_processed_context(new_contexts)
+        if upsert_result is None:
+            raise RuntimeError(f"Failed to upsert base events for agent={agent_id}")
 
     # Delete SECOND — grouped per context_type because some backends (e.g. Qdrant)
     # route by type. If delete raises OR returns a falsy value, we count those

@@ -611,9 +611,9 @@ class TestDeleteBaseEvent:
             assert set(body["data"]["deleted_ids"]) == {"l1-1", "l0-a", "l0-b"}
             assert body["data"]["updated_parent_id"] is None  # L1 had no parent
 
-            # Upsert called with empty list (tree fully pruned)
-            upserted = storage.batch_upsert_processed_context.call_args[0][0]
-            assert upserted == []
+            # When the entire tree is pruned, upsert is skipped (no surviving contexts).
+            # The guard in _replace_base_events_impl avoids calling the backend with [].
+            assert storage.batch_upsert_processed_context.call_args is None
 
             all_deleted = set()
             for call in storage.delete_batch_processed_contexts.call_args_list:
