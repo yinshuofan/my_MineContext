@@ -486,79 +486,74 @@ function toggleEvtChildren(id, el) {
 }
 
 /* ============================================================
-   Event Delete (cascade, leaf-first)
+   Event Delete (single DELETE, server prunes the subtree)
    ============================================================ */
 
-function _collectDescendantIds(node) {
-    // Post-order: children's descendants first, then child itself (leaf-first)
-    var ids = [];
-    if (node._children) {
-        for (var i = 0; i < node._children.length; i++) {
-            var child = node._children[i];
-            ids = ids.concat(_collectDescendantIds(child));
-            ids.push(child.id);
+function _estimateSubtreeSize(eventId) {
+    var node = _eventTreeMap ? _eventTreeMap[eventId] : null;
+    if (!node) return 1;
+    var count = 1;
+    var stack = (node._children || []).slice();
+    while (stack.length) {
+        var cur = stack.pop();
+        count += 1;
+        if (cur._children) {
+            for (var i = 0; i < cur._children.length; i++) stack.push(cur._children[i]);
         }
     }
-    return ids;
+    return count;
 }
 
 async function deleteEvent(eventId) {
-    var node = _eventTreeMap[eventId];
-    var descendantIds = node ? _collectDescendantIds(node) : [];
-    // Leaf-first order: descendants (already post-order), then the root node last
-    var allIds = descendantIds.concat([eventId]);
-
-    var msg = allIds.length > 1
-        ? '确定删除此事件及其 ' + descendantIds.length + ' 个子级事件？（共 ' + allIds.length + ' 条）'
+    var subtreeSize = _estimateSubtreeSize(eventId);
+    var confirmMsg = subtreeSize > 1
+        ? '确定删除此事件及其 ' + (subtreeSize - 1) + ' 个子级事件？'
         : '确定删除此事件？';
-    if (!confirm(msg)) return;
+    if (!confirm(confirmMsg)) return;
 
-    var failed = 0;
-    var deletedIds = new Set();
-    for (var i = 0; i < allIds.length; i++) {
-        var id = allIds[i];
-        try {
-            var resp = await fetch(
-                '/api/agents/' + encodeURIComponent(selectedAgentId) +
-                '/base/events/' + encodeURIComponent(id),
-                { method: 'DELETE' }
-            );
-            if (!resp.ok) {
-                console.error('Delete failed for event:', id);
-                failed++;
+    try {
+        var resp = await fetch(
+            '/api/agents/' + encodeURIComponent(selectedAgentId) +
+            '/base/events/' + encodeURIComponent(eventId),
+            { method: 'DELETE' }
+        );
+        if (!resp.ok) {
+            var errBody = {};
+            try { errBody = await resp.json(); } catch (_) { /* ignore */ }
+            alert('删除失败：' + (errBody.detail || resp.statusText));
+            return;
+        }
+        var body = await resp.json();
+        var deletedIds = (body.data && body.data.deleted_ids) || [];
+        var deleted = new Set(deletedIds);
+
+        // Update local state based on server response.
+        // VikingDB indexing can lag — rely on the authoritative server set.
+        _currentEvents = _currentEvents.filter(function (e) { return !deleted.has(e.id); });
+
+        // Re-render the events card body in place.
+        var container = document.getElementById('eventsContent');
+        if (container) {
+            if (_currentEvents.length === 0) {
+                container.innerHTML = '<p class="text-muted">暂无 Base Events</p>';
             } else {
-                deletedIds.add(id);
+                var tree = buildEventTree(_currentEvents);
+                container.innerHTML = tree.map(function (node) { return renderEventNode(node); }).join('');
             }
-        } catch (e) {
-            console.error('Delete failed for event:', id, e);
-            failed++;
-        }
-    }
-    if (failed > 0) {
-        alert((allIds.length - failed) + ' 条删除成功，' + failed + ' 条删除失败');
-    }
-
-    // Optimistic UI: remove deleted events from local list and re-render
-    var remaining = _currentEvents.filter(function (e) { return !deletedIds.has(e.id); });
-    var container = document.getElementById('eventsContent');
-    if (container) {
-        _currentEvents = remaining;
-        if (remaining.length === 0) {
-            container.innerHTML = '<p class="text-muted">暂无 Base Events</p>';
-        } else {
-            var tree = buildEventTree(remaining);
-            container.innerHTML = tree.map(function (node) { return renderEventNode(node); }).join('');
-        }
-        // Update count badge
-        var badge = document.querySelector('#eventsCardBody');
-        if (badge) {
-            var card = badge.closest('.card');
-            if (card) {
-                var b = card.querySelector('.badge.bg-secondary');
-                if (b) b.textContent = remaining.length;
+            // Update count badge
+            var eventsBody = document.getElementById('eventsCardBody');
+            if (eventsBody) {
+                var card = eventsBody.closest('.card');
+                if (card) {
+                    var b = card.querySelector('.badge.bg-secondary');
+                    if (b) b.textContent = _currentEvents.length;
+                }
             }
+            refreshIcons();
         }
-        refreshIcons();
+    } catch (err) {
+        console.error('deleteEvent failed', err);
+        alert('删除失败：' + err.message);
     }
 }
 
