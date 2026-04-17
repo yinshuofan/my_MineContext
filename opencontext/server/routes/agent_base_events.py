@@ -280,6 +280,87 @@ def _flatten_base_event_tree(
 
 
 # ============================================================================
+# Tree-reconstruction helpers (used by DELETE)
+# ============================================================================
+
+
+def _collect_subtree_ids(
+    ctx_by_id: dict[str, ProcessedContext],
+    root_id: str,
+) -> set[str]:
+    """BFS over downward refs (refs pointing to lower hierarchy_level).
+
+    Returns {root_id} plus all descendant ids reachable via downward refs.
+    Safe against cycles via visited set.
+    """
+    if root_id not in ctx_by_id:
+        return set()
+
+    visited: set[str] = {root_id}
+    queue: list[str] = [root_id]
+
+    while queue:
+        current_id = queue.pop(0)
+        current = ctx_by_id.get(current_id)
+        if current is None or not current.properties.refs:
+            continue
+        current_level = current.properties.hierarchy_level
+        for _ref_type, ref_ids in current.properties.refs.items():
+            for rid in ref_ids:
+                if rid in visited:
+                    continue
+                child = ctx_by_id.get(rid)
+                if child is None:
+                    continue
+                # Downward-only: child's level must be strictly less than current's
+                if child.properties.hierarchy_level >= current_level:
+                    continue
+                visited.add(rid)
+                queue.append(rid)
+
+    return visited
+
+
+def _find_parent_id(
+    ctx_by_id: dict[str, ProcessedContext],
+    event_id: str,
+) -> str | None:
+    """Return the parent id for event_id, or None if event is a root / unknown.
+
+    A ref points upward when the referenced context exists in ctx_by_id and has
+    a strictly higher hierarchy_level than event_id.
+    """
+    event = ctx_by_id.get(event_id)
+    if event is None or not event.properties.refs:
+        return None
+    event_level = event.properties.hierarchy_level
+    for _ref_type, ref_ids in event.properties.refs.items():
+        for rid in ref_ids:
+            parent = ctx_by_id.get(rid)
+            if parent is None:
+                continue
+            if parent.properties.hierarchy_level > event_level:
+                return rid
+    return None
+
+
+def _scrub_parent_refs(
+    parent_ctx: ProcessedContext,
+    child_id: str,
+    child_context_type: ContextType,
+) -> None:
+    """Remove child_id from parent_ctx.properties.refs[child_context_type.value] in place.
+
+    No-op if the ref key is missing or the id isn't present.
+    """
+    key = child_context_type.value
+    ids = parent_ctx.properties.refs.get(key)
+    if not ids:
+        return
+    parent_ctx.properties.refs[key] = [rid for rid in ids if rid != child_id]
+
+
+# ============================================================================
 # Endpoints (migrated as-is; rewritten in later tasks)
 # ============================================================================
 
