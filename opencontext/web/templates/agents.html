@@ -434,56 +434,59 @@ async function addBaseEvent() {
     }
 }
 
-function _collectDescendantIds(node) {
-    // Post-order: children's descendants first, then child itself (leaf-first)
-    const ids = [];
-    if (node._children) {
-        for (const child of node._children) {
-            ids.push(..._collectDescendantIds(child));
-            ids.push(child.id);
-        }
+function _estimateSubtreeSize(eventId) {
+    const node = _eventTreeMap ? _eventTreeMap[eventId] : null;
+    if (!node) return 1;
+    let count = 1;
+    const stack = [...(node._children || [])];
+    while (stack.length) {
+        const cur = stack.pop();
+        count += 1;
+        if (cur._children) stack.push(...cur._children);
     }
-    return ids;
+    return count;
 }
 
 async function deleteEvent(eventId) {
-    const node = _eventTreeMap[eventId];
-    const descendantIds = node ? _collectDescendantIds(node) : [];
-    // Leaf-first order: descendants (already post-order), then the root node last
-    const allIds = [...descendantIds, eventId];
-
-    const msg = allIds.length > 1
-        ? `确定删除此事件及其 ${descendantIds.length} 个子级事件？（共 ${allIds.length} 条）`
+    const subtreeSize = _estimateSubtreeSize(eventId);
+    const confirmMsg = subtreeSize > 1
+        ? `确定删除此事件及其 ${subtreeSize - 1} 个子级事件？`
         : '确定删除此事件？';
-    if (!confirm(msg)) return;
+    if (!confirm(confirmMsg)) return;
 
-    let failed = 0;
-    const deletedIds = new Set();
-    for (const id of allIds) {
-        try {
-            const resp = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/base/events/${encodeURIComponent(id)}`, {method: 'DELETE'});
-            if (!resp.ok) { console.error('Delete failed for event:', id); failed++; }
-            else { deletedIds.add(id); }
-        } catch (e) { console.error('Delete failed for event:', id, e); failed++; }
-    }
-    if (failed > 0) alert(`${allIds.length - failed} 条删除成功，${failed} 条删除失败`);
-
-    // Optimistic UI: remove deleted events from local list and re-render card
-    // Avoids VikingDB indexing delay causing deleted events to reappear
-    const remaining = _currentEvents.filter(e => !deletedIds.has(e.id));
-    const container = document.getElementById('eventsContent');
-    if (container) {
-        _currentEvents = remaining;
-        if (remaining.length === 0) {
-            container.innerHTML = '<p class="text-muted">暂无 Base Events</p>';
-        } else {
-            const tree = buildEventTree(remaining);
-            container.innerHTML = tree.map(node => renderEventNode(node)).join('');
+    try {
+        const resp = await fetch(
+            `/api/agents/${encodeURIComponent(selectedAgentId)}/base/events/${encodeURIComponent(eventId)}`,
+            { method: 'DELETE' },
+        );
+        if (!resp.ok) {
+            const body = await resp.json().catch(() => ({}));
+            alert(`删除失败：${body.detail || resp.statusText}`);
+            return;
         }
-        // Update count badge
-        const badge = document.querySelector('#eventsCardBody')?.closest('.card')?.querySelector('.badge.bg-secondary');
-        if (badge) badge.textContent = remaining.length;
-        feather.replace();
+        const body = await resp.json();
+        const deleted = new Set(body.data?.deleted_ids || []);
+
+        // Update local state based on server response.
+        // VikingDB indexing can lag — rely on the authoritative server set.
+        _currentEvents = _currentEvents.filter(e => !deleted.has(e.id));
+
+        // Re-render the events card body in place.
+        const container = document.getElementById('eventsContent');
+        if (container) {
+            if (_currentEvents.length === 0) {
+                container.innerHTML = '<p class="text-muted">暂无 Base Events</p>';
+            } else {
+                const tree = buildEventTree(_currentEvents);
+                container.innerHTML = tree.map(node => renderEventNode(node)).join('');
+            }
+            const badge = document.querySelector('#eventsCardBody')?.closest('.card')?.querySelector('.badge.bg-secondary');
+            if (badge) badge.textContent = _currentEvents.length;
+            feather.replace();
+        }
+    } catch (err) {
+        console.error('deleteEvent failed', err);
+        alert(`删除失败：${err.message}`);
     }
 }
 
