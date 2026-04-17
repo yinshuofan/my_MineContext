@@ -800,7 +800,7 @@ async function submitBatchImport() {
         }
         var data = await resp.json();
         bootstrap.Modal.getInstance(document.getElementById('batchImportModal')).hide();
-        alert('导入成功: ' + (data.data && data.data.count != null ? data.data.count : '?') + ' 条事件');
+        alert('导入成功: ' + (data.data && data.data.upserted != null ? data.data.upserted : '?') + ' 条事件');
         loadAgentDetail(selectedAgentId);
     } catch (e) {
         errorEl.textContent = '导入失败: ' + e.message;
