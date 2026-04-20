@@ -3,6 +3,13 @@
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">Agent 管理</h1>
+    <a class="btn btn-sm btn-outline-primary"
+       href="/api/agents/skills/narrative-to-base-events/download"
+       download="narrative-to-base-events.zip"
+       title="下载用于制作 Agent Memory 的 Skill：把叙事文本转成可直接导入的 Base Events JSON">
+        <i data-feather="download" style="width:14px;height:14px;" class="me-1"></i>
+        下载 Agent 记忆创建 Skill
+    </a>
 </div>
 
 <div class="row">
@@ -388,6 +395,7 @@ function renderEventsCard(events) {
         <div class="card-header d-flex justify-content-between align-items-center">
             <h6 class="mb-0" role="button" tabindex="0" data-bs-toggle="collapse" data-bs-target="#eventsCardBody"><i data-feather="zap" style="width:16px;height:16px;" class="me-2"></i>Base Events <span class="badge bg-secondary">${events.length}</span></h6>
             <div>
+                <button class="btn btn-sm btn-outline-secondary me-1" onclick="toggleAllEvents(this)" ${events.length === 0 ? 'disabled' : ''}>折叠全部</button>
                 <button class="btn btn-sm btn-outline-danger me-1" onclick="deleteAllEvents()" ${events.length === 0 ? 'disabled' : ''}>清空</button>
                 <button class="btn btn-sm btn-outline-primary me-1" onclick="showBatchImportModal()">批量导入</button>
                 <button class="btn btn-sm btn-outline-success" onclick="showAddEventModal()">+ 添加</button>
@@ -674,6 +682,19 @@ function toggleEvtChildren(id, el) {
     container.classList.toggle('d-none');
     const icon = el.querySelector('svg');
     if (icon) icon.style.transform = container.classList.contains('d-none') ? 'rotate(-90deg)' : '';
+}
+
+function toggleAllEvents(btn) {
+    const containers = document.querySelectorAll('#eventsContent .tree-children');
+    if (containers.length === 0) return;
+    // If anything is currently visible, collapse all; otherwise expand all.
+    const anyExpanded = Array.from(containers).some(c => !c.classList.contains('d-none'));
+    const collapse = anyExpanded;
+    containers.forEach(c => c.classList.toggle('d-none', collapse));
+    document.querySelectorAll('#eventsContent .tree-toggle svg').forEach(icon => {
+        icon.style.transform = collapse ? 'rotate(-90deg)' : '';
+    });
+    btn.textContent = collapse ? '展开全部' : '折叠全部';
 }
 
 // ========== Batch Import ==========

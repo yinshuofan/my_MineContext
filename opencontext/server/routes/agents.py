@@ -5,7 +5,10 @@
 
 """Agent registry CRUD routes and agent base memory endpoints."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from opencontext.server.middleware.auth import auth_dependency
@@ -15,6 +18,10 @@ from opencontext.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+_NARRATIVE_SKILL_ZIP = (
+    Path(__file__).resolve().parents[1] / "resources" / "narrative-to-base-events.zip"
+)
 
 
 # ============================================================================
@@ -147,3 +154,26 @@ async def get_base_profile(agent_id: str, _auth: str = auth_dependency):
     if not profile:
         raise HTTPException(status_code=404, detail="Base profile not found")
     return convert_resp(data={"profile": profile})
+
+
+# ============================================================================
+# Skill Bundle Download
+# ============================================================================
+
+
+@router.get("/skills/narrative-to-base-events/download")
+async def download_narrative_skill(_auth: str = auth_dependency):
+    """Download the narrative-to-base-events Claude Code skill as a zip.
+
+    The archive unzips to a ``narrative-to-base-events/`` directory that users
+    drop into their own ``.claude/skills/`` to teach Claude how to turn a
+    long-form narrative into the JSON payload accepted by
+    ``POST /api/agents/{agent_id}/base/events``.
+    """
+    if not _NARRATIVE_SKILL_ZIP.is_file():
+        raise HTTPException(status_code=404, detail="Skill bundle not found on server")
+    return FileResponse(
+        path=str(_NARRATIVE_SKILL_ZIP),
+        media_type="application/zip",
+        filename="narrative-to-base-events.zip",
+    )

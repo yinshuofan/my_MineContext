@@ -271,6 +271,7 @@ Disabling a task type in config only prevents NEW registration and handler creat
   4. Register the handler in `ComponentInitializer.initialize_task_scheduler()` with `scheduler.register_handler(name, handler, trigger_mode=TriggerMode.USER_ACTIVITY)` (or `TriggerMode.PERIODIC`)
   5. For `user_activity` tasks: call `scheduler.schedule_user_task(name, user_id, device_id, agent_id)` from the push endpoint that should trigger it (see `opencontext/server/routes/push.py`)
   6. Add a corresponding assertion to `tests/server/test_component_initializer.py::TestInitializeTaskScheduler::test_registers_four_tasks_with_correct_trigger_modes` (rename the test to reflect the new count) so the hardcoded mode is locked under test
+- **Editing `.claude/skills/narrative-to-base-events/`**: after changing any source file, run `uv run python scripts/build_narrative_skill_zip.py` and commit the regenerated `opencontext/server/resources/narrative-to-base-events.zip` alongside the source change. The zip is served by `GET /api/agents/skills/narrative-to-base-events/download` for the agents page download button.
 
 ## Module Documentation
 
