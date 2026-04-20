@@ -1010,6 +1010,12 @@ curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events/evt_abc
 curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events
 # -H "X-API-Key: your-api-key"
 
+# Download the narrative-to-base-events Skill (zip, ~21 KB)
+# Unzip into your local .claude/skills/ to generate Base Events JSON from long-form narratives.
+curl -o narrative-to-base-events.zip \
+  http://localhost:1733/api/agents/skills/narrative-to-base-events/download
+# -H "X-API-Key: your-api-key"
+
 
 # ============================================================================
 # 19. Agent Memory via Push Chat

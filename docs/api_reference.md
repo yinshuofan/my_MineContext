@@ -1063,6 +1063,29 @@ curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events
 
 ---
 
+### 6.7 下载 narrative-to-base-events Skill
+
+`GET /api/agents/skills/narrative-to-base-events/download`
+
+下载一个预打包的 Claude Code Skill（`narrative-to-base-events`），解压后可直接放入本地 `.claude/skills/`，用于把长篇叙事文本（角色日记、人物历史等）转成 `POST /api/agents/{agent_id}/base/events` 接受的嵌套 JSON。主要用于为 Agent 制作基础记忆。
+
+```bash
+curl -o narrative-to-base-events.zip \
+  http://localhost:1733/api/agents/skills/narrative-to-base-events/download
+unzip -l narrative-to-base-events.zip
+# narrative-to-base-events/SKILL.md
+# narrative-to-base-events/references/base-event-schema.md
+# narrative-to-base-events/references/roleplay-prompt-guide.md
+```
+
+**响应**
+- `200 OK` — `Content-Type: application/zip`，`Content-Disposition: attachment; filename="narrative-to-base-events.zip"`
+- `404 Not Found` — 服务端未找到打包文件（`{"detail": "Skill bundle not found on server"}`）
+
+Skill 的源文件位于 `.claude/skills/narrative-to-base-events/`，打包产物提交在 `opencontext/server/resources/narrative-to-base-events.zip`。修改源文件后需要运行 `uv run python scripts/build_narrative_skill_zip.py` 重新生成（打包是 byte-deterministic 的，内容不变则字节不变）。
+
+---
+
 ## 7. Agent Memory via Push Chat
 
 通过 push/chat 接口的 `processors` 参数触发 agent 记忆提取。需要先注册 agent。
