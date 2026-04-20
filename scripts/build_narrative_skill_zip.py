@@ -35,6 +35,10 @@ def main() -> None:
         for path in sorted(SRC.rglob("*")):
             if not path.is_file():
                 continue
+            # Skip Python bytecode caches — they pollute the bundle and vary
+            # between runs (different interpreter versions).
+            if "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
+                continue
             arcname = Path("narrative-to-base-events") / path.relative_to(SRC)
             info = zipfile.ZipInfo(arcname.as_posix(), date_time=_FIXED_DATE_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED

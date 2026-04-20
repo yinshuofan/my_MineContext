@@ -40,6 +40,8 @@ The top-level `events` array should contain the highest-level nodes in the tree.
 
 The server validates the full event tree via `_validate_base_event_tree` and raises HTTP 400 with a path-based error message on any violation.
 
+> **Offline pre-flight**: this skill ships `scripts/validate_base_events.py`, which mirrors the server validator and emits identical error messages. Run it on the generated JSON before POSTing — no server round-trip required. See SKILL.md Stage 8 "Mandatory Post-Write Validation" for the required workflow.
+
 | Rule | Details |
 |------|---------|
 | **`hierarchy_level` range** | Must be 0, 1, 2, or 3. Values outside this range are rejected |

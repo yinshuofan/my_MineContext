@@ -484,7 +484,30 @@ For the full field-level schema and all validation rules, see `references/base-e
 - L0 nodes have no `children` field.
 - The `refs` field must be omitted — the server constructs parent-child reference links automatically.
 - All times must be ISO 8601 with timezone offset (e.g., `+08:00`).
-- **Quotation marks in text fields**: All quotation marks inside `title` and `summary` values must use curly/typographic quotation marks (`\u201c\u201d`) — never ASCII double quotes `"`, which break JSON string delimiters. After writing the file, always read it back and verify with `json.load()` to catch encoding errors before reporting success.
+- **Quotation marks in text fields**: All quotation marks inside `title` and `summary` values must use curly/typographic quotation marks (`\u201c\u201d`) — never ASCII double quotes `"`, which break JSON string delimiters.
+
+### Mandatory Post-Write Validation
+
+After writing the JSON file, you **must** run a two-step offline verification before reporting success. Both must pass.
+
+**Step 1 — JSON syntax / encoding check**
+
+Read the file back with `json.load()` to catch encoding errors (stray ASCII quotes breaking string delimiters, etc.).
+
+**Step 2 — Schema and tree-structure check**
+
+Run the validator script that ships with this skill:
+
+```bash
+python3 <skill_dir>/scripts/validate_base_events.py <output_file.json>
+```
+
+Where `<skill_dir>` is this skill's directory (e.g., `.claude/skills/narrative-to-base-events/`). Multiple files can be passed as separate arguments.
+
+- Exit 0 with `OK <path> — N events` → proceed.
+- Exit 1 with `FAIL <path>: <error>` → **do not report success**. The script mirrors the server's `_validate_base_event_tree` byte-for-byte: the same error you see locally is the error the server would return on POST. Fix the node identified by the path prefix (e.g., `events[2].children[0]: ...`) and re-run until all files pass.
+
+The validator enforces every rule in `references/base-event-schema.md` §3 (hierarchy levels, L1+ time/children requirements, no level skipping, parent-covers-children time range, L0-no-children, total ≤ 500 nodes, ISO 8601 parsing).
 
 ### 500-Event Limit
 
