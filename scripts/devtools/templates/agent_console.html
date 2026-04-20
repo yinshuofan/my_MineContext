@@ -142,11 +142,17 @@
             </div>
             <div class="modal-body">
                 <p class="text-muted small mb-2">
-                    粘贴符合 API 格式的 JSON。支持嵌套层级结构（hierarchy_level + children）。
-                    <a href="#" onclick="fillBatchExample(); return false;">填充示例</a>
+                    粘贴符合 API 格式的 JSON，或直接把 .json 文件拖到下方输入框。支持嵌套层级结构（hierarchy_level + children）。
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="fillBatchExample()">填充示例</button>
+                    &middot;
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('batchFileInput').click()">选择文件</button>
+                    <input type="file" id="batchFileInput" accept=".json,application/json" class="d-none" onchange="handleBatchFile(this.files[0]); this.value='';">
                 </p>
                 <textarea class="form-control font-monospace" id="batchJsonInput" rows="16"
-                          placeholder='{"events": [...]}'></textarea>
+                          placeholder='{"events": [...]}  或把 .json 文件拖到这里'
+                          ondragover="batchDragOver(event)"
+                          ondragleave="batchDragLeave(event)"
+                          ondrop="batchDrop(event)"></textarea>
                 <div id="batchError" class="text-danger small mt-2 d-none"></div>
             </div>
             <div class="modal-footer">
@@ -182,6 +188,11 @@
     }
     .tree-toggle { cursor: pointer; user-select: none; }
     .tree-toggle:hover { opacity: 0.7; }
+    #batchJsonInput.drop-active {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+        background-color: #f0f7ff;
+    }
 
     /* --- Tab 2: Message Tracing --- */
     .expand-btn { cursor: pointer; transition: transform 0.2s; }

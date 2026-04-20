@@ -760,11 +760,71 @@ async function addBaseEvent() {
 
 function showBatchImportModal() {
     document.getElementById('batchJsonInput').value = '';
+    document.getElementById('batchJsonInput').classList.remove('drop-active');
     document.getElementById('batchError').classList.add('d-none');
     document.getElementById('batchSubmitBtn').disabled = false;
     document.getElementById('batchSubmitBtn').textContent = '导入';
     new bootstrap.Modal(document.getElementById('batchImportModal')).show();
 }
+
+var _BATCH_MAX_BYTES = 5 * 1024 * 1024;  // 5 MB; ~500 events typically <1 MB
+
+function handleBatchFile(file) {
+    var errorEl = document.getElementById('batchError');
+    errorEl.classList.add('d-none');
+    if (!file) return;
+    var name = (file.name || '').toLowerCase();
+    var type = (file.type || '').toLowerCase();
+    if (!name.endsWith('.json') && type !== 'application/json') {
+        errorEl.textContent = '不是 .json 文件：' + (file.name || '(未命名)');
+        errorEl.classList.remove('d-none');
+        return;
+    }
+    if (file.size > _BATCH_MAX_BYTES) {
+        errorEl.textContent = '文件过大 (' + (file.size / 1024 / 1024).toFixed(1)
+            + ' MB)，上限 ' + (_BATCH_MAX_BYTES / 1024 / 1024) + ' MB';
+        errorEl.classList.remove('d-none');
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+        document.getElementById('batchJsonInput').value = reader.result;
+    };
+    reader.onerror = function () {
+        var msg = (reader.error && reader.error.message) || 'unknown';
+        errorEl.textContent = '读取文件失败：' + msg;
+        errorEl.classList.remove('d-none');
+    };
+    reader.readAsText(file);
+}
+
+function batchDragOver(event) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    event.currentTarget.classList.add('drop-active');
+}
+
+function batchDragLeave(event) {
+    event.currentTarget.classList.remove('drop-active');
+}
+
+function batchDrop(event) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drop-active');
+    var files = event.dataTransfer && event.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    if (files.length > 1) {
+        var errorEl = document.getElementById('batchError');
+        errorEl.textContent = '一次只能导入一个文件（已忽略 ' + (files.length - 1) + ' 个）';
+        errorEl.classList.remove('d-none');
+    }
+    handleBatchFile(files[0]);
+}
+
+// Prevent the browser from navigating away when a file is accidentally
+// dropped outside the textarea (default behavior opens the file as the page).
+window.addEventListener('dragover', function (e) { e.preventDefault(); });
+window.addEventListener('drop', function (e) { e.preventDefault(); });
 
 function fillBatchExample() {
     document.getElementById('batchJsonInput').value = JSON.stringify({

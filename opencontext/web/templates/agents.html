@@ -118,10 +118,17 @@
             </div>
             <div class="modal-body">
                 <p class="text-muted small mb-2">
-                    粘贴符合 API 格式的 JSON。支持嵌套层级结构（hierarchy_level + children）。
-                    <a href="#" onclick="fillBatchExample(); return false;">填充示例</a>
+                    粘贴符合 API 格式的 JSON，或直接把 .json 文件拖到下方输入框。支持嵌套层级结构（hierarchy_level + children）。
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="fillBatchExample()">填充示例</button>
+                    &middot;
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('batchFileInput').click()">选择文件</button>
+                    <input type="file" id="batchFileInput" accept=".json,application/json" class="d-none" onchange="handleBatchFile(this.files[0]); this.value='';">
                 </p>
-                <textarea class="form-control font-monospace" id="batchJsonInput" rows="16" placeholder='{"events": [...]}'></textarea>
+                <textarea class="form-control font-monospace" id="batchJsonInput" rows="16"
+                          placeholder='{"events": [...]}  或把 .json 文件拖到这里'
+                          ondragover="batchDragOver(event)"
+                          ondragleave="batchDragLeave(event)"
+                          ondrop="batchDrop(event)"></textarea>
                 <div id="batchError" class="text-danger small mt-2 d-none"></div>
             </div>
             <div class="modal-footer">
@@ -153,6 +160,7 @@
     .level-badge-1 { background-color: #0d6efd; }
     .level-badge-2 { background-color: #6f42c1; }
     .level-badge-3 { background-color: #dc3545; }
+    #batchJsonInput.drop-active { border-color: #0d6efd; box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25); background-color: #f0f7ff; }
 </style>
 <script>
 let selectedAgentId = null;
@@ -701,10 +709,66 @@ function toggleAllEvents(btn) {
 
 function showBatchImportModal() {
     document.getElementById('batchJsonInput').value = '';
+    document.getElementById('batchJsonInput').classList.remove('drop-active');
     document.getElementById('batchError').classList.add('d-none');
     document.getElementById('batchSubmitBtn').disabled = false;
     new bootstrap.Modal(document.getElementById('batchImportModal')).show();
 }
+
+const _BATCH_MAX_BYTES = 5 * 1024 * 1024;  // 5 MB; ~500 events typically <1 MB
+
+function handleBatchFile(file) {
+    const errorEl = document.getElementById('batchError');
+    errorEl.classList.add('d-none');
+    if (!file) return;
+    const name = (file.name || '').toLowerCase();
+    const type = (file.type || '').toLowerCase();
+    if (!name.endsWith('.json') && type !== 'application/json') {
+        errorEl.textContent = `不是 .json 文件：${file.name || '(未命名)'}`;
+        errorEl.classList.remove('d-none');
+        return;
+    }
+    if (file.size > _BATCH_MAX_BYTES) {
+        errorEl.textContent = `文件过大 (${(file.size/1024/1024).toFixed(1)} MB)，上限 ${_BATCH_MAX_BYTES/1024/1024} MB`;
+        errorEl.classList.remove('d-none');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => { document.getElementById('batchJsonInput').value = reader.result; };
+    reader.onerror = () => {
+        errorEl.textContent = `读取文件失败：${reader.error?.message || 'unknown'}`;
+        errorEl.classList.remove('d-none');
+    };
+    reader.readAsText(file);
+}
+
+function batchDragOver(event) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    event.currentTarget.classList.add('drop-active');
+}
+
+function batchDragLeave(event) {
+    event.currentTarget.classList.remove('drop-active');
+}
+
+function batchDrop(event) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drop-active');
+    const files = event.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+    if (files.length > 1) {
+        const errorEl = document.getElementById('batchError');
+        errorEl.textContent = `一次只能导入一个文件（已忽略 ${files.length - 1} 个）`;
+        errorEl.classList.remove('d-none');
+    }
+    handleBatchFile(files[0]);
+}
+
+// Prevent the browser from navigating away when a file is accidentally
+// dropped outside the textarea (default behavior opens the file as the page).
+window.addEventListener('dragover', (e) => { e.preventDefault(); });
+window.addEventListener('drop', (e) => { e.preventDefault(); });
 
 function fillBatchExample() {
     document.getElementById('batchJsonInput').value = JSON.stringify({
