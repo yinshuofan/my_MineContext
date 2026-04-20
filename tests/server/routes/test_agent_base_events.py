@@ -237,6 +237,11 @@ class TestScrubParentRefs:
 
 
 @pytest.mark.unit
+def _ok_bulk_mock():
+    """AsyncMock whose default behavior is per-type success for any ids_by_type."""
+    return AsyncMock(side_effect=lambda ids_by_type: {ct: True for ct in ids_by_type})
+
+
 class TestReplaceBaseEventsImpl:
     """Tests for _replace_base_events_impl (shared replace logic)."""
 
@@ -247,7 +252,7 @@ class TestReplaceBaseEventsImpl:
         storage = MagicMock()
         storage.get_all_processed_contexts = AsyncMock(return_value={})
         storage.batch_upsert_processed_context = AsyncMock(return_value=["id-1"])
-        storage.delete_batch_processed_contexts = AsyncMock(return_value=True)
+        storage.delete_batch_by_type = _ok_bulk_mock()
         return storage
 
     @pytest.fixture
@@ -282,7 +287,7 @@ class TestReplaceBaseEventsImpl:
         assert result["deleted"] == 0
         assert result["stragglers"] == 0
         mock_storage.batch_upsert_processed_context.assert_awaited_once_with(new_contexts)
-        mock_storage.delete_batch_processed_contexts.assert_not_awaited()
+        mock_storage.delete_batch_by_type.assert_not_awaited()
 
     async def test_diff_deletes_removed_ids(self, mock_storage):
         from opencontext.server.routes.agent_base_events import _replace_base_events_impl
@@ -307,8 +312,9 @@ class TestReplaceBaseEventsImpl:
 
         assert result["upserted"] == 2
         assert result["deleted"] == 2
-        deleted_ids_arg = mock_storage.delete_batch_processed_contexts.call_args[0][0]
-        assert set(deleted_ids_arg) == {"b", "c"}
+        ids_by_type_arg = mock_storage.delete_batch_by_type.call_args[0][0]
+        all_deleted = {i for ids in ids_by_type_arg.values() for i in ids}
+        assert all_deleted == {"b", "c"}
 
     async def test_empty_new_deletes_all_existing(self, mock_storage):
         from opencontext.server.routes.agent_base_events import _replace_base_events_impl
@@ -325,8 +331,9 @@ class TestReplaceBaseEventsImpl:
 
         assert result["upserted"] == 0
         assert result["deleted"] == 1
-        deleted_ids_arg = mock_storage.delete_batch_processed_contexts.call_args[0][0]
-        assert deleted_ids_arg == ["a"]
+        ids_by_type_arg = mock_storage.delete_batch_by_type.call_args[0][0]
+        all_deleted = {i for ids in ids_by_type_arg.values() for i in ids}
+        assert all_deleted == {"a"}
 
     async def test_upsert_failure_propagates(self, mock_storage):
         from opencontext.server.routes.agent_base_events import _replace_base_events_impl
@@ -339,7 +346,7 @@ class TestReplaceBaseEventsImpl:
                 "agent-x",
                 [_make_base_ctx("x", ContextType.AGENT_BASE_EVENT, 0)],
             )
-        mock_storage.delete_batch_processed_contexts.assert_not_awaited()
+        mock_storage.delete_batch_by_type.assert_not_awaited()
 
     async def test_delete_failure_logged_returns_stragglers(self, mock_storage, loguru_capture):
         from opencontext.server.routes.agent_base_events import _replace_base_events_impl
@@ -351,7 +358,7 @@ class TestReplaceBaseEventsImpl:
         }
         mock_storage.get_all_processed_contexts.return_value = existing
         mock_storage.batch_upsert_processed_context.return_value = ["new"]
-        mock_storage.delete_batch_processed_contexts.side_effect = Exception("viking down")
+        mock_storage.delete_batch_by_type = AsyncMock(side_effect=Exception("viking down"))
 
         result = await _replace_base_events_impl(
             mock_storage,
@@ -362,10 +369,10 @@ class TestReplaceBaseEventsImpl:
         assert result["upserted"] == 1
         assert result["deleted"] == 0
         assert result["stragglers"] == 1
-        assert any("delete_batch_processed_contexts failed" in m for m in loguru_capture)
+        assert any("delete_batch_by_type raised" in m for m in loguru_capture)
 
-    async def test_delete_groups_ids_by_context_type(self, mock_storage):
-        """Verify delete_batch is called per context_type, not as one batch."""
+    async def test_delete_passes_grouped_ids_in_single_bulk_call(self, mock_storage):
+        """Verify delete_batch_by_type is invoked once with ids grouped by context_type."""
         from opencontext.server.routes.agent_base_events import _replace_base_events_impl
 
         # Existing tree: 1 L1 summary + 2 L0 events, all going away
@@ -386,12 +393,11 @@ class TestReplaceBaseEventsImpl:
         assert result["deleted"] == 3
         assert result["stragglers"] == 0
 
-        # Should have been called twice: once for L1_SUMMARY, once for EVENT
-        call_args_list = mock_storage.delete_batch_processed_contexts.call_args_list
-        assert len(call_args_list) == 2
-
-        calls_by_type = {call[0][1]: set(call[0][0]) for call in call_args_list}
-        assert calls_by_type == {
+        # Single bulk call, dict argument grouped by context_type
+        assert mock_storage.delete_batch_by_type.await_count == 1
+        ids_by_type_arg = mock_storage.delete_batch_by_type.call_args[0][0]
+        grouped = {ct: set(ids) for ct, ids in ids_by_type_arg.items()}
+        assert grouped == {
             ContextType.AGENT_BASE_L1_SUMMARY.value: {"l1"},
             ContextType.AGENT_BASE_EVENT.value: {"l0-a", "l0-b"},
         }
@@ -409,7 +415,9 @@ class TestReplaceBaseEventsImpl:
         }
         mock_storage.get_all_processed_contexts.return_value = existing
         mock_storage.batch_upsert_processed_context.return_value = ["new"]
-        mock_storage.delete_batch_processed_contexts.return_value = False
+        mock_storage.delete_batch_by_type = AsyncMock(
+            side_effect=lambda ids_by_type: {ct: False for ct in ids_by_type}
+        )
 
         result = await _replace_base_events_impl(
             mock_storage,
@@ -419,9 +427,7 @@ class TestReplaceBaseEventsImpl:
 
         assert result["deleted"] == 0
         assert result["stragglers"] == 1
-        assert any(
-            "delete_batch_processed_contexts returned False" in msg for msg in loguru_capture
-        )
+        assert any("delete failed for type=" in msg for msg in loguru_capture)
 
 
 def _build_app():
@@ -473,7 +479,7 @@ class TestPushBaseEventsReplace:
         }
         storage.get_all_processed_contexts = AsyncMock(return_value=existing_dict)
         storage.batch_upsert_processed_context = AsyncMock(return_value=["new-id"])
-        storage.delete_batch_processed_contexts = AsyncMock(return_value=True)
+        storage.delete_batch_by_type = _ok_bulk_mock()
         return storage
 
     def test_404_when_agent_missing(self):
@@ -499,10 +505,8 @@ class TestPushBaseEventsReplace:
             body = resp.json()
             assert body["data"]["upserted"] == 1
             assert body["data"]["deleted"] == 2
-            deleted_args_list = storage.delete_batch_processed_contexts.call_args_list
-            all_deleted_ids = set()
-            for call in deleted_args_list:
-                all_deleted_ids.update(call[0][0])
+            ids_by_type_arg = storage.delete_batch_by_type.call_args[0][0]
+            all_deleted_ids = {i for ids in ids_by_type_arg.values() for i in ids}
             assert all_deleted_ids == {"old-1", "old-2"}
 
     def test_acquires_and_releases_lock(self):
@@ -566,7 +570,7 @@ class TestDeleteBaseEvent:
         storage.batch_upsert_processed_context = AsyncMock(
             return_value=["l1-1", "l0-b"],
         )
-        storage.delete_batch_processed_contexts = AsyncMock(return_value=True)
+        storage.delete_batch_by_type = _ok_bulk_mock()
         return storage
 
     def test_404_when_event_not_found(self):
@@ -591,14 +595,9 @@ class TestDeleteBaseEvent:
             parent_ctx = next(c for c in upserted if c.id == "l1-1")
             assert parent_ctx.properties.refs[ContextType.AGENT_BASE_EVENT.value] == ["l0-b"]
 
-            # Verify delete_batch called with l0-a
-            deleted_ids_by_call = {
-                call[0][1]: set(call[0][0])
-                for call in storage.delete_batch_processed_contexts.call_args_list
-            }
-            all_deleted = set()
-            for ids in deleted_ids_by_call.values():
-                all_deleted.update(ids)
+            # Verify delete_batch_by_type called with l0-a
+            ids_by_type_arg = storage.delete_batch_by_type.call_args[0][0]
+            all_deleted = {i for ids in ids_by_type_arg.values() for i in ids}
             assert all_deleted == {"l0-a"}
 
     def test_delete_l1_prunes_entire_subtree(self):
@@ -615,9 +614,8 @@ class TestDeleteBaseEvent:
             # The guard in _replace_base_events_impl avoids calling the backend with [].
             assert storage.batch_upsert_processed_context.call_args is None
 
-            all_deleted = set()
-            for call in storage.delete_batch_processed_contexts.call_args_list:
-                all_deleted.update(call[0][0])
+            ids_by_type_arg = storage.delete_batch_by_type.call_args[0][0]
+            all_deleted = {i for ids in ids_by_type_arg.values() for i in ids}
             assert all_deleted == {"l1-1", "l0-a", "l0-b"}
 
     def test_delete_leaf_preserves_empty_parent_summary(self):
@@ -642,7 +640,7 @@ class TestDeleteBaseEvent:
         storage = MagicMock()
         storage.get_all_processed_contexts = AsyncMock(return_value=existing)
         storage.batch_upsert_processed_context = AsyncMock(return_value=["l1-only"])
-        storage.delete_batch_processed_contexts = AsyncMock(return_value=True)
+        storage.delete_batch_by_type = _ok_bulk_mock()
 
         with _patched_client(storage) as (client, _):
             resp = client.delete("/api/agents/a1/base/events/l0-only")
@@ -672,4 +670,105 @@ class TestDeleteBaseEvent:
 
         with _patched_client(storage, mock_cache) as (client, _):
             resp = client.delete("/api/agents/a1/base/events/l0-a")
+            assert resp.status_code == 503
+
+
+@pytest.mark.unit
+class TestDeleteAllBaseEvents:
+    """Tests for DELETE /api/agents/{agent_id}/base/events — clear entire tree."""
+
+    def _tree_storage(self, events_present: bool = True):
+        """Build mock storage with an agent + (optional) L1/L0 tree."""
+        if events_present:
+            l1 = _make_base_ctx(
+                "l1-1",
+                ContextType.AGENT_BASE_L1_SUMMARY,
+                1,
+                refs={ContextType.AGENT_BASE_EVENT.value: ["l0-a", "l0-b"]},
+            )
+            l0_a = _make_base_ctx(
+                "l0-a",
+                ContextType.AGENT_BASE_EVENT,
+                0,
+                refs={ContextType.AGENT_BASE_L1_SUMMARY.value: ["l1-1"]},
+            )
+            l0_b = _make_base_ctx(
+                "l0-b",
+                ContextType.AGENT_BASE_EVENT,
+                0,
+                refs={ContextType.AGENT_BASE_L1_SUMMARY.value: ["l1-1"]},
+            )
+            existing_dict = {
+                ContextType.AGENT_BASE_L1_SUMMARY.value: [l1],
+                ContextType.AGENT_BASE_EVENT.value: [l0_a, l0_b],
+            }
+        else:
+            existing_dict = {}
+        storage = MagicMock()
+        storage.get_agent = AsyncMock(return_value={"agent_id": "a1", "name": "A1"})
+        storage.get_all_processed_contexts = AsyncMock(return_value=existing_dict)
+        storage.batch_upsert_processed_context = AsyncMock(return_value=[])
+        storage.delete_batch_by_type = _ok_bulk_mock()
+        return storage
+
+    def test_deletes_all_events(self):
+        storage = self._tree_storage()
+
+        with _patched_client(storage) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert set(body["data"]["deleted_ids"]) == {"l1-1", "l0-a", "l0-b"}
+            assert body["data"]["deleted"] == 3
+            assert body["data"]["stragglers"] == 0
+
+            # Upsert is NOT called (empty list path in _replace_base_events_impl)
+            assert storage.batch_upsert_processed_context.call_args is None
+
+            # Single bulk call, all existing ids grouped by context_type
+            assert storage.delete_batch_by_type.await_count == 1
+            ids_by_type_arg = storage.delete_batch_by_type.call_args[0][0]
+            all_deleted = {i for ids in ids_by_type_arg.values() for i in ids}
+            assert all_deleted == {"l1-1", "l0-a", "l0-b"}
+
+    def test_empty_tree_is_noop(self):
+        storage = self._tree_storage(events_present=False)
+
+        with _patched_client(storage) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["data"]["deleted_ids"] == []
+            assert body["data"]["deleted"] == 0
+            assert body["data"]["stragglers"] == 0
+
+            storage.batch_upsert_processed_context.assert_not_called()
+            storage.delete_batch_by_type.assert_not_called()
+
+    def test_404_when_agent_missing(self):
+        storage = self._tree_storage()
+        storage.get_agent = AsyncMock(return_value=None)
+
+        with _patched_client(storage) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events")
+            assert resp.status_code == 404
+
+    def test_acquires_and_releases_lock(self):
+        storage = self._tree_storage()
+
+        with _patched_client(storage) as (client, mock_cache):
+            client.delete("/api/agents/a1/base/events")
+            mock_cache.acquire_lock.assert_awaited_once()
+            lock_args = mock_cache.acquire_lock.call_args
+            assert lock_args[0][0] == "agent_base_edit:a1"
+            mock_cache.release_lock.assert_awaited_once_with("agent_base_edit:a1", "lock-token-123")
+
+    def test_returns_503_when_lock_unavailable(self):
+        storage = self._tree_storage()
+        mock_cache = MagicMock()
+        mock_cache.acquire_lock = AsyncMock(return_value=None)
+        mock_cache.release_lock = AsyncMock(return_value=True)
+
+        with _patched_client(storage, mock_cache) as (client, _):
+            resp = client.delete("/api/agents/a1/base/events")
             assert resp.status_code == 503

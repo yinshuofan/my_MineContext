@@ -1004,6 +1004,12 @@ curl "http://localhost:1733/api/agents/assistant_01/base/events?hierarchy_level=
 curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events/evt_abc123
 # -H "X-API-Key: your-api-key"
 
+# Delete ALL Base Events for an agent (clear entire tree)
+# Returns {deleted_ids: [...], deleted: N, stragglers: K}.
+# 404 if agent not found; 503 if another edit is in progress.
+curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events
+# -H "X-API-Key: your-api-key"
+
 
 # ============================================================================
 # 19. Agent Memory via Push Chat

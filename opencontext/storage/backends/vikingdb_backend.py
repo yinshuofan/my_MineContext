@@ -1103,6 +1103,31 @@ class VikingDBBackend(IVectorStorageBackend):
             logger.exception(f"Failed to delete contexts: {e}")
             return False
 
+    async def delete_contexts_bulk(self, ids_by_type: dict[str, list[str]]) -> dict[str, bool]:
+        if not self._initialized:
+            return {ct: False for ct in ids_by_type}
+        if not ids_by_type:
+            return {}
+
+        all_ids = [i for ids in ids_by_type.values() for i in ids]
+        try:
+            result = await self._client.async_data_request(  # type: ignore[union-attr]
+                path="/api/vikingdb/data/delete",
+                data={"collection_name": self._collection_name, "ids": all_ids},
+            )
+            ok = result.get("code") == "Success"
+            if ok:
+                logger.debug(
+                    f"Deleted {len(all_ids)} contexts from {self._collection_name} "
+                    f"across {len(ids_by_type)} types"
+                )
+            else:
+                logger.error(f"Bulk delete failed: {result.get('message')}")
+            return {ct: ok for ct in ids_by_type}
+        except Exception as e:
+            logger.exception(f"Failed bulk delete: {e}")
+            return {ct: False for ct in ids_by_type}
+
     async def search(  # type: ignore[override]
         self,
         query: Vectorize,

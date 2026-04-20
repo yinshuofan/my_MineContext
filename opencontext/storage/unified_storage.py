@@ -262,6 +262,10 @@ class UnifiedStorage:
     async def delete_batch_processed_contexts(self, ids: list[str], context_type: str):
         return await self._vector_backend.delete_contexts(ids, context_type)
 
+    async def delete_batch_by_type(self, ids_by_type: dict[str, list[str]]) -> dict[str, bool]:
+        """Delete ids grouped by context_type; backend owns physical routing."""
+        return await self._vector_backend.delete_contexts_bulk(ids_by_type)
+
     @_require_backend("_vector_backend", default={})
     async def get_all_processed_contexts(
         self,

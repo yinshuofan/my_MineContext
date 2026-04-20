@@ -382,7 +382,7 @@ async def _replace_base_events_impl(
     storage,
     agent_id: str,
     new_contexts: list[ProcessedContext],
-) -> dict[str, int]:
+) -> dict:
     """Replace all AGENT_BASE_* contexts for an agent with new_contexts.
 
     Order: upsert first (fail-safe: old tree intact on upsert failure),
@@ -391,7 +391,15 @@ async def _replace_base_events_impl(
     A delete failure is logged but does not fail the request — stragglers
     will be cleaned up on the next replace.
 
-    Returns {"upserted": N, "deleted": M, "stragglers": K}.
+    Returns:
+        {
+            "upserted": N,
+            "deleted": M,                      # count of ids confirmed deleted
+            "stragglers": K,                   # count that failed to delete
+            "deleted_ids": [...],              # ids confirmed deleted (len == M)
+            "straggler_ids": [...],            # ids that failed to delete (len == K)
+        }
+
     Raises RuntimeError on upsert failure.
     """
     existing = await _fetch_existing_base_events(storage, agent_id)
@@ -407,12 +415,13 @@ async def _replace_base_events_impl(
         if upsert_result is None:
             raise RuntimeError(f"Failed to upsert base events for agent={agent_id}")
 
-    # Delete SECOND — grouped per context_type because some backends (e.g. Qdrant)
-    # route by type. If delete raises OR returns a falsy value, we count those
-    # ids as stragglers. Upserts already succeeded by this point; stragglers
-    # will be cleaned up on the next replace.
-    deleted = 0
-    stragglers = 0
+    # Delete SECOND — dispatch via delete_batch_by_type so the backend owns
+    # physical routing (VikingDB coalesces into 1 HTTP call; Qdrant runs
+    # per-collection deletes in parallel). Per-type success map preserves
+    # stragglers granularity. Upserts already succeeded; stragglers will
+    # be cleaned up on the next replace.
+    deleted_ids: list[str] = []
+    straggler_ids: list[str] = []
     if to_delete:
         ct_by_id: dict[str, str] = {
             c.id: c.extracted_data.context_type.value
@@ -425,7 +434,7 @@ async def _replace_base_events_impl(
             if ct_value is None:
                 # Shouldn't happen — existing contexts always have a type — but
                 # if it does, we can't route the delete, so count as straggler.
-                stragglers += 1
+                straggler_ids.append(del_id)
                 logger.warning(
                     f"delete straggler (no context_type in existing map) "
                     f"id={del_id} agent={agent_id}"
@@ -433,28 +442,28 @@ async def _replace_base_events_impl(
                 continue
             ids_by_type.setdefault(ct_value, []).append(del_id)
 
-        for ct_value, ids in ids_by_type.items():
+        if ids_by_type:
             try:
-                ok = await storage.delete_batch_processed_contexts(ids, ct_value)
-                if ok is False:
-                    stragglers += len(ids)
-                    logger.warning(
-                        f"delete_batch_processed_contexts returned False for "
-                        f"type={ct_value} agent={agent_id} ({len(ids)} stragglers)"
-                    )
-                else:
-                    deleted += len(ids)
+                per_type_ok = await storage.delete_batch_by_type(ids_by_type)
             except Exception as e:
-                stragglers += len(ids)
-                logger.warning(
-                    f"delete_batch_processed_contexts failed for type={ct_value} "
-                    f"agent={agent_id}: {e}"
-                )
+                per_type_ok = {ct: False for ct in ids_by_type}
+                logger.warning(f"delete_batch_by_type raised for agent={agent_id}: {e}")
+            for ct_value, ids in ids_by_type.items():
+                if per_type_ok.get(ct_value, False):
+                    deleted_ids.extend(ids)
+                else:
+                    straggler_ids.extend(ids)
+                    logger.warning(
+                        f"delete failed for type={ct_value} agent={agent_id} "
+                        f"({len(ids)} stragglers)"
+                    )
 
     return {
         "upserted": len(new_contexts),
-        "deleted": deleted,
-        "stragglers": stragglers,
+        "deleted": len(deleted_ids),
+        "stragglers": len(straggler_ids),
+        "deleted_ids": deleted_ids,
+        "straggler_ids": straggler_ids,
     }
 
 
@@ -509,6 +518,8 @@ async def push_base_events(agent_id: str, request: BaseEventsRequest, _auth: str
             "upserted": result["upserted"],
             "deleted": result["deleted"],
             "stragglers": result["stragglers"],
+            "deleted_ids": result["deleted_ids"],
+            "straggler_ids": result["straggler_ids"],
             "ids": [c.id for c in new_contexts],
         },
         message="Base events replaced",
@@ -611,9 +622,54 @@ async def delete_base_event(agent_id: str, event_id: str, _auth: str = auth_depe
 
     return convert_resp(
         data={
-            "deleted_ids": list(subtree_ids),
+            "deleted_ids": result["deleted_ids"],
+            "straggler_ids": result["straggler_ids"],
             "updated_parent_id": parent_id,
             "stragglers": result["stragglers"],
         },
         message="Event deleted",
+    )
+
+
+@router.delete("/{agent_id}/base/events")
+async def delete_all_base_events(agent_id: str, _auth: str = auth_dependency):
+    """Clear all base events for an agent via replace-with-empty semantics.
+
+    Fetches existing AGENT_BASE_* contexts to report deleted ids, then invokes
+    the same replace core as POST/DELETE-by-id with an empty list. Serializes
+    per-agent via Redis lock. No-op (returns empty result) if the agent has no
+    existing base events.
+    """
+    storage = get_storage()
+    agent = await storage.get_agent(agent_id)  # type: ignore[union-attr]
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    cache = await get_cache()
+    lock_key = f"agent_base_edit:{agent_id}"
+    lock_token = await cache.acquire_lock(
+        lock_key,
+        timeout=_LOCK_TIMEOUT_SECONDS,
+        blocking=True,
+        blocking_timeout=_LOCK_BLOCKING_TIMEOUT_SECONDS,
+    )
+    if not lock_token:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Another edit is in progress for agent {agent_id}",
+        )
+
+    try:
+        result = await _replace_base_events_impl(storage, agent_id, [])
+    finally:
+        await cache.release_lock(lock_key, lock_token)
+
+    return convert_resp(
+        data={
+            "deleted_ids": result["deleted_ids"],
+            "straggler_ids": result["straggler_ids"],
+            "deleted": result["deleted"],
+            "stragglers": result["stragglers"],
+        },
+        message="All base events deleted",
     )

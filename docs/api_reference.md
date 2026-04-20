@@ -989,15 +989,17 @@ curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events/a1b2c3d
   "message": "Event deleted",
   "data": {
     "deleted_ids": ["<root_id>", "<child_id_1>", "..."],
+    "straggler_ids": [],
     "updated_parent_id": "<parent_id_or_null>",
     "stragglers": 0
   }
 }
 ```
 
-- `deleted_ids` — 已删除的 context id 列表（root + 所有后代）
+- `deleted_ids` — 后端**确认删除成功**的 context id 列表（root + 后代的子集）
+- `straggler_ids` — 后端删除失败的 context id 列表（non-fatal；下次 POST/DELETE 时清理）
 - `updated_parent_id` — 其 ref 列表被清理的父节点 id；若被删根节点无父节点，则为 `null`
-- `stragglers` — 应被删除但删除失败的 context 数量（non-fatal；下次 POST 时清理）
+- `stragglers` — `straggler_ids` 的长度（便于客户端快速判断是否全部成功）
 
 **不存在（404）**
 ```json
@@ -1014,6 +1016,50 @@ curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events/a1b2c3d
 ```
 
 > 同一 agent 在同一时刻只能有一个 edit 请求进行中（replace 或 delete）；并发请求会收到 `503 Service Unavailable`。客户端应重试。
+
+### 6.6 清空全部基础事件
+
+`DELETE /api/agents/{agent_id}/base/events`
+
+Clears **all** base events for the agent in a single atomic operation (replace-with-empty semantics, same lock/core as POST). A no-op if the agent already has no base events.
+
+```bash
+curl -X DELETE http://localhost:1733/api/agents/assistant_01/base/events
+```
+
+**成功 (`200 OK`)**
+```json
+{
+  "code": 0,
+  "status": 200,
+  "message": "All base events deleted",
+  "data": {
+    "deleted_ids": ["<id_1>", "<id_2>", "..."],
+    "straggler_ids": [],
+    "deleted": 2,
+    "stragglers": 0
+  }
+}
+```
+
+- `deleted_ids` — 后端**确认删除成功**的 context id 列表（若已空则为 `[]`）
+- `straggler_ids` — 后端删除失败的 context id 列表（`len(straggler_ids) == stragglers`）
+- `deleted` — `len(deleted_ids)`
+- `stragglers` — `len(straggler_ids)`（non-fatal；下次 edit 时清理）
+
+**Agent 不存在（404）**
+```json
+{
+  "detail": "Agent not found"
+}
+```
+
+**另一编辑进行中（503）**
+```json
+{
+  "detail": "Another edit is in progress for agent <agent_id>"
+}
+```
 
 ---
 

@@ -92,6 +92,26 @@ class IVectorStorageBackend(IStorageBackend):
     async def delete_contexts(self, ids: list[str], context_type: str) -> bool:
         """Delete contexts of specified type"""
 
+    async def delete_contexts_bulk(self, ids_by_type: dict[str, list[str]]) -> dict[str, bool]:
+        """Delete contexts grouped by context_type.
+
+        Default implementation loops `delete_contexts` sequentially — correct
+        but not optimal. Backends should override for performance:
+        single-collection backends (VikingDB) coalesce into one network call;
+        per-type-collection backends (Qdrant) issue parallel requests.
+
+        Returns per-type success map. Empty input returns an empty dict (no-op).
+        """
+        if not ids_by_type:
+            return {}
+        results: dict[str, bool] = {}
+        for ct, ids in ids_by_type.items():
+            try:
+                results[ct] = bool(await self.delete_contexts(ids, ct))
+            except Exception:
+                results[ct] = False
+        return results
+
     @abstractmethod
     async def upsert_processed_context(self, context: ProcessedContext) -> str:
         """Store processed context"""

@@ -350,6 +350,8 @@ function renderEventsCard(events) {
                 '<i data-feather="zap" style="width:16px;height:16px;" class="me-2"></i>Base Events ' +
                 '<span class="badge bg-secondary">' + events.length + '</span></h6>' +
             '<div>' +
+                '<button class="btn btn-sm btn-outline-danger me-1" onclick="deleteAllEvents()"' +
+                    (events.length === 0 ? ' disabled' : '') + '>清空</button>' +
                 '<button class="btn btn-sm btn-outline-primary me-1" onclick="showBatchImportModal()">批量导入</button>' +
                 '<button class="btn btn-sm btn-outline-success" onclick="showAddEventModal()">+ 添加</button>' +
             '</div>' +
@@ -554,6 +556,44 @@ async function deleteEvent(eventId) {
     } catch (err) {
         console.error('deleteEvent failed', err);
         alert('删除失败：' + err.message);
+    }
+}
+
+async function deleteAllEvents() {
+    if (!selectedAgentId) return;
+    if (_currentEvents.length === 0) return;
+    if (!confirm('确定清空此 Agent 的全部 ' + _currentEvents.length + ' 条 Base Events？此操作不可撤销。')) return;
+
+    try {
+        var resp = await fetch(
+            '/api/agents/' + encodeURIComponent(selectedAgentId) + '/base/events',
+            { method: 'DELETE' }
+        );
+        if (!resp.ok) {
+            var errBody = {};
+            try { errBody = await resp.json(); } catch (_) { /* ignore */ }
+            alert('清空失败：' + (errBody.detail || resp.statusText));
+            return;
+        }
+
+        _currentEvents = [];
+
+        var container = document.getElementById('eventsContent');
+        if (container) {
+            container.innerHTML = '<p class="text-muted">暂无 Base Events</p>';
+            var eventsBody = document.getElementById('eventsCardBody');
+            var card = eventsBody ? eventsBody.closest('.card') : null;
+            if (card) {
+                var badge = card.querySelector('.badge.bg-secondary');
+                if (badge) badge.textContent = '0';
+                var clearBtn = card.querySelector('.card-header .btn-outline-danger');
+                if (clearBtn) clearBtn.disabled = true;
+            }
+            refreshIcons();
+        }
+    } catch (err) {
+        console.error('deleteAllEvents failed', err);
+        alert('清空失败：' + err.message);
     }
 }
 

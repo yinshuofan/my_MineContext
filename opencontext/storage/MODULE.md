@@ -54,6 +54,7 @@ Extends `IStorageBackend`. All abstract methods that new vector backends must im
 |----------------|-----------|---------|
 | `get_collection_names` | `() -> Optional[List[str]]` | All collection names |
 | `delete_contexts` | `(ids: List[str], context_type: str) -> bool` | Success flag |
+| `delete_contexts_bulk` | `(ids_by_type: Dict[str, List[str]]) -> Dict[str, bool]` | Per-type success map. Default impl loops `delete_contexts` (correct but not optimal); backends override for performance — VikingDB flattens to 1 HTTP call; Qdrant fans out per-collection via `asyncio.gather`. Callers should prefer this over looping `delete_contexts` when deleting multiple types at once. |
 | `upsert_processed_context` | `(context: ProcessedContext) -> str` | Stored ID |
 | `batch_upsert_processed_context` | `(contexts: List[ProcessedContext]) -> List[str]` | List of stored IDs |
 | `get_all_processed_contexts` | `(context_types, limit, offset, filter, need_vector, user_id, device_id, agent_id, skip_slice) -> Dict[str, List[ProcessedContext]]` | Type-keyed dict. `skip_slice=True` skips per-type offset/limit slicing for correct cross-type pagination |

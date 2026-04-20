@@ -3,6 +3,7 @@
 # Copyright (c) 2025 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import contextlib
 import datetime
 import json
@@ -633,6 +634,22 @@ class QdrantBackend(IVectorStorageBackend):
         except Exception as e:
             logger.exception(f"Failed to delete Qdrant contexts: {e}")
             return False
+
+    async def delete_contexts_bulk(self, ids_by_type: dict[str, list[str]]) -> dict[str, bool]:
+        if not self._initialized:
+            return {ct: False for ct in ids_by_type}
+        if not ids_by_type:
+            return {}
+
+        types = list(ids_by_type.keys())
+        results = await asyncio.gather(
+            *(self.delete_contexts(ids_by_type[ct], ct) for ct in types),
+            return_exceptions=True,
+        )
+        return {
+            ct: (not isinstance(r, BaseException) and bool(r))
+            for ct, r in zip(types, results, strict=True)
+        }
 
     async def get_processed_context_count(
         self,
