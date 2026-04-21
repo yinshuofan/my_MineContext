@@ -357,9 +357,24 @@ def start_web_server(host: str, port: int, workers: int = 1) -> None:
     """Start the web server."""
     if workers > 1:
         logger.info(f"Starting with {workers} worker processes")
-        uvicorn.run("opencontext.cli:app", host=host, port=port, log_level="info", workers=workers)
+        uvicorn.run(
+            "opencontext.cli:app",
+            host=host,
+            port=port,
+            log_level="info",
+            workers=workers,
+            proxy_headers=True,
+            forwarded_allow_ips="*",
+        )
     else:
-        uvicorn.run(app, host=host, port=port, log_level="info")
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_level="info",
+            proxy_headers=True,
+            forwarded_allow_ips="*",
+        )
 
 
 def parse_args() -> argparse.Namespace:

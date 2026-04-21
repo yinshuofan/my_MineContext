@@ -1,0 +1,18 @@
+{
+    admin off
+    servers {
+        protocols h1 h2
+    }
+}
+
+ptalkai.memory.ptalk.cc {
+    reverse_proxy server:1733 {
+        flush_interval -1
+    }
+
+    request_body {
+        max_size 50MB
+    }
+
+    encode gzip zstd
+}
