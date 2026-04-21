@@ -103,83 +103,105 @@ curl http://localhost:1733/api/health
 
 ### Docker 部署
 
-#### 服务架构
+Docker Compose 以「HTTPS 反代 + 应用 + 可选内置数据库」三层编排：
 
-Docker Compose 编排包含以下服务：
+| 服务 | 说明 | 默认状态 |
+|------|------|---------|
+| `caddy` | HTTPS 反向代理，自动申请/续期 Let's Encrypt 证书 | 启动 |
+| `server` | MineContext 主服务（API + Web UI，内嵌定时调度器） | 启动（1 容器 × N workers） |
+| `mysql` | 内置 MySQL 8.0 | 仅 `test` profile |
+| `redis` | 内置 Redis | 仅 `test` profile |
 
-| 服务 | 说明 | 默认副本数 |
-|------|------|-----------|
-| `nginx` | 负载均衡反向代理，对外暴露端口 | 1 |
-| `server` | MineContext 主服务（API + Web UI） | 3 |
-| `script-scheduler` | 独立调度器进程（事件摘要、记忆清理等定时任务） | 1 |
-| `mysql` | MySQL 数据库（仅测试环境） | 1 |
-| `redis` | Redis 缓存/调度（仅测试环境） | 1 |
+> `mysql`、`redis` 属于 `test` profile，**默认不启动**——生产部署使用外部数据库，本地测试时加 `--profile test` 启动内置实例。
 
-> `mysql` 和 `redis` 属于 `test` profile，生产部署时应使用外部数据库服务。
+#### 部署步骤
 
-#### 生产部署（外部 MySQL/Redis）
-
-适用于已有 MySQL 和 Redis 基础设施的环境：
+**1. 配置环境变量**
 
 ```bash
-# 1. 配置环境变量
 cp .env.example .env
-# 编辑 .env，填入 LLM、MySQL、Redis 等配置
-
-# 2. 启动（仅启动 nginx + server + scheduler）
-docker-compose up -d
+# 编辑 .env，填入 LLM / Embedding / MySQL / Redis / CONTEXT_API_KEY 等
 ```
 
-此模式下只会启动 `nginx`、`server`、`script-scheduler` 三个服务，MySQL 和 Redis 使用 `.env` 中配置的外部地址。
+**2. 配置 Caddy 域名**
 
-#### 本地测试（内置 MySQL/Redis）
+编辑项目根目录的 `Caddyfile`，把示例域名替换成你自己的：
 
-使用 `--profile test` 同时启动内置的 MySQL 和 Redis：
+```caddyfile
+your.domain.com {
+    reverse_proxy server:1733 {
+        flush_interval -1
+    }
+    request_body { max_size 50MB }
+    encode gzip zstd
+}
+```
+
+**3. 前置准备**
+
+- 域名 A 记录指向服务器公网 IP（Let's Encrypt HTTP-01 签证书必需）
+- 服务器防火墙/安全组放通 **80** 和 **443**（80 用于证书签发）
+- 宿主机 80 端口未被其他进程占用
+
+**4. 启动**
 
 ```bash
-# 启动全部服务（含内置 MySQL 和 Redis）
-docker-compose --profile test up -d
+# 生产模式（外部 MySQL/Redis）
+docker compose up -d --build
+
+# 本地测试（内置 MySQL/Redis）
+docker compose --profile test up -d --build
 ```
 
-内置服务的外部映射端口（避免与宿主机冲突）：
-- MySQL: `${MYSQL_PORT_PUBLISHED:-3307}` → 容器 3306
-- Redis: `${REDIS_PORT_PUBLISHED:-6380}` → 容器 6379
+**5. 验证**
+
+```bash
+# 观察证书签发过程
+docker compose logs -f caddy
+# 出现 "certificate obtained successfully" 即成功
+
+# 健康检查（把 DOMAIN 换成你在 Caddyfile 中配置的域名）
+DOMAIN=your.domain.com
+curl https://$DOMAIN/health
+curl -H "X-API-Key: $CONTEXT_API_KEY" https://$DOMAIN/api/health
+```
+
+#### 仅 HTTP（开发 / 内网部署）
+
+没有域名、只想 HTTP 直连的场景：
+
+1. 在 `docker-compose.yml` 里注释掉 `caddy` 服务
+2. 把 `server` 的 `expose: ["1733"]` 改回 `ports: ["1733:1733"]`
+3. `docker compose up -d --build`
+4. 直接访问 `http://<server-ip>:1733`
 
 #### 扩缩容
 
-通过环境变量控制 server 的实例数和每实例的工作进程数：
-
-| 环境变量 | 说明 | 默认值 |
-|----------|------|--------|
-| `SERVER_REPLICAS` | server 容器副本数（Nginx 负载均衡） | 3 |
-| `SERVER_WORKERS` | 每个容器内的 Uvicorn worker 进程数 | 1 |
-| `NGINX_PORT_PUBLISHED` | Nginx 对外暴露端口 | 8088 |
+通过 `SERVER_WORKERS` 控制单容器内 Uvicorn worker 数（默认 2）：
 
 ```bash
-# 示例：2 个容器 × 每容器 2 个 worker = 4 个工作进程
-SERVER_REPLICAS=2 SERVER_WORKERS=2 docker-compose up -d
+SERVER_WORKERS=4 docker compose up -d
 ```
 
-> **总工作进程数 = `SERVER_REPLICAS` × `SERVER_WORKERS`**。建议先增加 `SERVER_REPLICAS`（水平扩展），单容器多 worker 适用于单机高核场景。
+> 当前 compose 中 `deploy.replicas: 1` 固定为单容器。需要多容器横向扩展时，须手动调整 compose 文件并在 Caddy 中配置多个上游（`reverse_proxy server1:1733 server2:1733 ...`）。
 
-#### 验证
+#### 热加载 Caddy 配置
+
+改完 `Caddyfile` 不用重建容器：
 
 ```bash
-# 通过 Nginx 访问（生产入口）
-curl http://localhost:8088/api/health
-
-# 直接访问 server（调试用，需知道容器 IP）
-docker-compose exec server curl http://localhost:1733/api/health
-
-# 查看服务状态
-docker-compose ps
+docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 ```
+
+#### 证书持久化
+
+证书存储在 Docker 卷 `caddy_data` 中，Caddy 自动在到期前 30 天续签。**不要删除这个卷**——删了下次启动会重新申请，可能撞上 Let's Encrypt 速率限制。备份时把 `caddy_data` 一并备上。
 
 ### 部署架构
 
-#### 单机模式
+#### 单机开发模式
 
-直接运行 `uv run opencontext start`，适合开发和小规模使用：
+直接运行 `uv run opencontext start`，适合本地开发：
 
 ```
 客户端 → MineContext (端口 1733)
@@ -187,23 +209,28 @@ docker-compose ps
               └── Redis
 ```
 
-#### Docker Compose 多实例
+#### Docker Compose 生产模式
 
-通过 Nginx 负载均衡 + 多 server 实例，适合生产环境：
+Caddy 终止 TLS，反代到内网 server 容器：
 
 ```
-                         ┌─ server (1733)
-客户端 → Nginx (8088) ───┼─ server (1733)
-                         └─ server (1733)
-                              │
-              ┌───────────────┼───────────────┐
-           MySQL           Redis        script-scheduler
+                     HTTPS (443)
+客户端 ─────────────────────────────> Caddy
+                                        │ HTTP (内网)
+                                        ▼
+                                   MineContext
+                                 (1 容器 × N workers)
+                                        │
+                 ┌──────────────────────┼──────────────────────┐
+                 │                      │                      │
+              MySQL                  Redis              Vector DB
+         (Profile, Entity)     (调度器 / 缓存)   (Document/Event/Knowledge)
 ```
 
-- Nginx 使用 `least_conn` 策略分发请求
-- 所有 server 实例共享同一 MySQL 和 Redis
-- `script-scheduler` 独立运行定时任务，不处理 API 请求
-- server 容器中 `SCHEDULER_ENABLED=false`，避免与 scheduler 冲突
+- Caddy 自动申请并续期 Let's Encrypt 证书
+- `server` 容器 `ports` 已换成 `expose`，**不再对公网直接暴露 1733**，Caddy 是唯一外部入口
+- uvicorn 以 `proxy_headers=True, forwarded_allow_ips="*"` 启动，后端能拿到真实客户端 IP 和 `https` 协议（经 `X-Forwarded-For` / `X-Forwarded-Proto`）
+- 定时调度器内嵌在 server 容器中（`SCHEDULER_ENABLED=true`），多 worker 场景下的竞态由 Redis 原子操作保证
 
 ## API 概览
 
@@ -457,13 +484,13 @@ Docker Compose 部署时，以下环境变量可在 `.env` 中配置：
 | `MYSQL_PASSWORD` | MySQL 密码（必填） | — |
 | `REDIS_HOST` | Redis 地址 | redis |
 | `CONTEXT_API_KEY` | API 鉴权 Key | — |
-| `SERVER_REPLICAS` | server 容器副本数 | 3 |
-| `SERVER_WORKERS` | 每容器 Uvicorn worker 数 | 1 |
-| `NGINX_PORT_PUBLISHED` | Nginx 对外端口 | 8088 |
+| `SERVER_WORKERS` | 每容器 Uvicorn worker 数 | 2 |
 | `MYSQL_PORT_PUBLISHED` | MySQL 外部映射端口（test profile） | 3307 |
 | `REDIS_PORT_PUBLISHED` | Redis 外部映射端口（test profile） | 6380 |
-| `SCHEDULER_ENABLED` | server 中是否启用调度器 | false |
 | `SCHEDULER_EXECUTOR_MAX_CONCURRENT` | 调度器最大并发任务数 | 5 |
+
+> - Caddy 的域名在 `Caddyfile` 中直接配置，不走环境变量。
+> - `SCHEDULER_ENABLED` 在 `docker-compose.yml` 中对 server 硬编码为 `"true"`，`.env` 里的同名变量对 Docker 部署无效；需要关闭调度器须直接改 compose 文件。
 
 ### 存储后端选择指南
 
