@@ -382,7 +382,8 @@ class MemoryCacheManager:
         Queries (run in parallel):
           - profile:          ContextType.PROFILE — always the user's own profile.
           - agent_prompt:     ContextType.AGENT_PROFILE, only when agent_id != "default";
-                              if missing, fallback to agent_base_profile under user_id="__base__".
+                              if missing, fallback to agent_base_profile under
+                              user_id="__base__", device_id="default".
           - today_events:     ContextType.EVENT, hierarchy_level=0, today.
           - daily_summaries:  ContextType.DAILY_SUMMARY, hierarchy_level=1, past `recent_days`.
         """
@@ -491,7 +492,7 @@ class MemoryCacheManager:
                 try:
                     agent_prompt_data = await storage.get_profile(  # type: ignore[union-attr]
                         "__base__",
-                        device_id,
+                        "default",
                         agent_id,
                         context_type=ContextType.AGENT_BASE_PROFILE.value,
                     )
